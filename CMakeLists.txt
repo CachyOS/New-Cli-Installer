@@ -1,33 +1,87 @@
-cmake_minimum_required(VERSION 3.21)
-project(CachyOS-Installer)
+cmake_minimum_required(VERSION 3.15)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-set(CMAKE_C_COMPILER "/usr/bin/clang")
-set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
+##
+## PROJECT
+## name and version
+##
+project(cachyos-installer
+        VERSION 0.0.1
+        LANGUAGES CXX)
 
-set(CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=lld")
-set(CMAKE_MODULE_LINKER_FLAGS_INIT "-fuse-ld=lld")
-set(CMAKE_SHARED_LINKER_FLAGS_INIT "-fuse-ld=lld")
-set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-undefined")
+##
+## INCLUDE
+##
+include(GNUInstallDirs)
+include(StandardProjectSettings)
+include(CompilerWarnings)
+include(EnableCcache)
+include(ClangTidy)
+include(FetchContent)
 
-set(CMAKE_C_FLAGS "-fno-rtti -Wno-non-virtual-dtor -Wno-strict-aliasing -Wl,-Bdynamic -Wno-unused-command-line-argument")
-set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++20")
+FetchContent_Declare(ftxui
+  GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
+  GIT_TAG "cecd54df42dd66fdf8386ed461e16b725bffc827"
+)
+FetchContent_MakeAvailable(ftxui)
 
-set(CMAKE_C_FLAGS_RELEASE "-flto=thin -gsplit-dwarf -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-math-errno -fno-ident -Wl,--strip-all -Wl,--discard-all")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+FetchContent_Declare(fmt
+  GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
+  GIT_TAG "491ba2dda5a04c2438abb6bd90219de773793ec0"
+)
+FetchContent_MakeAvailable(fmt)
 
-set(CMAKE_C_FLAGS_DEBUG "-DDEBUG -g")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+FetchContent_Declare(nlohmann_json
+  GIT_REPOSITORY "https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent.git"
+  GIT_TAG "v3.10.4"
+)
+FetchContent_MakeAvailable(nlohmann_json)
 
-file(GLOB_RECURSE SOURCES "${CMAKE_SOURCE_DIR}/include/*.cpp" "${CMAKE_SOURCE_DIR}/resources/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.cpp")
+##
+## CONFIGURATION
+##
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
 
-find_package(nlohmann_json REQUIRED)
-find_package(ftxui REQUIRED)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fwhole-program")
+endif()
 
-add_executable(CachyOS-Installer ${SOURCES} src/utils.h src/utils.cpp src/definitions.h)
+# Link this 'library' to set the c++ standard / compile-time options requested
+add_library(project_options INTERFACE)
+target_compile_features(project_options INTERFACE cxx_std_20)
 
-target_include_directories(CachyOS-Installer PRIVATE "${CMAKE_SOURCE_DIR}/include/")
-target_link_libraries(CachyOS-Installer PRIVATE ftxui::screen PRIVATE ftxui::dom PRIVATE ftxui::component nlohmann_json::nlohmann_json)
-target_link_options(CachyOS-Installer PRIVATE LINKER:--no-undefined)
+##
+## Target
+##
+add_executable(${PROJECT_NAME}
+    src/definitions.hpp
+    src/utils.cpp src/utils.hpp
+    src/main.cpp
+    )
+
+# Link this 'library' to use the warnings specified in CompilerWarnings.cmake
+add_library(project_warnings INTERFACE)
+set_project_warnings(project_warnings)
+
+include_directories(${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json)
+
+option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
+if(ENABLE_UNITY)
+  # Add for any project you want to apply unity builds for
+  set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+endif()
+
+install(
+    TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+
+# uninstall
+add_custom_target(uninstall
+    COMMAND cat ${PROJECT_BINARY_DIR}/install_manifest.txt | xargs rm
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)

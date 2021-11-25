@@ -1,0 +1,10 @@
+[wrap-file]
+directory = nlohmann_json-3.10.4
+lead_directory_missing = true
+
+source_url = https://github.com/nlohmann/json/releases/download/v3.10.4/include.zip
+source_filename = nlohmann_json-3.10.4.zip
+source_hash = 62c585468054e2d8e7c2759c0d990fd339d13be988577699366fe195162d16cb
+
+[provide]
+nlohmann_json = nlohmann_json_dep
