@@ -18,7 +18,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -std=c++20")
 set(CMAKE_C_FLAGS_RELEASE "-flto=thin -gsplit-dwarf -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-math-errno -fno-ident -Wl,--strip-all -Wl,--discard-all")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
-set(CMAKE_C_FLAGS_DEBUG "-DDEBUG -g -O0")
+set(CMAKE_C_FLAGS_DEBUG "-DDEBUG -g")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
 
 file(GLOB_RECURSE SOURCES "${CMAKE_SOURCE_DIR}/include/*.cpp" "${CMAKE_SOURCE_DIR}/resources/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.cpp")
