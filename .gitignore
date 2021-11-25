@@ -4,6 +4,8 @@
 .cache
 .idea
 build
+cmake-build-release
+cmake-build-debug
 
 # Prerequisites
 *.d
