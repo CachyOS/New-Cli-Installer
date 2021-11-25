@@ -23,16 +23,11 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
 
 file(GLOB_RECURSE SOURCES "${CMAKE_SOURCE_DIR}/include/*.cpp" "${CMAKE_SOURCE_DIR}/resources/*.cpp" "${CMAKE_SOURCE_DIR}/src/*.cpp")
 
-set(Boost_USE_STATIC_LIBS OFF)
-set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_RUNTIME OFF)
-
 find_package(nlohmann_json REQUIRED)
 find_package(ftxui REQUIRED)
 
-
 add_executable(CachyOS-Installer ${SOURCES} src/utils.h src/utils.cpp src/definitions.h)
 
-target_include_directories(CachyOS-Installer PRIVATE ${SDL2_INCLUDE_DIRS} "${CMAKE_SOURCE_DIR}/include/")
+target_include_directories(CachyOS-Installer PRIVATE "${CMAKE_SOURCE_DIR}/include/")
 target_link_libraries(CachyOS-Installer PRIVATE ftxui::screen PRIVATE ftxui::dom PRIVATE ftxui::component nlohmann_json::nlohmann_json)
 target_link_options(CachyOS-Installer PRIVATE LINKER:--no-undefined)
