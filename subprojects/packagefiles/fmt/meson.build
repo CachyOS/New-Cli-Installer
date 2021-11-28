@@ -1,7 +1,10 @@
 project('fmt', 'cpp',
     version : '8.0.1',
     license : 'BSD',
-    default_options : ['cpp_std=c++14']
+    default_options : [
+      'cpp_std=c++14',
+      'default_library=static',
+    ]
 )
 
 fmt_private_cpp_args = [ ]

@@ -65,7 +65,8 @@ ftxui_dom_lib = static_library('ftxui_dom',
       'src/ftxui/dom/util.cpp',
       'src/ftxui/dom/vbox.cpp'
     ],
-    include_directories : [ftxui_inc, ftxui_priv_inc]
+    include_directories : [ftxui_inc, ftxui_priv_inc],
+    link_with : [ftxui_screen_lib]
 )
 
 ftxui_component_lib = static_library('ftxui_component',
@@ -97,7 +98,9 @@ ftxui_component_lib = static_library('ftxui_component',
       'src/ftxui/component/terminal_input_parser.hpp',
       'src/ftxui/component/toggle.cpp'
     ],
-    include_directories : [ftxui_inc, ftxui_priv_inc]
+    include_directories : [ftxui_inc, ftxui_priv_inc],
+    link_with : [ftxui_dom_lib],
+    dependencies : [thread_dep]
 )
 
 ftxui_dep = declare_dependency(

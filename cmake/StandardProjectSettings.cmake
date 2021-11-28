@@ -40,3 +40,7 @@ else()
   message(STATUS "No colored compiler diagnostic set for '${CMAKE_CXX_COMPILER_ID}' compiler.")
 endif()
 
+# Enables STL container checker if not building a release.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-D_GLIBCXX_ASSERTIONS)
+endif()

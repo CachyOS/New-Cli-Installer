@@ -8,11 +8,23 @@ project('cachyos-installer', 'cpp',
                           'werror=true',
                           'b_ndebug=if-release'])
 
+is_debug_build = get_option('buildtype').startswith('debug')
 cc = meson.get_compiler('cpp')
+if cc.get_id() == 'clang'
+        specific_cc_flags = [
+                '-nostdlib++',
+                '-nodefaultlibs',
+        ]
+        specific_link_flags = [
+                '-fuse-ld=lld',
+        ]
+        add_global_arguments(cc.get_supported_arguments(specific_cc_flags), language : 'cpp')
+        add_global_link_arguments(cc.get_supported_link_arguments(specific_link_flags), language : 'cpp')
+endif
 
 # Common dependencies
 fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
-ftxui = dependency('ftxui', version : ['>=0.11.1'], modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
+ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 nlohmann_json = dependency('nlohmann_json', version : ['>=3.10.4'], fallback : ['nlohmann_json', 'nlohmann_json_dep'])
 
 src_files = files(
@@ -48,7 +60,11 @@ if cc.get_id() == 'gcc'
         ]
 endif
 
-if get_option('buildtype') != 'debug'
+if is_debug_build
+      possible_cc_flags += [
+         '-D_GLIBCXX_ASSERTIONS',
+      ]
+else
    if cc.get_id() == 'gcc'
       possible_cc_flags += [
          '-flto',
