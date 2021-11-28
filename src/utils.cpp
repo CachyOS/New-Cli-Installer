@@ -1,4 +1,5 @@
 #include "utils.hpp"
+#include "config.hpp"
 
 #include <sys/mount.h>
 
@@ -11,13 +12,9 @@
 
 namespace fs = std::filesystem;
 
-static std::string_view H_INIT{"openrc"};
-static std::string_view SYSTEM{"BIOS"};
-static std::string_view NW_CMD{};
-
+namespace utils {
 static constexpr int32_t CONNECTION_TIMEOUT = 15;
 
-namespace utils {
 bool is_connected() noexcept {
     return gethostbyname("google.com");
 }
@@ -74,6 +71,9 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
 }
 
 void id_system() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data = config_instance->data();
+
     // Apple System Detection
     const auto& sys_vendor = utils::exec("cat /sys/class/dmi/id/sys_vendor");
     if ((sys_vendor == "Apple Inc.\n") || (sys_vendor == "Apple Computer, Inc.\n"))
@@ -92,17 +92,17 @@ void id_system() noexcept {
                 exit(1);
             }
         }
-        SYSTEM = "UEFI";
+        config_data["SYSTEM"] = "UEFI";
     }
 
     // init system
     const auto& init_sys = utils::exec("cat /proc/1/comm");
     if (init_sys == "systemd\n")
-        H_INIT = "systemd";
+        config_data["H_INIT"] = "systemd";
 
     // TODO: Test which nw-client is available, including if the service according to $H_INIT is running
-    if (H_INIT == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active\n")
-        NW_CMD = "nmtui";
+    if (config_data["H_INIT"] == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active\n")
+        config_data["NW_CMD"] = "nmtui";
 }
 
 bool handle_connection() noexcept {

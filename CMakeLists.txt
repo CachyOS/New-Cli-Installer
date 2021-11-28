@@ -56,6 +56,7 @@ target_compile_features(project_options INTERFACE cxx_std_20)
 ##
 add_executable(${PROJECT_NAME}
     src/definitions.hpp
+    src/config.cpp src/config.hpp
     src/utils.cpp src/utils.hpp
     src/tui.cpp src/tui.hpp
     src/main.cpp

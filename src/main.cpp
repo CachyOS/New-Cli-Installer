@@ -1,5 +1,6 @@
 #include "definitions.hpp"
 #include "tui.hpp"
+#include "config.hpp"
 #include "utils.hpp"
 
 #include <regex>
@@ -18,6 +19,10 @@ int main() {
         return 1;
     }
 #endif
+
+    if (!Config::initialize()) {
+        return 1;
+    }
 
     utils::id_system();
 

@@ -29,6 +29,7 @@ nlohmann_json = dependency('nlohmann_json', version : ['>=3.10.4'], fallback : [
 
 src_files = files(
     'src/definitions.hpp',
+    'src/config.cpp', 'src/config.hpp',
     'src/utils.cpp', 'src/utils.hpp',
     'src/tui.cpp', 'src/tui.hpp',
     'src/main.cpp',
