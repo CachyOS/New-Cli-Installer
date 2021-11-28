@@ -75,7 +75,7 @@ int main() {
             connected = utils::is_connected();
         }
 
-        if(!connected) {
+        if (!connected) {
             error("An active network connection could not be detected, please connect and restart the installer.");
             return 0;
         }
