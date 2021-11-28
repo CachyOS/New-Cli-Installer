@@ -1,4 +1,6 @@
 #include "tui.hpp"
+#include "definitions.hpp"
+
 #include <ftxui/component/captured_mouse.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
@@ -12,38 +14,34 @@ namespace tui {
 void init() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
 
-    auto button_ok   = Button("Ok", screen.ExitLoopClosure());
-    auto button_quit = Button("Quit", screen.ExitLoopClosure());
+    /* clang-format off */
+    auto button_option   = ButtonOption();
+    button_option.border = false;
+    auto button_ok       = Button("OK", [=] { info("ok\n"); }, &button_option);
+    auto button_quit     = Button("Quit", screen.ExitLoopClosure(), &button_option);
+    /* clang-format on */
 
-    auto component = Container::Horizontal({
+    auto container = Container::Horizontal({
         button_ok,
+        Renderer([] { return filler() | size(WIDTH, GREATER_THAN, 3); }),
         button_quit,
     });
 
-    auto dialog = vbox({
-        text("TODO!!"),
-        separator(),
-        hbox({
-            button_ok->Render(),
-            button_quit->Render(),
-        }),
-    });
-
-    // -------- Center Menu --------------
-    /* clang-format off */
-    auto center_dialog = hbox({
-        filler(),
-        border(dialog),
-        filler(),
-    }) | vcenter;
-    /* clang-format on */
-
-    auto renderer = Renderer(component, [&] {
+    auto renderer = Renderer(container, [&] {
         return vbox({
+            //  -------- Title --------------
             text("New CLI Installer") | bold,
             filler(),
             //  -------- Center Menu --------------
-            center_dialog | hcenter,
+            hbox({
+                filler(),
+                border(vbox({
+                    text("TODO!!") | size(HEIGHT, GREATER_THAN, 5),
+                    separator(),
+                    container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25),
+                })),
+                filler(),
+            }) | center,
             filler(),
         });
     });
