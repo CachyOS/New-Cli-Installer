@@ -58,7 +58,7 @@ add_executable(${PROJECT_NAME}
     src/definitions.hpp
     src/utils.cpp src/utils.hpp
     src/main.cpp
-    )
+        src/tui.cpp src/tui.hpp)
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
