@@ -57,8 +57,9 @@ target_compile_features(project_options INTERFACE cxx_std_20)
 add_executable(${PROJECT_NAME}
     src/definitions.hpp
     src/utils.cpp src/utils.hpp
+    src/tui.cpp src/tui.hpp
     src/main.cpp
-        src/tui.cpp src/tui.hpp)
+    )
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
