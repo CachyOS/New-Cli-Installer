@@ -16,8 +16,8 @@ using namespace ftxui;
 static constexpr int32_t SLEEP_TIMEOUT = 15;
 
 void show_iwctl() {
-    info("\nInstructions to connect to wifi using iwclt:\n");
-    info("1 - Find your wifi device name ex: wlan0\n");
+    info("\nInstructions to connect to wifi using iwctl:\n");
+    info("1 - To find your wifi device name (ex: wlan0) type `device list`\n");
     info("2 - type `station wlan0 scan`, and wait couple seconds\n");
     info("3 - type `station wlan0 get-networks` (find your wifi Network name ex. my_wifi)\n");
     info("4 - type `station wlan0 connect my_wifi` (don't forget to press TAB for auto completion!\n");
