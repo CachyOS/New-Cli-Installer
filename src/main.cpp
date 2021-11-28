@@ -2,7 +2,6 @@
 #include "utils.hpp"
 
 #include <regex>
-#include <thread>
 
 #include <ftxui/component/captured_mouse.hpp>
 #include <ftxui/component/component.hpp>
@@ -12,22 +11,6 @@
 #include <ftxui/screen/screen.hpp>
 
 using namespace ftxui;
-
-static constexpr int32_t CONNECTION_TIMEOUT = 15;
-
-void show_iwctl() {
-    info("\nInstructions to connect to wifi using iwctl:\n");
-    info("1 - To find your wifi device name (ex: wlan0) type `device list`\n");
-    info("2 - type `station wlan0 scan`, and wait couple seconds\n");
-    info("3 - type `station wlan0 get-networks` (find your wifi Network name ex. my_wifi)\n");
-    info("4 - type `station wlan0 connect my_wifi` (don't forget to press TAB for auto completion!\n");
-    info("5 - type `station wlan0 show` (status should be connected)\n");
-    info("6 - type `exit`\n");
-    while (utils::prompt_char("Press a key to continue...", CYAN)) {
-        utils::exec("iwctl");
-        break;
-    }
-}
 
 int main() {
     const auto& tty = utils::exec("tty");
@@ -46,39 +29,9 @@ int main() {
 
     utils::id_system();
 
-    bool connected;
-
-    if (!(connected = utils::is_connected())) {
-        warning("An active network connection could not be detected, waiting 15 seconds ...\n");
-
-        int32_t time_waited = 0;
-
-        while (!(connected = utils::is_connected())) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            if (time_waited++ >= CONNECTION_TIMEOUT) {
-                break;
-            }
-        }
-
-        if (!connected) {
-            char type = '\0';
-
-            while (utils::prompt_char("An active network connection could not be detected, do you want to connect using wifi? [y/n]", RED, &type)) {
-                if (type != 'n') {
-                    show_iwctl();
-                }
-
-                break;
-            }
-
-            connected = utils::is_connected();
-        }
-
-        if (!connected) {
-            error("An active network connection could not be detected, please connect and restart the installer.");
-            return 0;
-        }
+    if (!utils::handle_connection()) {
+        error("An active network connection could not be detected, please connect and restart the installer.");
+        return 0;
     }
 
     auto screen = ScreenInteractive::Fullscreen();

@@ -7,12 +7,15 @@
 #include <string>
 
 #include <netdb.h>
+#include <thread>
 
 namespace fs = std::filesystem;
 
 static std::string_view H_INIT{"openrc"};
 static std::string_view SYSTEM{"BIOS"};
 static std::string_view NW_CMD{};
+
+static constexpr int32_t CONNECTION_TIMEOUT = 15;
 
 namespace utils {
 bool is_connected() noexcept {
@@ -100,6 +103,55 @@ void id_system() noexcept {
     // TODO: Test which nw-client is available, including if the service according to $H_INIT is running
     if (H_INIT == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active\n")
         NW_CMD = "nmtui";
+}
+
+bool handle_connection() noexcept {
+    bool connected;
+
+    if (!(connected = utils::is_connected())) {
+        warning("An active network connection could not be detected, waiting 15 seconds ...\n");
+
+        int32_t time_waited = 0;
+
+        while (!(connected = utils::is_connected())) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            if (time_waited++ >= CONNECTION_TIMEOUT) {
+                break;
+            }
+        }
+
+        if (!connected) {
+            char type = '\0';
+
+            while (utils::prompt_char("An active network connection could not be detected, do you want to connect using wifi? [y/n]", RED, &type)) {
+                if (type != 'n') {
+                    show_iwctl();
+                }
+
+                break;
+            }
+
+            connected = utils::is_connected();
+        }
+    }
+
+    return connected;
+}
+
+void show_iwctl() noexcept {
+    info("\nInstructions to connect to wifi using iwctl:\n");
+    info("1 - To find your wifi device name (ex: wlan0) type `device list`\n");
+    info("2 - type `station wlan0 scan`, and wait couple seconds\n");
+    info("3 - type `station wlan0 get-networks` (find your wifi Network name ex. my_wifi)\n");
+    info("4 - type `station wlan0 connect my_wifi` (don't forget to press TAB for auto completion!\n");
+    info("5 - type `station wlan0 show` (status should be connected)\n");
+    info("6 - type `exit`\n");
+
+    while (utils::prompt_char("Press a key to continue...", CYAN)) {
+        utils::exec("iwctl");
+        break;
+    }
 }
 
 }  // namespace utils
