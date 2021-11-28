@@ -13,7 +13,7 @@
 
 using namespace ftxui;
 
-static constexpr int32_t SLEEP_TIMEOUT = 15;
+static constexpr int32_t CONNECTION_TIMEOUT = 15;
 
 void show_iwctl() {
     info("\nInstructions to connect to wifi using iwctl:\n");
@@ -45,20 +45,39 @@ int main() {
 #endif
 
     utils::id_system();
-    if (!utils::is_connected()) {
-        warning("It seems you are not connected, waiting for 15s before trying again...\n");
-        std::this_thread::sleep_for(std::chrono::seconds(SLEEP_TIMEOUT));
 
-        if (!utils::is_connected()) {
+    bool connected;
+
+    if (!(connected = utils::is_connected())) {
+        warning("An active network connection could not be detected, waiting 15 seconds ...\n");
+
+        int32_t time_waited = 0;
+
+        while (!(connected = utils::is_connected())) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+
+            if (time_waited++ >= CONNECTION_TIMEOUT) {
+                break;
+            }
+        }
+
+        if (!connected) {
             char type = '\0';
 
-            while (utils::prompt_char("An internet connection could not be detected, do you want to connect to a wifi network? [y/n]", RED, &type)) {
+            while (utils::prompt_char("An active network connection could not be detected, do you want to connect using wifi? [y/n]", RED, &type)) {
                 if (type != 'n') {
                     show_iwctl();
                 }
 
                 break;
             }
+
+            connected = utils::is_connected();
+        }
+
+        if(!connected) {
+            error("An active network connection could not be detected, please connect and restart the installer.");
+            return 0;
         }
     }
 
