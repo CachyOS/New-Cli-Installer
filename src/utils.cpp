@@ -7,7 +7,6 @@
 #include <string>
 
 #include <netdb.h>
-#include <thread>
 
 namespace fs = std::filesystem;
 

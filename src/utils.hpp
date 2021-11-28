@@ -4,6 +4,7 @@
 #include "definitions.hpp"
 
 #include <string_view>
+#include <thread>
 
 namespace utils {
 void print_banner() noexcept;
