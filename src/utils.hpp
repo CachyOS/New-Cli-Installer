@@ -11,7 +11,7 @@ void print_banner() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;
 
-auto exec(const std::string_view& command) noexcept -> std::string;
+auto exec(const std::string_view& command, bool capture_output = true) noexcept -> std::string;
 [[nodiscard]] bool check_root() noexcept;
 void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;

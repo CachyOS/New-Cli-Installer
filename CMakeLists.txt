@@ -38,6 +38,12 @@ FetchContent_Declare(nlohmann_json
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+FetchContent_Declare(cpr
+  GIT_REPOSITORY "https://github.com/libcpr/cpr.git"
+  GIT_TAG "bcb7729dd6d930820fb858f63c97ad559241b789"
+)
+FetchContent_MakeAvailable(cpr)
+
 ##
 ## CONFIGURATION
 ##
@@ -68,7 +74,7 @@ set_project_warnings(project_warnings)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)
@@ -79,11 +85,4 @@ endif()
 install(
     TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-
-# uninstall
-add_custom_target(uninstall
-    COMMAND cat ${PROJECT_BINARY_DIR}/install_manifest.txt | xargs rm
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )

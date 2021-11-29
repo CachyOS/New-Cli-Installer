@@ -1,0 +1,8 @@
+[wrap-git]
+url = https://github.com/libcpr/cpr.git
+revision = bcb7729dd6d930820fb858f63c97ad559241b789
+
+patch_directory = cpr
+
+[provide]
+cpr = cpr_dep

@@ -5,7 +5,7 @@ project('cachyos-installer', 'cpp',
         default_options: ['cpp_std=c++20',
                           'buildtype=debugoptimized',
                           'warning_level=3',
-                          'werror=true',
+                          'werror=false',
                           'b_ndebug=if-release'])
 
 is_debug_build = get_option('buildtype').startswith('debug')
@@ -26,6 +26,7 @@ endif
 fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 nlohmann_json = dependency('nlohmann_json', version : ['>=3.10.4'], fallback : ['nlohmann_json', 'nlohmann_json_dep'])
+cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
 
 src_files = files(
     'src/definitions.hpp',
@@ -84,7 +85,7 @@ add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 
 executable(
   'cachyos-installer',
   src_files,
-  dependencies: [fmt, ftxui, nlohmann_json],
+  dependencies: [fmt, ftxui, nlohmann_json, cpr],
   include_directories: [include_directories('src')],
   install: true)
 

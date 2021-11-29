@@ -1,5 +1,5 @@
 function(set_project_warnings project_name)
-    option(WARNINGS_AS_ERRORS "Treat compiler warnings as error" ON)
+    option(WARNINGS_AS_ERRORS "Treat compiler warnings as error" OFF)
 
     set(MSVC_WARNINGS
         /W4 # Base

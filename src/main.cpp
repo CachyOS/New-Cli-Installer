@@ -1,9 +1,11 @@
+#include "config.hpp"
 #include "definitions.hpp"
 #include "tui.hpp"
-#include "config.hpp"
 #include "utils.hpp"
 
+#include <chrono>
 #include <regex>
+#include <thread>
 
 int main() {
     const auto& tty = utils::exec("tty");
