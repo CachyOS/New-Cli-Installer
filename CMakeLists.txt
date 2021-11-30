@@ -39,8 +39,8 @@ FetchContent_Declare(nlohmann_json
 FetchContent_MakeAvailable(nlohmann_json)
 
 FetchContent_Declare(cpr
-  GIT_REPOSITORY "https://github.com/libcpr/cpr.git"
-  GIT_TAG "bcb7729dd6d930820fb858f63c97ad559241b789"
+  GIT_REPOSITORY "https://github.com/vnepogodin/cpr.git"
+  GIT_TAG "824358455f61629ca43422adce0243bb05e99bf8"
 )
 FetchContent_MakeAvailable(cpr)
 

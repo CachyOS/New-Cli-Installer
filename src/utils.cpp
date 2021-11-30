@@ -17,14 +17,14 @@
 namespace fs = std::filesystem;
 
 namespace utils {
-static constexpr int32_t CONNECTION_TIMEOUT = 15;
+static constexpr std::int32_t CONNECTION_TIMEOUT = 15;
 
 bool is_connected() noexcept {
     /* clang-format off */
     auto r = cpr::Get(cpr::Url{"https://www.google.com"},
              cpr::Timeout{1000});
     /* clang-format on */
-    return cpr::status::is_success(r.status_code);
+    return cpr::status::is_success(static_cast<std::int32_t>(r.status_code));
 }
 
 bool check_root() noexcept {
@@ -38,7 +38,7 @@ void clear_screen() noexcept {
 
 std::string exec(const std::string_view& command, bool capture_output) noexcept {
     if (!capture_output) {
-        int32_t status{};
+        std::int32_t status{};
         auto pid = fork();
         if (pid == 0) {
             /* clang-format off */
@@ -73,7 +73,7 @@ std::string exec(const std::string_view& command, bool capture_output) noexcept 
 bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     fmt::print("{}{}{}\n", color, prompt, RESET);
 
-    std::string tmp;
+    std::string tmp{};
     if (std::getline(std::cin, tmp)) {
         char read_char{};
         if (tmp.length() == 1) {
@@ -127,12 +127,12 @@ void id_system() noexcept {
 }
 
 bool handle_connection() noexcept {
-    bool connected;
+    bool connected{};
 
     if (!(connected = utils::is_connected())) {
         warning("An active network connection could not be detected, waiting 15 seconds ...\n");
 
-        int32_t time_waited = 0;
+        std::int32_t time_waited{};
 
         while (!(connected = utils::is_connected())) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -143,7 +143,7 @@ bool handle_connection() noexcept {
         }
 
         if (!connected) {
-            char type = '\0';
+            char type{};
 
             while (utils::prompt_char("An active network connection could not be detected, do you want to connect using wifi? [y/n]", RED, &type)) {
                 if (type != 'n') {

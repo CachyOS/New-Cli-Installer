@@ -5,21 +5,21 @@ project('cachyos-installer', 'cpp',
         default_options: ['cpp_std=c++20',
                           'buildtype=debugoptimized',
                           'warning_level=3',
-                          'werror=false',
+                          'werror=true',
                           'b_ndebug=if-release'])
 
 is_debug_build = get_option('buildtype').startswith('debug')
 cc = meson.get_compiler('cpp')
 if cc.get_id() == 'clang'
-        specific_cc_flags = [
-                '-nostdlib++',
-                '-nodefaultlibs',
-        ]
-        specific_link_flags = [
-                '-fuse-ld=lld',
-        ]
-        add_global_arguments(cc.get_supported_arguments(specific_cc_flags), language : 'cpp')
-        add_global_link_arguments(cc.get_supported_link_arguments(specific_link_flags), language : 'cpp')
+    specific_cc_flags = [
+        '-nostdlib++',
+        '-nodefaultlibs',
+    ]
+    specific_link_flags = [
+        '-fuse-ld=lld',
+    ]
+    add_global_arguments(cc.get_supported_arguments(specific_cc_flags), language : 'cpp')
+    add_global_link_arguments(cc.get_supported_link_arguments(specific_link_flags), language : 'cpp')
 endif
 
 # Common dependencies
@@ -37,36 +37,36 @@ src_files = files(
 )
 
 possible_cc_flags = [
-        '-Wshadow',
+    '-Wshadow',
 
-        '-Wnon-virtual-dtor',
+    '-Wnon-virtual-dtor',
 
-        '-Wcast-align',
-        '-Wunused',
-        '-Woverloaded-virtual',
+    '-Wcast-align',
+    '-Wunused',
+    '-Woverloaded-virtual',
 
-        '-Wpedantic', # non-standard C++
-        '-Wconversion', # type conversion that may lose data
-        '-Wnull-dereference',
-        '-Wdouble-promotion', # float to double
+    '-Wpedantic', # non-standard C++
+    '-Wconversion', # type conversion that may lose data
+    '-Wnull-dereference',
+    '-Wdouble-promotion', # float to double
 
-        '-Wformat=2',
+    '-Wformat=2',
 ]
 
 if cc.get_id() == 'gcc'
-        possible_cc_flags += [
-                '-Wmisleading-indentation',
+    possible_cc_flags += [
+        '-Wmisleading-indentation',
 
-                '-Wduplicated-cond',
-                '-Wduplicated-branches',
-                '-Wlogical-op',
-        ]
+        '-Wduplicated-cond',
+        '-Wduplicated-branches',
+        '-Wlogical-op',
+    ]
 endif
 
 if is_debug_build
-      possible_cc_flags += [
-         '-D_GLIBCXX_ASSERTIONS',
-      ]
+    possible_cc_flags += [
+        '-D_GLIBCXX_ASSERTIONS',
+    ]
 else
    if cc.get_id() == 'gcc'
       possible_cc_flags += [
