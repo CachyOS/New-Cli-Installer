@@ -1,7 +1,7 @@
 #!/bin/bash
 clear
 
-binName="CachyOS-Installer"
+binName="cachyos-installer"
 
 if [[ $EUID -eq 0 ]]; then
 	echoRed "You cannot run this as root."
