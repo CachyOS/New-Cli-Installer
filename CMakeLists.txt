@@ -22,6 +22,13 @@ include(StaticAnalyzers)
 include(Sanitizers)
 include(FetchContent)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(
+  LIBNM
+  REQUIRED
+  IMPORTED_TARGET
+  libnm>=1.32.12)
+
 FetchContent_Declare(ftxui
   GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
   GIT_TAG "cecd54df42dd66fdf8386ed461e16b725bffc827"
@@ -83,7 +90,7 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr PkgConfig::LIBNM)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)

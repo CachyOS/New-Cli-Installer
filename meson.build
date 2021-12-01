@@ -27,6 +27,7 @@ fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 nlohmann_json = dependency('nlohmann_json', version : ['>=3.10.4'], fallback : ['nlohmann_json', 'nlohmann_json_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
+libnm = dependency('libnm', version : ['>=1.32.12'])
 
 src_files = files(
     'src/definitions.hpp',
@@ -87,7 +88,7 @@ add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 
 executable(
   'cachyos-installer',
   src_files,
-  dependencies: [fmt, ftxui, nlohmann_json, cpr],
+  dependencies: [fmt, ftxui, nlohmann_json, cpr, libnm],
   include_directories: [include_directories('src')],
   install: true)
 
