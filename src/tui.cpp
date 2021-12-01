@@ -1,5 +1,6 @@
 #include "tui.hpp"
 #include "definitions.hpp"
+#include "utils.hpp"
 
 #include <ftxui/component/captured_mouse.hpp>
 #include <ftxui/component/component.hpp>
@@ -29,6 +30,28 @@ ftxui::Element centered_widget(ftxui::Component& container, const std::string_vi
         }) | center,
         filler(),
     });
+}
+
+// Simple code to show devices / partitions.
+void show_devices() {
+    auto screen       = ScreenInteractive::Fullscreen();
+    const auto& lsblk = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
+
+    /* clang-format off */
+    auto button_option   = ButtonOption();
+    button_option.border = false;
+    auto button_back     = Button("Back", screen.ExitLoopClosure(), &button_option);
+    /* clang-format on */
+
+    auto container = Container::Horizontal({
+        button_back,
+    });
+
+    auto renderer = Renderer(container, [&] {
+        return tui::centered_widget(container, "New CLI Installer", text(lsblk.data()) | size(HEIGHT, GREATER_THAN, 5));
+    });
+
+    screen.Loop(renderer);
 }
 
 void init() noexcept {

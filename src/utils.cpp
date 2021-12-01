@@ -99,13 +99,6 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     return false;
 }
 
-// Simple code to show devices / partitions.
-void show_devices() {
-    [[maybe_unused]] const auto& lsblk = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
-
-    // DIALOG " $_DevShowOpt " --textbox /tmp/.devlist 0 0
-}
-
 void id_system() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
