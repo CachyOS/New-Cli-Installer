@@ -17,7 +17,9 @@ include(GNUInstallDirs)
 include(StandardProjectSettings)
 include(CompilerWarnings)
 include(EnableCcache)
-include(ClangTidy)
+include(Linker)
+include(StaticAnalyzers)
+include(Sanitizers)
 include(FetchContent)
 
 FetchContent_Declare(ftxui
@@ -39,18 +41,19 @@ FetchContent_Declare(nlohmann_json
 FetchContent_MakeAvailable(nlohmann_json)
 
 FetchContent_Declare(cpr
-  GIT_REPOSITORY "https://github.com/vnepogodin/cpr.git"
-  GIT_TAG "824358455f61629ca43422adce0243bb05e99bf8"
+  GIT_REPOSITORY "https://github.com/libcpr/cpr.git"
+  GIT_TAG "f229f82c1b38febebbf4e9958cebcd64caa32947"
 )
 FetchContent_MakeAvailable(cpr)
 
 ##
 ## CONFIGURATION
 ##
+option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fwhole-program")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fwhole-program")
 endif()
 
 # Link this 'library' to set the c++ standard / compile-time options requested
@@ -61,16 +64,22 @@ target_compile_features(project_options INTERFACE cxx_std_20)
 ## Target
 ##
 add_executable(${PROJECT_NAME}
-    src/definitions.hpp
-    src/config.cpp src/config.hpp
-    src/utils.cpp src/utils.hpp
-    src/tui.cpp src/tui.hpp
-    src/main.cpp
-    )
+   src/definitions.hpp
+   src/config.cpp src/config.hpp
+   src/utils.cpp src/utils.hpp
+   src/tui.cpp src/tui.hpp
+   src/main.cpp
+   )
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
 set_project_warnings(project_warnings)
+
+# Add linker configuration
+configure_linker(project_options)
+
+# sanitizer options if supported by compiler
+enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
@@ -78,11 +87,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options f
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)
-  # Add for any project you want to apply unity builds for
-  set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+   # Add for any project you want to apply unity builds for
+   set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
 endif()
 
 install(
-    TARGETS ${PROJECT_NAME}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+   TARGETS ${PROJECT_NAME}
+   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

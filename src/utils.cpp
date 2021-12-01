@@ -21,8 +21,10 @@ static constexpr std::int32_t CONNECTION_TIMEOUT = 15;
 
 bool is_connected() noexcept {
     /* clang-format off */
-    auto r = cpr::Get(cpr::Url{"http://www.google.com"},
+    auto r = cpr::Get(cpr::Url{"https://www.google.com"},
              cpr::Timeout{1000});
+
+    info("{}\n", r.status_code);
     /* clang-format on */
     return cpr::status::is_success(static_cast<std::int32_t>(r.status_code)) || cpr::status::is_redirect(static_cast<std::int32_t>(r.status_code));
 }
@@ -50,7 +52,7 @@ std::string exec(const std::string_view& command, bool capture_output) noexcept 
                 waitpid(pid, &status, 0);
             } while ((!WIFEXITED(status)) && (!WIFSIGNALED(status)));
         }
-        return "";
+        return {};
     }
     auto* pipe = popen(command.data(), "r");
     if (!pipe) {
@@ -89,6 +91,13 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     }
 
     return false;
+}
+
+// Simple code to show devices / partitions.
+void show_devices() {
+    [[maybe_unused]] const auto& lsblk = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
+
+    // DIALOG " $_DevShowOpt " --textbox /tmp/.devlist 0 0
 }
 
 void id_system() noexcept {
