@@ -44,3 +44,9 @@ endif()
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_definitions(-D_GLIBCXX_ASSERTIONS)
 endif()
+
+# Enables dev environment.
+option(ENABLE_DEVENV "Enable dev environment" ON)
+if(NOT ENABLE_DEVENV)
+  add_definitions(-DNDEVENV)
+endif()

@@ -20,17 +20,23 @@ namespace utils {
 static constexpr std::int32_t CONNECTION_TIMEOUT = 15;
 
 bool is_connected() noexcept {
+#ifdef NDEVENV
     /* clang-format off */
     auto r = cpr::Get(cpr::Url{"https://www.google.com"},
              cpr::Timeout{1000});
-
-    info("{}\n", r.status_code);
     /* clang-format on */
     return cpr::status::is_success(static_cast<std::int32_t>(r.status_code)) || cpr::status::is_redirect(static_cast<std::int32_t>(r.status_code));
+#else
+    return true;
+#endif
 }
 
 bool check_root() noexcept {
+#ifdef NDEVENV
     return (utils::exec("whoami") == "root\n");
+#else
+    return true;
+#endif
 }
 
 void clear_screen() noexcept {

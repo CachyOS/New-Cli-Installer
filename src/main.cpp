@@ -14,13 +14,11 @@ int main() {
         utils::exec("setterm -blank 0 -powersave off");
     }
 
-#ifdef NDEBUG
     if (!utils::check_root()) {
         std::this_thread::sleep_for(std::chrono::seconds(3));
         utils::clear_screen();
         return 1;
     }
-#endif
 
     if (!Config::initialize()) {
         return 1;

@@ -9,6 +9,7 @@ project('cachyos-installer', 'cpp',
                           'b_ndebug=if-release'])
 
 is_debug_build = get_option('buildtype').startswith('debug')
+is_dev_environment = get_option('devenv')
 cc = meson.get_compiler('cpp')
 if cc.get_id() == 'clang'
     specific_cc_flags = [
@@ -20,6 +21,14 @@ if cc.get_id() == 'clang'
     ]
     add_global_arguments(cc.get_supported_arguments(specific_cc_flags), language : 'cpp')
     add_global_link_arguments(cc.get_supported_link_arguments(specific_link_flags), language : 'cpp')
+endif
+
+if is_debug_build
+    add_global_arguments('-D_GLIBCXX_ASSERTIONS', language : 'cpp')
+endif
+
+if not is_dev_environment
+    add_global_arguments('-DNDEVENV', language : 'cpp')
 endif
 
 # Common dependencies
@@ -66,11 +75,7 @@ if cc.get_id() == 'gcc'
     ]
 endif
 
-if is_debug_build
-    possible_cc_flags += [
-        '-D_GLIBCXX_ASSERTIONS',
-    ]
-else
+if not is_debug_build
    if cc.get_id() == 'gcc'
       possible_cc_flags += [
          '-flto',
@@ -81,6 +86,10 @@ else
          '-flto=thin',
       ]
    endif
+
+   possible_cc_flags += ['-fdata-sections', '-ffunction-sections']
+   possible_link_flags = ['-Wl,--gc-sections']
+   add_project_link_arguments(cc.get_supported_link_arguments(possible_link_flags), language : 'cpp')
 endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')

@@ -11,6 +11,26 @@
 using namespace ftxui;
 
 namespace tui {
+
+ftxui::Element centered_widget(ftxui::Component& container, const std::string_view& title, const ftxui::Element& widget) {
+    return vbox({
+        //  -------- Title --------------
+        text(title.data()) | bold,
+        filler(),
+        //  -------- Center Menu --------------
+        hbox({
+            filler(),
+            border(vbox({
+                widget,
+                separator(),
+                container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25),
+            })),
+            filler(),
+        }) | center,
+        filler(),
+    });
+}
+
 void init() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
 
@@ -28,22 +48,7 @@ void init() noexcept {
     });
 
     auto renderer = Renderer(container, [&] {
-        return vbox({
-            //  -------- Title --------------
-            text("New CLI Installer") | bold,
-            filler(),
-            //  -------- Center Menu --------------
-            hbox({
-                filler(),
-                border(vbox({
-                    text("TODO!!") | size(HEIGHT, GREATER_THAN, 5),
-                    separator(),
-                    container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25),
-                })),
-                filler(),
-            }) | center,
-            filler(),
-        });
+        return tui::centered_widget(container, "New CLI Installer", text("TODO!!") | size(HEIGHT, GREATER_THAN, 5));
     });
 
     screen.Loop(renderer);
