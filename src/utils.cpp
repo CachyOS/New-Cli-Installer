@@ -11,8 +11,8 @@
 
 #include <cpr/api.h>
 #include <cpr/response.h>
-#include <cpr/timeout.h>
 #include <cpr/status_codes.h>
+#include <cpr/timeout.h>
 
 namespace fs = std::filesystem;
 
