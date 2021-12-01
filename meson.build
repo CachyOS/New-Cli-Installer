@@ -51,6 +51,7 @@ possible_cc_flags = [
     '-Wdouble-promotion', # float to double
 
     '-Wformat=2',
+    '-Wimplicit-fallthrough', # fallthrough without an explicit annotation
 ]
 
 if cc.get_id() == 'gcc'
@@ -60,6 +61,7 @@ if cc.get_id() == 'gcc'
         '-Wduplicated-cond',
         '-Wduplicated-branches',
         '-Wlogical-op',
+        '-Wuseless-cast',
     ]
 endif
 
