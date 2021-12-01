@@ -21,7 +21,7 @@ static constexpr std::int32_t CONNECTION_TIMEOUT = 15;
 
 bool is_connected() noexcept {
     /* clang-format off */
-    auto r = cpr::Get(cpr::Url{"https://www.google.com"},
+    auto r = cpr::Get(cpr::Url{"google.com"},
              cpr::Timeout{1000});
     /* clang-format on */
     return cpr::status::is_success(static_cast<std::int32_t>(r.status_code));
