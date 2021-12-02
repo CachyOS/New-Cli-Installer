@@ -2,12 +2,15 @@
 #include "definitions.hpp"
 #include "utils.hpp"
 
-#include <ftxui/component/captured_mouse.hpp>
-#include <ftxui/component/component.hpp>
-#include <ftxui/component/component_options.hpp>
-#include <ftxui/component/screen_interactive.hpp>
-#include <ftxui/dom/elements.hpp>
-#include <ftxui/screen/screen.hpp>
+/* clang-format off */
+#include <memory>                                  // for __shared_ptr_access
+#include <string>                                  // for basic_string
+#include <ftxui/component/captured_mouse.hpp>      // for ftxui
+#include <ftxui/component/component.hpp>           // for Renderer, Button
+#include <ftxui/component/component_options.hpp>   // for ButtonOption
+#include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
+#include <ftxui/dom/elements.hpp>                  // for operator|, size
+/* clang-format on */
 
 using namespace ftxui;
 

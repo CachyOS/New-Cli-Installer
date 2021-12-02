@@ -3,7 +3,8 @@
 
 #include "definitions.hpp"
 
-#include <string_view>
+#include <string>       // for string
+#include <string_view>  // for string_view
 
 namespace utils {
 void print_banner() noexcept;

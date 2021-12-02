@@ -1,13 +1,19 @@
 #include "utils.hpp"
 #include "config.hpp"
 
-#include <sys/mount.h>
-#include <sys/wait.h>
-
-#include <filesystem>
-#include <iostream>
-#include <string>
-#include <thread>
+#include <array>          // for array
+#include <chrono>         // for filesystem, seconds
+#include <cstdint>        // for int32_t
+#include <cstdio>         // for feof, fgets, pclose, perror, popen
+#include <cstdlib>        // for exit, WIFEXITED, WIFSIGNALED
+#include <filesystem>     // for exists, is_directory
+#include <iostream>       // for basic_istream, cin
+#include <string>         // for operator==, string, basic_string, allocator
+#include <sys/mount.h>    // for mount
+#include <sys/wait.h>     // for waitpid
+#include <thread>         // for sleep_for
+#include <unistd.h>       // for execvp, fork
+#include <unordered_map>  // for unordered_map
 
 #include <cpr/api.h>
 #include <cpr/response.h>
@@ -41,7 +47,7 @@ bool check_root() noexcept {
 
 void clear_screen() noexcept {
     static constexpr auto CLEAR_SCREEN_ANSI = "\033[1;1H\033[2J";
-    write(STDOUT_FILENO, CLEAR_SCREEN_ANSI, 11);
+    output("{}", CLEAR_SCREEN_ANSI);
 }
 
 std::string exec(const std::string_view& command, bool capture_output) noexcept {
@@ -50,7 +56,7 @@ std::string exec(const std::string_view& command, bool capture_output) noexcept 
         auto pid = fork();
         if (pid == 0) {
             /* clang-format off */
-            char* args[2] = { const_cast<char*>(command.data()), NULL };
+            char* args[2] = { const_cast<char*>(command.data()), nullptr };
             /* clang-format on */
             execvp(args[0], args);
         } else {

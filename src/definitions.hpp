@@ -1,6 +1,8 @@
 #ifndef DEFINITIONS_HPP
 #define DEFINITIONS_HPP
 
+#include <cstdio>  // for stderr
+
 #include <fmt/color.h>
 #include <fmt/core.h>
 

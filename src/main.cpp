@@ -3,9 +3,9 @@
 #include "tui.hpp"
 #include "utils.hpp"
 
-#include <chrono>
-#include <regex>
-#include <thread>
+#include <chrono>  // for seconds
+#include <regex>   // for regex_search, match_results<>::_Base_type
+#include <thread>  // for sleep_for
 
 int main() {
     const auto& tty = utils::exec("tty");

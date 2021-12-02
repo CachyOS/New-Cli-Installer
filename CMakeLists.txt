@@ -27,7 +27,7 @@ pkg_check_modules(
   LIBNM
   REQUIRED
   IMPORTED_TARGET
-  libnm>=1.32.12)
+  libnm>=1.10.6)
 
 FetchContent_Declare(ftxui
   GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
