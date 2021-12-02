@@ -1,5 +1,6 @@
 #include "utils.hpp"
 #include "config.hpp"
+#include "definitions.hpp"
 
 #include <array>          // for array
 #include <chrono>         // for filesystem, seconds
@@ -39,7 +40,7 @@ bool is_connected() noexcept {
 
 bool check_root() noexcept {
 #ifdef NDEVENV
-    return (utils::exec("whoami") == "root\n");
+    return (utils::exec("whoami") == "root");
 #else
     return true;
 #endif
@@ -79,6 +80,10 @@ std::string exec(const std::string_view& command, bool capture_output) noexcept 
         }
     }
 
+    if (result.ends_with('\n')) {
+        result.pop_back();
+    }
+
     pclose(pipe);
 
     return result;
@@ -105,13 +110,48 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     return false;
 }
 
+auto make_multiline(std::string& str) noexcept -> std::vector<std::string> {
+    static constexpr std::string_view delim{"\n"};
+    std::vector<std::string> lines{};
+
+    std::size_t start{};
+    std::size_t end = str.find(delim);
+    while (end != std::string::npos) {
+        lines.push_back(str.substr(start, end - start));
+        start = end + delim.size();
+        end   = str.find(delim, start);
+    }
+    lines.push_back(str.substr(start, end - start));
+
+    return lines;
+}
+
+// Unmount partitions.
+void umount_partitions() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    auto mount_info       = utils::exec(fmt::format("mount | grep \"{}\" | {}", config_data["MOUNTPOINT"], "awk \'{print $3}\' | sort -r"));
+#ifdef NDEVENV
+    utils::exec("swapoff -a");
+#endif
+
+    const auto& lines = utils::make_multiline(mount_info);
+    for (const auto& line : lines) {
+#ifdef NDEVENV
+        umount(line.c_str());
+#else
+        output("{}\n", line);
+#endif
+    }
+}
+
 void id_system() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
     // Apple System Detection
     const auto& sys_vendor = utils::exec("cat /sys/class/dmi/id/sys_vendor");
-    if ((sys_vendor == "Apple Inc.\n") || (sys_vendor == "Apple Computer, Inc.\n"))
+    if ((sys_vendor == "Apple Inc.") || (sys_vendor == "Apple Computer, Inc."))
         utils::exec("modprobe -r -q efivars || true");  // if MAC
     else
         utils::exec("modprobe -q efivarfs");  // all others
@@ -121,7 +161,7 @@ void id_system() noexcept {
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
         // Mount efivarfs if it is not already mounted
         const auto& mount_out = utils::exec("mount | grep /sys/firmware/efi/efivars");
-        if (mount_out == "\n") {
+        if (mount_out.empty()) {
             if (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0) {
                 perror("utils::id_system");
                 exit(1);
@@ -132,11 +172,11 @@ void id_system() noexcept {
 
     // init system
     const auto& init_sys = utils::exec("cat /proc/1/comm");
-    if (init_sys == "systemd\n")
+    if (init_sys == "systemd")
         config_data["H_INIT"] = "systemd";
 
     // TODO: Test which nw-client is available, including if the service according to $H_INIT is running
-    if (config_data["H_INIT"] == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active\n")
+    if (config_data["H_INIT"] == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active")
         config_data["NW_CMD"] = "nmtui";
 }
 

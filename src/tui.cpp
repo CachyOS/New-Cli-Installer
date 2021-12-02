@@ -3,6 +3,7 @@
 #include "utils.hpp"
 
 /* clang-format off */
+#include <algorithm>                               // for transform
 #include <memory>                                  // for __shared_ptr_access
 #include <string>                                  // for basic_string
 #include <ftxui/component/captured_mouse.hpp>      // for ftxui
@@ -35,10 +36,18 @@ ftxui::Element centered_widget(ftxui::Component& container, const std::string_vi
     });
 }
 
+ftxui::Element multiline_text(const std::vector<std::string>& lines) {
+    Elements multiline;
+
+    std::transform(lines.cbegin(), lines.cend(), std::back_inserter(multiline),
+        [=](const std::string& line) -> Element { return text(line); });
+    return vbox(std::move(multiline)) | frame;
+}
+
 // Simple code to show devices / partitions.
-void show_devices() {
-    auto screen       = ScreenInteractive::Fullscreen();
-    const auto& lsblk = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
+void show_devices() noexcept {
+    auto screen = ScreenInteractive::Fullscreen();
+    auto lsblk  = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
 
     /* clang-format off */
     auto button_option   = ButtonOption();
@@ -51,7 +60,7 @@ void show_devices() {
     });
 
     auto renderer = Renderer(container, [&] {
-        return tui::centered_widget(container, "New CLI Installer", text(lsblk.data()) | size(HEIGHT, GREATER_THAN, 5));
+        return tui::centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(lsblk)) | size(HEIGHT, GREATER_THAN, 5));
     });
 
     screen.Loop(renderer);
