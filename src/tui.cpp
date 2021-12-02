@@ -116,7 +116,11 @@ void select_device() noexcept {
         return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     });
 
-    auto ok_callback        = [&] { config_data["DEVICE"] = devices_list[selected]; };
+    auto ok_callback = [&] {
+        auto src              = devices_list[selected];
+        const auto& lines     = utils::make_multiline(src, " ");
+        config_data["DEVICE"] = lines[0];
+    };
     auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {

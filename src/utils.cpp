@@ -110,8 +110,7 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     return false;
 }
 
-auto make_multiline(std::string& str) noexcept -> std::vector<std::string> {
-    static constexpr std::string_view delim{"\n"};
+auto make_multiline(std::string& str, const std::string_view&& delim) noexcept -> std::vector<std::string> {
     std::vector<std::string> lines{};
 
     std::size_t start{};
