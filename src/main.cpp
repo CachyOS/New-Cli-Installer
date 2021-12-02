@@ -1,5 +1,6 @@
 #include "config.hpp"
 #include "definitions.hpp"
+#include "screen_service.hpp"
 #include "tui.hpp"
 #include "utils.hpp"
 
@@ -31,5 +32,11 @@ int main() {
         return 0;
     }
 
+    if (!tui::screen_service::initialize()) {
+        return 1;
+    }
+
+    // auto app_router = std::make_shared<router>(tui::screen_service::instance());
+    // app_router->navigate("", std::any());
     tui::init();
 }

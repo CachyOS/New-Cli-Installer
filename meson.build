@@ -39,7 +39,9 @@ cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
 libnm = dependency('libnm', version : ['>=1.10.6'])
 
 src_files = files(
+    'src/view.hpp',
     'src/definitions.hpp',
+    'src/screen_service.hpp', 'src/screen_service.cpp',
     'src/config.cpp', 'src/config.hpp',
     'src/utils.cpp', 'src/utils.hpp',
     'src/tui.cpp', 'src/tui.hpp',
@@ -97,7 +99,7 @@ add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 
 executable(
   'cachyos-installer',
   src_files,
-  dependencies: [fmt, ftxui, nlohmann_json, cpr, libnm],
+  dependencies: [fmt, ftxui, nlohmann_json, cpr],
   include_directories: [include_directories('src')],
   install: true)
 

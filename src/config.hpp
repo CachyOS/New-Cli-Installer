@@ -11,8 +11,8 @@ class Config final {
     using reference       = value_type&;
     using const_reference = const value_type&;
 
-    Config()          = default;
-    virtual ~Config() = default;
+    Config() noexcept          = default;
+    virtual ~Config() noexcept = default;
 
     static bool initialize() noexcept;
     static Config* instance();

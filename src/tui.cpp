@@ -1,6 +1,7 @@
 #include "tui.hpp"
 #include "config.hpp"
 #include "definitions.hpp"
+#include "screen_service.hpp"
 #include "utils.hpp"
 
 /* clang-format off */
@@ -81,8 +82,8 @@ ftxui::Element multiline_text(const std::vector<std::string>& lines) {
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    auto screen = ScreenInteractive::Fullscreen();
-    auto lsblk  = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
+    auto& screen = tui::screen_service::instance()->data();
+    auto lsblk   = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
 
     /* clang-format off */
     auto button_option   = ButtonOption();
@@ -109,7 +110,7 @@ void select_device() noexcept {
     auto devices             = utils::exec("lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print \"/dev/\" $1 \" \" $2}' | sort -u");
     const auto& devices_list = utils::make_multiline(devices);
 
-    auto screen = ScreenInteractive::Fullscreen();
+    auto& screen = tui::screen_service::instance()->data();
     std::int32_t selected{};
     auto menu    = Menu(&devices_list, &selected);
     auto content = Renderer(menu, [&] {
@@ -117,7 +118,7 @@ void select_device() noexcept {
     });
 
     auto ok_callback = [&] {
-        auto src              = devices_list[selected];
+        auto src              = devices_list[static_cast<std::size_t>(selected)];
         const auto& lines     = utils::make_multiline(src, " ");
         config_data["DEVICE"] = lines[0];
     };
@@ -141,7 +142,7 @@ void select_device() noexcept {
 }
 
 void init() noexcept {
-    auto screen      = ScreenInteractive::Fullscreen();
+    auto& screen     = tui::screen_service::instance()->data();
     auto ok_callback = [=] { info("ok\n"); };
     auto container   = controls_widget({"OK", "Quit"}, {ok_callback, screen.ExitLoopClosure()});
 

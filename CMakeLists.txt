@@ -71,7 +71,9 @@ target_compile_features(project_options INTERFACE cxx_std_20)
 ## Target
 ##
 add_executable(${PROJECT_NAME}
+   src/view.hpp
    src/definitions.hpp
+   src/screen_service.hpp src/screen_service.cpp
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
    src/tui.cpp src/tui.hpp
@@ -90,7 +92,7 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr PkgConfig::LIBNM)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)
