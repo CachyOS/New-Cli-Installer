@@ -225,6 +225,7 @@ void create_partitions() noexcept {
     auto ok_callback = [&] {
         const auto& answer = menu_entries[static_cast<std::size_t>(selected)];
         if (answer != optwipe && answer != optauto) {
+            screen.Clear();
             utils::exec(fmt::format("{} {}", answer, config_data["DEVICE"]), true);
             return;
         }
@@ -259,14 +260,156 @@ void create_partitions() noexcept {
     screen.Loop(renderer);
 }
 
-void init() noexcept {
-    auto& screen     = tui::screen_service::instance()->data();
-    auto ok_callback = [=] { info("ok\n"); };
-    ButtonOption button_option{.border = false};
-    auto container = controls_widget({"OK", "Quit"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+void install_desktop_system_menu() { }
+void install_core_menu() { }
+void install_custom_menu() { }
+void system_rescue_menu() { }
 
-    auto renderer = Renderer(container, [&] {
-        return tui::centered_widget(container, "New CLI Installer", text("TODO!!") | size(HEIGHT, GREATER_THAN, 5));
+void prep_menu() noexcept {
+    std::vector<std::string> menu_entries = {
+        "Set Virtual Console",
+        "List Devices (optional)",
+        "Partition Disk",
+        "RAID (optional)",
+        "Logical Volume Management (optional)",
+        "LUKS Encryption (optional)",
+        "ZFS (optional)",
+        "Mount Partitions",
+        "Configure Installer Mirrorlist",
+        "Refresh Pacman Keys",
+        "Choose pacman cache",
+        "Enable fsck hook",
+        "Back",
+    };
+
+    auto& screen = tui::screen_service::instance()->data();
+    std::int32_t selected{};
+    auto menu    = Menu(&menu_entries, &selected);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 15) | size(WIDTH, GREATER_THAN, 50);
+    });
+
+    auto ok_callback = [&] {
+        const auto& temp = selected + 1;
+        switch (temp) {
+        case 1:
+            error("Implement me!\n");
+            break;
+        case 2:
+            tui::show_devices();
+            break;
+
+        case 3: {
+            utils::umount_partitions();
+            tui::select_device();
+            tui::create_partitions();
+            break;
+        }
+        case 4:
+        case 5:
+        case 6:
+        case 7:
+        case 8:
+        case 9:
+        case 10:
+        case 11:
+        case 12:
+            error("Implement me!\n");
+            break;
+        default:
+            screen.Clear();
+            screen.ExitLoopClosure();
+            break;
+        }
+    };
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    auto global = Container::Vertical({
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        return tui::centered_interative_multi("New CLI Installer", global);
+    });
+
+    screen.Loop(renderer);
+}
+
+void init() noexcept {
+    std::vector<std::string> menu_entries = {
+        "Prepare Installation",
+        "Install Desktop System",
+        "Install CLI System",
+        "Install Custom System",
+        "System Rescue",
+        "Done",
+    };
+
+    auto& screen = tui::screen_service::instance()->data();
+    std::int32_t selected{};
+    auto menu    = Menu(&menu_entries, &selected);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    });
+
+    auto ok_callback = [&] {
+        const auto& temp = selected + 1;
+        switch (temp) {
+        case 1:
+            tui::prep_menu();
+            break;
+        case 2: {
+            if (!utils::check_mount()) {
+                screen.ExitLoopClosure();
+            }
+            tui::install_desktop_system_menu();
+            break;
+        }
+        case 3: {
+            if (!utils::check_mount()) {
+                screen.ExitLoopClosure();
+            }
+            tui::install_core_menu();
+            break;
+        }
+        case 4: {
+            utils::check_mount();
+            tui::install_custom_menu();
+            break;
+        }
+        case 5:
+            tui::system_rescue_menu();
+            break;
+        default:
+            screen.Clear();
+            screen.ExitLoopClosure();
+            break;
+        }
+    };
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    auto global = Container::Vertical({
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        return tui::centered_interative_multi("New CLI Installer", global);
     });
 
     screen.Loop(renderer);

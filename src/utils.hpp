@@ -14,6 +14,8 @@ bool prompt_char(const char* prompt, const char* color = RESET, char* read = nul
 void clear_screen() noexcept;
 [[nodiscard]] auto make_multiline(std::string& str, const std::string_view&& delim = "\n") noexcept -> std::vector<std::string>;
 void secure_wipe() noexcept;
+bool check_mount() noexcept;
+void umount_partitions() noexcept;
 
 void exec(const std::vector<std::string>& vec) noexcept;
 auto exec(const std::string_view& command, const bool& interactive = false) noexcept -> std::string;

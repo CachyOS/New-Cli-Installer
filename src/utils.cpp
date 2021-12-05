@@ -186,6 +186,18 @@ void secure_wipe() noexcept {
 #endif
 }
 
+// Ensure that a partition is mounted
+bool check_mount() noexcept {
+#ifdef NDEVENV
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    if (utils::exec(fmt::format("findmnt -nl {}", config_data["MOUNTPOINT"])) == "") {
+        return false;
+    }
+#endif
+    return true;
+}
+
 void id_system() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
