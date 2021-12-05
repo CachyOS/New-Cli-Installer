@@ -37,6 +37,7 @@ ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::co
 nlohmann_json = dependency('nlohmann_json', version : ['>=3.10.4'], fallback : ['nlohmann_json', 'nlohmann_json_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
 libnm = dependency('libnm', version : ['>=1.10.6'])
+glibmm = dependency('glibmm-2.4', version : ['>=2.60.0'])
 
 src_files = files(
     'src/view.hpp',
@@ -99,14 +100,14 @@ add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 
 executable(
   'cachyos-installer',
   src_files,
-  dependencies: [fmt, ftxui, nlohmann_json, cpr],
+  dependencies: [fmt, ftxui, nlohmann_json, cpr, glibmm],
   include_directories: [include_directories('src')],
   install: true)
 
 executable(
   'test-exec-interactive',
   files('src/config.cpp', 'src/utils.cpp', 'src/main_test.cpp'),
-  dependencies: [fmt],
+  dependencies: [fmt, glibmm],
   include_directories: [include_directories('src')],
   install: false)
 

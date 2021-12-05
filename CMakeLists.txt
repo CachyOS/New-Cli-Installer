@@ -29,6 +29,12 @@ pkg_check_modules(
   IMPORTED_TARGET
   libnm>=1.10.6)
 
+pkg_check_modules(
+  GLIBMM
+  REQUIRED
+  IMPORTED_TARGET
+  glibmm-2.4>=2.60.0)
+
 FetchContent_Declare(ftxui
   GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
   GIT_TAG "cecd54df42dd66fdf8386ed461e16b725bffc827"
@@ -98,8 +104,8 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr)
-target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options fmt::fmt)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr PkgConfig::GLIBMM)
+target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options fmt::fmt PkgConfig::GLIBMM)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)

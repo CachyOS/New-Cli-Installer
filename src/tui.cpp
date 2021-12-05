@@ -1,10 +1,10 @@
 #include "tui.hpp"
 #include "config.hpp"
 #include "definitions.hpp"
-#include "screen_service.hpp"
 #include "utils.hpp"
 
 /* clang-format off */
+#include <csignal>                                 // for raise
 #include <algorithm>                               // for transform
 #include <memory>                                  // for __shared_ptr_access
 #include <string>                                  // for basic_string
@@ -117,7 +117,7 @@ void auto_partition() noexcept {
     // Show created partitions
     auto disklist = utils::exec(fmt::format("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", config_data["DEVICE"]));
 
-    auto& screen = tui::screen_service::instance()->data();
+    auto screen = ScreenInteractive::Fullscreen();
     /* clang-format off */
     auto button_option   = ButtonOption();
     button_option.border = false;
@@ -137,8 +137,8 @@ void auto_partition() noexcept {
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    auto& screen = tui::screen_service::instance()->data();
-    auto lsblk   = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
+    auto screen = ScreenInteractive::Fullscreen();
+    auto lsblk  = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
 
     /* clang-format off */
     auto button_option   = ButtonOption();
@@ -159,23 +159,27 @@ void show_devices() noexcept {
 
 // This function does not assume that the formatted device is the Root installation device as
 // more than one device may be formatted. Root is set in the mount_partitions function.
-void select_device() noexcept {
+bool select_device() noexcept {
     auto* config_instance    = Config::instance();
     auto& config_data        = config_instance->data();
     auto devices             = utils::exec("lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print \"/dev/\" $1 \" \" $2}' | sort -u");
     const auto& devices_list = utils::make_multiline(devices);
 
-    auto& screen = tui::screen_service::instance()->data();
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto menu    = Menu(&devices_list, &selected);
     auto content = Renderer(menu, [&] {
         return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     });
 
+    bool success     = false;
     auto ok_callback = [&] {
         auto src              = devices_list[static_cast<std::size_t>(selected)];
         const auto& lines     = utils::make_multiline(src, " ");
         config_data["DEVICE"] = lines[0];
+        success               = true;
+        screen.ExitLoopClosure();
+        std::raise(SIGINT);
     };
 
     ButtonOption button_option{.border = false};
@@ -196,6 +200,8 @@ void select_device() noexcept {
     });
 
     screen.Loop(renderer);
+
+    return success;
 }
 
 void create_partitions() noexcept {
@@ -215,7 +221,7 @@ void create_partitions() noexcept {
         "parted",
     };
 
-    auto& screen = tui::screen_service::instance()->data();
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto menu    = Menu(&menu_entries, &selected);
     auto content = Renderer(menu, [&] {
@@ -282,7 +288,7 @@ void prep_menu() noexcept {
         "Back",
     };
 
-    auto& screen = tui::screen_service::instance()->data();
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto menu    = Menu(&menu_entries, &selected);
     auto content = Renderer(menu, [&] {
@@ -290,21 +296,22 @@ void prep_menu() noexcept {
     });
 
     auto ok_callback = [&] {
-        const auto& temp = selected + 1;
-        switch (temp) {
-        case 1:
+        switch (selected) {
+        case 0:
             error("Implement me!\n");
             break;
-        case 2:
+        case 1:
             tui::show_devices();
             break;
 
-        case 3: {
+        case 2: {
             utils::umount_partitions();
-            tui::select_device();
-            tui::create_partitions();
+            if (tui::select_device()) {
+                tui::create_partitions();
+            }
             break;
         }
+        case 3:
         case 4:
         case 5:
         case 6:
@@ -313,12 +320,11 @@ void prep_menu() noexcept {
         case 9:
         case 10:
         case 11:
-        case 12:
             error("Implement me!\n");
             break;
         default:
-            screen.Clear();
             screen.ExitLoopClosure();
+            std::raise(SIGINT);
             break;
         }
     };
@@ -353,7 +359,7 @@ void init() noexcept {
         "Done",
     };
 
-    auto& screen = tui::screen_service::instance()->data();
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto menu    = Menu(&menu_entries, &selected);
     auto content = Renderer(menu, [&] {
@@ -361,36 +367,37 @@ void init() noexcept {
     });
 
     auto ok_callback = [&] {
-        const auto& temp = selected + 1;
-        switch (temp) {
-        case 1:
+        switch (selected) {
+        case 0:
             tui::prep_menu();
             break;
-        case 2: {
+        case 1: {
             if (!utils::check_mount()) {
                 screen.ExitLoopClosure();
+                std::raise(SIGINT);
             }
             tui::install_desktop_system_menu();
             break;
         }
-        case 3: {
+        case 2: {
             if (!utils::check_mount()) {
                 screen.ExitLoopClosure();
+                std::raise(SIGINT);
             }
             tui::install_core_menu();
             break;
         }
-        case 4: {
+        case 3: {
             utils::check_mount();
             tui::install_custom_menu();
             break;
         }
-        case 5:
+        case 4:
             tui::system_rescue_menu();
             break;
         default:
-            screen.Clear();
             screen.ExitLoopClosure();
+            std::raise(SIGINT);
             break;
         }
     };
