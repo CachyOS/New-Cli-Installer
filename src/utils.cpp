@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "definitions.hpp"
 
+#include <algorithm>      // for transform
 #include <array>          // for array
 #include <chrono>         // for filesystem, seconds
 #include <cstdint>        // for int32_t
@@ -9,6 +10,7 @@
 #include <cstdlib>        // for exit, WIFEXITED, WIFSIGNALED
 #include <filesystem>     // for exists, is_directory
 #include <iostream>       // for basic_istream, cin
+#include <regex>          // for regex_search, match_results<>::_Base_type
 #include <string>         // for operator==, string, basic_string, allocator
 #include <sys/mount.h>    // for mount
 #include <sys/wait.h>     // for waitpid
@@ -16,10 +18,12 @@
 #include <unistd.h>       // for execvp, fork
 #include <unordered_map>  // for unordered_map
 
+#ifdef NDEVENV
 #include <cpr/api.h>
 #include <cpr/response.h>
 #include <cpr/status_codes.h>
 #include <cpr/timeout.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -51,22 +55,35 @@ void clear_screen() noexcept {
     output("{}", CLEAR_SCREEN_ANSI);
 }
 
-std::string exec(const std::string_view& command, bool capture_output) noexcept {
-    if (!capture_output) {
-        std::int32_t status{};
-        auto pid = fork();
-        if (pid == 0) {
-            /* clang-format off */
-            char* args[2] = { const_cast<char*>(command.data()), nullptr };
-            /* clang-format on */
-            execvp(args[0], args);
-        } else {
-            do {
-                waitpid(pid, &status, 0);
-            } while ((!WIFEXITED(status)) && (!WIFSIGNALED(status)));
-        }
+void exec(const std::vector<std::string>& vec) noexcept {
+    std::int32_t status{};
+    auto pid = fork();
+    if (pid == 0) {
+        std::vector<char*> args;
+        std::transform(vec.cbegin(), vec.cend(), std::back_inserter(args),
+            [=](const std::string& arg) -> char* { return const_cast<char*>(arg.data()); });
+        args.push_back(nullptr);
+
+        char** command = args.data();
+        execvp(command[0], command);
+    } else {
+        do {
+            waitpid(pid, &status, 0);
+        } while ((!WIFEXITED(status)) && (!WIFSIGNALED(status)));
+    }
+}
+
+// https://github.com/sheredom/subprocess.h
+// https://gist.github.com/konstantint/d49ab683b978b3d74172
+// https://github.com/arun11299/cpp-subprocess/blob/master/subprocess.hpp#L1218
+// https://stackoverflow.com/questions/11342868/c-interface-for-interactive-bash
+// https://github.com/hniksic/rust-subprocess
+std::string exec(const std::string_view& command, const bool& interactive) noexcept {
+    if (interactive) {
+        system(command.data());
         return {};
     }
+
     auto* pipe = popen(command.data(), "r");
     if (!pipe) {
         return "popen failed!";
@@ -125,6 +142,17 @@ auto make_multiline(std::string& str, const std::string_view&& delim) noexcept -
     return lines;
 }
 
+// install a pkg in the live session if not installed
+void inst_needed(const std::string_view& pkg) {
+    const auto& pkg_info = utils::exec(fmt::format("pacman -Q {}", pkg));
+    const std::regex pkg_regex("/error/");
+    if (!std::regex_search(pkg_info, pkg_regex)) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        utils::clear_screen();
+        utils::exec(fmt::format("pacman -Sy --noconfirm {}", pkg));
+    }
+}
+
 // Unmount partitions.
 void umount_partitions() noexcept {
     auto* config_instance = Config::instance();
@@ -142,6 +170,20 @@ void umount_partitions() noexcept {
         output("{}\n", line);
 #endif
     }
+}
+
+// Securely destroy all data on a given device.
+void secure_wipe() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+#ifdef NDEVENV
+    utils::inst_needed("wipe");
+    utils::exec(fmt::format("wipe -Ifre {}", config_data["DEVICE"]));
+#else
+    utils::inst_needed("bash");
+    output("{}\n", config_data["DEVICE"]);
+#endif
 }
 
 void id_system() noexcept {
@@ -223,7 +265,7 @@ void show_iwctl() noexcept {
     info("6 - type `exit`\n");
 
     while (utils::prompt_char("Press a key to continue...", CYAN)) {
-        utils::exec("iwctl", false);
+        utils::exec("iwctl", true);
         break;
     }
 }

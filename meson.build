@@ -103,6 +103,13 @@ executable(
   include_directories: [include_directories('src')],
   install: true)
 
+executable(
+  'test-exec-interactive',
+  files('src/config.cpp', 'src/utils.cpp', 'src/main_test.cpp'),
+  dependencies: [fmt],
+  include_directories: [include_directories('src')],
+  install: false)
+
 summary(
   {
     'Build type': get_option('buildtype'),

@@ -80,6 +80,12 @@ add_executable(${PROJECT_NAME}
    src/main.cpp
    )
 
+add_executable(test-exec-interactive
+   src/config.cpp
+   src/utils.cpp
+   src/main_test.cpp
+   )
+
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
 set_project_warnings(project_warnings)
@@ -93,6 +99,7 @@ enable_sanitizers(project_options)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr)
+target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options fmt::fmt)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)

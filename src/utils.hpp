@@ -13,8 +13,10 @@ void print_banner() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;
 [[nodiscard]] auto make_multiline(std::string& str, const std::string_view&& delim = "\n") noexcept -> std::vector<std::string>;
+void secure_wipe() noexcept;
 
-auto exec(const std::string_view& command, bool capture_output = true) noexcept -> std::string;
+void exec(const std::vector<std::string>& vec) noexcept;
+auto exec(const std::string_view& command, const bool& interactive = false) noexcept -> std::string;
 [[nodiscard]] bool check_root() noexcept;
 void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;
