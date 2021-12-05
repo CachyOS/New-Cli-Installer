@@ -80,8 +80,8 @@ void exec(const std::vector<std::string>& vec) noexcept {
 // https://github.com/hniksic/rust-subprocess
 std::string exec(const std::string_view& command, const bool& interactive) noexcept {
     if (interactive) {
-        system(command.data());
-        return {};
+        const auto& ret_code = system(command.data());
+        return std::to_string(ret_code);
     }
 
     auto* pipe = popen(command.data(), "r");
