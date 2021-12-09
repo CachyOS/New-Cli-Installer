@@ -4,10 +4,12 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
+#include <vector>
 
 class Config final {
  public:
-    using value_type      = std::unordered_map<std::string_view, std::string>;
+    using value_type      = std::unordered_map<std::string_view, std::variant<std::string, std::int32_t, std::vector<std::string>>>;
     using reference       = value_type&;
     using const_reference = const value_type&;
 

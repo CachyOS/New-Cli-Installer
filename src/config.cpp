@@ -7,11 +7,11 @@ static std::unique_ptr<Config> s_config = nullptr;
 
 bool Config::initialize() noexcept {
     if (s_config != nullptr) {
-        error("You should only initialize it once!\n");
+        error_inter("You should only initialize it once!\n");
         return false;
     }
     s_config = std::make_unique<Config>();
-    if (!s_config) {
+    if (s_config) {
         s_config->m_data["H_INIT"]     = "openrc";
         s_config->m_data["SYSTEM"]     = "BIOS";
         s_config->m_data["KEYMAP"]     = "us";

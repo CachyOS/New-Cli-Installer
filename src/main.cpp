@@ -8,6 +8,9 @@
 #include <regex>   // for regex_search, match_results<>::_Base_type
 #include <thread>  // for sleep_for
 
+#include <spdlog/async.h>
+#include <spdlog/sinks/basic_file_sink.h>
+
 int main() {
     const auto& tty = utils::exec("tty");
     const std::regex tty_regex("/dev/tty[0-9]*");
@@ -28,11 +31,18 @@ int main() {
     utils::id_system();
 
     if (!utils::handle_connection()) {
-        error("An active network connection could not be detected, please connect and restart the installer.");
+        error_inter("An active network connection could not be detected, please connect and restart the installer.");
         return 0;
     }
+
+    auto logger = spdlog::create_async<spdlog::sinks::basic_file_sink_mt>("cachyos_logger", "/tmp/cachyos-install.log");
+    spdlog::set_default_logger(logger);
+    spdlog::set_pattern("[%r][%^---%L---%$] %v");
+    spdlog::set_level(spdlog::level::debug);
 
     // auto app_router = std::make_shared<router>(tui::screen_service::instance());
     // app_router->navigate("", std::any());
     tui::init();
+
+    spdlog::shutdown();
 }

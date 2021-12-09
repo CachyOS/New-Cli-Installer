@@ -1,6 +1,7 @@
 #include "utils.hpp"
 #include "config.hpp"
 #include "definitions.hpp"
+#include "tui.hpp"
 
 #include <algorithm>      // for transform
 #include <array>          // for array
@@ -52,7 +53,7 @@ bool check_root() noexcept {
 
 void clear_screen() noexcept {
     static constexpr auto CLEAR_SCREEN_ANSI = "\033[1;1H\033[2J";
-    output("{}", CLEAR_SCREEN_ANSI);
+    output_inter("{}", CLEAR_SCREEN_ANSI);
 }
 
 void exec(const std::vector<std::string>& vec) noexcept {
@@ -78,21 +79,21 @@ void exec(const std::vector<std::string>& vec) noexcept {
 // https://github.com/arun11299/cpp-subprocess/blob/master/subprocess.hpp#L1218
 // https://stackoverflow.com/questions/11342868/c-interface-for-interactive-bash
 // https://github.com/hniksic/rust-subprocess
-std::string exec(const std::string_view& command, const bool& interactive) noexcept {
+std::string exec(const std::string_view& command, const bool& interactive) noexcept(false) {
     if (interactive) {
         const auto& ret_code = system(command.data());
         return std::to_string(ret_code);
     }
 
-    auto* pipe = popen(command.data(), "r");
-    if (!pipe) {
-        return "popen failed!";
-    }
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.data(), "r"), pclose);
+
+    if (!pipe)
+        throw std::runtime_error("popen failed!");
 
     std::string result{};
     std::array<char, 128> buffer{};
-    while (!feof(pipe)) {
-        if (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+    while (!feof(pipe.get())) {
+        if (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
             result += buffer.data();
         }
     }
@@ -100,8 +101,6 @@ std::string exec(const std::string_view& command, const bool& interactive) noexc
     if (result.ends_with('\n')) {
         result.pop_back();
     }
-
-    pclose(pipe);
 
     return result;
 }
@@ -127,7 +126,7 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     return false;
 }
 
-auto make_multiline(std::string& str, const std::string_view&& delim) noexcept -> std::vector<std::string> {
+auto make_multiline(std::string& str, bool reverse, const std::string_view&& delim) noexcept -> std::vector<std::string> {
     std::vector<std::string> lines{};
 
     std::size_t start{};
@@ -138,6 +137,9 @@ auto make_multiline(std::string& str, const std::string_view&& delim) noexcept -
         end   = str.find(delim, start);
     }
     lines.push_back(str.substr(start, end - start));
+    if (reverse) {
+        std::reverse(lines.begin(), lines.end());
+    }
 
     return lines;
 }
@@ -157,7 +159,9 @@ void inst_needed(const std::string_view& pkg) {
 void umount_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
-    auto mount_info       = utils::exec(fmt::format("mount | grep \"{}\" | {}", config_data["MOUNTPOINT"], "awk \'{print $3}\' | sort -r"));
+
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    auto mount_info             = utils::exec(fmt::format("mount | grep \"{}\" | {}", mountpoint_info, "awk \'{print $3}\' | sort -r"));
 #ifdef NDEVENV
     utils::exec("swapoff -a");
 #endif
@@ -167,31 +171,97 @@ void umount_partitions() noexcept {
 #ifdef NDEVENV
         umount(line.c_str());
 #else
-        output("{}\n", line);
+        spdlog::debug("{}\n", line);
 #endif
     }
 }
 
 // Securely destroy all data on a given device.
 void secure_wipe() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
+    auto* config_instance   = Config::instance();
+    auto& config_data       = config_instance->data();
+    const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
 
 #ifdef NDEVENV
     utils::inst_needed("wipe");
-    utils::exec(fmt::format("wipe -Ifre {}", config_data["DEVICE"]));
+    utils::exec(fmt::format("wipe -Ifre {}", device_info));
 #else
     utils::inst_needed("bash");
-    output("{}\n", config_data["DEVICE"]);
+    spdlog::debug("{}\n", device_info);
 #endif
+}
+
+// Finds all available partitions according to type(s) specified and generates a list
+// of them. This also includes partitions on different devices.
+void find_partitions() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    config_data["PARTITIONS"]        = {};
+    config_data["NUMBER_PARTITIONS"] = 0;
+    auto& number_partitions          = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
+    const auto& include_part         = std::get<std::string>(config_data["INCLUDE_PART"]);
+    // get the list of partitions and also include the zvols since it is common to mount filesystems directly on them.  It should be safe to include them here since they present as block devices.
+    const std::string other_piece = "sed \'s/part$/\\/dev\\//g\' | sed \'s/lvm$\\|crypt$/\\/dev\\/mapper\\//g\' | awk \'{print $3$1 \" \" $2}\' | awk \'!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}\' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk \'{printf \"/dev/zvol/%s %s\n\", $1, $2}'";
+    auto partition_list           = utils::exec(fmt::format("lsblk -lno NAME,SIZE,TYPE | grep {} | {}", include_part, other_piece));
+
+    // create a raid partition list
+    // old_ifs="$IFS"
+    // IFS=$'\n'
+    // raid_partitions=($(lsblk -lno NAME,SIZE,TYPE | grep raid | awk '{print $1,$2}' | uniq))
+    // IFS="$old_ifs"
+
+    // add raid partitions to partition_list
+    // for i in "${raid_partitions[@]}"
+    // do
+    //    partition_list="${partition_list} /dev/md/${i}"
+    // done
+
+    const auto& partitions    = utils::make_multiline(partition_list, true);
+    config_data["PARTITIONS"] = partitions;
+    number_partitions         = static_cast<std::int32_t>(partitions.size()) - 1;
+
+    // Double-partitions will be counted due to counting sizes, so fix
+    number_partitions /= 2;
+
+    // for test delete /dev:sda8
+    // delete_partition_in_list "/dev/sda8"
+
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    // Deal with partitioning schemes appropriate to mounting, lvm, and/or luks.
+    if (include_part == "\'part\\|lvm\\|crypt\'" && (((system_info == "UEFI") && (number_partitions < 2)) || ((system_info == "BIOS") && (number_partitions == 0)))) {
+        // Deal with incorrect partitioning for main mounting function
+        tui::create_partitions();
+    } else if (include_part == "\'part\\|crypt\'" && number_partitions == 0) {
+        // Ensure there is at least one partition for LVM
+        tui::create_partitions();
+    } else if (include_part == "\'part\\|lvm\'" && number_partitions < 2) {
+        // Ensure there are at least two partitions for LUKS
+        tui::create_partitions();
+    }
+}
+
+// List partitions to be hidden from the mounting menu
+std::string list_mounted() noexcept {
+    utils::exec("lsblk -l | awk '$7 ~ /mnt/ {print $1}' > /tmp/.mounted");
+    return utils::exec("echo /dev/* /dev/mapper/* | xargs -n1 2>/dev/null | grep -f /tmp/.mounted");
+}
+
+std::string list_containing_crypt() noexcept {
+    return utils::exec("blkid | awk \'/TYPE=\"crypto_LUKS\"/{print $1}\' | sed 's/.$//\'");
+}
+
+std::string list_non_crypt() noexcept {
+    return utils::exec("blkid | awk \'!/TYPE=\"crypto_LUKS\"/{print $1}\' | sed \'s/.$//\'");
 }
 
 // Ensure that a partition is mounted
 bool check_mount() noexcept {
 #ifdef NDEVENV
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    if (utils::exec(fmt::format("findmnt -nl {}", config_data["MOUNTPOINT"])) == "") {
+    auto* config_instance       = Config::instance();
+    auto& config_data           = config_instance->data();
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    if (utils::exec(fmt::format("findmnt -nl {}", mountpoint_info)) == "") {
         return false;
     }
 #endif
@@ -225,11 +295,12 @@ void id_system() noexcept {
 
     // init system
     const auto& init_sys = utils::exec("cat /proc/1/comm");
+    auto& h_init         = std::get<std::string>(config_data["H_INIT"]);
     if (init_sys == "systemd")
-        config_data["H_INIT"] = "systemd";
+        h_init = "systemd";
 
     // TODO: Test which nw-client is available, including if the service according to $H_INIT is running
-    if (config_data["H_INIT"] == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active")
+    if (h_init == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active")
         config_data["NW_CMD"] = "nmtui";
 }
 
@@ -237,7 +308,7 @@ bool handle_connection() noexcept {
     bool connected{};
 
     if (!(connected = utils::is_connected())) {
-        warning("An active network connection could not be detected, waiting 15 seconds ...\n");
+        warning_inter("An active network connection could not be detected, waiting 15 seconds ...\n");
 
         std::int32_t time_waited{};
 
@@ -268,13 +339,13 @@ bool handle_connection() noexcept {
 }
 
 void show_iwctl() noexcept {
-    info("\nInstructions to connect to wifi using iwctl:\n");
-    info("1 - To find your wifi device name (ex: wlan0) type `device list`\n");
-    info("2 - type `station wlan0 scan`, and wait couple seconds\n");
-    info("3 - type `station wlan0 get-networks` (find your wifi Network name ex. my_wifi)\n");
-    info("4 - type `station wlan0 connect my_wifi` (don't forget to press TAB for auto completion!\n");
-    info("5 - type `station wlan0 show` (status should be connected)\n");
-    info("6 - type `exit`\n");
+    info_inter("\nInstructions to connect to wifi using iwctl:\n");
+    info_inter("1 - To find your wifi device name (ex: wlan0) type `device list`\n");
+    info_inter("2 - type `station wlan0 scan`, and wait couple seconds\n");
+    info_inter("3 - type `station wlan0 get-networks` (find your wifi Network name ex. my_wifi)\n");
+    info_inter("4 - type `station wlan0 connect my_wifi` (don't forget to press TAB for auto completion!\n");
+    info_inter("5 - type `station wlan0 show` (status should be connected)\n");
+    info_inter("6 - type `exit`\n");
 
     while (utils::prompt_char("Press a key to continue...", CYAN)) {
         utils::exec("iwctl", true);

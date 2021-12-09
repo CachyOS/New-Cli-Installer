@@ -8,7 +8,7 @@ static std::unique_ptr<screen_service> s_screen = nullptr;
 
 bool screen_service::initialize() noexcept {
     if (s_screen != nullptr) {
-        error("You should only initialize it once!\n");
+        error_inter("You should only initialize it once!\n");
         return false;
     }
     s_screen = std::make_unique<screen_service>();

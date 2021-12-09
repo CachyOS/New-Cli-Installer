@@ -33,13 +33,19 @@ pkg_check_modules(
   GLIBMM
   REQUIRED
   IMPORTED_TARGET
-  glibmm-2.4>=2.60.0)
+  glibmm-2.4>=2.56.0)
 
 FetchContent_Declare(ftxui
   GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
   GIT_TAG "cecd54df42dd66fdf8386ed461e16b725bffc827"
 )
 FetchContent_MakeAvailable(ftxui)
+
+FetchContent_Declare(spdlog
+  GIT_REPOSITORY "https://github.com/gabime/spdlog.git"
+  GIT_TAG "v1.9.2"
+)
+FetchContent_MakeAvailable(spdlog)
 
 FetchContent_Declare(fmt
   GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
@@ -63,6 +69,7 @@ FetchContent_MakeAvailable(cpr)
 ## CONFIGURATION
 ##
 option(BUILD_SHARED_LIBS "Enable compilation of shared libraries" OFF)
+set(SPDLOG_FMT_EXTERNAL ON CACHE INTERNAL "" FORCE)
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -89,6 +96,7 @@ add_executable(${PROJECT_NAME}
 add_executable(test-exec-interactive
    src/config.cpp
    src/utils.cpp
+   src/tui.cpp src/tui.hpp
    src/main_test.cpp
    )
 
@@ -104,8 +112,8 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr PkgConfig::GLIBMM)
-target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options fmt::fmt PkgConfig::GLIBMM)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options fmt::fmt spdlog::spdlog ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr PkgConfig::GLIBMM)
+target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options fmt::fmt spdlog::spdlog ftxui::component PkgConfig::GLIBMM)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)

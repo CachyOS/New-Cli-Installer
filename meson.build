@@ -32,12 +32,13 @@ if not is_dev_environment
 endif
 
 # Common dependencies
+spdlog = dependency('spdlog', version : ['>=1.9.2'])
 fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 nlohmann_json = dependency('nlohmann_json', version : ['>=3.10.4'], fallback : ['nlohmann_json', 'nlohmann_json_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
 libnm = dependency('libnm', version : ['>=1.10.6'])
-glibmm = dependency('glibmm-2.4', version : ['>=2.60.0'])
+glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 
 src_files = files(
     'src/view.hpp',
@@ -100,14 +101,14 @@ add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 
 executable(
   'cachyos-installer',
   src_files,
-  dependencies: [fmt, ftxui, nlohmann_json, cpr, glibmm],
+  dependencies: [fmt, spdlog, ftxui, nlohmann_json, cpr, glibmm],
   include_directories: [include_directories('src')],
   install: true)
 
 executable(
   'test-exec-interactive',
-  files('src/config.cpp', 'src/utils.cpp', 'src/main_test.cpp'),
-  dependencies: [fmt, glibmm],
+  files('src/config.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/main_test.cpp'),
+  dependencies: [fmt, spdlog, ftxui, glibmm],
   include_directories: [include_directories('src')],
   install: false)
 

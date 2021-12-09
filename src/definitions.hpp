@@ -5,6 +5,7 @@
 
 #include <fmt/color.h>
 #include <fmt/core.h>
+#include <spdlog/spdlog.h>
 
 static constexpr auto RESET       = "\033[0m";
 static constexpr auto BLACK       = "\033[30m";        /* Black */
@@ -24,10 +25,10 @@ static constexpr auto BOLDMAGENTA = "\033[1m\033[35m"; /* Bold Magenta */
 static constexpr auto BOLDCYAN    = "\033[1m\033[36m"; /* Bold Cyan */
 static constexpr auto BOLDWHITE   = "\033[1m\033[37m"; /* Bold White */
 
-#define output(...)  fmt::print(__VA_ARGS__)
-#define error(...)   fmt::print(stderr, fmt::fg(fmt::color::red), __VA_ARGS__)
-#define warning(...) fmt::print(fmt::fg(fmt::color::yellow), __VA_ARGS__)
-#define info(...)    fmt::print(fmt::fg(fmt::color::cyan), __VA_ARGS__)
-#define success(...) fmt::print(fmt::fg(fmt::color::green), __VA_ARGS__)
+#define output_inter(...)  fmt::print(__VA_ARGS__)
+#define error_inter(...)   fmt::print(stderr, fmt::fg(fmt::color::red), __VA_ARGS__)
+#define warning_inter(...) fmt::print(fmt::fg(fmt::color::yellow), __VA_ARGS__)
+#define info_inter(...)    fmt::print(fmt::fg(fmt::color::cyan), __VA_ARGS__)
+#define success_inter(...) fmt::print(fmt::fg(fmt::color::green), __VA_ARGS__)
 
 #endif
