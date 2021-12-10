@@ -233,6 +233,12 @@ bool select_device() noexcept {
 // partially because some don't seem to be viable.
 // Set static list of filesystems rather than on-the-fly.
 bool select_filesystem() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    // prep variables
+    config_data["fs_opts"] = "";
+    config_data["CHK_NUM"] = 0;
+
     std::vector<std::string> menu_entries = {
         "Do not format -",
         "btrfs mkfs.btrfs -f",
@@ -251,10 +257,64 @@ bool select_filesystem() noexcept {
     std::int32_t selected{};
     bool success{};
     auto ok_callback = [&] {
+        auto src             = menu_entries[static_cast<std::size_t>(selected)];
+        const auto& lines    = utils::make_multiline(src, false, " ");
+        const auto& file_sys = lines[0];
+        if (file_sys == "btrfs") {
+            config_data["FILESYSTEM"] = "mkfs.btrfs -f";
+            config_data["CHK_NUM"]    = 16;
+            config_data["fs_opts"]    = "autodefrag compress=zlib compress=lzo compress=zstd compress=no compress-force=zlib compress-force=lzo compress-force=zstd discard noacl noatime nodatasum nospace_cache recovery skip_balance space_cache nossd ssd ssd_spread commit=120";
+#ifdef NDEVENV
+            utils::exec("modprobe btrfs");
+#endif
+        } else if (file_sys == "ext2") {
+            config_data["FILESYSTEM"] = "mkfs.ext2 -q";
+        } else if (file_sys == "ext3") {
+            config_data["FILESYSTEM"] = "mkfs.ext3 -q";
+        } else if (file_sys == "ext4") {
+            config_data["FILESYSTEM"] = "mkfs.ext4 -q";
+            config_data["CHK_NUM"]    = 8;
+            config_data["fs_opts"]    = "data=journal data=writeback dealloc discard noacl noatime nobarrier nodelalloc";
+        } else if (file_sys == "f2fs") {
+            config_data["FILESYSTEM"] = "mkfs.f2fs -q";
+            config_data["fs_opts"]    = "data_flush disable_roll_forward disable_ext_identify discard fastboot flush_merge inline_xattr inline_data inline_dentry no_heap noacl nobarrier noextent_cache noinline_data norecovery";
+            config_data["CHK_NUM"]    = 16;
+#ifdef NDEVENV
+            utils::exec("modprobe f2fs");
+#endif
+        } else if (file_sys == "jfs") {
+            config_data["FILESYSTEM"] = "mkfs.jfs -q";
+            config_data["CHK_NUM"]    = 4;
+            config_data["fs_opts"]    = "discard errors=continue errors=panic nointegrity";
+        } else if (file_sys == "nilfs2") {
+            config_data["FILESYSTEM"] = "mkfs.nilfs2 -fq";
+            config_data["CHK_NUM"]    = 7;
+            config_data["fs_opts"]    = "discard nobarrier errors=continue errors=panic order=relaxed order=strict norecovery";
+        } else if (file_sys == "ntfs") {
+            config_data["FILESYSTEM"] = "mkfs.ntfs -q";
+        } else if (file_sys == "reiserfs") {
+            config_data["FILESYSTEM"] = "mkfs.reiserfs -q";
+            config_data["CHK_NUM"]    = 5;
+            config_data["fs_opts"]    = "acl nolog notail replayonly user_xattr";
+        } else if (file_sys == "vfat") {
+            config_data["FILESYSTEM"] = "mkfs.vfat -F32";
+        } else if (file_sys == "xfs") {
+            config_data["FILESYSTEM"] = "mkfs.xfs -f";
+            config_data["CHK_NUM"]    = 9;
+            config_data["fs_opts"]    = "discard filestreams ikeep largeio noalign nobarrier norecovery noquota wsync";
+        }
         success = true;
         std::raise(SIGINT);
     };
     menu_widget(menu_entries, ok_callback, &selected);
+
+    if (!success)
+        return false;
+
+    const auto& file_sys  = std::get<std::string>(config_data["FILESYSTEM"]);
+    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
+    const auto& content   = fmt::format("\nMount {}\n\n! Data on {} will be lost !\n", file_sys, partition);
+    msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
 
     return success;
 }
