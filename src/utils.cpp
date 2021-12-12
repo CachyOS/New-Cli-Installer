@@ -11,6 +11,7 @@
 #include <cstdlib>        // for exit, WIFEXITED, WIFSIGNALED
 #include <filesystem>     // for exists, is_directory
 #include <iostream>       // for basic_istream, cin
+#include <ranges>         // for std::views::join
 #include <regex>          // for regex_search, match_results<>::_Base_type
 #include <string>         // for operator==, string, basic_string, allocator
 #include <sys/mount.h>    // for mount
@@ -127,21 +128,34 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
 }
 
 auto make_multiline(std::string& str, bool reverse, const std::string_view&& delim) noexcept -> std::vector<std::string> {
+    const auto& view = str
+        | std::views::split(delim)
+        | std::views::transform([](auto&& rng) {
+              const auto& tmp = std::string(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
+              return tmp;
+          });
+
     std::vector<std::string> lines{};
-
-    std::size_t start{};
-    std::size_t end = str.find(delim);
-    while (end != std::string::npos) {
-        lines.push_back(str.substr(start, end - start));
-        start = end + delim.size();
-        end   = str.find(delim, start);
-    }
-    lines.push_back(str.substr(start, end - start));
+    std::ranges::copy(view, std::back_inserter(lines));
     if (reverse) {
-        std::reverse(lines.begin(), lines.end());
+        std::ranges::reverse(lines);
+    }
+    return lines;
+}
+
+auto make_multiline(std::vector<std::string>& multiline, bool reverse, const std::string_view&& delim) noexcept -> std::string {
+    std::string res{};
+    // for (const char c : multiline | std::views::join) res += c;
+    for (const auto& line : multiline) {
+        res += line;
+        res += delim.data();
     }
 
-    return lines;
+    if (reverse) {
+        std::ranges::reverse(res.begin(), res.end());
+    }
+
+    return res;
 }
 
 // install a pkg in the live session if not installed

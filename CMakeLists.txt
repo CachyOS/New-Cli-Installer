@@ -37,7 +37,7 @@ pkg_check_modules(
 
 FetchContent_Declare(ftxui
   GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
-  GIT_TAG "cecd54df42dd66fdf8386ed461e16b725bffc827"
+  GIT_TAG "602392c43d8bc2272c6548ae75b8802ab7ad0b2a"
 )
 FetchContent_MakeAvailable(ftxui)
 
@@ -49,7 +49,7 @@ FetchContent_MakeAvailable(spdlog)
 
 FetchContent_Declare(fmt
   GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
-  GIT_TAG "491ba2dda5a04c2438abb6bd90219de773793ec0"
+  GIT_TAG "3a951a66cb0fb53ff5a9d5ce9c77e05ef9d382ce"
 )
 FetchContent_MakeAvailable(fmt)
 
@@ -61,7 +61,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 FetchContent_Declare(cpr
   GIT_REPOSITORY "https://github.com/libcpr/cpr.git"
-  GIT_TAG "f229f82c1b38febebbf4e9958cebcd64caa32947"
+  GIT_TAG "beb9e98806bb84bcc130a2cebfbcbbc6ce62b335"
 )
 FetchContent_MakeAvailable(cpr)
 
@@ -89,6 +89,7 @@ add_executable(${PROJECT_NAME}
    src/screen_service.hpp src/screen_service.cpp
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
+   src/widgets.cpp src/widgets.hpp
    src/tui.cpp src/tui.hpp
    src/main.cpp
    )
@@ -96,6 +97,7 @@ add_executable(${PROJECT_NAME}
 add_executable(test-exec-interactive
    src/config.cpp
    src/utils.cpp
+   src/widgets.cpp src/widgets.hpp
    src/tui.cpp src/tui.hpp
    src/main_test.cpp
    )

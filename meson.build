@@ -46,6 +46,7 @@ src_files = files(
     'src/screen_service.hpp', 'src/screen_service.cpp',
     'src/config.cpp', 'src/config.hpp',
     'src/utils.cpp', 'src/utils.hpp',
+    'src/widgets.cpp', 'src/widgets.hpp',
     'src/tui.cpp', 'src/tui.hpp',
     'src/main.cpp',
 )

@@ -2,10 +2,12 @@
 #include "config.hpp"
 #include "definitions.hpp"
 #include "utils.hpp"
+#include "widgets.hpp"
 
 /* clang-format off */
 #include <csignal>                                 // for raise
 #include <algorithm>                               // for transform
+#include <filesystem>                              // for exists, is_directory
 #include <memory>                                  // for __shared_ptr_access
 #include <string>                                  // for basic_string
 #include <ftxui/component/captured_mouse.hpp>      // for ftxui
@@ -16,113 +18,33 @@
 /* clang-format on */
 
 using namespace ftxui;
+namespace fs = std::filesystem;
 
 namespace tui {
 
-ftxui::Element centered_widget(ftxui::Component& container, const std::string_view& title, const ftxui::Element& widget) {
-    return vbox({
-        //  -------- Title --------------
-        text(title.data()) | bold,
-        filler(),
-        //  -------- Center Menu --------------
-        hbox({
-            filler(),
-            border(vbox({
-                widget,
-                separator(),
-                container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25),
-            })),
-            filler(),
-        }) | center,
-        filler(),
-    });
-}
+// Revised to deal with partion sizes now being displayed to the user
+bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
+#ifdef NDEVENV
+    const auto& ret_status = utils::exec(fmt::format("mount | grep {}", part_user), true);
+    if (ret_status != "0") {
+        detail::infobox_widget("\nMount Failed!\n");
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        return false;
+    }
+#endif
+    // auto* config_instance = Config::instance();
+    // auto& config_data     = config_instance->data();
+    // const auto& partition = std::get<std::string>(config_data["PARTITION"]);
+    // auto& partitions      = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
 
-ftxui::Component controls_widget(const std::array<std::string_view, 2>&& titles, const std::array<std::function<void()>, 2>&& callbacks, ftxui::ButtonOption* button_option) {
-    /* clang-format off */
-    auto button_ok       = Button(titles[0].data(), callbacks[0], button_option);
-    auto button_quit     = Button(titles[1].data(), callbacks[1], button_option);
-    /* clang-format on */
+    detail::infobox_widget("\nMount Successful!\n");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    auto container = Container::Horizontal({
-        button_ok,
-        Renderer([] { return filler() | size(WIDTH, GREATER_THAN, 3); }),
-        button_quit,
-    });
-
-    return container;
-}
-
-ftxui::Element centered_interative_multi(const std::string_view& title, ftxui::Component& widgets) {
-    return vbox({
-        //  -------- Title --------------
-        text(title.data()) | bold,
-        filler(),
-        //  -------- Center Menu --------------
-        hbox({
-            filler(),
-            border(vbox({
-                widgets->Render(),
-            })),
-            filler(),
-        }) | center,
-        filler(),
-    });
-}
-
-ftxui::Element multiline_text(const std::vector<std::string>& lines) {
-    Elements multiline;
-
-    std::transform(lines.cbegin(), lines.cend(), std::back_inserter(multiline),
-        [=](const std::string& line) -> Element { return text(line); });
-    return vbox(std::move(multiline)) | frame;
-}
-
-void msgbox_widget(const std::string_view& content, Decorator boxsize = size(HEIGHT, GREATER_THAN, 5)) {
-    auto screen = ScreenInteractive::Fullscreen();
-    /* clang-format off */
-    auto button_option   = ButtonOption();
-    button_option.border = false;
-    auto button_back     = Button("OK", screen.ExitLoopClosure(), &button_option);
-    /* clang-format on */
-
-    auto container = Container::Horizontal({
-        button_back,
-    });
-
-    std::string tmp{content.data()};
-    auto renderer = Renderer(container, [&] {
-        return tui::centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(tmp)) | hcenter | boxsize);
-    });
-
-    screen.Loop(renderer);
-}
-
-void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected) {
-    auto screen  = ScreenInteractive::Fullscreen();
-    auto menu    = Menu(&entries, selected);
-    auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    });
-
-    ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
-
-    auto controls = Renderer(controls_container, [&] {
-        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
-    });
-
-    auto global = Container::Vertical({
-        content,
-        Renderer([] { return separator(); }),
-        controls,
-    });
-
-    auto renderer = Renderer(global, [&] {
-        return tui::centered_interative_multi("New CLI Installer", global);
-    });
-
-    screen.Loop(renderer);
+    // const auto& temp = utils::exec(fmt::format("echo {0} | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed s~{1}$\' -\'~~", partitions, partition));
+    // spdlog::info("human-info-about-partitions: {}", temp);
+    //  PARTITIONS=$()
+    //  NUMBER_PARTITIONS=$(( NUMBER_PARTITIONS - 1 ))
+    return true;
 }
 
 // BIOS and UEFI
@@ -172,15 +94,12 @@ void auto_partition() noexcept {
     auto button_option   = ButtonOption();
     button_option.border = false;
     auto button_back     = Button("Back", screen.ExitLoopClosure(), &button_option);
+
+    auto container = Container::Horizontal({button_back});
+    auto renderer  = Renderer(container, [&] {
+        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(disklist)) | size(HEIGHT, GREATER_THAN, 5));
+    });
     /* clang-format on */
-
-    auto container = Container::Horizontal({
-        button_back,
-    });
-
-    auto renderer = Renderer(container, [&] {
-        return tui::centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(disklist)) | size(HEIGHT, GREATER_THAN, 5));
-    });
 
     screen.Loop(renderer);
 }
@@ -194,15 +113,12 @@ void show_devices() noexcept {
     auto button_option   = ButtonOption();
     button_option.border = false;
     auto button_back     = Button("Back", screen.ExitLoopClosure(), &button_option);
+
+    auto container = Container::Horizontal({button_back});
+    auto renderer  = Renderer(container, [&] {
+        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(lsblk)) | size(HEIGHT, GREATER_THAN, 5));
+    });
     /* clang-format on */
-
-    auto container = Container::Horizontal({
-        button_back,
-    });
-
-    auto renderer = Renderer(container, [&] {
-        return tui::centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(lsblk)) | size(HEIGHT, GREATER_THAN, 5));
-    });
 
     screen.Loop(renderer);
 }
@@ -224,7 +140,7 @@ bool select_device() noexcept {
         success               = true;
         std::raise(SIGINT);
     };
-    menu_widget(devices_list, ok_callback, &selected);
+    detail::menu_widget(devices_list, ok_callback, &selected);
 
     return success;
 }
@@ -236,7 +152,7 @@ bool select_filesystem() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     // prep variables
-    config_data["fs_opts"] = "";
+    config_data["fs_opts"] = std::vector<std::string>{};
     config_data["CHK_NUM"] = 0;
 
     std::vector<std::string> menu_entries = {
@@ -262,8 +178,7 @@ bool select_filesystem() noexcept {
         const auto& file_sys = lines[0];
         if (file_sys == "btrfs") {
             config_data["FILESYSTEM"] = "mkfs.btrfs -f";
-            config_data["CHK_NUM"]    = 16;
-            config_data["fs_opts"]    = "autodefrag compress=zlib compress=lzo compress=zstd compress=no compress-force=zlib compress-force=lzo compress-force=zstd discard noacl noatime nodatasum nospace_cache recovery skip_balance space_cache nossd ssd ssd_spread commit=120";
+            config_data["fs_opts"]    = std::vector<std::string>{"autodefrag", "compress=zlib", "compress=lzo", "compress=zstd", "compress=no", "compress-force=zlib", "compress-force=lzo", "compress-force=zstd", "discard", "noacl", "noatime", "nodatasum", "nospace_cache", "recovery", "skip_balance", "space_cache", "nossd", "ssd", "ssd_spread", "commit=120"};
 #ifdef NDEVENV
             utils::exec("modprobe btrfs");
 #endif
@@ -273,59 +188,255 @@ bool select_filesystem() noexcept {
             config_data["FILESYSTEM"] = "mkfs.ext3 -q";
         } else if (file_sys == "ext4") {
             config_data["FILESYSTEM"] = "mkfs.ext4 -q";
-            config_data["CHK_NUM"]    = 8;
-            config_data["fs_opts"]    = "data=journal data=writeback dealloc discard noacl noatime nobarrier nodelalloc";
+            config_data["fs_opts"]    = std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
         } else if (file_sys == "f2fs") {
             config_data["FILESYSTEM"] = "mkfs.f2fs -q";
-            config_data["fs_opts"]    = "data_flush disable_roll_forward disable_ext_identify discard fastboot flush_merge inline_xattr inline_data inline_dentry no_heap noacl nobarrier noextent_cache noinline_data norecovery";
-            config_data["CHK_NUM"]    = 16;
+            config_data["fs_opts"]    = std::vector<std::string>{"data_flush", "disable_roll_forward", "disable_ext_identify", "discard", "fastboot", "flush_merge", "inline_xattr", "inline_data", "inline_dentry", "no_heap", "noacl", "nobarrier", "noextent_cache", "noinline_data", "norecovery"};
 #ifdef NDEVENV
             utils::exec("modprobe f2fs");
 #endif
         } else if (file_sys == "jfs") {
             config_data["FILESYSTEM"] = "mkfs.jfs -q";
-            config_data["CHK_NUM"]    = 4;
-            config_data["fs_opts"]    = "discard errors=continue errors=panic nointegrity";
+            config_data["fs_opts"]    = std::vector<std::string>{"discard", "errors=continue", "errors=panic", "nointegrity"};
         } else if (file_sys == "nilfs2") {
             config_data["FILESYSTEM"] = "mkfs.nilfs2 -fq";
-            config_data["CHK_NUM"]    = 7;
-            config_data["fs_opts"]    = "discard nobarrier errors=continue errors=panic order=relaxed order=strict norecovery";
+            config_data["fs_opts"]    = std::vector<std::string>{"discard", "nobarrier", "errors=continue", "errors=panic", "order=relaxed", "order=strict", "norecovery"};
         } else if (file_sys == "ntfs") {
             config_data["FILESYSTEM"] = "mkfs.ntfs -q";
         } else if (file_sys == "reiserfs") {
             config_data["FILESYSTEM"] = "mkfs.reiserfs -q";
-            config_data["CHK_NUM"]    = 5;
-            config_data["fs_opts"]    = "acl nolog notail replayonly user_xattr";
+            config_data["fs_opts"]    = std::vector<std::string>{"acl", "nolog", "notail", "replayonly", "user_xattr"};
         } else if (file_sys == "vfat") {
             config_data["FILESYSTEM"] = "mkfs.vfat -F32";
         } else if (file_sys == "xfs") {
             config_data["FILESYSTEM"] = "mkfs.xfs -f";
-            config_data["CHK_NUM"]    = 9;
-            config_data["fs_opts"]    = "discard filestreams ikeep largeio noalign nobarrier norecovery noquota wsync";
+            config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
         }
         success = true;
         std::raise(SIGINT);
     };
-    menu_widget(menu_entries, ok_callback, &selected);
+    detail::menu_widget(menu_entries, ok_callback, &selected);
 
-    if (!success)
-        return false;
+    /* clang-format off */
+    if (!success) { return false; }
+    /* clang-format on */
 
+    // Warn about formatting!
     const auto& file_sys  = std::get<std::string>(config_data["FILESYSTEM"]);
     const auto& partition = std::get<std::string>(config_data["PARTITION"]);
     const auto& content   = fmt::format("\nMount {}\n\n! Data on {} will be lost !\n", file_sys, partition);
-    msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
+    const auto& do_mount  = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    if (do_mount) {
+#ifdef NDEVENV
+        utils::exec(fmt::format("{} {}", file_sys, partition));
+#endif
+        spdlog::info("mount.{} {}", partition, file_sys);
+    }
 
     return success;
 }
-bool mount_current_partition() noexcept { return true; }
+
+// This subfunction allows for special mounting options to be applied for relevant fs's.
+// Seperate subfunction for neatness.
+void mount_opts() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& file_sys      = std::get<std::string>(config_data["FILESYSTEM"]);
+    const auto& fs_opts       = std::get<std::vector<std::string>>(config_data["fs_opts"]);
+    const auto& partition     = std::get<std::string>(config_data["PARTITION"]);
+    const auto& format_name   = utils::exec(fmt::format("echo {} | rev | cut -d/ -f1 | rev", partition));
+    const auto& format_device = utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}", format_name, "awk \'/disk/ {print $1}\'"));
+
+    const auto& rotational_queue = (utils::exec(fmt::format("cat /sys/block/{}/queue/rotational", format_device)) == "1");
+
+    std::unique_ptr<bool[]> fs_opts_state{new bool[fs_opts.size()]{false}};
+    for (size_t i = 0; i < fs_opts.size(); ++i) {
+        const auto& fs_opt = fs_opts[i];
+        auto& fs_opt_state = fs_opts_state[i];
+        if (rotational_queue) {
+            fs_opt_state = ((fs_opt == "autodefrag")
+                || (fs_opt == "compress=zlip")
+                || (fs_opt == "nossd"));
+        } else {
+            fs_opt_state = ((fs_opt == "compress=lzo")
+                || (fs_opt == "space_cache")
+                || (fs_opt == "commit=120")
+                || (fs_opt == "ssd"));
+        }
+
+        /* clang-format off */
+        if (!fs_opt_state) { fs_opt_state = (fs_opt == "noatime"); }
+        /* clang-format on */
+    }
+
+    auto flags = Container::Vertical(detail::from_vector_checklist(fs_opts, fs_opts_state.get()));
+
+    auto screen  = ScreenInteractive::Fullscreen();
+    auto content = Renderer(flags, [&] {
+        return flags->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
+    });
+
+    auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+    auto ok_callback      = [&] {
+        mount_opts_info = detail::from_checklist_string(fs_opts, fs_opts_state.get());
+        std::raise(SIGINT);
+    };
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    std::string mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n";
+    auto global                    = Container::Vertical({
+        Renderer([&] { return detail::multiline_text(utils::make_multiline(mount_options_body)); }),
+        Renderer([] { return separator(); }),
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        const auto& file_sys_formated = utils::exec(fmt::format("echo {} | sed \"s/.*\\.//g;s/-.*//g\"", file_sys));
+        const auto& title             = fmt::format("New CLI Installer | {}", file_sys_formated);
+        return detail::centered_interative_multi(title, global);
+    });
+
+    screen.Loop(renderer);
+
+    // Now clean up the file
+    mount_opts_info = utils::exec(fmt::format("echo \"{}\" | sed \'s/ /,/g\'", mount_opts_info));
+    mount_opts_info = utils::exec(fmt::format("echo \"{}\" | sed \'$s/,$//\'", mount_opts_info));
+
+    // If mount options selected, confirm choice
+    if (!mount_opts_info.empty()) {
+        auto confirm_text    = Container::Vertical({
+            Renderer([] { return paragraphAlignLeft("Confirm the following mount options:"); }),
+            Renderer([&] { return text(mount_opts_info) | dim; }),
+        });
+        const auto& do_mount = detail::yesno_widget(confirm_text, size(HEIGHT, LESS_THAN, 10) | size(WIDTH, LESS_THAN, 75));
+        /* clang-format off */
+        if (!do_mount) { mount_opts_info = ""; }
+        /* clang-format on */
+    }
+}
+
+bool mount_current_partition() noexcept {
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& mount_dev  = std::get<std::string>(config_data["MOUNT"]);
+
+#ifdef NDEVENV
+    // Make the mount directory
+    fs::path mount_dir(fmt::format("{}{}", mountpoint, mount_dev));
+    fs::create_directories(mount_dir);
+#endif
+
+    config_data["MOUNT_OPTS"] = "";
+    /* clang-format off */
+    // Get mounting options for appropriate filesystems
+    const auto& fs_opts = std::get<std::vector<std::string>>(config_data["fs_opts"]);
+    if (!fs_opts.empty()) { mount_opts(); }
+    /* clang-format on */
+
+    // TODO: use libmount instead.
+    // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
+#ifdef NDEVENV
+    const auto& partition       = std::get<std::string>(config_data["PARTITION"]);
+    const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+    if (!mount_opts_info.empty()) {
+        // check_for_error "mount ${PARTITION} $(cat ${MOUNT_OPTS})"
+        const auto& mount_status = utils::exec(fmt::format("mount -o {} {} {}{}", mount_opts_info, partition, mountpoint, mount_dev));
+        spdlog::info("{}", mount_status);
+    } else {
+        // check_for_error "mount ${PARTITION}"
+        const auto& mount_status = utils::exec(fmt::format("mount {} {}{}", partition, mountpoint, mount_dev));
+        spdlog::info("{}", mount_status);
+    }
+#endif
+    confirm_mount(fmt::format("{}{}", mountpoint, mount_dev));
+    /*
+    // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)
+    if [[ $(lsblk -lno TYPE ${PARTITION} | grep "crypt") != "" ]]; then
+        // cryptname for bootloader configuration either way
+        LUKS=1
+        LUKS_NAME=$(echo ${PARTITION} | sed "s~^/dev/mapper/~~g")
+
+        # Check if LUKS on LVM (parent = lvm /dev/mapper/...)
+        cryptparts=$(lsblk -lno NAME,FSTYPE,TYPE | grep "lvm" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')
+        for i in ${cryptparts}; do
+            if [[ $(lsblk -lno NAME ${i} | grep $LUKS_NAME) != "" ]]; then
+                LUKS_DEV="$LUKS_DEV cryptdevice=${i}:$LUKS_NAME"
+                LVM=1
+                return 0;
+            fi
+        done
+
+        // Check if LVM on LUKS
+        cryptparts=$(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')
+        for i in ${cryptparts}; do
+            if [[ $(lsblk -lno NAME ${i} | grep $LUKS_NAME) != "" ]]; then
+                LUKS_DEV="$LUKS_DEV cryptdevice=${i}:$LUKS_NAME"
+                LVM=1
+                return 0;
+            fi
+        done
+
+        // Check if LUKS alone (parent = part /dev/...)
+        cryptparts=$(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')
+        for i in ${cryptparts}; do
+            if [[ $(lsblk -lno NAME ${i} | grep $LUKS_NAME) != "" ]]; then
+                LUKS_UUID=$(lsblk -lno UUID,TYPE,FSTYPE ${i} | grep "part" | grep -i "crypto_luks" | awk '{print $1}')
+                LUKS_DEV="$LUKS_DEV cryptdevice=UUID=$LUKS_UUID:$LUKS_NAME"
+                return 0;
+            fi
+        done
+
+        // If LVM logical volume....
+    elif [[ $(lsblk -lno TYPE ${PARTITION} | grep "lvm") != "" ]]; then
+        LVM=1
+
+        // First get crypt name (code above would get lv name)
+        cryptparts=$(lsblk -lno NAME,TYPE,FSTYPE | grep "crypt" | grep -i "lvm2_member" | uniq | awk '{print "/dev/mapper/"$1}')
+        for i in ${cryptparts}; do
+            if [[ $(lsblk -lno NAME ${i} | grep $(echo $PARTITION | sed "s~^/dev/mapper/~~g")) != "" ]]; then
+                LUKS_NAME=$(echo ${i} | sed s~/dev/mapper/~~g)
+                return 0;
+            fi
+        done
+
+        // Now get the device (/dev/...) for the crypt name
+        cryptparts=$(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')
+        for i in ${cryptparts}; do
+            if [[ $(lsblk -lno NAME ${i} | grep $LUKS_NAME) != "" ]]; then
+                # Create UUID for comparison
+                LUKS_UUID=$(lsblk -lno UUID,TYPE,FSTYPE ${i} | grep "part" | grep -i "crypto_luks" | awk '{print $1}')
+
+                # Check if not already added as a LUKS DEVICE (i.e. multiple LVs on one crypt). If not, add.
+                if [[ $(echo $LUKS_DEV | grep $LUKS_UUID) == "" ]]; then
+                    LUKS_DEV="$LUKS_DEV cryptdevice=UUID=$LUKS_UUID:$LUKS_NAME"
+                    LUKS=1
+                fi
+
+                return 0;
+            fi
+        done
+    fi*/
+    return true;
+}
+
+void make_swap() noexcept { }
 
 void mount_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     // Warn users that they CAN mount partitions without formatting them!
     static constexpr std::string_view content = "\nIMPORTANT: Partitions can be mounted without formatting them\nby selecting the 'Do not format' option listed at the top of\nthe file system menu.\n\nEnsure the correct choices for mounting and formatting\nare made as no warnings will be provided, with the exception of\nthe UEFI boot partition.\n";
-    msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
+    detail::msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
 
     // LVM Detection. If detected, activate.
     // lvm_detect
@@ -381,7 +492,7 @@ void mount_partitions() noexcept {
                 success                  = true;
                 std::raise(SIGINT);
             };
-            menu_widget(partitions, ok_callback, &selected);
+            detail::menu_widget(partitions, ok_callback, &selected);
             if (!success)
                 return;
         }
@@ -424,7 +535,7 @@ void mount_partitions() noexcept {
     // done
 
     // Identify and create swap, if applicable
-    // tui::make_swap();
+    make_swap();
 
     // Now that swap is done we put the legacy partitions back, unless they are already mounted
     /*for i in $(zfs_list_datasets "legacy"); do
@@ -522,7 +633,7 @@ void create_partitions() noexcept {
     };
 
     ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -535,7 +646,7 @@ void create_partitions() noexcept {
     });
 
     auto renderer = Renderer(global, [&] {
-        return tui::centered_interative_multi("New CLI Installer", global);
+        return detail::centered_interative_multi("New CLI Installer", global);
     });
 
     screen.Loop(renderer);
@@ -607,7 +718,7 @@ void prep_menu() noexcept {
     };
 
     ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -620,7 +731,7 @@ void prep_menu() noexcept {
     });
 
     auto renderer = Renderer(global, [&] {
-        return tui::centered_interative_multi("New CLI Installer", global);
+        return detail::centered_interative_multi("New CLI Installer", global);
     });
 
     screen.Loop(renderer);
@@ -665,7 +776,10 @@ void init() noexcept {
             break;
         }
         case 3: {
-            utils::check_mount();
+            if (!utils::check_mount()) {
+                screen.ExitLoopClosure();
+                std::raise(SIGINT);
+            }
             tui::install_custom_menu();
             break;
         }
@@ -680,7 +794,7 @@ void init() noexcept {
     };
 
     ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -693,9 +807,10 @@ void init() noexcept {
     });
 
     auto renderer = Renderer(global, [&] {
-        return tui::centered_interative_multi("New CLI Installer", global);
+        return detail::centered_interative_multi("New CLI Installer", global);
     });
 
     screen.Loop(renderer);
 }
+
 }  // namespace tui

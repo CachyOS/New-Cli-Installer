@@ -6,6 +6,12 @@
 build
 cmake-build-release
 cmake-build-debug
+subprojects/cpr
+subprojects/fmt
+subprojects/ftxui
+subprojects/nlohmann_json-*
+subprojects/spdlog-*
+subprojects/packagecache
 
 # Prerequisites
 *.d

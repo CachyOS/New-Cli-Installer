@@ -14,10 +14,12 @@ void print_banner() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;
 [[nodiscard]] auto make_multiline(std::string& str, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::vector<std::string>;
+[[nodiscard]] auto make_multiline(std::vector<std::string>& multiline, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::string;
 void secure_wipe() noexcept;
-bool check_mount() noexcept;
-std::string list_mounted() noexcept;
-std::string list_containing_crypt() noexcept;
+[[nodiscard]] bool check_mount() noexcept;
+[[nodiscard]] std::string list_mounted() noexcept;
+[[nodiscard]] std::string list_containing_crypt() noexcept;
+[[nodiscard]] std::string list_non_crypt() noexcept;
 void umount_partitions() noexcept;
 void find_partitions() noexcept;
 

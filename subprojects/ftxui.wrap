@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/arthursonzogni/ftxui.git
-revision = cecd54df42dd66fdf8386ed461e16b725bffc827
+revision = 602392c43d8bc2272c6548ae75b8802ab7ad0b2a
 
 patch_directory = ftxui
 
