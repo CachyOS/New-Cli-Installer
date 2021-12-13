@@ -13,7 +13,7 @@ void print_banner() noexcept;
 [[nodiscard]] bool is_connected() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;
-[[nodiscard]] auto make_multiline(std::string& str, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::vector<std::string>;
+[[nodiscard]] auto make_multiline(const std::string_view& str, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::vector<std::string>;
 [[nodiscard]] auto make_multiline(std::vector<std::string>& multiline, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::string;
 void secure_wipe() noexcept;
 [[nodiscard]] bool check_mount() noexcept;

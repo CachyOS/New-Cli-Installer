@@ -12,10 +12,15 @@ bool Config::initialize() noexcept {
     }
     s_config = std::make_unique<Config>();
     if (s_config) {
-        s_config->m_data["H_INIT"]     = "openrc";
-        s_config->m_data["SYSTEM"]     = "BIOS";
-        s_config->m_data["KEYMAP"]     = "us";
-        s_config->m_data["XKBMAP"]     = "us";
+        s_config->m_data["H_INIT"] = "openrc";
+        s_config->m_data["SYSTEM"] = "BIOS";
+        s_config->m_data["KEYMAP"] = "us";
+        s_config->m_data["XKBMAP"] = "us";
+
+        // file systems
+        s_config->m_data["LVM_SEP_BOOT"] = 0;
+
+        // Mounting
         s_config->m_data["MOUNTPOINT"] = "/mnt";
     }
 

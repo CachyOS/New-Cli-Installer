@@ -32,18 +32,21 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
         return false;
     }
 #endif
-    // auto* config_instance = Config::instance();
-    // auto& config_data     = config_instance->data();
-    // const auto& partition = std::get<std::string>(config_data["PARTITION"]);
-    // auto& partitions      = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+    auto* config_instance   = Config::instance();
+    auto& config_data       = config_instance->data();
+    const auto& partition   = std::get<std::string>(config_data["PARTITION"]);
+    auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+    auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
 
     detail::infobox_widget("\nMount Successful!\n");
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
-    // const auto& temp = utils::exec(fmt::format("echo {0} | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed s~{1}$\' -\'~~", partitions, partition));
-    // spdlog::info("human-info-about-partitions: {}", temp);
-    //  PARTITIONS=$()
-    //  NUMBER_PARTITIONS=$(( NUMBER_PARTITIONS - 1 ))
+    // TODO: reimplement natively
+    const auto& str      = utils::make_multiline(partitions);
+    const auto& cmd      = fmt::format("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed \"s~{1}$\' -\'~~\"", str, partition);
+    const auto& res_text = utils::exec(cmd);
+    partitions           = utils::make_multiline(res_text);
+    number_partitions -= 1;
     return true;
 }
 
@@ -475,7 +478,7 @@ void mount_partitions() noexcept {
     // check to see if we already have a zfs root mounted
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     if (utils::exec(fmt::format("findmnt -ln -o FSTYPE \"{}\"", mountpoint_info)) == "zfs") {
-        // DIALOG " $_PrepMntPart " --infobox "\n$_zfsFoundRoot\n " 0 0
+        detail::infobox_widget("\nUsing ZFS root on \'/\'\n");
         std::this_thread::sleep_for(std::chrono::seconds(3));
     } else {
         // Identify and mount root
@@ -549,45 +552,58 @@ void mount_partitions() noexcept {
     done*/
 
     // All other partitions
-    /*while [[ $NUMBER_PARTITIONS > 0 ]]; do
-        DIALOG " $_PrepMntPart " --menu "\n$_ExtPartBody\n " 0 0 12 "$_Done" $"-" ${PARTITIONS} 2>${ANSWER} || return 0
-        PARTITION=$(cat ${ANSWER})
+    const auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
+    const auto& system_info       = std::get<std::string>(config_data["SYSTEM"]);
+    while (number_partitions > 0) {
+        // DIALOG " $_PrepMntPart " --menu "\n$_ExtPartBody\n " 0 0 12 "$_Done" $"-" ${PARTITIONS} 2>${ANSWER} || return 0
+        // PARTITION=$(cat ${ANSWER})
 
-        if [[ $PARTITION == $_Done ]]; then
-                make_esp
-                get_cryptroot
-                get_cryptboot
-                echo "$LUKS_DEV" > /tmp/.luks_dev
-                return 0;
-        else
-            MOUNT=""
-            select_filesystem
+        // if [[ $PARTITION == $_Done ]]; then
+        //         make_esp
+        //         get_cryptroot
+        //         get_cryptboot
+        //         echo "$LUKS_DEV" > /tmp/.luks_dev
+        //         return 0;
+        // else
+        config_data["MOUNT"] = "";
+        tui::select_filesystem();
 
-            # Ask user for mountpoint. Don't give /boot as an example for UEFI systems!
-            [[ $SYSTEM == "UEFI" ]] && MNT_EXAMPLES="/home\n/var" || MNT_EXAMPLES="/boot\n/home\n/var"
+        /* clang-format off */
+        // Ask user for mountpoint. Don't give /boot as an example for UEFI systems!
+        std::string_view mnt_examples = "/boot\n/home\n/var";
+        if (system_info == "UEFI") { mnt_examples = "/home\n/var"; }
+        /* clang-format on */
+        // DIALOG " $_PrepMntPart $PARTITION " --inputbox "\n$_ExtPartBody1$MNT_EXAMPLES\n " 0 0 "/" 2>${ANSWER} || return 0
+        // MOUNT=$(cat ${ANSWER})
+        auto& mount_dev = std::get<std::string>(config_data["MOUNT"]);
+
+        // loop while the mountpoint specified is incorrect (is only '/', is blank, or has spaces).
+        /*while [[ ${MOUNT:0:1} != "/" ]] || [[ ${#MOUNT} -le 1 ]] || [[ $MOUNT =~ \ |\' ]]; do
+            // Warn user about naming convention
+            DIALOG " $_ErrTitle " --msgbox "\n$_ExtErrBody\n " 0 0
+            // Ask user for mountpoint again
             DIALOG " $_PrepMntPart $PARTITON " --inputbox "\n$_ExtPartBody1$MNT_EXAMPLES\n " 0 0 "/" 2>${ANSWER} || return 0
             MOUNT=$(cat ${ANSWER})
+        done*/
 
-            # loop while the mountpoint specified is incorrect (is only '/', is blank, or has spaces).
-            while [[ ${MOUNT:0:1} != "/" ]] || [[ ${#MOUNT} -le 1 ]] || [[ $MOUNT =~ \ |\' ]]; do
-                # Warn user about naming convention
-                DIALOG " $_ErrTitle " --msgbox "\n$_ExtErrBody\n " 0 0
-                # Ask user for mountpoint again
-                DIALOG " $_PrepMntPart $PARTITON " --inputbox "\n$_ExtPartBody1$MNT_EXAMPLES\n " 0 0 "/" 2>${ANSWER} || return 0
-                MOUNT=$(cat ${ANSWER})
-            done
+        // Create directory and mount.
+        tui::mount_current_partition();
+        // delete_partition_in_list "$PARTITION"
 
-            # Create directory and mount.
-            mount_current_partition
-            delete_partition_in_list "$PARTITION"
-
-            # Determine if a seperate /boot is used. 0 = no seperate boot, 1 = seperate non-lvm boot,
-            # 2 = seperate lvm boot. For Grub configuration
-            if  [[ $MOUNT == "/boot" ]]; then
-                [[ $(lsblk -lno TYPE ${PARTITION} | grep "lvm") != "" ]] && LVM_SEP_BOOT=2 || LVM_SEP_BOOT=1
-            fi
-        fi
-    done*/
+        // Determine if a seperate /boot is used.
+        // 0 = no seperate boot,
+        // 1 = seperate non-lvm boot,
+        // 2 = seperate lvm boot. For Grub configuration
+        if (mount_dev == "/boot") {
+            const auto& cmd             = fmt::format("lsblk -lno TYPE {} | grep \"lvm\"", std::get<std::string>(config_data["PARTITION"]));
+            const auto& cmd_out         = utils::exec(cmd);
+            config_data["LVM_SEP_BOOT"] = 1;
+            if (!cmd_out.empty()) {
+                config_data["LVM_SEP_BOOT"] = 2;
+            }
+        }
+        //}
+    }
 }
 
 void create_partitions() noexcept {

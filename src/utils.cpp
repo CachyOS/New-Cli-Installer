@@ -127,16 +127,18 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     return false;
 }
 
-auto make_multiline(std::string& str, bool reverse, const std::string_view&& delim) noexcept -> std::vector<std::string> {
+auto make_multiline(const std::string_view& str, bool reverse, const std::string_view&& delim) noexcept -> std::vector<std::string> {
+    static constexpr auto functor = [](auto&& rng) {
+        return std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
+    };
+    static constexpr auto second = [](auto&& rng) { return rng != ""; };
+
     const auto& view = str
         | std::views::split(delim)
-        | std::views::transform([](auto&& rng) {
-              const auto& tmp = std::string(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
-              return tmp;
-          });
+        | std::views::transform(functor);
 
     std::vector<std::string> lines{};
-    std::ranges::copy(view, std::back_inserter(lines));
+    std::ranges::for_each(view | std::views::filter(second), [&](auto&& rng) { lines.emplace_back(rng); });
     if (reverse) {
         std::ranges::reverse(lines);
     }
@@ -152,7 +154,7 @@ auto make_multiline(std::vector<std::string>& multiline, bool reverse, const std
     }
 
     if (reverse) {
-        std::ranges::reverse(res.begin(), res.end());
+        std::ranges::reverse(res);
     }
 
     return res;
