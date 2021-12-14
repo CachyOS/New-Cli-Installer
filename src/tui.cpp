@@ -9,6 +9,7 @@
 #include <algorithm>                               // for transform
 #include <filesystem>                              // for exists, is_directory
 #include <memory>                                  // for __shared_ptr_access
+#include <regex>                                   // for regex_search, match_results<>::_Base_type
 #include <string>                                  // for basic_string
 #include <ftxui/component/captured_mouse.hpp>      // for ftxui
 #include <ftxui/component/component.hpp>           // for Renderer, Button
@@ -432,7 +433,101 @@ bool mount_current_partition() noexcept {
     return true;
 }
 
-void make_swap() noexcept { }
+void make_swap() noexcept {
+    static constexpr auto SelSwpNone = "None";
+    static constexpr auto SelSwpFile = "Swapfile";
+
+    auto* config_instance       = Config::instance();
+    auto& config_data           = config_instance->data();
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    {
+        std::vector<std::string> temp{"None -"};
+        const auto& root_filesystem = utils::exec(fmt::format("findmnt -ln -o FSTYPE \"{}\"", mountpoint_info));
+        if (!(root_filesystem == "zfs" || root_filesystem == "btrfs")) {
+            temp.push_back("Swapfile -");
+        }
+        const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+        temp.reserve(partitions.size());
+        std::ranges::copy(partitions, std::back_inserter(temp));
+
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            auto src              = temp[static_cast<std::size_t>(selected)];
+            const auto& lines     = utils::make_multiline(src, false, " ");
+            config_data["ANSWER"] = lines[0];
+            success               = true;
+            std::raise(SIGINT);
+        };
+        /* clang-format off */
+        detail::menu_widget(temp, ok_callback, &selected);
+        if (!success) { return; }
+        /* clang-format on */
+    }
+
+    const auto& answer = std::get<std::string>(config_data["ANSWER"]);
+    auto& partition    = std::get<std::string>(config_data["PARTITION"]);
+    /* clang-format off */
+    if (answer == SelSwpNone) { return; }
+    partition = answer;
+    /* clang-format on */
+
+    if (partition == SelSwpFile) {
+        const auto& total_memory = utils::exec("grep MemTotal /proc/meminfo | awk \'{print $2/1024}\' | sed \'s/\\..*//\'");
+        std::string value{fmt::format("{}M", total_memory)};
+        if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+            return;
+        }
+
+        while (utils::exec(fmt::format("echo \"{}\" | grep \"M\\|G\"", value)) == "") {
+            detail::msgbox_widget(fmt::format("\n{} Error: M = MB, G = GB\n", SelSwpFile));
+            value = fmt::format("{}M", total_memory);
+            if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+                return;
+            }
+        }
+
+#ifdef NDEVENV
+        const auto& swapfile_path = fmt::format("{}/swapfile", mountpoint_info);
+        utils::exec(fmt::format("fallocate -l {} {}", value, swapfile_path));
+        utils::exec(fmt::format("chmod 600 {}", swapfile_path));
+        utils::exec(fmt::format("mkswap {}", swapfile_path));
+        utils::exec(fmt::format("swapon {}", swapfile_path));
+#endif
+        return;
+    }
+
+    auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+    auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
+
+    // Warn user if creating a new swap
+    const auto& swap_part = utils::exec(fmt::format("lsblk -o FSTYPE \"{}\" | grep -i \"swap\"", partition));
+    if (swap_part != "swap") {
+        const auto& do_swap = detail::yesno_widget(fmt::format("\nmkswap {}\n", partition), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        /* clang-format off */
+        if (!do_swap) { return; }
+        /* clang-format on */
+
+#ifdef NDEVENV
+        utils::exec(fmt::format("mkswap {} >/dev/null", partition));
+#endif
+        spdlog::info("mkswap.{}", partition);
+    }
+
+#ifdef NDEVENV
+    // Whether existing to newly created, activate swap
+    utils::exec(fmt::format("swapon {} >/dev/null", partition));
+#endif
+
+    // TODO: reimplement natively
+    // Since a partition was used, remove that partition from the list
+    const auto& str      = utils::make_multiline(partitions);
+    const auto& cmd      = fmt::format("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed \"s~{1}$\' -\'~~\"", str, partition);
+    const auto& res_text = utils::exec(cmd);
+    partitions           = utils::make_multiline(res_text);
+    number_partitions -= 1;
+}
 
 void mount_partitions() noexcept {
     auto* config_instance = Config::instance();
@@ -554,17 +649,35 @@ void mount_partitions() noexcept {
     // All other partitions
     const auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
     const auto& system_info       = std::get<std::string>(config_data["SYSTEM"]);
+    const auto& partition         = std::get<std::string>(config_data["PARTITION"]);
     while (number_partitions > 0) {
-        // DIALOG " $_PrepMntPart " --menu "\n$_ExtPartBody\n " 0 0 12 "$_Done" $"-" ${PARTITIONS} 2>${ANSWER} || return 0
-        // PARTITION=$(cat ${ANSWER})
+        {
+            std::int32_t selected{};
+            bool success{};
+            const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+            std::vector<std::string> temp{"Done -"};
+            temp.reserve(partitions.size());
+            std::ranges::copy(partitions, std::back_inserter(temp));
 
-        // if [[ $PARTITION == $_Done ]]; then
-        //         make_esp
-        //         get_cryptroot
-        //         get_cryptboot
-        //         echo "$LUKS_DEV" > /tmp/.luks_dev
-        //         return 0;
-        // else
+            auto ok_callback = [&] {
+                auto src                 = temp[static_cast<std::size_t>(selected)];
+                const auto& lines        = utils::make_multiline(src, false, " ");
+                config_data["PARTITION"] = lines[0];
+                success                  = true;
+                std::raise(SIGINT);
+            };
+            /* clang-format off */
+            detail::menu_widget(temp, ok_callback, &selected);
+            if (!success) { return; }
+            /* clang-format on */
+        }
+
+        if (partition == "Done") {
+            // make_esp();
+            // get_cryptroot();
+            // get_cryptboot();
+            return;
+        }
         config_data["MOUNT"] = "";
         tui::select_filesystem();
 
@@ -572,23 +685,28 @@ void mount_partitions() noexcept {
         // Ask user for mountpoint. Don't give /boot as an example for UEFI systems!
         std::string_view mnt_examples = "/boot\n/home\n/var";
         if (system_info == "UEFI") { mnt_examples = "/home\n/var"; }
+
+        std::string value{"/"};
+        static constexpr auto ExtPartBody1 = "Specify partition mountpoint. Ensure\nthe name begins with a forward slash (/).\nExamples include:";
+        if (!detail::inputbox_widget(value, fmt::format("\n{}\n{}\n", ExtPartBody1, mnt_examples))) { return; }
         /* clang-format on */
-        // DIALOG " $_PrepMntPart $PARTITION " --inputbox "\n$_ExtPartBody1$MNT_EXAMPLES\n " 0 0 "/" 2>${ANSWER} || return 0
-        // MOUNT=$(cat ${ANSWER})
         auto& mount_dev = std::get<std::string>(config_data["MOUNT"]);
+        mount_dev       = std::move(value);
 
+        spdlog::info("\nmount_dev: {}\nexpression: {}\n", mount_dev, ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || std::regex_match(mount_dev, std::regex{"\\s+|\\'"})));
         // loop while the mountpoint specified is incorrect (is only '/', is blank, or has spaces).
-        /*while [[ ${MOUNT:0:1} != "/" ]] || [[ ${#MOUNT} -le 1 ]] || [[ $MOUNT =~ \ |\' ]]; do
+        while ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || std::regex_match(mount_dev, std::regex{"\\s+|\\'"})) {
             // Warn user about naming convention
-            DIALOG " $_ErrTitle " --msgbox "\n$_ExtErrBody\n " 0 0
+            detail::msgbox_widget("\nPartition cannot be mounted due to a problem with the mountpoint name.\nA name must be given after a forward slash.\n");
             // Ask user for mountpoint again
-            DIALOG " $_PrepMntPart $PARTITON " --inputbox "\n$_ExtPartBody1$MNT_EXAMPLES\n " 0 0 "/" 2>${ANSWER} || return 0
-            MOUNT=$(cat ${ANSWER})
-        done*/
-
+            value = "/";
+            if (!detail::inputbox_widget(value, fmt::format("\n{}\n{}\n", ExtPartBody1, mnt_examples))) {
+                return;
+            }
+            mount_dev = std::move(value);
+        }
         // Create directory and mount.
         tui::mount_current_partition();
-        // delete_partition_in_list "$PARTITION"
 
         // Determine if a seperate /boot is used.
         // 0 = no seperate boot,
@@ -602,7 +720,6 @@ void mount_partitions() noexcept {
                 config_data["LVM_SEP_BOOT"] = 2;
             }
         }
-        //}
     }
 }
 

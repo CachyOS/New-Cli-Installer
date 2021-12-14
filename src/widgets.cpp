@@ -144,6 +144,42 @@ void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept 
     screen.Loop(renderer);
 }
 
+bool inputbox_widget(std::string& value, const std::string_view& content, Decorator boxsize) noexcept {
+    auto screen = ScreenInteractive::Fullscreen();
+    bool success{};
+    auto ok_callback = [&] {
+        success = true;
+        std::raise(SIGINT);
+    };
+    InputOption input_option{.on_enter = ok_callback};
+    auto input_value       = Input(&value, "", input_option);
+    auto content_container = Renderer([&] {
+        return multiline_text(utils::make_multiline(content)) | hcenter | boxsize;
+    });
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    auto global = Container::Vertical({
+        content_container,
+        Renderer([] { return separator(); }),
+        input_value,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        return centered_interative_multi("New CLI Installer", global);
+    });
+
+    screen.Loop(renderer);
+    return success;
+}
+
 void infobox_widget(const std::string_view& content, Decorator boxsize) noexcept {
     auto screen = Screen::Create(
         Dimension::Full(),  // Width
@@ -180,7 +216,6 @@ bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
     });
 
     screen.Loop(renderer);
-
     return success;
 }
 
@@ -214,7 +249,6 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
     });
 
     screen.Loop(renderer);
-
     return success;
 }
 

@@ -37,7 +37,7 @@ pkg_check_modules(
 
 FetchContent_Declare(ftxui
   GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
-  GIT_TAG "602392c43d8bc2272c6548ae75b8802ab7ad0b2a"
+  GIT_TAG "7e5cd23b4c47972b70b99c39617d6e38f05d1b3a"
 )
 FetchContent_MakeAvailable(ftxui)
 

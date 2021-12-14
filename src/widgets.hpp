@@ -18,6 +18,7 @@ namespace detail {
     auto from_checklist_string(const std::vector<std::string>& opts, bool* opts_state) noexcept -> std::string;
     auto from_checklist_vector(const std::vector<std::string>& opts, bool* opts_state) noexcept -> std::vector<std::string>;
     void msgbox_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
+    bool inputbox_widget(std::string& value, const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     void infobox_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     bool yesno_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     bool yesno_widget(ftxui::Component& container, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
