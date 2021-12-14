@@ -157,7 +157,6 @@ bool select_filesystem() noexcept {
     auto& config_data     = config_instance->data();
     // prep variables
     config_data["fs_opts"] = std::vector<std::string>{};
-    config_data["CHK_NUM"] = 0;
 
     std::vector<std::string> menu_entries = {
         "Do not format -",
@@ -693,7 +692,6 @@ void mount_partitions() noexcept {
         auto& mount_dev = std::get<std::string>(config_data["MOUNT"]);
         mount_dev       = std::move(value);
 
-        spdlog::info("\nmount_dev: {}\nexpression: {}\n", mount_dev, ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || std::regex_match(mount_dev, std::regex{"\\s+|\\'"})));
         // loop while the mountpoint specified is incorrect (is only '/', is blank, or has spaces).
         while ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || std::regex_match(mount_dev, std::regex{"\\s+|\\'"})) {
             // Warn user about naming convention
