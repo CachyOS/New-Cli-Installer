@@ -528,6 +528,20 @@ void make_swap() noexcept {
     number_partitions -= 1;
 }
 
+void lvm_detect() noexcept {
+    const auto& lvm_pv = utils::exec("pvs -o pv_name --noheading 2>/dev/null");
+    const auto& lvm_vg = utils::exec("vgs -o vg_name --noheading 2>/dev/null");
+    const auto& lvm_lv = utils::exec("lvs -o vg_name,lv_name --noheading --separator - 2>/dev/null");
+
+    if ((lvm_lv != "") && (lvm_vg != "") && (lvm_pv != "")) {
+        detail::infobox_widget("\nExisting Logical Volume Management (LVM) detected.\nActivating. Please Wait...\n");
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        utils::exec("modprobe dm-mod");
+        utils::exec("vgscan >/dev/null 2>&1");
+        utils::exec("vgchange -ay >/dev/null 2>&1");
+    }
+}
+
 void mount_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -536,7 +550,7 @@ void mount_partitions() noexcept {
     detail::msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
 
     // LVM Detection. If detected, activate.
-    // lvm_detect
+    lvm_detect();
 
     // Ensure partitions are unmounted (i.e. where mounted previously)
     config_data["INCLUDE_PART"] = "\'part\\|lvm\\|crypt\'";
@@ -604,23 +618,30 @@ void mount_partitions() noexcept {
         if (!tui::mount_current_partition())
             return;
 
-        // delete_partition_in_list "${ROOT_PART}"
-
         // Extra check if root is on LUKS or lvm
         // get_cryptroot
         // echo "$LUKS_DEV" > /tmp/.luks_dev
         // If the root partition is btrfs, offer to create subvolumus
         if (utils::exec(fmt::format("findmnt -no FSTYPE \"{}\"", mountpoint_info)) == "btrfs") {
             // Check if there are subvolumes already on the btrfs partition
-            const auto& subvolumes  = utils::exec(fmt::format("btrfs subvolume list \"{}\" | wc -l", mountpoint_info));
-            const auto& lines_count = utils::to_int(subvolumes.data());
+            const auto& subvolumes       = fmt::format("btrfs subvolume list \"{}\"", mountpoint_info);
+            const auto& subvolumes_count = utils::exec(fmt::format("{} | wc -l", subvolumes));
+            const auto& lines_count      = utils::to_int(subvolumes_count.data());
             if (lines_count > 1) {
-                // DIALOG " The volume has already subvolumes " --yesno "\nFound subvolumes $(btrfs subvolume list ${MOUNTPOUNT} | cut -d" " -f9)\n\nWould you like to mount them? \n " 0 0;
-                //  Pre-existing subvolumes and user wants to mount them
+                const auto& subvolumes_formated = utils::exec(fmt::format("{} | cut -d\" \" -f9", subvolumes));
+                const auto& existing_subvolumes = detail::yesno_widget(fmt::format("\nFound subvolumes {}\n\nWould you like to mount them? \n", subvolumes_formated), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+                // Pre-existing subvolumes and user wants to mount them
+                if (existing_subvolumes) {
+                    spdlog::debug("Implement me!");
+                }
                 // mount_existing_subvols
             } else {
                 // No subvolumes present. Make some new ones
-                // DIALOG " Your root volume is formatted in btrfs " --yesno "\nWould you like to create subvolumes in it? \n " 0 0 && btrfs_subvolumes
+                const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+                if (create_subvolumes) {
+                    spdlog::debug("Implement me!");
+                }
+                // DIALOG " Your root volume is formatted in btrfs " --yesno "" 0 0 && btrfs_subvolumes
             }
         }
     }
@@ -786,7 +807,54 @@ void create_partitions() noexcept {
 void install_desktop_system_menu() { }
 void install_core_menu() { }
 void install_custom_menu() { }
-void system_rescue_menu() { }
+void system_rescue_menu() {
+    std::vector<std::string> menu_entries = {
+        "Install Hardware Drivers",
+        "Install Bootloader",
+        "Enter the (exact) names of packages to be installed, seperated by spaces.\n\nFor example, to install Firefox, VLC, and HTop: firefox vlc htop",
+        "Remove Packages",
+        "Review Configuration Files",
+        "Chroot into Installation",
+        "Data Recovery",
+        "View System Logs",
+        "Back",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto menu    = Menu(&menu_entries, &selected);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 24) | size(WIDTH, GREATER_THAN, 60);
+    });
+
+    auto ok_callback = [&] {
+        switch (selected) {
+        default:
+            screen.ExitLoopClosure();
+            std::raise(SIGINT);
+            break;
+        }
+    };
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    auto global = Container::Vertical({
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        return detail::centered_interative_multi("New CLI Installer", global);
+    });
+
+    screen.Loop(renderer);
+}
 
 void prep_menu() noexcept {
     std::vector<std::string> menu_entries = {
