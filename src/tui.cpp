@@ -61,8 +61,8 @@ void set_fsck_hook() noexcept {
 
 void install_cust_pkgs() noexcept {
     std::string packages{};
-    static constexpr auto content = "\nType any extra packages you would like to add, separated by spaces.\n\nFor example, to install Firefox, MPV, FZF: firefox mpv fzf\n";
-    if (!detail::inputbox_widget(packages, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+    static constexpr auto content = "\nType any extra packages you would like to add, separated by spaces.\n\nFor example, to install Firefox, MPV, FZF:\nfirefox mpv fzf\n";
+    if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
     // If at least one package, install.
@@ -86,8 +86,8 @@ void install_cust_pkgs() noexcept {
 
 void rm_pgs() noexcept {
     std::string packages{};
-    static constexpr auto content = "\nType any packages you would like to remove, separated by spaces.\n";
-    if (!detail::inputbox_widget(packages, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+    static constexpr auto content = "\nType any packages you would like to remove, separated by spaces.\n\nFor example, to remove Firefox, MPV, FZF:\nfirefox mpv fzf\n";
+    if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
     /* clang-format off */
@@ -645,7 +645,7 @@ void make_esp() noexcept {
             "/boot/efi",
             "/boot",
         };
-        std::int32_t selected{1};
+        std::int32_t selected{};
         auto component = Container::Vertical({
             Radiobox(&radiobox_list, &selected),
         });
@@ -810,7 +810,7 @@ void mount_partitions() noexcept {
     // done
 
     // Identify and create swap, if applicable
-    make_swap();
+    tui::make_swap();
 
     // Now that swap is done we put the legacy partitions back, unless they are already mounted
     /*for i in $(zfs_list_datasets "legacy"); do
@@ -986,14 +986,14 @@ void system_rescue_menu() {
 
     auto ok_callback = [&] {
         switch (selected) {
-        case 3:
+        case 2:
             if (!utils::check_mount()) {
                 screen.ExitLoopClosure();
                 std::raise(SIGINT);
             }
             tui::install_cust_pkgs();
             break;
-        case 4:
+        case 3:
             if (!utils::check_mount() && !utils::check_base()) {
                 screen.ExitLoopClosure();
                 std::raise(SIGINT);

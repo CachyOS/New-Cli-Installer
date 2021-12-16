@@ -219,7 +219,7 @@ void find_partitions() noexcept {
     auto& number_partitions          = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
     const auto& include_part         = std::get<std::string>(config_data["INCLUDE_PART"]);
     // get the list of partitions and also include the zvols since it is common to mount filesystems directly on them.  It should be safe to include them here since they present as block devices.
-    const std::string other_piece = "sed \'s/part$/\\/dev\\//g\' | sed \'s/lvm$\\|crypt$/\\/dev\\/mapper\\//g\' | awk \'{print $3$1 \" \" $2}\' | awk \'!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}\' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk \'{printf \"/dev/zvol/%s %s\n\", $1, $2}'";
+    const std::string other_piece = "sed \'s/part$/\\/dev\\//g\' | sed \'s/lvm$\\|crypt$/\\/dev\\/mapper\\//g\' | awk \'{print $3$1 \" \" $2}\' | awk \'!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}\' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk \'{printf \"/dev/zvol/%s %s\\n\", $1, $2}\'";
     auto partition_list           = utils::exec(fmt::format("lsblk -lno NAME,SIZE,TYPE | grep {} | {}", include_part, other_piece));
 
     // create a raid partition list
