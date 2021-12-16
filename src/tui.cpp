@@ -5,6 +5,7 @@
 #include "widgets.hpp"
 
 /* clang-format off */
+#include <sys/mount.h>                             // for mount
 #include <csignal>                                 // for raise
 #include <algorithm>                               // for transform
 #include <filesystem>                              // for exists, is_directory
@@ -97,6 +98,90 @@ void rm_pgs() noexcept {
 #ifdef NDEVENV
     utils::exec(fmt::format("arch_chroot \"pacman -Rsn {}\"", packages));
 #endif
+}
+
+void uefi_bootloader() noexcept {
+    // Ensure again that efivarfs is mounted
+    static constexpr auto efi_path = "/sys/firmware/efi/";
+    if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
+        // Mount efivarfs if it is not already mounted
+        const auto& mount_out = utils::exec("mount | grep /sys/firmware/efi/efivars");
+        if (mount_out.empty()) {
+            if (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0) {
+                perror("utils::uefi_bootloader");
+                exit(1);
+            }
+        }
+    }
+
+    static constexpr auto bootloaderInfo  = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.";
+    std::vector<std::string> menu_entries = {
+        "grub",
+        "refind",
+        "systemd-boot",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto menu    = Menu(&menu_entries, &selected);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    });
+
+    auto ok_callback = [&] {
+        switch (selected) {
+        case 0:
+            // install_grub_uefi();
+            spdlog::debug("grub");
+            break;
+        case 1:
+            // install_refind();
+            spdlog::debug("refind");
+            break;
+        case 2:
+            // install_systemd_boot();
+            spdlog::debug("systemd-boot");
+            break;
+        }
+        std::raise(SIGINT);
+    };
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    auto global = Container::Vertical({
+        Renderer([] { return detail::multiline_text(utils::make_multiline(bootloaderInfo)) | size(HEIGHT, GREATER_THAN, 5); }),
+        Renderer([] { return separator(); }),
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        return detail::centered_interative_multi("New CLI Installer", global);
+    });
+
+    screen.Loop(renderer);
+}
+
+void bios_bootloader() { }
+
+void install_bootloader() {
+    /* clang-format off */
+    if (!utils::check_base()) { return; }
+    /* clang-format on */
+
+    auto* config_instance   = Config::instance();
+    auto& config_data       = config_instance->data();
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    if (system_info == "BIOS")
+        bios_bootloader();
+    else
+        uefi_bootloader();
 }
 
 // BIOS and UEFI
@@ -986,6 +1071,13 @@ void system_rescue_menu() {
 
     auto ok_callback = [&] {
         switch (selected) {
+        case 1:
+            if (!utils::check_mount() && !utils::check_base()) {
+                screen.ExitLoopClosure();
+                std::raise(SIGINT);
+            }
+            tui::install_bootloader();
+            break;
         case 2:
             if (!utils::check_mount()) {
                 screen.ExitLoopClosure();
