@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "definitions.hpp"
 #include "tui.hpp"
+#include "widgets.hpp"
 
 #include <algorithm>      // for transform
 #include <array>          // for array
@@ -278,6 +279,20 @@ bool check_mount() noexcept {
     auto& config_data           = config_instance->data();
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     if (utils::exec(fmt::format("findmnt -nl {}", mountpoint_info)) == "") {
+        return false;
+    }
+#endif
+    return true;
+}
+
+// Ensure that CachyOS has been installed
+bool check_base() noexcept {
+#ifdef NDEVENV
+    if (!check_mount()) {
+        return false;
+    }
+    if (!fs::exists("/mnt/usr/bin/pacman")) {
+        tui::detail::msgbox_widget("\nThe CachyOS base must be installed first.\n");
         return false;
     }
 #endif

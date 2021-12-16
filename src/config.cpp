@@ -18,6 +18,7 @@ bool Config::initialize() noexcept {
         s_config->m_data["XKBMAP"] = "us";
 
         // file systems
+        s_config->m_data["LUKS"]         = 0;
         s_config->m_data["LVM_SEP_BOOT"] = 0;
 
         // Mounting

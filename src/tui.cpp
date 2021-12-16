@@ -51,6 +51,54 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
     return true;
 }
 
+// Fsck hook
+void set_fsck_hook() noexcept {
+    auto* config_instance    = Config::instance();
+    auto& config_data        = config_instance->data();
+    const auto& do_sethook   = detail::yesno_widget("\nDo you want to use fsck hook?\n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    config_data["FSCK_HOOK"] = do_sethook;
+}
+
+void install_cust_pkgs() noexcept {
+    std::string packages{};
+    static constexpr auto content = "\nType any extra packages you would like to add, separated by spaces.\n\nFor example, to install Firefox, MPV, FZF: firefox mpv fzf\n";
+    if (!detail::inputbox_widget(packages, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+        return;
+    }
+    // If at least one package, install.
+    /* clang-format off */
+    if (packages.empty()) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
+
+    if (hostcache) {
+        utils::exec(fmt::format("basestrap {} {}", mountpoint, packages));
+        return;
+    }
+    utils::exec(fmt::format("basestrap -c {} {}", mountpoint, packages));
+#endif
+}
+
+void rm_pgs() noexcept {
+    std::string packages{};
+    static constexpr auto content = "\nType any packages you would like to remove, separated by spaces.\n";
+    if (!detail::inputbox_widget(packages, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+        return;
+    }
+    /* clang-format off */
+    if (packages.empty()) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    utils::exec(fmt::format("arch_chroot \"pacman -Rsn {}\"", packages));
+#endif
+}
+
 // BIOS and UEFI
 void auto_partition() noexcept {
     auto* config_instance = Config::instance();
@@ -542,11 +590,120 @@ void lvm_detect() noexcept {
     }
 }
 
+void make_esp() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
+
+    /* clang-format off */
+    if (sys_info != "UEFI") { return; }
+    /* clang-format on */
+    {
+        const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            auto src              = partitions[static_cast<std::size_t>(selected)];
+            const auto& lines     = utils::make_multiline(src, false, " ");
+            config_data["ANSWER"] = lines[0];
+            success               = true;
+            std::raise(SIGINT);
+        };
+        /* clang-format off */
+        detail::menu_widget(partitions, ok_callback, &selected);
+        if (!success) { return; }
+        /* clang-format on */
+    }
+
+    const auto& answer        = std::get<std::string>(config_data["ANSWER"]);
+    const auto& luks          = std::get<std::int32_t>(config_data["LUKS"]);
+    auto& partition           = std::get<std::string>(config_data["PARTITION"]);
+    partition                 = answer;
+    config_data["UEFI_MOUNT"] = "";
+    config_data["UEFI_PART"]  = partition;
+
+    // If it is already a fat/vfat partition...
+    const auto& ret_status = utils::exec(fmt::format("fsck -N {} | grep fat", partition), true);
+    bool do_bootpartition{};
+    if (ret_status != "0") {
+        const auto& content = fmt::format("\nThe UEFI partition {} has already been formatted.\n\nReformat? Doing so will erase ALL data already on that partition.\n", partition);
+        do_bootpartition    = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    }
+    if (do_bootpartition) {
+#ifdef NDEVENV
+        utils::exec(fmt::format("mkfs.vfat -F32 {} >/dev/null", partition));
+#endif
+        spdlog::debug("Formating boot partition with fat/vfat!");
+    }
+
+    {
+        static constexpr auto MntUefiBody      = "\nSelect UEFI Mountpoint.\n\n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n";
+        static constexpr auto MntUefiCrypt     = "\nSelect UEFI Mountpoint.\n\n/boot/efi is recommended for multiboot systems and required for full disk encryption. Encrypted /boot is supported only by grub and can lead to slow startup.\n\n/boot is required for systemd-boot and for refind when using encryption.\n";
+        const auto& MntUefiMessage             = (luks == 0) ? MntUefiBody : MntUefiCrypt;
+        std::vector<std::string> radiobox_list = {
+            "/boot/efi",
+            "/boot",
+        };
+        std::int32_t selected{1};
+        auto component = Container::Vertical({
+            Radiobox(&radiobox_list, &selected),
+        });
+
+        auto screen  = ScreenInteractive::Fullscreen();
+        auto content = Renderer(component, [&] {
+            return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
+        });
+
+        config_data["ANSWER"] = "";
+        auto ok_callback      = [&] {
+            auto src              = radiobox_list[static_cast<std::size_t>(selected)];
+            config_data["ANSWER"] = src;
+            std::raise(SIGINT);
+        };
+
+        ButtonOption button_option{.border = false};
+        auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+        auto controls = Renderer(controls_container, [&] {
+            return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+        });
+
+        auto global = Container::Vertical({
+            Renderer([&] { return detail::multiline_text(utils::make_multiline(MntUefiMessage)); }),
+            Renderer([] { return separator(); }),
+            content,
+            Renderer([] { return separator(); }),
+            controls,
+        });
+
+        auto renderer = Renderer(global, [&] {
+            return detail::centered_interative_multi("New CLI Installer", global);
+        });
+
+        screen.Loop(renderer);
+    }
+
+    /* clang-format off */
+    if (answer.empty()) { return; }
+    /* clang-format on */
+
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    auto& uefi_mount            = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    uefi_mount                  = answer;
+    const auto& path_formated   = fmt::format("{}{}", mountpoint_info, uefi_mount);
+#ifdef NDEVENV
+    utils::exec(fmt::format("mkdir -p {}", path_formated));
+    utils::exec(fmt::format("mount {} {}", partition, path_formated));
+#endif
+    confirm_mount(path_formated);
+}
+
 void mount_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     // Warn users that they CAN mount partitions without formatting them!
-    static constexpr std::string_view content = "\nIMPORTANT: Partitions can be mounted without formatting them\nby selecting the 'Do not format' option listed at the top of\nthe file system menu.\n\nEnsure the correct choices for mounting and formatting\nare made as no warnings will be provided, with the exception of\nthe UEFI boot partition.\n";
+    static constexpr auto content = "\nIMPORTANT: Partitions can be mounted without formatting them\nby selecting the 'Do not format' option listed at the top of\nthe file system menu.\n\nEnsure the correct choices for mounting and formatting\nare made as no warnings will be provided, with the exception of\nthe UEFI boot partition.\n";
     detail::msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
 
     // LVM Detection. If detected, activate.
@@ -693,7 +850,7 @@ void mount_partitions() noexcept {
         }
 
         if (partition == "Done") {
-            // make_esp();
+            make_esp();
             // get_cryptroot();
             // get_cryptboot();
             return;
@@ -811,7 +968,7 @@ void system_rescue_menu() {
     std::vector<std::string> menu_entries = {
         "Install Hardware Drivers",
         "Install Bootloader",
-        "Enter the (exact) names of packages to be installed, seperated by spaces.\n\nFor example, to install Firefox, VLC, and HTop: firefox vlc htop",
+        "Install Packages",
         "Remove Packages",
         "Review Configuration Files",
         "Chroot into Installation",
@@ -824,11 +981,25 @@ void system_rescue_menu() {
     std::int32_t selected{};
     auto menu    = Menu(&menu_entries, &selected);
     auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 24) | size(WIDTH, GREATER_THAN, 60);
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     });
 
     auto ok_callback = [&] {
         switch (selected) {
+        case 3:
+            if (!utils::check_mount()) {
+                screen.ExitLoopClosure();
+                std::raise(SIGINT);
+            }
+            tui::install_cust_pkgs();
+            break;
+        case 4:
+            if (!utils::check_mount() && !utils::check_base()) {
+                screen.ExitLoopClosure();
+                std::raise(SIGINT);
+            }
+            tui::rm_pgs();
+            break;
         default:
             screen.ExitLoopClosure();
             std::raise(SIGINT);
@@ -906,8 +1077,10 @@ void prep_menu() noexcept {
         case 8:
         case 9:
         case 10:
-        case 11:
             SPDLOG_ERROR("Implement me!");
+            break;
+        case 11:
+            set_fsck_hook();
             break;
         default:
             screen.ExitLoopClosure();

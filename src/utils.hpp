@@ -17,6 +17,7 @@ void clear_screen() noexcept;
 [[nodiscard]] auto make_multiline(std::vector<std::string>& multiline, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::string;
 void secure_wipe() noexcept;
 [[nodiscard]] bool check_mount() noexcept;
+[[nodiscard]] bool check_base() noexcept;
 [[nodiscard]] std::string list_mounted() noexcept;
 [[nodiscard]] std::string list_containing_crypt() noexcept;
 [[nodiscard]] std::string list_non_crypt() noexcept;
