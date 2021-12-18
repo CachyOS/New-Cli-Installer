@@ -851,14 +851,14 @@ void mount_partitions() noexcept {
     // ignore_part += utils::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
-    const auto& parts = utils::make_multiline(ignore_part);
-    for (const auto& part : parts) {
-#ifdef NDEVENV
-        // utils::delete_partition_in_list(part);
-#else
-        spdlog::debug("{}", part);
-#endif
-    }
+    // const auto& parts = utils::make_multiline(ignore_part);
+    // for (const auto& part : parts) {
+    //#ifdef NDEVENV
+    // utils::delete_partition_in_list(part);
+    //#else
+    //        spdlog::debug("{}", part);
+    //#endif
+    //    }
 
     // check to see if we already have a zfs root mounted
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
