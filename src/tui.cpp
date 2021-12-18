@@ -78,10 +78,10 @@ void install_cust_pkgs() noexcept {
     const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
 
     if (hostcache) {
-        utils::exec(fmt::format("basestrap {} {}", mountpoint, packages));
+        utils::exec(fmt::format("pacstrap {} {}", mountpoint, packages));
         return;
     }
-    utils::exec(fmt::format("basestrap -c {} {}", mountpoint, packages));
+    utils::exec(fmt::format("pacstrap -c {} {}", mountpoint, packages));
 #endif
 }
 
@@ -96,8 +96,41 @@ void rm_pgs() noexcept {
     /* clang-format on */
 
 #ifdef NDEVENV
-    utils::exec(fmt::format("arch_chroot \"pacman -Rsn {}\"", packages));
+    utils::exec(fmt::format("arch-chroot \"pacman -Rsn {}\"", packages));
 #endif
+}
+
+void install_systemd_boot() noexcept {
+    static constexpr auto content = "\nThis installs systemd-boot and generates boot entries\nfor the currently installed kernels.\nThis bootloader requires your kernels to be on the UEFI partition.\nThis is achieved by mounting the UEFI partition to /boot.\n";
+    const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_install_uefi) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+
+    utils::exec(fmt::format("arch-chroot \"bootctl --path={} install\"", uefi_mount));
+    utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
+    utils::exec("arch-chroot \"sdboot-manage gen\"");
+
+    // Check if the volume is removable. If so, dont use autodetect
+    const auto& root_name   = utils::exec("mount | awk \'/\\/mnt / {print $1}\' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_device = utils::exec(fmt::format("lsblk -i | tac | sed -r \'s/^[^[:alnum:]]+//\' | sed -n -e \"/{}/,/disk/p\" | {}", root_name, "awk \'/disk/ {print $1}\'"));
+    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
+    const auto& removable = utils::exec(fmt::format("cat /sys/block/{}/removable", root_device));
+    if (utils::to_int(removable.data()) == 1) {
+        // Remove autodetect hook
+        utils::exec("sed -i -e \'/^HOOKS=/s/\\ autodetect//g\' /mnt/etc/mkinitcpio.conf");
+        spdlog::info("\"Autodetect\" hook was removed");
+    }
+#endif
+    spdlog::info("Systemd-boot was installed");
+    detail::infobox_widget("\nSystemd-boot was installed\n");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
 void uefi_bootloader() noexcept {
@@ -123,28 +156,28 @@ void uefi_bootloader() noexcept {
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
-    auto menu    = Menu(&menu_entries, &selected);
-    auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    });
-
     auto ok_callback = [&] {
         switch (selected) {
         case 0:
-            // install_grub_uefi();
+            // tui::install_grub_uefi();
             spdlog::debug("grub");
             break;
         case 1:
-            // install_refind();
+            // tui::install_refind();
             spdlog::debug("refind");
             break;
         case 2:
-            // install_systemd_boot();
-            spdlog::debug("systemd-boot");
+            tui::install_systemd_boot();
             break;
         }
         std::raise(SIGINT);
     };
+
+    MenuOption menu_option{.on_enter = ok_callback};
+    auto menu    = Menu(&menu_entries, &selected, &menu_option);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    });
 
     ButtonOption button_option{.border = false};
     auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
@@ -197,7 +230,7 @@ void auto_partition() noexcept {
     const auto& del_parts = utils::make_multiline(parts);
     for (const auto& del_part : del_parts) {
 #ifdef NDEVENV
-        utils::exec(fmt::format("parted -s {} rm {}", device_info, del_part));
+        utils::exec(fmt::format("parted -s {} rm {} >/dev/null", device_info, del_part));
 #else
         spdlog::debug("{}", del_part);
 #endif
@@ -209,18 +242,18 @@ void auto_partition() noexcept {
 
     // Create partition table if one does not already exist
     if ((system_info == "BIOS") && (part_table != "msdos"))
-        utils::exec(fmt::format("parted -s {} mklabel msdos", device_info));
+        utils::exec(fmt::format("parted -s {} mklabel msdos >/dev/null", device_info));
     if ((system_info == "UEFI") && (part_table != "gpt"))
-        utils::exec(fmt::format("parted -s {} mklabel gpt", device_info));
+        utils::exec(fmt::format("parted -s {} mklabel gpt >/dev/null", device_info));
 
     // Create partitions (same basic partitioning scheme for BIOS and UEFI)
     if (system_info == "BIOS")
-        utils::exec(fmt::format("parted -s {} mkpart primary ext3 1MiB 513MiB", device_info));
+        utils::exec(fmt::format("parted -s {} mkpart primary ext3 1MiB 513MiB >/dev/null", device_info));
     else
-        utils::exec(fmt::format("parted -s {} mkpart ESP fat32 1MiB 513MiB", device_info));
+        utils::exec(fmt::format("parted -s {} mkpart ESP fat32 1MiB 513MiB >/dev/null", device_info));
 
-    utils::exec(fmt::format("parted -s {} set 1 boot on", device_info));
-    utils::exec(fmt::format("parted -s {} mkpart primary ext3 513MiB 100%", device_info));
+    utils::exec(fmt::format("parted -s {} set 1 boot on >/dev/null", device_info));
+    utils::exec(fmt::format("parted -s {} mkpart primary ext3 513MiB 100% >/dev/null", device_info));
 #endif
 
     // Show created partitions
@@ -622,10 +655,10 @@ void make_swap() noexcept {
 
 #ifdef NDEVENV
         const auto& swapfile_path = fmt::format("{}/swapfile", mountpoint_info);
-        utils::exec(fmt::format("fallocate -l {} {}", value, swapfile_path));
+        utils::exec(fmt::format("fallocate -l {} {} >/dev/null", value, swapfile_path));
         utils::exec(fmt::format("chmod 600 {}", swapfile_path));
-        utils::exec(fmt::format("mkswap {}", swapfile_path));
-        utils::exec(fmt::format("swapon {}", swapfile_path));
+        utils::exec(fmt::format("mkswap {} >/dev/null", swapfile_path));
+        utils::exec(fmt::format("swapon {} >/dev/null", swapfile_path));
 #endif
         return;
     }
@@ -669,9 +702,11 @@ void lvm_detect() noexcept {
     if ((lvm_lv != "") && (lvm_vg != "") && (lvm_pv != "")) {
         detail::infobox_widget("\nExisting Logical Volume Management (LVM) detected.\nActivating. Please Wait...\n");
         std::this_thread::sleep_for(std::chrono::seconds(2));
+#ifdef NDEVENV
         utils::exec("modprobe dm-mod");
         utils::exec("vgscan >/dev/null 2>&1");
         utils::exec("vgchange -ay >/dev/null 2>&1");
+#endif
     }
 }
 
@@ -1003,11 +1038,6 @@ void create_partitions() noexcept {
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
-    auto menu    = Menu(&menu_entries, &selected);
-    auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    });
-
     auto ok_callback = [&] {
         const auto& answer = menu_entries[static_cast<std::size_t>(selected)];
         if (answer != optwipe && answer != optauto) {
@@ -1025,6 +1055,12 @@ void create_partitions() noexcept {
             return;
         }
     };
+
+    MenuOption menu_option{.on_enter = ok_callback};
+    auto menu    = Menu(&menu_entries, &selected, &menu_option);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    });
 
     ButtonOption button_option{.border = false};
     auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
@@ -1064,11 +1100,6 @@ void system_rescue_menu() {
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
-    auto menu    = Menu(&menu_entries, &selected);
-    auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    });
-
     auto ok_callback = [&] {
         switch (selected) {
         case 1:
@@ -1098,6 +1129,12 @@ void system_rescue_menu() {
             break;
         }
     };
+
+    MenuOption menu_option{.on_enter = ok_callback};
+    auto menu    = Menu(&menu_entries, &selected, &menu_option);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    });
 
     ButtonOption button_option{.border = false};
     auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
@@ -1138,11 +1175,6 @@ void prep_menu() noexcept {
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
-    auto menu    = Menu(&menu_entries, &selected);
-    auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 15) | size(WIDTH, GREATER_THAN, 50);
-    });
-
     auto ok_callback = [&] {
         switch (selected) {
         case 0:
@@ -1181,6 +1213,12 @@ void prep_menu() noexcept {
         }
     };
 
+    MenuOption menu_option{.on_enter = ok_callback};
+    auto menu    = Menu(&menu_entries, &selected, &menu_option);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 15) | size(WIDTH, GREATER_THAN, 50);
+    });
+
     ButtonOption button_option{.border = false};
     auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
 
@@ -1213,11 +1251,6 @@ void init() noexcept {
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
-    auto menu    = Menu(&menu_entries, &selected);
-    auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    });
-
     auto ok_callback = [&] {
         switch (selected) {
         case 0:
@@ -1256,6 +1289,12 @@ void init() noexcept {
             break;
         }
     };
+
+    MenuOption menu_option{.on_enter = ok_callback};
+    auto menu    = Menu(&menu_entries, &selected, &menu_option);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    });
 
     ButtonOption button_option{.border = false};
     auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);

@@ -136,9 +136,8 @@ void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept 
         button_back,
     });
 
-    std::string tmp{content.data()};
     auto renderer = Renderer(container, [&] {
-        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(tmp)) | hcenter | boxsize);
+        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(content.data())) | hcenter | boxsize);
     });
 
     screen.Loop(renderer);
@@ -186,8 +185,7 @@ void infobox_widget(const std::string_view& content, Decorator boxsize) noexcept
         Dimension::Full()   // Height
     );
 
-    std::string tmp{content.data()};
-    auto element = centered_widget_nocontrols("New CLI Installer", multiline_text(utils::make_multiline(tmp)) | vcenter | boxsize);
+    auto element = centered_widget_nocontrols("New CLI Installer", multiline_text(utils::make_multiline(content.data())) | vcenter | boxsize);
     Render(screen, element);
     screen.Print();
 }
@@ -212,7 +210,7 @@ bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
     });
 
     auto renderer = Renderer(container, [&] {
-        return centered_widget(container, "New CLI Installer", text(content.data()) | hcenter | boxsize);
+        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(content.data())) | hcenter | boxsize);
     });
 
     screen.Loop(renderer);
@@ -253,8 +251,9 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
 }
 
 void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected) noexcept {
-    auto screen  = ScreenInteractive::Fullscreen();
-    auto menu    = Menu(&entries, selected);
+    auto screen = ScreenInteractive::Fullscreen();
+    MenuOption menu_option{.on_enter = ok_callback};
+    auto menu    = Menu(&entries, selected, &menu_option);
     auto content = Renderer(menu, [&] {
         return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     });
