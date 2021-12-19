@@ -10,7 +10,7 @@ subprojects/cpr
 subprojects/fmt
 subprojects/ftxui
 subprojects/nlohmann_json-*
-subprojects/spdlog-*
+subprojects/spdlog
 subprojects/packagecache
 
 # Prerequisites

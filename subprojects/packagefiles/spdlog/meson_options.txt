@@ -1,0 +1,4 @@
+option('tests', type: 'boolean', value: false, description: 'Build the unit tests')
+
+option('compile_library', type: 'boolean', value: false, description: 'Builds a static/shared lib for faster compile times')
+option('external_fmt', type: 'boolean', value: false, description: 'Builds with external fmt lib instead of internal')
