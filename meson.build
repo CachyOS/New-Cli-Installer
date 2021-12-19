@@ -102,14 +102,14 @@ add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 
 executable(
   'cachyos-installer',
   src_files,
-  dependencies: [fmt, spdlog, ftxui, nlohmann_json, cpr, glibmm],
+  dependencies: [fmt, spdlog, ftxui, cpr, glibmm],
   include_directories: [include_directories('src')],
   install: true)
 
 executable(
   'test-exec-interactive',
   files('src/config.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/main_test.cpp'),
-  dependencies: [fmt, spdlog, ftxui, glibmm],
+  dependencies: [fmt, spdlog, ftxui, cpr, glibmm],
   include_directories: [include_directories('src')],
   install: false)
 

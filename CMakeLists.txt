@@ -39,31 +39,23 @@ FetchContent_Declare(ftxui
   GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
   GIT_TAG "7e5cd23b4c47972b70b99c39617d6e38f05d1b3a"
 )
-FetchContent_MakeAvailable(ftxui)
-
 FetchContent_Declare(spdlog
   GIT_REPOSITORY "https://github.com/gabime/spdlog.git"
   GIT_TAG "v1.9.2"
 )
-FetchContent_MakeAvailable(spdlog)
-
 FetchContent_Declare(fmt
   GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
   GIT_TAG "3a951a66cb0fb53ff5a9d5ce9c77e05ef9d382ce"
 )
-FetchContent_MakeAvailable(fmt)
-
 FetchContent_Declare(nlohmann_json
   GIT_REPOSITORY "https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent.git"
   GIT_TAG "v3.10.4"
 )
-FetchContent_MakeAvailable(nlohmann_json)
-
 FetchContent_Declare(cpr
   GIT_REPOSITORY "https://github.com/libcpr/cpr.git"
   GIT_TAG "beb9e98806bb84bcc130a2cebfbcbbc6ce62b335"
 )
-FetchContent_MakeAvailable(cpr)
+FetchContent_MakeAvailable(ftxui spdlog fmt nlohmann_json cpr)
 
 ##
 ## CONFIGURATION
