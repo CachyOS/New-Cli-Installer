@@ -1,9 +1,12 @@
 #include "config.hpp"
 #include "definitions.hpp"
 
+#include <filesystem>
 #include <memory>
 
 static std::unique_ptr<Config> s_config = nullptr;
+
+namespace fs = std::filesystem;
 
 bool Config::initialize() noexcept {
     if (s_config != nullptr) {
@@ -12,6 +15,8 @@ bool Config::initialize() noexcept {
     }
     s_config = std::make_unique<Config>();
     if (s_config) {
+        s_config->m_data["hostcache"] = static_cast<std::int32_t>(!fs::exists("/run/miso/bootmnt"));
+
         s_config->m_data["H_INIT"] = "openrc";
         s_config->m_data["SYSTEM"] = "BIOS";
         s_config->m_data["KEYMAP"] = "us";
