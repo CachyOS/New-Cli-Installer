@@ -1,6 +1,6 @@
 [wrap-git]
-url = https://github.com/vnepogodin/spdlog.git
-revision = patch-1
+url = https://github.com/gabime/spdlog.git
+revision = cc30229abb1e22ebe1f8657de4011a53db7bd6ac
 
 patch_directory = spdlog
 
