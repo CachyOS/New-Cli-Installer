@@ -216,7 +216,7 @@ void install_base() noexcept {
     static constexpr auto base_installed = "/mnt/.base_installed";
     if (fs::exists(base_installed)) {
         static constexpr auto content = "\nA CachyOS Base has already been installed on this partition.\nProceed anyway?\n";
-        const auto& do_reinstall   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        const auto& do_reinstall      = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
         if (!do_reinstall) { return; }
         /* clang-format on */
@@ -240,9 +240,9 @@ void install_base() noexcept {
         return kernels->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
     });
 
-    auto ok_callback      = [&] {
+    auto ok_callback = [&] {
         const auto& packages = detail::from_checklist_string(available_kernels, kernels_state.get());
-        auto ret_status = utils::exec(fmt::format("grep \"linux\" {}", packages), true);
+        auto ret_status      = utils::exec(fmt::format("grep \"linux\" {}", packages), true);
         if (ret_status == "0") {
             // Check if a kernel is already installed
             ret_status = utils::exec(fmt::format("ls {}/boot/*.img >/dev/null 2>&1", mountpoint), true);
@@ -266,9 +266,9 @@ void install_base() noexcept {
     });
 
     static constexpr auto InstStandBseBody = "\nThe base package group will be installed automatically.\nThe base-devel package group is required to use the Arch User Repository (AUR).\n";
-    static constexpr auto UseSpaceBar = "Use [Spacebar] to de/select options listed.";
-    const auto& kernels_options_body = fmt::format("\n{}{}\n", InstStandBseBody, UseSpaceBar);
-    auto global                    = Container::Vertical({
+    static constexpr auto UseSpaceBar      = "Use [Spacebar] to de/select options listed.";
+    const auto& kernels_options_body       = fmt::format("\n{}{}\n", InstStandBseBody, UseSpaceBar);
+    auto global                            = Container::Vertical({
         Renderer([&] { return detail::multiline_text(utils::make_multiline(kernels_options_body)); }),
         Renderer([] { return separator(); }),
         content,
@@ -283,10 +283,10 @@ void install_base() noexcept {
 
     screen.Loop(renderer);
 
-    //filter_packages
-    //utils::exec(fmt::format("pacstrap ${MOUNTPOINT} $(cat /mnt/.base) |& tee /tmp/pacstrap.log"));
+    // filter_packages
+    // utils::exec(fmt::format("pacstrap ${MOUNTPOINT} $(cat /mnt/.base) |& tee /tmp/pacstrap.log"));
 
-    //std::ofstream(base_installed);
+    // std::ofstream(base_installed);
 }
 
 void bios_bootloader() { }
