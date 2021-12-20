@@ -22,6 +22,17 @@
 using namespace ftxui;
 namespace fs = std::filesystem;
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wold-style-cast"
+
+#include <range/v3/algorithm/copy.hpp>
+
+#pragma clang diagnostic pop
+#else
+namespace ranges = std::ranges;
+#endif
+
 namespace tui {
 
 // Revised to deal with partion sizes now being displayed to the user
@@ -199,6 +210,83 @@ void uefi_bootloader() noexcept {
     });
 
     screen.Loop(renderer);
+}
+
+void install_base() noexcept {
+    static constexpr auto base_installed = "/mnt/.base_installed";
+    if (fs::exists(base_installed)) {
+        static constexpr auto content = "\nA CachyOS Base has already been installed on this partition.\nProceed anyway?\n";
+        const auto& do_reinstall   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        /* clang-format off */
+        if (!do_reinstall) { return; }
+        /* clang-format on */
+        fs::remove(base_installed);
+    }
+    // Prep variables
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const std::vector<std::string> available_kernels{"linux-cachyos", "linux", "linux-zen", "linux-lts", "linux-cachyos-cacule", "linux-cachyos-cacule-rdb", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-baby", "linux-cachyos-cacule-lts"};
+
+    // Create the base list of packages
+    std::vector<std::string> install_packages{};
+
+    std::unique_ptr<bool[]> kernels_state{new bool[available_kernels.size()]{false}};
+
+    auto kernels = Container::Vertical(detail::from_vector_checklist(available_kernels, kernels_state.get()));
+
+    auto screen  = ScreenInteractive::Fullscreen();
+    auto content = Renderer(kernels, [&] {
+        return kernels->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
+    });
+
+    auto ok_callback      = [&] {
+        const auto& packages = detail::from_checklist_string(available_kernels, kernels_state.get());
+        auto ret_status = utils::exec(fmt::format("grep \"linux\" {}", packages), true);
+        if (ret_status == "0") {
+            // Check if a kernel is already installed
+            ret_status = utils::exec(fmt::format("ls {}/boot/*.img >/dev/null 2>&1", mountpoint), true);
+            if (ret_status != "0") {
+                static constexpr auto ErrNoKernel = "\nAt least one kernel must be selected.\n";
+                detail::msgbox_widget(ErrNoKernel);
+                return;
+            }
+            const auto& cmd = utils::exec(fmt::format("ls {}/boot/*.img | cut -d'-' -f2 | grep -v ucode.img | sort -u", mountpoint));
+            detail::msgbox_widget(fmt::format("\nlinux-{} detected\n", cmd));
+            std::raise(SIGINT);
+        }
+        std::raise(SIGINT);
+    };
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    static constexpr auto InstStandBseBody = "\nThe base package group will be installed automatically.\nThe base-devel package group is required to use the Arch User Repository (AUR).\n";
+    static constexpr auto UseSpaceBar = "Use [Spacebar] to de/select options listed.";
+    const auto& kernels_options_body = fmt::format("\n{}{}\n", InstStandBseBody, UseSpaceBar);
+    auto global                    = Container::Vertical({
+        Renderer([&] { return detail::multiline_text(utils::make_multiline(kernels_options_body)); }),
+        Renderer([] { return separator(); }),
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        const auto& title = "New CLI Installer | Install Base";
+        return detail::centered_interative_multi(title, global);
+    });
+
+    screen.Loop(renderer);
+
+    //filter_packages
+    //utils::exec(fmt::format("pacstrap ${MOUNTPOINT} $(cat /mnt/.base) |& tee /tmp/pacstrap.log"));
+
+    //std::ofstream(base_installed);
 }
 
 void bios_bootloader() { }
@@ -614,7 +702,7 @@ void make_swap() noexcept {
         }
         const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
         temp.reserve(partitions.size());
-        std::ranges::copy(partitions, std::back_inserter(temp));
+        ranges::copy(partitions, std::back_inserter(temp));
 
         std::int32_t selected{};
         bool success{};
@@ -954,7 +1042,7 @@ void mount_partitions() noexcept {
             const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
             std::vector<std::string> temp{"Done -"};
             temp.reserve(partitions.size());
-            std::ranges::copy(partitions, std::back_inserter(temp));
+            ranges::copy(partitions, std::back_inserter(temp));
 
             auto ok_callback = [&] {
                 auto src                 = temp[static_cast<std::size_t>(selected)];
@@ -1083,7 +1171,7 @@ void create_partitions() noexcept {
 }
 
 void install_desktop_system_menu() { }
-void install_core_menu() { }
+void install_core_menu() { install_base(); }
 void install_custom_menu() { }
 void system_rescue_menu() {
     std::vector<std::string> menu_entries = {
