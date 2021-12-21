@@ -3,6 +3,7 @@
 
 namespace tui {
 void create_partitions() noexcept;
+bool select_device() noexcept;
 void init() noexcept;
 }  // namespace tui
 

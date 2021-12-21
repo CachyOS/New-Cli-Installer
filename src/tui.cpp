@@ -126,23 +126,27 @@ void install_systemd_boot() noexcept {
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
     {
-        // This can be an ofstream as well or any other ostream
-        std::stringstream buffer;
+        fflush(stderr);
+        /* save stderr */
+        FILE* sbuf = stderr;
 
-        // Save cerr's buffer here
-        std::streambuf* sbuf = std::cerr.rdbuf();
-
-        // Redirect cerr to our stringstream buffer or any other ostream
-        std::cerr.rdbuf(buffer.rdbuf());
+        /* Redirect stderr to our string buffer */
+        size_t size;
+        stderr = open_memstream(&sbuffer, &size);
 
         utils::exec(fmt::format("arch-chroot \"bootctl --path={} install\"", uefi_mount));
         utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
         utils::exec("arch-chroot \"sdboot-manage gen\"");
 
-        // When done redirect cerr to its old self
-        std::cerr.rdbuf(sbuf);
+        /* Cleanup */
+        fflush(stderr);
+        fclose(stderr);
 
-        spdlog::error("{}", buffer.str());
+        /* When done redirect stderr to its old self */
+        stderr = sbuf;
+        setbuf(stderr, NULL);
+
+        spdlog::error("{}", sbuffer);
     }
 
     // Check if the volume is removable. If so, dont use autodetect
@@ -303,6 +307,8 @@ void install_base() noexcept {
     screen.Loop(renderer);
 
     if (!packages.empty()) {
+        // TODO: Add linux-*-headers
+        packages += "base base-devel";
 #ifdef NDEVENV
         // filter_packages
         utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
@@ -311,7 +317,54 @@ void install_base() noexcept {
     }
 }
 
-void bios_bootloader() { }
+void bios_bootloader() {
+    static constexpr auto bootloaderInfo  = "The installation device for GRUB can be selected in the next step.\n\nos-prober is needed for automatic detection of already installed systems on other partitions.";
+    std::vector<std::string> menu_entries = {
+        "grub",
+        "grub + os-prober",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    std::string_view selected_bootloader{};
+    auto ok_callback = [&] {
+        selected_bootloader = menu_entries[selected];
+        std::raise(SIGINT);
+    };
+
+    MenuOption menu_option{.on_enter = ok_callback};
+    auto menu    = Menu(&menu_entries, &selected, &menu_option);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    });
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    auto global = Container::Vertical({
+        Renderer([] { return detail::multiline_text(utils::make_multiline(bootloaderInfo)) | size(HEIGHT, GREATER_THAN, 5); }),
+        Renderer([] { return separator(); }),
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        return detail::centered_interative_multi("New CLI Installer", global);
+    });
+
+    screen.Loop(renderer);
+
+    /* clang-format off */
+    if (selected_bootloader.empty()) { return; }
+    /* clang-format on */
+
+    tui::select_device();
+}
 
 void install_bootloader() {
     /* clang-format off */
@@ -1193,7 +1246,88 @@ void create_partitions() noexcept {
 }
 
 void install_desktop_system_menu() { }
-void install_core_menu() { install_base(); }
+void install_core_menu() noexcept {
+    std::vector<std::string> menu_entries = {
+        "Install Base Packages",
+        "Install Bootloader",
+        "Configure Base",
+        "Install Custom Packages",
+        "System Tweaks",
+        "Review Configuration Files",
+        "Chroot into Installation",
+        "Back",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+        switch (selected) {
+        case 0:
+            if (!utils::check_mount()) {
+                screen.ExitLoopClosure();
+                std::raise(SIGINT);
+            }
+            tui::install_base();
+            break;
+        case 1: {
+            if (!utils::check_base()) {
+                screen.ExitLoopClosure();
+                std::raise(SIGINT);
+            }
+            tui::install_bootloader();
+            break;
+        }
+        case 2: {
+            if (!utils::check_base()) {
+                screen.ExitLoopClosure();
+                std::raise(SIGINT);
+            }
+            // config_cli_base_menu
+            break;
+        }
+        case 3:
+            tui::install_cust_pkgs();
+            break;
+        case 4:
+            if (!utils::check_base()) {
+                screen.ExitLoopClosure();
+                std::raise(SIGINT);
+            }
+            // tweaks_menu
+            break;
+        default:
+            screen.ExitLoopClosure();
+            std::raise(SIGINT);
+            break;
+        }
+    };
+
+    MenuOption menu_option{.on_enter = ok_callback};
+    auto menu    = Menu(&menu_entries, &selected, &menu_option);
+    auto content = Renderer(menu, [&] {
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    });
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    auto global = Container::Vertical({
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        return detail::centered_interative_multi("New CLI Installer", global);
+    });
+
+    screen.Loop(renderer);
+}
+
 void install_custom_menu() { }
 void system_rescue_menu() {
     std::vector<std::string> menu_entries = {
