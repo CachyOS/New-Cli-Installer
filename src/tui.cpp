@@ -8,6 +8,7 @@
 #include <sys/mount.h>                             // for mount
 #include <csignal>                                 // for raise
 #include <algorithm>                               // for transform
+#include <fstream>                                 // for ofstream
 #include <filesystem>                              // for exists, is_directory
 #include <memory>                                  // for __shared_ptr_access
 #include <regex>                                   // for regex_search, match_results<>::_Base_type
@@ -124,9 +125,25 @@ void install_systemd_boot() noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
-    utils::exec(fmt::format("arch-chroot \"bootctl --path={} install\"", uefi_mount));
-    utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
-    utils::exec("arch-chroot \"sdboot-manage gen\"");
+    {
+        // This can be an ofstream as well or any other ostream
+        std::stringstream buffer;
+
+        // Save cerr's buffer here
+        std::streambuf* sbuf = std::cerr.rdbuf();
+
+        // Redirect cerr to our stringstream buffer or any other ostream
+        std::cerr.rdbuf(buffer.rdbuf());
+
+        utils::exec(fmt::format("arch-chroot \"bootctl --path={} install\"", uefi_mount));
+        utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
+        utils::exec("arch-chroot \"sdboot-manage gen\"");
+
+        // When done redirect cerr to its old self
+        std::cerr.rdbuf(sbuf);
+
+        spdlog::error("{}", buffer.str());
+    }
 
     // Check if the volume is removable. If so, dont use autodetect
     const auto& root_name   = utils::exec("mount | awk \'/\\/mnt / {print $1}\' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
@@ -240,10 +257,11 @@ void install_base() noexcept {
         return kernels->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
     });
 
+    std::string packages{};
     auto ok_callback = [&] {
-        const auto& packages = detail::from_checklist_string(available_kernels, kernels_state.get());
-        auto ret_status      = utils::exec(fmt::format("grep \"linux\" {}", packages), true);
-        if (ret_status == "0") {
+        packages        = detail::from_checklist_string(available_kernels, kernels_state.get());
+        auto ret_status = utils::exec(fmt::format("echo \"{}\" | grep \"linux\"", packages), true);
+        if (ret_status != "0") {
             // Check if a kernel is already installed
             ret_status = utils::exec(fmt::format("ls {}/boot/*.img >/dev/null 2>&1", mountpoint), true);
             if (ret_status != "0") {
@@ -255,6 +273,7 @@ void install_base() noexcept {
             detail::msgbox_widget(fmt::format("\nlinux-{} detected\n", cmd));
             std::raise(SIGINT);
         }
+        spdlog::info("selected: {}", packages);
         std::raise(SIGINT);
     };
 
@@ -277,16 +296,19 @@ void install_base() noexcept {
     });
 
     auto renderer = Renderer(global, [&] {
-        const auto& title = "New CLI Installer | Install Base";
+        constexpr auto title = "New CLI Installer | Install Base";
         return detail::centered_interative_multi(title, global);
     });
 
     screen.Loop(renderer);
 
-    // filter_packages
-    // utils::exec(fmt::format("pacstrap ${MOUNTPOINT} $(cat /mnt/.base) |& tee /tmp/pacstrap.log"));
-
-    // std::ofstream(base_installed);
+    if (!packages.empty()) {
+#ifdef NDEVENV
+        // filter_packages
+        utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
+#endif
+        std::ofstream{base_installed};
+    }
 }
 
 void bios_bootloader() { }
