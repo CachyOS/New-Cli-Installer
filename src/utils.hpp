@@ -24,6 +24,7 @@ void secure_wipe() noexcept;
 void umount_partitions() noexcept;
 void find_partitions() noexcept;
 
+void arch_chroot(const std::string_view& command) noexcept;
 void exec(const std::vector<std::string>& vec) noexcept;
 auto exec(const std::string_view& command, const bool& interactive = false) noexcept(false) -> std::string;
 [[nodiscard]] bool check_root() noexcept;

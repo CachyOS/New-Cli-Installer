@@ -74,6 +74,14 @@ void clear_screen() noexcept {
     output_inter("{}", CLEAR_SCREEN_ANSI);
 }
 
+void arch_chroot(const std::string_view& command) noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    utils::exec(fmt::format("arch-chroot {} \"{}\"", mountpoint, command));
+}
+
 void exec(const std::vector<std::string>& vec) noexcept {
     std::int32_t status{};
     auto pid = fork();

@@ -157,8 +157,12 @@ void set_root_password() noexcept {
     }
 
 #ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
     utils::exec(fmt::format("echo -e \"{}\n{}\" > /tmp/.passwd", pass, confirm));
-    utils::exec("arch-chroot \"passwd root\" < /tmp/.passwd >/dev/null");
+    utils::exec(fmt::format("arch-chroot {} \"passwd root\" < /tmp/.passwd >/dev/null", mountpoint));
     utils::exec("rm /tmp/.passwd");
 #endif
 }
@@ -216,7 +220,7 @@ void rm_pgs() noexcept {
     /* clang-format on */
 
 #ifdef NDEVENV
-    utils::exec(fmt::format("arch-chroot \"pacman -Rsn {}\"", packages));
+    utils::arch_chroot(fmt::format("pacman -Rsn {}", packages));
 #endif
 }
 
@@ -233,31 +237,9 @@ void install_systemd_boot() noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
-    {
-        char* sbuffer = NULL;
-
-        fflush(stderr);
-        /* save stderr */
-        FILE* sbuf = stderr;
-
-        /* Redirect stderr to our string buffer */
-        size_t size;
-        stderr = open_memstream(&sbuffer, &size);
-
-        utils::exec(fmt::format("arch-chroot \"bootctl --path={} install\"", uefi_mount));
-        utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
-        utils::exec("arch-chroot \"sdboot-manage gen\"");
-
-        /* Cleanup */
-        fflush(stderr);
-        fclose(stderr);
-
-        /* When done redirect stderr to its old self */
-        stderr = sbuf;
-        setbuf(stderr, NULL);
-
-        spdlog::error("{}", sbuffer);
-    }
+    utils::arch_chroot(fmt::format("bootctl --path={} install", uefi_mount));
+    utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
+    utils::arch_chroot("sdboot-manage gen");
 
     // Check if the volume is removable. If so, dont use autodetect
     const auto& root_name   = utils::exec("mount | awk \'/\\/mnt / {print $1}\' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
