@@ -143,14 +143,14 @@ void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept 
     screen.Loop(renderer);
 }
 
-bool inputbox_widget(std::string& value, const std::string_view& content, Decorator boxsize) noexcept {
+bool inputbox_widget(std::string& value, const std::string_view& content, Decorator boxsize, bool password) noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     bool success{};
     auto ok_callback = [&] {
         success = true;
         std::raise(SIGINT);
     };
-    InputOption input_option{.on_enter = ok_callback};
+    InputOption input_option{.on_enter = ok_callback, .password = password};
     auto input_value       = Input(&value, "", input_option);
     auto content_container = Renderer([&] {
         return multiline_text(utils::make_multiline(content)) | hcenter | boxsize;
@@ -250,12 +250,12 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
     return success;
 }
 
-void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected) noexcept {
+void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, const std::string_view& text, const ContentBoxSize content_size) noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     MenuOption menu_option{.on_enter = ok_callback};
     auto menu    = Menu(&entries, selected, &menu_option);
     auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        return menu->Render() | center | size(HEIGHT, GREATER_THAN, content_size.height) | size(WIDTH, GREATER_THAN, content_size.width);
     });
 
     ButtonOption button_option{.border = false};
@@ -265,11 +265,21 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
     });
 
-    auto global = Container::Vertical({
-        content,
-        Renderer([] { return separator(); }),
-        controls,
-    });
+    Components children{};
+    if (!text.empty()) {
+        children = {
+            Renderer([&] { return detail::multiline_text(utils::make_multiline(text)) | content_size.text_size; }),
+            Renderer([] { return separator(); }),
+            content,
+            Renderer([] { return separator(); }),
+            controls};
+    } else {
+        children = {
+            content,
+            Renderer([] { return separator(); }),
+            controls};
+    }
+    auto global{Container::Vertical(children)};
 
     auto renderer = Renderer(global, [&] {
         return centered_interative_multi("New CLI Installer", global);
