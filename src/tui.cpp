@@ -5,6 +5,7 @@
 #include "widgets.hpp"
 
 /* clang-format off */
+#include <cstdio>                                  // for setbuf
 #include <sys/mount.h>                             // for mount
 #include <csignal>                                 // for raise
 #include <fstream>                                 // for ofstream
