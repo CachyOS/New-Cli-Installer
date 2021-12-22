@@ -234,6 +234,8 @@ void install_systemd_boot() noexcept {
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
     {
+        char* sbuffer = NULL;
+
         fflush(stderr);
         /* save stderr */
         FILE* sbuf = stderr;
