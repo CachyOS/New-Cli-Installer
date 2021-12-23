@@ -5,9 +5,7 @@
 #include "widgets.hpp"
 
 /* clang-format off */
-#include <cstdio>                                  // for setbuf
 #include <sys/mount.h>                             // for mount
-#include <csignal>                                 // for raise
 #include <fstream>                                 // for ofstream
 #include <filesystem>                              // for exists, is_directory
 #include <regex>                                   // for regex_search, match_results<>::_Base_type
@@ -72,7 +70,7 @@ void set_fsck_hook() noexcept {
 
 // Function will not allow incorrect UUID type for installed system.
 void generate_fstab() noexcept {
-    std::vector<std::string> menu_entries = {
+    const std::vector<std::string> menu_entries = {
         "fstabgen -U -p",
         "fstabgen -p",
         "fstabgen -L -p",
@@ -84,6 +82,7 @@ void generate_fstab() noexcept {
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
     const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
         if (system_info == "BIOS" && selected == 3) {
@@ -102,11 +101,11 @@ void generate_fstab() noexcept {
             utils::exec(fmt::format("sed -i \"s/\\\\{0}//\" {0}/etc/fstab", mountpoint));
 #endif
         }
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
 
     static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) is recommended.\n\nIf no labels were set for the partitions earlier,\ndevice names will be used for the label option.\n";
-    detail::menu_widget(menu_entries, ok_callback, &selected, fstab_body);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, fstab_body);
 
 #ifdef NDEVENV
     // Edit fstab in case of btrfs subvolumes
@@ -135,8 +134,76 @@ void set_hostname() noexcept {
 }
 void set_locale() noexcept { }
 void set_xkbmap() noexcept { }
-bool set_timezone() noexcept { return true; }
-void set_hw_clock() noexcept { }
+bool set_timezone() noexcept {
+    std::string zone{};
+    {
+        auto screen           = ScreenInteractive::Fullscreen();
+        const auto& cmd       = utils::exec("cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep \"/\" | sed \"s/\\/.*//g\" | sort -ud");
+        const auto& zone_list = utils::make_multiline(cmd);
+
+        std::int32_t selected{};
+        auto ok_callback = [&] {
+            const auto& answer = zone_list[static_cast<std::size_t>(selected)];
+            zone               = answer;
+            screen.ExitLoopClosure()();
+        };
+
+        static constexpr auto timezone_body = "The time zone is used to correctly set your system clock.";
+        detail::menu_widget(zone_list, ok_callback, &selected, &screen, timezone_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    }
+    /* clang-format off */
+    if (zone.empty()) { return false; }
+    /* clang-format on */
+
+    std::string subzone{};
+    {
+        auto screen           = ScreenInteractive::Fullscreen();
+        const auto& cmd       = utils::exec(fmt::format("cat /usr/share/zoneinfo/zone.tab | {1} | grep \"{0}/\" | sed \"s/{0}\\///g\" | sort -ud", zone, "awk '{print $3}'"));
+        const auto& city_list = utils::make_multiline(cmd);
+
+        std::int32_t selected{};
+        auto ok_callback = [&] {
+            const auto& answer = city_list[static_cast<std::size_t>(selected)];
+            subzone            = answer;
+            screen.ExitLoopClosure()();
+        };
+
+        static constexpr auto sub_timezone_body = "Select the city nearest to you.";
+        detail::menu_widget(city_list, ok_callback, &selected, &screen, sub_timezone_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    }
+
+    /* clang-format off */
+    if (subzone.empty()) { return false; }
+    /* clang-format on */
+
+    const auto& content         = fmt::format("\nSet Time Zone: {}/{}?\n", zone, subzone);
+    const auto& do_set_timezone = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_set_timezone) { return false; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    utils::arch_chroot(fmt::format("ln -sf /usr/share/zoneinfo/{}/{} /etc/localtime", zone, subzone));
+#endif
+    spdlog::info("Timezone is set to {}/{}", zone, subzone);
+    return true;
+}
+
+void set_hw_clock() noexcept {
+    auto screen = ScreenInteractive::Fullscreen();
+    const std::vector<std::string> menu_entries{"utc", "localtime"};
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+#ifdef NDEVENV
+        const auto& answer = menu_entries[static_cast<std::size_t>(selected)];
+        utils::arch_chroot(fmt::format("hwclock --systohc --{}", answer));
+#endif
+        screen.ExitLoopClosure()();
+    };
+
+    static constexpr auto hw_clock_body = "UTC is the universal time standard,\nand is recommended unless dual-booting with Windows.";
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, hw_clock_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+}
 
 void set_root_password() noexcept {
     std::string pass{};
@@ -174,7 +241,7 @@ void create_new_user() noexcept {
         return;
     }
 
-    // Loop while user name is blank, has spaces, or has capital letters in it.
+    // Loop while username is blank, has spaces, or has capital letters in it.
     while (user.empty() || std::regex_match(user, std::regex{"\\s+|\\'"}) || std::regex_match(user, std::regex{".*[A-Z]"})) {
         user.clear();
         static constexpr auto user_err_body = "An incorrect user name was entered. Please try again.";
@@ -182,6 +249,118 @@ void create_new_user() noexcept {
             return;
         }
     }
+
+    std::string_view shell{};
+    {
+        static constexpr auto DefShell               = "\nChoose the default shell.\n";
+        static constexpr auto UseSpaceBar            = "Use [Spacebar] to de/select options listed.";
+        const auto& shells_options_body              = fmt::format("\n{}{}\n", DefShell, UseSpaceBar);
+        const std::vector<std::string> radiobox_list = {
+            "zsh",
+            "bash",
+            "fish",
+        };
+        std::int32_t selected{};
+        auto component = Container::Vertical({
+            Radiobox(&radiobox_list, &selected),
+        });
+
+        auto screen  = ScreenInteractive::Fullscreen();
+        auto content = Renderer(component, [&] {
+            return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
+        });
+
+        auto ok_callback = [&] {
+            switch (selected) {
+            case 0:
+                shell = "/usr/bin/zsh";
+                break;
+            case 1:
+                shell = "/bin/bash";
+                break;
+            case 2:
+                shell = "/usr/bin/fish";
+                break;
+            }
+            screen.ExitLoopClosure()();
+        };
+
+        ButtonOption button_option{.border = false};
+        auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+        auto controls = Renderer(controls_container, [&] {
+            return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+        });
+
+        auto global = Container::Vertical({
+            Renderer([&] { return detail::multiline_text(utils::make_multiline(shells_options_body)); }),
+            Renderer([] { return separator(); }),
+            content,
+            Renderer([] { return separator(); }),
+            controls,
+        });
+
+        auto renderer = Renderer(global, [&] {
+            return detail::centered_interative_multi("New CLI Installer", global);
+        });
+
+        screen.Loop(renderer);
+    }
+
+    spdlog::info("default shell: [{}]", shell);
+
+    // Enter password. This step will only be reached where the loop has been skipped or broken.
+    std::string pass{};
+    static constexpr auto user_pass_body = "Enter password for";
+    if (!detail::inputbox_widget(pass, fmt::format("{} {}", user_pass_body, user), size(HEIGHT, GREATER_THAN, 1), true)) {
+        return;
+    }
+    std::string confirm{};
+    static constexpr auto user_confirm_body = "Re-enter the password.";
+    if (!detail::inputbox_widget(confirm, user_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
+        return;
+    }
+
+    while (pass != confirm) {
+        static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n";
+        detail::msgbox_widget(PassErrBody);
+        pass.clear();
+        confirm.clear();
+        if (!detail::inputbox_widget(pass, fmt::format("{} {}", user_pass_body, user), size(HEIGHT, GREATER_THAN, 1), true)) {
+            return;
+        }
+        if (!detail::inputbox_widget(confirm, user_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
+            return;
+        }
+    }
+
+    // create new user. This step will only be reached where the password loop has been skipped or broken.
+    detail::infobox_widget("\nCreating User and setting groups...\n");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+#ifdef NDEVENV
+    // Create the user, set password, then remove temporary password file
+    utils::arch_chroot(fmt::format("groupadd {}", user));
+    utils::arch_chroot(fmt::format("useradd {0} -m -g {0} -G wheel,storage,power,network,video,audio,lp,sys,input -s {1}", user, shell));
+    spdlog::info("add user to groups");
+
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    utils::exec(fmt::format("echo -e \"{}\n{}\" > /tmp/.passwd", pass, confirm));
+    utils::exec(fmt::format("arch-chroot {} \"passwd {}\" < /tmp/.passwd >/dev/null", mountpoint, user));
+    spdlog::info("create user pwd");
+    utils::exec("rm /tmp/.passwd");
+
+    // Set up basic configuration files and permissions for user
+    // arch_chroot "cp /etc/skel/.bashrc /home/${USER}"
+    utils::arch_chroot(fmt::format("chown -R {0}:{0} /home/{0}", user));
+    const auto& sudoers_file = fmt::format("{}/etc/sudoers", mountpoint);
+    if (fs::exists(sudoers_file)) {
+        utils::exec(fmt::format("sed -i \'/%wheel ALL=(ALL) ALL/s/^#//\' {}", sudoers));
+    }
+#endif
 }
 
 void install_cust_pkgs() noexcept {
@@ -271,13 +450,14 @@ void uefi_bootloader() noexcept {
         }
     }
 
-    static constexpr auto bootloaderInfo  = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.";
-    std::vector<std::string> menu_entries = {
+    static constexpr auto bootloaderInfo        = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.";
+    const std::vector<std::string> menu_entries = {
         "grub",
         "refind",
         "systemd-boot",
     };
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
         switch (selected) {
@@ -293,10 +473,10 @@ void uefi_bootloader() noexcept {
             tui::install_systemd_boot();
             break;
         }
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
 
-    detail::menu_widget(menu_entries, ok_callback, &selected, bootloaderInfo);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, bootloaderInfo);
 }
 
 void install_base() noexcept {
@@ -341,10 +521,10 @@ void install_base() noexcept {
             }
             const auto& cmd = utils::exec(fmt::format("ls {}/boot/*.img | cut -d'-' -f2 | grep -v ucode.img | sort -u", mountpoint));
             detail::msgbox_widget(fmt::format("\nlinux-{} detected\n", cmd));
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
         }
         spdlog::info("selected: {}", packages);
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
 
     ButtonOption button_option{.border = false};
@@ -385,7 +565,7 @@ void install_base() noexcept {
 
 // Base Configuration
 void config_base_menu() noexcept {
-    std::vector<std::string> menu_entries = {
+    const std::vector<std::string> menu_entries = {
         "Generate FSTAB",
         "Set Hostname",
         "Set System Locale",
@@ -396,6 +576,7 @@ void config_base_menu() noexcept {
         "Back",
     };
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
         switch (selected) {
@@ -413,7 +594,7 @@ void config_base_menu() noexcept {
             break;
         case 4: {
             if (!tui::set_timezone()) {
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::set_hw_clock();
             break;
@@ -425,29 +606,30 @@ void config_base_menu() noexcept {
             tui::create_new_user();
             break;
         default:
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
             break;
         }
     };
 
     static constexpr auto config_base_body = "Basic configuration of the base.";
-    detail::menu_widget(menu_entries, ok_callback, &selected, config_base_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, config_base_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
 }
 
 void bios_bootloader() {
-    static constexpr auto bootloaderInfo  = "The installation device for GRUB can be selected in the next step.\n \nos-prober is needed for automatic detection of already installed systems on other partitions.";
-    std::vector<std::string> menu_entries = {
+    static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step.\n \nos-prober is needed for automatic detection of already installed systems on other partitions.";
+    const std::vector<std::string> menu_entries = {
         "grub",
         "grub + os-prober",
     };
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     std::string_view selected_bootloader{};
     auto ok_callback = [&] {
         selected_bootloader = menu_entries[static_cast<std::size_t>(selected)];
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
-    detail::menu_widget(menu_entries, ok_callback, &selected, bootloaderInfo);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, bootloaderInfo);
 
     /* clang-format off */
     if (selected_bootloader.empty()) { return; }
@@ -554,16 +736,17 @@ bool select_device() noexcept {
     auto devices             = utils::exec("lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print \"/dev/\" $1 \" \" $2}' | sort -u");
     const auto& devices_list = utils::make_multiline(devices);
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     bool success{};
     auto ok_callback = [&] {
-        auto src              = devices_list[static_cast<std::size_t>(selected)];
+        const auto& src       = devices_list[static_cast<std::size_t>(selected)];
         const auto& lines     = utils::make_multiline(src, false, " ");
         config_data["DEVICE"] = lines[0];
         success               = true;
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
-    detail::menu_widget(devices_list, ok_callback, &selected);
+    detail::menu_widget(devices_list, ok_callback, &selected, &screen);
 
     return success;
 }
@@ -577,7 +760,7 @@ bool select_filesystem() noexcept {
     // prep variables
     config_data["fs_opts"] = std::vector<std::string>{};
 
-    std::vector<std::string> menu_entries = {
+    const std::vector<std::string> menu_entries = {
         "Do not format -",
         "btrfs mkfs.btrfs -f",
         "ext2 mkfs.ext2 -q",
@@ -592,10 +775,11 @@ bool select_filesystem() noexcept {
         "xfs mkfs.xfs -f",
     };
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     bool success{};
     auto ok_callback = [&] {
-        auto src             = menu_entries[static_cast<std::size_t>(selected)];
+        const auto& src      = menu_entries[static_cast<std::size_t>(selected)];
         const auto& lines    = utils::make_multiline(src, false, " ");
         const auto& file_sys = lines[0];
         if (file_sys == "btrfs") {
@@ -635,9 +819,9 @@ bool select_filesystem() noexcept {
             config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
         }
         success = true;
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
-    detail::menu_widget(menu_entries, ok_callback, &selected);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 
     /* clang-format off */
     if (!success) { return false; }
@@ -659,7 +843,7 @@ bool select_filesystem() noexcept {
 }
 
 // This subfunction allows for special mounting options to be applied for relevant fs's.
-// Seperate subfunction for neatness.
+// Separate subfunction for neatness.
 void mount_opts() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -702,7 +886,7 @@ void mount_opts() noexcept {
     auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
     auto ok_callback      = [&] {
         mount_opts_info = detail::from_checklist_string(fs_opts, fs_opts_state.get());
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
 
     ButtonOption button_option{.border = false};
@@ -722,8 +906,8 @@ void mount_opts() noexcept {
     });
 
     auto renderer = Renderer(global, [&] {
-        const auto& file_sys_formated = utils::exec(fmt::format("echo {} | sed \"s/.*\\.//g;s/-.*//g\"", file_sys));
-        const auto& title             = fmt::format("New CLI Installer | {}", file_sys_formated);
+        const auto& file_sys_formatted = utils::exec(fmt::format("echo {} | sed \"s/.*\\.//g;s/-.*//g\"", file_sys));
+        const auto& title              = fmt::format("New CLI Installer | {}", file_sys_formatted);
         return detail::centered_interative_multi(title, global);
     });
 
@@ -869,6 +1053,7 @@ void make_swap() noexcept {
         temp.reserve(partitions.size());
         ranges::copy(partitions, std::back_inserter(temp));
 
+        auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
         bool success{};
         auto ok_callback = [&] {
@@ -876,10 +1061,10 @@ void make_swap() noexcept {
             const auto& lines     = utils::make_multiline(src, false, " ");
             config_data["ANSWER"] = lines[0];
             success               = true;
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
         };
         /* clang-format off */
-        detail::menu_widget(temp, ok_callback, &selected);
+        detail::menu_widget(temp, ok_callback, &selected, &screen);
         if (!success) { return; }
         /* clang-format on */
     }
@@ -974,6 +1159,7 @@ void make_esp() noexcept {
     {
         const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
 
+        auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
         bool success{};
         auto ok_callback = [&] {
@@ -981,10 +1167,10 @@ void make_esp() noexcept {
             const auto& lines     = utils::make_multiline(src, false, " ");
             config_data["ANSWER"] = lines[0];
             success               = true;
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
         };
         /* clang-format off */
-        detail::menu_widget(partitions, ok_callback, &selected);
+        detail::menu_widget(partitions, ok_callback, &selected, &screen);
         if (!success) { return; }
         /* clang-format on */
     }
@@ -1032,7 +1218,7 @@ void make_esp() noexcept {
         auto ok_callback      = [&] {
             auto src              = radiobox_list[static_cast<std::size_t>(selected)];
             config_data["ANSWER"] = src;
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
         };
 
         ButtonOption button_option{.border = false};
@@ -1064,12 +1250,12 @@ void make_esp() noexcept {
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     auto& uefi_mount            = std::get<std::string>(config_data["UEFI_MOUNT"]);
     uefi_mount                  = answer;
-    const auto& path_formated   = fmt::format("{}{}", mountpoint_info, uefi_mount);
+    const auto& path_formatted  = fmt::format("{}{}", mountpoint_info, uefi_mount);
 #ifdef NDEVENV
-    utils::exec(fmt::format("mkdir -p {}", path_formated));
-    utils::exec(fmt::format("mount {} {}", partition, path_formated));
+    utils::exec(fmt::format("mkdir -p {}", path_formatted));
+    utils::exec(fmt::format("mount {} {}", partition, path_formatted));
 #endif
-    confirm_mount(path_formated);
+    confirm_mount(path_formatted);
 }
 
 void mount_partitions() noexcept {
@@ -1121,6 +1307,7 @@ void mount_partitions() noexcept {
     } else {
         // Identify and mount root
         {
+            auto screen = ScreenInteractive::Fullscreen();
             std::int32_t selected{};
             bool success{};
             const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
@@ -1131,9 +1318,9 @@ void mount_partitions() noexcept {
                 config_data["PARTITION"] = lines[0];
                 config_data["ROOT_PART"] = lines[0];
                 success                  = true;
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             };
-            detail::menu_widget(partitions, ok_callback, &selected);
+            detail::menu_widget(partitions, ok_callback, &selected, &screen);
             if (!success)
                 return;
         }
@@ -1202,22 +1389,23 @@ void mount_partitions() noexcept {
     const auto& partition         = std::get<std::string>(config_data["PARTITION"]);
     while (number_partitions > 0) {
         {
-            std::int32_t selected{};
-            bool success{};
             const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
             std::vector<std::string> temp{"Done -"};
             temp.reserve(partitions.size());
             ranges::copy(partitions, std::back_inserter(temp));
 
+            auto screen = ScreenInteractive::Fullscreen();
+            std::int32_t selected{};
+            bool success{};
             auto ok_callback = [&] {
                 auto src                 = temp[static_cast<std::size_t>(selected)];
                 const auto& lines        = utils::make_multiline(src, false, " ");
                 config_data["PARTITION"] = lines[0];
                 success                  = true;
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             };
             /* clang-format off */
-            detail::menu_widget(temp, ok_callback, &selected);
+            detail::menu_widget(temp, ok_callback, &selected, &screen);
             if (!success) { return; }
             /* clang-format on */
         }
@@ -1257,10 +1445,10 @@ void mount_partitions() noexcept {
         // Create directory and mount.
         tui::mount_current_partition();
 
-        // Determine if a seperate /boot is used.
-        // 0 = no seperate boot,
-        // 1 = seperate non-lvm boot,
-        // 2 = seperate lvm boot. For Grub configuration
+        // Determine if a separate /boot is used.
+        // 0 = no separate boot,
+        // 1 = separate non-lvm boot,
+        // 2 = separate lvm boot. For Grub configuration
         if (mount_dev == "/boot") {
             const auto& cmd             = fmt::format("lsblk -lno TYPE {} | grep \"lvm\"", std::get<std::string>(config_data["PARTITION"]));
             const auto& cmd_out         = utils::exec(cmd);
@@ -1279,7 +1467,7 @@ void create_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    std::vector<std::string> menu_entries = {
+    const std::vector<std::string> menu_entries = {
         optwipe.data(),
         optauto.data(),
         "cfdisk",
@@ -1337,7 +1525,7 @@ void create_partitions() noexcept {
 
 void install_desktop_system_menu() { }
 void install_core_menu() noexcept {
-    std::vector<std::string> menu_entries = {
+    const std::vector<std::string> menu_entries = {
         "Install Base Packages",
         "Install Bootloader",
         "Configure Base",
@@ -1348,25 +1536,26 @@ void install_core_menu() noexcept {
         "Back",
     };
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
         switch (selected) {
         case 0:
             if (!utils::check_mount()) {
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::install_base();
             break;
         case 1: {
             if (!utils::check_base()) {
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::install_bootloader();
             break;
         }
         case 2: {
             if (!utils::check_base()) {
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::config_base_menu();
             break;
@@ -1376,21 +1565,21 @@ void install_core_menu() noexcept {
             break;
         case 4:
             if (!utils::check_base()) {
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             // tweaks_menu
             break;
         default:
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
             break;
         }
     };
-    detail::menu_widget(menu_entries, ok_callback, &selected);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
 
 void install_custom_menu() { }
 void system_rescue_menu() {
-    std::vector<std::string> menu_entries = {
+    const std::vector<std::string> menu_entries = {
         "Install Hardware Drivers",
         "Install Bootloader",
         "Install Packages",
@@ -1402,33 +1591,34 @@ void system_rescue_menu() {
         "Back",
     };
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
         switch (selected) {
         case 1:
             if (!utils::check_mount() && !utils::check_base()) {
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::install_bootloader();
             break;
         case 2:
             if (!utils::check_mount()) {
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::install_cust_pkgs();
             break;
         case 3:
             if (!utils::check_mount() && !utils::check_base()) {
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::rm_pgs();
             break;
         default:
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
             break;
         }
     };
-    detail::menu_widget(menu_entries, ok_callback, &selected);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
 
 void prep_menu() noexcept {
@@ -1448,6 +1638,7 @@ void prep_menu() noexcept {
         "Back",
     };
 
+    auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
         switch (selected) {
@@ -1481,15 +1672,15 @@ void prep_menu() noexcept {
             set_fsck_hook();
             break;
         default:
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
             break;
         }
     };
-    detail::menu_widget(menu_entries, ok_callback, &selected, "", {15, 50});
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, "", {15, 50});
 }
 
 void init() noexcept {
-    std::vector<std::string> menu_entries = {
+    const std::vector<std::string> menu_entries = {
         "Prepare Installation",
         "Install Desktop System",
         "Install CLI System",
@@ -1507,24 +1698,21 @@ void init() noexcept {
             break;
         case 1: {
             if (!utils::check_mount()) {
-                screen.ExitLoopClosure();
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::install_desktop_system_menu();
             break;
         }
         case 2: {
             if (!utils::check_mount()) {
-                screen.ExitLoopClosure();
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::install_core_menu();
             break;
         }
         case 3: {
             if (!utils::check_mount()) {
-                screen.ExitLoopClosure();
-                std::raise(SIGINT);
+                screen.ExitLoopClosure()();
             }
             tui::install_custom_menu();
             break;
@@ -1533,36 +1721,11 @@ void init() noexcept {
             tui::system_rescue_menu();
             break;
         default:
-            screen.ExitLoopClosure();
-            std::raise(SIGINT);
+            screen.ExitLoopClosure()();
             break;
         }
     };
-
-    MenuOption menu_option{.on_enter = ok_callback};
-    auto menu    = Menu(&menu_entries, &selected, &menu_option);
-    auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    });
-
-    ButtonOption button_option{.border = false};
-    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
-
-    auto controls = Renderer(controls_container, [&] {
-        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
-    });
-
-    auto global = Container::Vertical({
-        content,
-        Renderer([] { return separator(); }),
-        controls,
-    });
-
-    auto renderer = Renderer(global, [&] {
-        return detail::centered_interative_multi("New CLI Installer", global);
-    });
-
-    screen.Loop(renderer);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
 
 }  // namespace tui

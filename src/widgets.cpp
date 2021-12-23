@@ -250,8 +250,7 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
     return success;
 }
 
-void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, const std::string_view& text, const ContentBoxSize content_size) noexcept {
-    auto screen = ScreenInteractive::Fullscreen();
+void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ScreenInteractive* screen, const std::string_view& text, const ContentBoxSize content_size) noexcept {
     MenuOption menu_option{.on_enter = ok_callback};
     auto menu    = Menu(&entries, selected, &menu_option);
     auto content = Renderer(menu, [&] {
@@ -259,7 +258,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
     });
 
     ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()}, &button_option);
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -285,7 +284,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
         return centered_interative_multi("New CLI Installer", global);
     });
 
-    screen.Loop(renderer);
+    screen->Loop(renderer);
 }
 
 }  // namespace tui::detail
