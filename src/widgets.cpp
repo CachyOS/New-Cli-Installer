@@ -3,7 +3,6 @@
 #include "utils.hpp"
 
 /* clang-format off */
-#include <csignal>                                 // for raise
 #include <algorithm>                               // for transform
 #include <string>                                  // for basic_string
 #include <ftxui/component/component.hpp>           // for Renderer, Button
@@ -148,7 +147,7 @@ bool inputbox_widget(std::string& value, const std::string_view& content, Decora
     bool success{};
     auto ok_callback = [&] {
         success = true;
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
     InputOption input_option{.on_enter = ok_callback, .password = password};
     auto input_value       = Input(&value, "", input_option);
@@ -196,7 +195,7 @@ bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
     bool success{};
     auto ok_callback = [&] {
         success = true;
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
     ButtonOption button_option{.border = false};
     auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
@@ -227,7 +226,7 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
     bool success{};
     auto ok_callback = [&] {
         success = true;
-        std::raise(SIGINT);
+        screen.ExitLoopClosure()();
     };
     ButtonOption button_option{.border = false};
     auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
