@@ -133,7 +133,41 @@ void set_hostname() noexcept {
 #endif
 }
 void set_locale() noexcept { }
-void set_xkbmap() noexcept { }
+
+// Set keymap for X11
+void set_xkbmap() noexcept {
+    static constexpr auto keymaps_xkb = "af al am at az ba bd be bg br bt bw by ca cd ch cm cn cz de dk ee es et eu fi fo fr gb ge gh gn gr hr hu ie il in iq ir is it jp ke kg kh kr kz la lk lt lv ma md me mk ml mm mn mt mv ng nl no np pc ph pk pl pt ro rs ru se si sk sn sy tg th tj tm tr tw tz ua us uz vn za";
+    const auto& xkbmap_list           = utils::make_multiline(keymaps_xkb, false, " ");
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    bool success{};
+    std::string_view xkbmap_choice{};
+    auto ok_callback = [&] {
+        const auto& answer = xkbmap_list[static_cast<std::size_t>(selected)];
+        xkbmap_choice      = utils::exec(fmt::format("echo \"{}\" | sed 's/_.*//'", answer));
+        success            = true;
+        screen.ExitLoopClosure()();
+    };
+
+    // TODO: menu should be scrollable
+    static constexpr auto xkbmap_body = "\nSelect Desktop Environment Keymap.\n";
+    detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {5, 0, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+
+    /* clang-format off */
+    if (!success) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    utils::exec(fmt::format("echo -e \"Section \"\\\"InputClass\"\\\"\\nIdentifier \"\\\"system-keyboard\"\\\"\\nMatchIsKeyboard \"\\\"on\"\\\"\\nOption \"\\\"XkbLayout\"\\\" \"\\\"{0}\"\\\"\\nEndSection\" > {1}/etc/X11/xorg.conf.d/00-keyboard.conf", xkbmap_choice, mountpoint));
+#endif
+}
+
+// Set Zone and Sub-Zone
 bool set_timezone() noexcept {
     std::string zone{};
     {
@@ -267,7 +301,7 @@ void create_new_user() noexcept {
 
         auto screen  = ScreenInteractive::Fullscreen();
         auto content = Renderer(component, [&] {
-            return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
+            return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         });
 
         auto ok_callback = [&] {
@@ -504,7 +538,7 @@ void install_base() noexcept {
 
     auto screen  = ScreenInteractive::Fullscreen();
     auto content = Renderer(kernels, [&] {
-        return kernels->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
+        return kernels->Render() | vscroll_indicator | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     });
 
     std::string packages{};
@@ -553,8 +587,17 @@ void install_base() noexcept {
     screen.Loop(renderer);
 
     if (!packages.empty()) {
-        // TODO: Add linux-*-headers
-        packages += "base base-devel";
+        auto pkg_list = utils::make_multiline(packages, false, " ");
+
+        const auto pkg_count = pkg_list.size();
+        for (std::size_t i = 0; i < pkg_count; ++i) {
+            const auto& pkg = pkg_list[i];
+            pkg_list.emplace_back(fmt::format("{}-headers", pkg));
+        }
+        pkg_list.insert(pkg_list.cend(), {"base", "base-devel"});
+        packages = utils::make_multiline(pkg_list, false, " ");
+
+        spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
 #ifdef NDEVENV
         // filter_packages
         utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
@@ -595,6 +638,7 @@ void config_base_menu() noexcept {
         case 4: {
             if (!tui::set_timezone()) {
                 screen.ExitLoopClosure()();
+                break;
             }
             tui::set_hw_clock();
             break;
@@ -1543,12 +1587,14 @@ void install_core_menu() noexcept {
         case 0:
             if (!utils::check_mount()) {
                 screen.ExitLoopClosure()();
+                break;
             }
             tui::install_base();
             break;
         case 1: {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
+                break;
             }
             tui::install_bootloader();
             break;
@@ -1556,6 +1602,7 @@ void install_core_menu() noexcept {
         case 2: {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
+                break;
             }
             tui::config_base_menu();
             break;
@@ -1598,18 +1645,21 @@ void system_rescue_menu() {
         case 1:
             if (!utils::check_mount() && !utils::check_base()) {
                 screen.ExitLoopClosure()();
+                break;
             }
             tui::install_bootloader();
             break;
         case 2:
             if (!utils::check_mount()) {
                 screen.ExitLoopClosure()();
+                break;
             }
             tui::install_cust_pkgs();
             break;
         case 3:
             if (!utils::check_mount() && !utils::check_base()) {
                 screen.ExitLoopClosure()();
+                break;
             }
             tui::rm_pgs();
             break;

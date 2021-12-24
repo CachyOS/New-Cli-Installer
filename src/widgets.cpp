@@ -253,7 +253,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
     MenuOption menu_option{.on_enter = ok_callback};
     auto menu    = Menu(&entries, selected, &menu_option);
     auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, content_size.height) | size(WIDTH, GREATER_THAN, content_size.width);
+        return menu->Render() | vscroll_indicator | center | size(HEIGHT, GREATER_THAN, content_size.height) | size(WIDTH, GREATER_THAN, content_size.width);
     });
 
     ButtonOption button_option{.border = false};
