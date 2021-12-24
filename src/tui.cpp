@@ -392,7 +392,7 @@ void create_new_user() noexcept {
     utils::arch_chroot(fmt::format("chown -R {0}:{0} /home/{0}", user));
     const auto& sudoers_file = fmt::format("{}/etc/sudoers", mountpoint);
     if (fs::exists(sudoers_file)) {
-        utils::exec(fmt::format("sed -i \'/%wheel ALL=(ALL) ALL/s/^#//\' {}", sudoers));
+        utils::exec(fmt::format("sed -i \'/%wheel ALL=(ALL) ALL/s/^#//\' {}", sudoers_file));
     }
 #endif
 }
