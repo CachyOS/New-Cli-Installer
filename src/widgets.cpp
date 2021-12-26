@@ -1,14 +1,22 @@
 #include "widgets.hpp"
-#include "config.hpp"
-#include "utils.hpp"
+#include "utils.hpp"  // for make_multiline
 
-/* clang-format off */
-#include <algorithm>                               // for transform
-#include <string>                                  // for basic_string
-#include <ftxui/component/component.hpp>           // for Renderer, Button
-#include <ftxui/component/component_options.hpp>   // for ButtonOption
-#include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
-/* clang-format on */
+#include <algorithm>  // for transform
+#include <cstddef>    // for size_t
+#include <iterator>   // for back_insert_iterator
+#include <memory>     // for shared_ptr, __shar...
+#include <string>     // for string, allocator
+#include <utility>    // for move
+
+#include <ftxui/component/captured_mouse.hpp>      // for ftxui
+#include <ftxui/component/component.hpp>           // for Renderer, Vertical
+#include <ftxui/component/component_base.hpp>      // for ComponentBase, Com...
+#include <ftxui/component/component_options.hpp>   // for ButtonOption, Inpu...
+#include <ftxui/component/screen_interactive.hpp>  // for ScreenInteractive
+#include <ftxui/dom/elements.hpp>                  // for operator|, Element
+#include <ftxui/dom/node.hpp>                      // for Render
+#include <ftxui/screen/screen.hpp>                 // for Full, Screen
+#include <ftxui/util/ref.hpp>                      // for Ref
 
 using namespace ftxui;
 

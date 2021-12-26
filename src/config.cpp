@@ -1,8 +1,8 @@
 #include "config.hpp"
-#include "definitions.hpp"
+#include "definitions.hpp"  // for error_inter
 
-#include <filesystem>
-#include <memory>
+#include <filesystem>  // for exists
+#include <memory>      // for unique_ptr, make_unique, operator==
 
 static std::unique_ptr<Config> s_config = nullptr;
 

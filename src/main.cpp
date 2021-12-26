@@ -1,15 +1,16 @@
-#include "config.hpp"
-#include "definitions.hpp"
-#include "screen_service.hpp"
-#include "tui.hpp"
-#include "utils.hpp"
+#include "config.hpp"       // for Config
+#include "definitions.hpp"  // for error_inter
+#include "tui.hpp"          // for init
+#include "utils.hpp"        // for exec, check_root, clear_sc...
 
 #include <chrono>  // for seconds
-#include <regex>   // for regex_search, match_results<>::_Base_type
+#include <regex>   // for regex_search, match_result...
 #include <thread>  // for sleep_for
 
-#include <spdlog/async.h>
-#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/async.h>                  // for create_async
+#include <spdlog/common.h>                 // for debug
+#include <spdlog/sinks/basic_file_sink.h>  // for basic_file_sink_mt
+#include <spdlog/spdlog.h>                 // for set_default_logger, set_level
 
 int main() {
     const auto& tty = utils::exec("tty");

@@ -1,11 +1,12 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include <string>
-#include <string_view>
-#include <unordered_map>
-#include <variant>
-#include <vector>
+#include <cstdint>        // for int32_t
+#include <string>         // for string
+#include <string_view>    // for string_view, hash
+#include <unordered_map>  // for unordered_map
+#include <variant>        // for variant
+#include <vector>         // for vector
 
 class Config final {
  public:

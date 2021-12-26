@@ -113,6 +113,13 @@ executable(
   include_directories: [include_directories('src')],
   install: false)
 
+executable(
+  'test-process-tailing',
+  files('src/config.cpp', 'src/widgets.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/test_proccess_tailing.cpp'),
+  dependencies: [fmt, spdlog, ftxui, cpr, glibmm],
+  include_directories: [include_directories('src')],
+  install: false)
+
 summary(
   {
     'Build type': get_option('buildtype'),

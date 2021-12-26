@@ -2,11 +2,11 @@
 #ifndef SCREEN_SERVICE_HPP
 #define SCREEN_SERVICE_HPP
 
-#include "view.hpp"
+//#include "view.hpp"
 
 /* clang-format off */
-#include <memory>
-#include <ftxui/component/screen_interactive.hpp>
+//#include <memory>
+#include <ftxui/component/screen_interactive.hpp>  // for ScreenInteractive
 /* clang-format on */
 
 namespace tui {

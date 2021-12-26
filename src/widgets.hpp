@@ -1,12 +1,19 @@
 #ifndef WIDGETS_HPP
 #define WIDGETS_HPP
 
+#include <array>        // for array
+#include <cstdint>      // for int32_t
+#include <functional>   // for function
+#include <string>       // for string
+#include <string_view>  // for string_view
+#include <vector>       // for vector
+
+#include <ftxui/component/component_base.hpp>      // for Components
+#include <ftxui/component/screen_interactive.hpp>  // for Component
+#include <ftxui/dom/elements.hpp>                  // for size, GREATER_THAN
+
 /* clang-format off */
-#include <string_view>                             // for string_view
-#include <ftxui/component/component_base.hpp>      // for Component
-#include <ftxui/component/component_options.hpp>   // for ButtonOption
-#include <ftxui/dom/elements.hpp>                  // for Element, operator|, size
-#include <ftxui/component/screen_interactive.hpp>
+namespace ftxui { struct ButtonOption; }
 /* clang-format on */
 
 namespace tui {
