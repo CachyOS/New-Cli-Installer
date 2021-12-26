@@ -100,8 +100,7 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
     args.push_back(nullptr);
 
     char** command = args.data();
-
-    if ((ret = subprocess_create(command, subprocess_option_enable_async | subprocess_option_combined_stdout_stderr, &process)) != 0) {
+    if ((ret = subprocess_create(command, subprocess_option_enable_async | subprocess_option_combined_stdout_stderr | subprocess_option_inherit_environment, &process)) != 0) {
         running = false;
         return;
     }
