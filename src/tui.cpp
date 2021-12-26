@@ -150,9 +150,9 @@ void set_xkbmap() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    // TODO: menu should be scrollable
     static constexpr auto xkbmap_body = "\nSelect Desktop Environment Keymap.\n";
-    detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {5, 0, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    const auto& content_size          = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+    detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {content_size, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
 
     /* clang-format off */
     if (!success) { return; }
@@ -183,7 +183,8 @@ bool set_timezone() noexcept {
         };
 
         static constexpr auto timezone_body = "The time zone is used to correctly set your system clock.";
-        detail::menu_widget(zone_list, ok_callback, &selected, &screen, timezone_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+        const auto& content_size            = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zone_list, ok_callback, &selected, &screen, timezone_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
     }
     /* clang-format off */
     if (zone.empty()) { return false; }
@@ -203,7 +204,8 @@ bool set_timezone() noexcept {
         };
 
         static constexpr auto sub_timezone_body = "Select the city nearest to you.";
-        detail::menu_widget(city_list, ok_callback, &selected, &screen, sub_timezone_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+        const auto& content_size                = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+        detail::menu_widget(city_list, ok_callback, &selected, &screen, sub_timezone_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
     }
 
     /* clang-format off */
@@ -236,7 +238,8 @@ void set_hw_clock() noexcept {
     };
 
     static constexpr auto hw_clock_body = "UTC is the universal time standard,\nand is recommended unless dual-booting with Windows.";
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, hw_clock_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    const auto& content_size            = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, hw_clock_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
 }
 
 void set_root_password() noexcept {
@@ -538,7 +541,7 @@ void install_base() noexcept {
 
     auto screen  = ScreenInteractive::Fullscreen();
     auto content = Renderer(kernels, [&] {
-        return kernels->Render() | vscroll_indicator | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        return kernels->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
     });
 
     std::string packages{};
@@ -656,7 +659,8 @@ void config_base_menu() noexcept {
     };
 
     static constexpr auto config_base_body = "Basic configuration of the base.";
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, config_base_body, {5, 40, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    const auto& content_size               = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, config_base_body, {content_size, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
 }
 
 void bios_bootloader() {
@@ -924,7 +928,7 @@ void mount_opts() noexcept {
 
     auto screen  = ScreenInteractive::Fullscreen();
     auto content = Renderer(flags, [&] {
-        return flags->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
+        return flags->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
     });
 
     auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
@@ -1255,7 +1259,7 @@ void make_esp() noexcept {
 
         auto screen  = ScreenInteractive::Fullscreen();
         auto content = Renderer(component, [&] {
-            return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator;
+            return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
         });
 
         config_data["ANSWER"] = "";
@@ -1726,7 +1730,7 @@ void prep_menu() noexcept {
             break;
         }
     };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, "", {15, 50});
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, "", {size(HEIGHT, GREATER_THAN, 15) | size(WIDTH, GREATER_THAN, 50)});
 }
 
 void init() noexcept {

@@ -18,10 +18,9 @@ namespace ftxui { struct ButtonOption; }
 
 namespace tui {
 namespace detail {
-    struct ContentBoxSize {
-        int height;
-        int width;
-        ftxui::Decorator text_size = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5);
+    struct WidgetBoxSize {
+        ftxui::Decorator content_size = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 10) | size(ftxui::WIDTH, ftxui::GREATER_THAN, 40);
+        ftxui::Decorator text_size    = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5);
     };
 
     auto centered_widget(ftxui::Component& container, const std::string_view& title, const ftxui::Element& widget) noexcept -> ftxui::Element;
@@ -36,7 +35,7 @@ namespace detail {
     void infobox_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     bool yesno_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     bool yesno_widget(ftxui::Component& container, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
-    void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const ContentBoxSize content_size = {10, 40}) noexcept;
+    void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const WidgetBoxSize widget_sizes = {}) noexcept;
 }  // namespace detail
 }  // namespace tui
 

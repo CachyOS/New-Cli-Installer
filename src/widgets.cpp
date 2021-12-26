@@ -257,11 +257,11 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
     return success;
 }
 
-void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ScreenInteractive* screen, const std::string_view& text, const ContentBoxSize content_size) noexcept {
+void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ScreenInteractive* screen, const std::string_view& text, const WidgetBoxSize widget_sizes) noexcept {
     MenuOption menu_option{.on_enter = ok_callback};
     auto menu    = Menu(&entries, selected, &menu_option);
     auto content = Renderer(menu, [&] {
-        return menu->Render() | vscroll_indicator | center | size(HEIGHT, GREATER_THAN, content_size.height) | size(WIDTH, GREATER_THAN, content_size.width);
+        return menu->Render() | center | widget_sizes.content_size;
     });
 
     ButtonOption button_option{.border = false};
@@ -274,7 +274,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
     Components children{};
     if (!text.empty()) {
         children = {
-            Renderer([&] { return detail::multiline_text(utils::make_multiline(text)) | content_size.text_size; }),
+            Renderer([&] { return detail::multiline_text(utils::make_multiline(text)) | widget_sizes.text_size; }),
             Renderer([] { return separator(); }),
             content,
             Renderer([] { return separator(); }),
