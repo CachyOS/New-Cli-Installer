@@ -47,6 +47,7 @@ src_files = files(
     'src/config.cpp', 'src/config.hpp',
     'src/utils.cpp', 'src/utils.hpp',
     'src/widgets.cpp', 'src/widgets.hpp',
+    'src/follow_process_log.cpp', 'src/follow_process_log.hpp',
     'src/tui.cpp', 'src/tui.hpp',
     'src/main.cpp',
 )
@@ -115,7 +116,7 @@ executable(
 
 executable(
   'test-process-tailing',
-  files('src/config.cpp', 'src/widgets.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/test_proccess_tailing.cpp'),
+  files('src/config.cpp', 'src/widgets.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/follow_process_log.cpp','src/test_proccess_tailing.cpp'),
   dependencies: [fmt, spdlog, ftxui, cpr, glibmm],
   include_directories: [include_directories('src')],
   install: false)

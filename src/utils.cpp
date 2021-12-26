@@ -1,6 +1,7 @@
 #include "utils.hpp"
 #include "config.hpp"
 #include "definitions.hpp"
+#include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
 
@@ -80,6 +81,43 @@ void arch_chroot(const std::string_view& command) noexcept {
 
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     utils::exec(fmt::format("arch-chroot {} \"{}\"", mountpoint, command));
+}
+
+void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async) noexcept {
+    if (!async) {
+        spdlog::error("Implement me!");
+        return;
+    }
+    subprocess_s process{};
+    int32_t ret{-1};
+    static std::array<char, 1048576 + 1> data{};
+    uint32_t index{};
+    uint32_t bytes_read{};
+
+    std::vector<char*> args;
+    std::transform(vec.cbegin(), vec.cend(), std::back_inserter(args),
+        [=](const std::string& arg) -> char* { return const_cast<char*>(arg.data()); });
+    args.push_back(nullptr);
+
+    char** command = args.data();
+
+    if ((ret = subprocess_create(command, subprocess_option_enable_async | subprocess_option_combined_stdout_stderr, &process)) != 0) {
+        running = false;
+        return;
+    }
+
+    child = process;
+
+    do {
+        bytes_read = subprocess_read_stdout(&process, data.data() + index,
+            sizeof(data) - 1 - index);
+
+        index += bytes_read;
+        process_log = data.data();
+    } while (bytes_read != 0);
+
+    subprocess_join(&process, &ret);
+    subprocess_destroy(&process);
 }
 
 void exec(const std::vector<std::string>& vec) noexcept {

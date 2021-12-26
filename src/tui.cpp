@@ -30,6 +30,10 @@ namespace fs = std::filesystem;
 namespace ranges = std::ranges;
 #endif
 
+#ifdef NDEVENV
+#include "follow_process_log.hpp"
+#endif
+
 namespace tui {
 
 // Revised to deal with partion sizes now being displayed to the user
@@ -418,10 +422,12 @@ void install_cust_pkgs() noexcept {
     const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
 
     if (hostcache) {
-        utils::exec(fmt::format("pacstrap {} {}", mountpoint, packages));
+        // utils::exec(fmt::format("pacstrap {} {}", mountpoint, packages));
+        detail::follow_process_log_widget({"/sbin/pacstrap", mountpoint, packages});
         return;
     }
-    utils::exec(fmt::format("pacstrap -c {} {}", mountpoint, packages));
+    // utils::exec(fmt::format("pacstrap -c {} {}", mountpoint, packages));
+    detail::follow_process_log_widget({"/sbin/pacstrap", "-c", mountpoint, packages});
 #endif
 }
 
@@ -454,7 +460,8 @@ void install_systemd_boot() noexcept {
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
     utils::arch_chroot(fmt::format("bootctl --path={} install", uefi_mount));
-    utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
+    // utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
+    detail::follow_process_log_widget({"/sbin/pacstrap", mountpoint, "systemd-boot-manager"});
     utils::arch_chroot("sdboot-manage gen");
 
     // Check if the volume is removable. If so, dont use autodetect
@@ -603,7 +610,8 @@ void install_base() noexcept {
         spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
 #ifdef NDEVENV
         // filter_packages
-        utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
+        // utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
+        detail::follow_process_log_widget({"/sbin/pacstrap", mountpoint, packages});
 #endif
         std::ofstream{base_installed};
     }

@@ -2,6 +2,7 @@
 #define UTILS_HPP
 
 #include "definitions.hpp"
+#include "subprocess.h"
 
 #include <charconv>     // for from_chars
 #include <string>       // for string
@@ -25,6 +26,7 @@ void umount_partitions() noexcept;
 void find_partitions() noexcept;
 
 void arch_chroot(const std::string_view& command) noexcept;
+void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept;
 void exec(const std::vector<std::string>& vec) noexcept;
 auto exec(const std::string_view& command, const bool& interactive = false) noexcept(false) -> std::string;
 [[nodiscard]] bool check_root() noexcept;

@@ -88,16 +88,25 @@ add_executable(${PROJECT_NAME}
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
    src/widgets.cpp src/widgets.hpp
+   src/follow_process_log.hpp src/follow_process_log.cpp
    src/tui.cpp src/tui.hpp
    src/main.cpp
    )
 
 add_executable(test-exec-interactive
+   src/config.cpp src/config.hpp
+   src/utils.cpp src/utils.hpp
+   src/tui.cpp src/tui.hpp
+   src/main_test.cpp
+   )
+
+add_executable(test-process-tailing
    src/config.cpp
    src/utils.cpp
    src/widgets.cpp src/widgets.hpp
+   src/follow_process_log.hpp src/follow_process_log.cpp
    src/tui.cpp src/tui.hpp
-   src/main_test.cpp
+   src/test_proccess_tailing.cpp
    )
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
@@ -114,6 +123,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr PkgConfig::GLIBMM)
 target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr PkgConfig::GLIBMM)
+target_link_libraries(test-process-tailing PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr PkgConfig::GLIBMM)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
    target_link_libraries(${PROJECT_NAME} PRIVATE range-v3::range-v3)
