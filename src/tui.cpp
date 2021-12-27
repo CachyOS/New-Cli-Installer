@@ -604,7 +604,7 @@ void install_base() noexcept {
             const auto& pkg = pkg_list[i];
             pkg_list.emplace_back(fmt::format("{}-headers", pkg));
         }
-        pkg_list.insert(pkg_list.cend(), {"base", "base-devel"});
+        pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "cachyos-keyring", "cachyos-mirrorlist"});
         packages = utils::make_multiline(pkg_list, false, " ");
 
         spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
@@ -612,6 +612,8 @@ void install_base() noexcept {
         // filter_packages
         // utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
         detail::follow_process_log_widget({"/sbin/pacstrap", mountpoint, packages});
+
+        std::filesystem::copy("/etc/pacman.conf", fmt::format("{}/etc/pacman.conf", mountpoint));
 #endif
         std::ofstream{base_installed};
     }
@@ -717,7 +719,7 @@ void auto_partition() noexcept {
     [[maybe_unused]] const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
 
     // Find existing partitions (if any) to remove
-    auto parts            = utils::exec(fmt::format("parted -s {} print | {}", device_info, "awk \'/^ / {print $1}\'"));
+    const auto& parts     = utils::exec(fmt::format("parted -s {} print | {}", device_info, "awk \'/^ / {print $1}\'"));
     const auto& del_parts = utils::make_multiline(parts);
     for (const auto& del_part : del_parts) {
 #ifdef NDEVENV
@@ -748,7 +750,7 @@ void auto_partition() noexcept {
 #endif
 
     // Show created partitions
-    auto disklist = utils::exec(fmt::format("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info));
+    const auto& disk_list = utils::exec(fmt::format("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info));
 
     auto screen = ScreenInteractive::Fullscreen();
     /* clang-format off */
@@ -758,7 +760,7 @@ void auto_partition() noexcept {
 
     auto container = Container::Horizontal({button_back});
     auto renderer  = Renderer(container, [&] {
-        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(disklist)) | size(HEIGHT, GREATER_THAN, 5));
+        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(disk_list)) | size(HEIGHT, GREATER_THAN, 5));
     });
     /* clang-format on */
 
@@ -767,8 +769,8 @@ void auto_partition() noexcept {
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    auto screen = ScreenInteractive::Fullscreen();
-    auto lsblk  = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
+    auto screen       = ScreenInteractive::Fullscreen();
+    const auto& lsblk = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
 
     /* clang-format off */
     auto button_option   = ButtonOption();
@@ -1113,7 +1115,7 @@ void make_swap() noexcept {
         std::int32_t selected{};
         bool success{};
         auto ok_callback = [&] {
-            auto src              = temp[static_cast<std::size_t>(selected)];
+            const auto& src       = temp[static_cast<std::size_t>(selected)];
             const auto& lines     = utils::make_multiline(src, false, " ");
             config_data["ANSWER"] = lines[0];
             success               = true;
@@ -1219,7 +1221,7 @@ void make_esp() noexcept {
         std::int32_t selected{};
         bool success{};
         auto ok_callback = [&] {
-            auto src              = partitions[static_cast<std::size_t>(selected)];
+            const auto& src       = partitions[static_cast<std::size_t>(selected)];
             const auto& lines     = utils::make_multiline(src, false, " ");
             config_data["ANSWER"] = lines[0];
             success               = true;
@@ -1369,7 +1371,7 @@ void mount_partitions() noexcept {
             const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
 
             auto ok_callback = [&] {
-                auto src                 = partitions[static_cast<std::size_t>(selected)];
+                const auto& src          = partitions[static_cast<std::size_t>(selected)];
                 const auto& lines        = utils::make_multiline(src, false, " ");
                 config_data["PARTITION"] = lines[0];
                 config_data["ROOT_PART"] = lines[0];
@@ -1454,7 +1456,7 @@ void mount_partitions() noexcept {
             std::int32_t selected{};
             bool success{};
             auto ok_callback = [&] {
-                auto src                 = temp[static_cast<std::size_t>(selected)];
+                const auto& src          = temp[static_cast<std::size_t>(selected)];
                 const auto& lines        = utils::make_multiline(src, false, " ");
                 config_data["PARTITION"] = lines[0];
                 success                  = true;

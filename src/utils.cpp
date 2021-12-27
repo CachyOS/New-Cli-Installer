@@ -1,6 +1,7 @@
 #include "utils.hpp"
 #include "config.hpp"
 #include "definitions.hpp"
+#include "follow_process_log.hpp"
 #include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
@@ -75,12 +76,17 @@ void clear_screen() noexcept {
     output_inter("{}", CLEAR_SCREEN_ANSI);
 }
 
-void arch_chroot(const std::string_view& command) noexcept {
+void arch_chroot(const std::string_view& command, bool follow) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    utils::exec(fmt::format("arch-chroot {} \"{}\"", mountpoint, command));
+    const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& cmd_formatted = fmt::format("arch-chroot {} \"{}\"", mountpoint, command);
+    if (follow) {
+        tui::detail::follow_process_log_widget({"/sbin/bash", "-c", fmt::format("\"{}\"", cmd_formatted)});
+        return;
+    }
+    utils::exec(cmd_formatted);
 }
 
 void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async) noexcept {
@@ -96,11 +102,13 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
 
     std::vector<char*> args;
     std::transform(vec.cbegin(), vec.cend(), std::back_inserter(args),
-        [=](const std::string& arg) -> char* { return const_cast<char*>(arg.data()); });
+        [=](const std::string& arg) -> char* { return std::bit_cast<char*>(arg.data()); });
     args.push_back(nullptr);
 
-    char** command = args.data();
-    if ((ret = subprocess_create(command, subprocess_option_enable_async | subprocess_option_combined_stdout_stderr | subprocess_option_inherit_environment, &process)) != 0) {
+    std::memset(data.data(), 0, data.size());
+    char** command                             = args.data();
+    static constexpr const char* environment[] = {"PATH=/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin", nullptr};
+    if ((ret = subprocess_create_ex(command, subprocess_option_enable_async | subprocess_option_combined_stdout_stderr, environment, &process)) != 0) {
         running = false;
         return;
     }
@@ -109,7 +117,7 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
 
     do {
         bytes_read = subprocess_read_stdout(&process, data.data() + index,
-            sizeof(data) - 1 - index);
+            static_cast<uint32_t>(data.size()) - 1 - index);
 
         index += bytes_read;
         process_log = data.data();
@@ -431,6 +439,10 @@ bool handle_connection() noexcept {
 
             connected = utils::is_connected();
         }
+    }
+
+    if (connected) {
+        utils::exec("yes | pacman -Sy --noconfirm", true);
     }
 
     return connected;
