@@ -441,9 +441,11 @@ bool handle_connection() noexcept {
         }
     }
 
+#ifdef NDEVENV
     if (connected) {
         utils::exec("yes | pacman -Sy --noconfirm", true);
     }
+#endif
 
     return connected;
 }

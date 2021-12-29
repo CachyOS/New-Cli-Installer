@@ -96,6 +96,8 @@ add_executable(${PROJECT_NAME}
 add_executable(test-exec-interactive
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
+   src/widgets.cpp src/widgets.hpp
+   src/follow_process_log.hpp src/follow_process_log.cpp
    src/tui.cpp src/tui.hpp
    src/main_test.cpp
    )
