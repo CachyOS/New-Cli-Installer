@@ -46,6 +46,23 @@ namespace ranges = std::ranges;
 #include <cpr/timeout.h>
 #endif
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wsign-conversion"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-conversion"
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#endif
+
+#include <simdjson.h>
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
 namespace fs = std::filesystem;
 
 namespace utils {
@@ -462,6 +479,20 @@ void show_iwctl() noexcept {
     while (utils::prompt_char("Press a key to continue...", CYAN)) {
         utils::exec("iwctl", true);
         break;
+    }
+}
+
+void parse_config() noexcept {
+    using namespace simdjson;
+
+    ondemand::parser parser;
+    padded_string json     = padded_string::load("test.json");
+    ondemand::document doc = parser.iterate(json);
+
+    for (auto entry : doc["steps"]) {
+        std::string_view step;
+        entry.get(step);
+        std::cout << step << '\n';
     }
 }
 

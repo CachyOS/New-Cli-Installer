@@ -1,0 +1,3 @@
+{
+    "steps": ["locale", "partitions_encryption", "keyboard", "users", "summary", "netinstall", "finish"]
+}

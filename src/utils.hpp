@@ -34,6 +34,8 @@ void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;
 void show_iwctl() noexcept;
 
+void parse_config() noexcept;
+
 template <typename T = std::int32_t,
     typename         = std::enable_if_t<std::numeric_limits<T>::is_integer>>
 inline T to_int(const std::string_view& str) {

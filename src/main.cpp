@@ -25,6 +25,8 @@ int main() {
         return 1;
     }
 
+    utils::parse_config();
+
     if (!Config::initialize()) {
         return 1;
     }
