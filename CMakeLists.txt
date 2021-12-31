@@ -36,8 +36,8 @@ pkg_check_modules(
   glibmm-2.4>=2.56.0)
 
 FetchContent_Declare(ftxui
-  GIT_REPOSITORY "https://github.com/arthursonzogni/ftxui.git"
-  GIT_TAG "7e5cd23b4c47972b70b99c39617d6e38f05d1b3a"
+  GIT_REPOSITORY "https://github.com/vnepogodin/ftxui.git"
+  GIT_TAG "constexpr"
 )
 FetchContent_Declare(fmt
   GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
@@ -48,15 +48,15 @@ FetchContent_Declare(spdlog
   GIT_REPOSITORY "https://github.com/gabime/spdlog.git"
   GIT_TAG "cc30229abb1e22ebe1f8657de4011a53db7bd6ac"
 )
-FetchContent_Declare(nlohmann_json
-  GIT_REPOSITORY "https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent.git"
-  GIT_TAG "v3.10.4"
+FetchContent_Declare(simdjson
+  GIT_REPOSITORY "https://github.com/simdjson/simdjson.git"
+  GIT_TAG "3a93e45dd166d8e614a33b0ba4da39c1a01660b7"
 )
 FetchContent_Declare(cpr
   GIT_REPOSITORY "https://github.com/libcpr/cpr.git"
   GIT_TAG "beb9e98806bb84bcc130a2cebfbcbbc6ce62b335"
 )
-FetchContent_MakeAvailable(ftxui spdlog nlohmann_json cpr)
+FetchContent_MakeAvailable(ftxui spdlog simdjson cpr)
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
    FetchContent_Declare(range-v3
      GIT_REPOSITORY "https://github.com/ericniebler/range-v3.git"
@@ -123,7 +123,7 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component nlohmann_json::nlohmann_json cpr::cpr PkgConfig::GLIBMM)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component simdjson::simdjson cpr::cpr PkgConfig::GLIBMM)
 target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr PkgConfig::GLIBMM)
 target_link_libraries(test-process-tailing PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr PkgConfig::GLIBMM)
 

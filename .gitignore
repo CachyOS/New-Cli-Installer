@@ -11,6 +11,7 @@ subprojects/fmt
 subprojects/ftxui
 subprojects/nlohmann_json-*
 subprojects/spdlog
+subprojects/simdjson
 subprojects/packagecache
 
 # Prerequisites

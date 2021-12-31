@@ -35,7 +35,7 @@ endif
 spdlog = dependency('spdlog', version : ['>=1.9.2'])
 fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
-nlohmann_json = dependency('nlohmann_json', version : ['>=3.10.4'], fallback : ['nlohmann_json', 'nlohmann_json_dep'])
+simdjson = dependency('simdjson', version : ['>=1.0.2'], fallback : ['simdjson', 'simdjson_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
 libnm = dependency('libnm', version : ['>=1.10.6'])
 glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
@@ -57,12 +57,14 @@ possible_cc_flags = [
 
     '-Wnon-virtual-dtor',
 
+    '-Wold-style-cast',
     '-Wcast-align',
     '-Wunused',
     '-Woverloaded-virtual',
 
     '-Wpedantic', # non-standard C++
     '-Wconversion', # type conversion that may lose data
+    '-Wsign-conversion',
     '-Wnull-dereference',
     '-Wdouble-promotion', # float to double
 
