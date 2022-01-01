@@ -423,11 +423,11 @@ void install_cust_pkgs() noexcept {
 
     if (hostcache) {
         // utils::exec(fmt::format("pacstrap {} {}", mountpoint, packages));
-        detail::follow_process_log_widget({"/sbin/pacstrap", mountpoint, packages});
+        detail::follow_process_log_widget({"/bin/sh", "sh", "-c", fmt::format("pacstrap {} {}", mountpoint, packages)});
         return;
     }
     // utils::exec(fmt::format("pacstrap -c {} {}", mountpoint, packages));
-    detail::follow_process_log_widget({"/sbin/pacstrap", "-c", mountpoint, packages});
+    detail::follow_process_log_widget({"/bin/sh", "sh", "-c", fmt::format("pacstrap -c {} {}", mountpoint, packages)});
 #endif
 }
 
@@ -461,7 +461,7 @@ void install_systemd_boot() noexcept {
 
     utils::arch_chroot(fmt::format("bootctl --path={} install", uefi_mount));
     // utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
-    detail::follow_process_log_widget({"/sbin/pacstrap", mountpoint, "systemd-boot-manager"});
+    detail::follow_process_log_widget({"/bin/sh", "sh", "-c", fmt::format("pacstrap {} systemd-boot-manager", mountpoint)});
     utils::arch_chroot("sdboot-manage gen");
 
     // Check if the volume is removable. If so, dont use autodetect
@@ -611,7 +611,7 @@ void install_base() noexcept {
 #ifdef NDEVENV
         // filter_packages
         // utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
-        detail::follow_process_log_widget({"/sbin/pacstrap", mountpoint, packages});
+        detail::follow_process_log_widget({"/bin/sh", "sh", "-c", fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
 
         std::filesystem::copy("/etc/pacman.conf", fmt::format("{}/etc/pacman.conf", mountpoint));
 #endif
