@@ -992,6 +992,7 @@ bool mount_current_partition() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& partition  = std::get<std::string>(config_data["PARTITION"]);
     const auto& mount_dev  = std::get<std::string>(config_data["MOUNT"]);
 
 #ifdef NDEVENV
@@ -1010,7 +1011,6 @@ bool mount_current_partition() noexcept {
     // TODO: use libmount instead.
     // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
 #ifdef NDEVENV
-    const auto& partition       = std::get<std::string>(config_data["PARTITION"]);
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
     if (!mount_opts_info.empty()) {
         // check_for_error "mount ${PARTITION} $(cat ${MOUNT_OPTS})"
@@ -1023,42 +1023,52 @@ bool mount_current_partition() noexcept {
     }
 #endif
     confirm_mount(fmt::format("{}{}", mountpoint, mount_dev));
-    /*
-    // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    if [[ $(lsblk -lno TYPE ${PARTITION} | grep "crypt") != "" ]]; then
-        // cryptname for bootloader configuration either way
-        LUKS=1
-        LUKS_NAME=$(echo ${PARTITION} | sed "s~^/dev/mapper/~~g")
 
-        # Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-        cryptparts=$(lsblk -lno NAME,FSTYPE,TYPE | grep "lvm" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')
-        for i in ${cryptparts}; do
-            if [[ $(lsblk -lno NAME ${i} | grep $LUKS_NAME) != "" ]]; then
-                LUKS_DEV="$LUKS_DEV cryptdevice=${i}:$LUKS_NAME"
-                LVM=1
-                return 0;
-            fi
-        done
+    // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)
+    if (!utils::exec(fmt::format("lsblk -lno TYPE {} | grep \"crypt\"", partition)).empty()) {
+        // cryptname for bootloader configuration either way
+        config_data["LUKS"]          = 1;
+        auto& luks_name              = std::get<std::string>(config_data["LUKS_NAME"]);
+        const auto& luks_dev         = std::get<std::string>(config_data["LUKS_DEV"]);
+        luks_name                    = utils::exec(fmt::format("echo {} | sed \"s~^/dev/mapper/~~g\"", partition));
+        const auto& check_cryptparts = [&](const auto cryptparts, auto functor) {
+            for (const auto& cryptpart : cryptparts) {
+                if (!utils::exec(fmt::format("lsblk -lno NAME {} | grep \"{}\"", cryptpart, luks_name)).empty()) {
+                    functor(cryptpart);
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
+        auto cryptparts    = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \"lvm\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/mapper/\"$1}'"));
+        auto check_functor = [&](const auto cryptpart) {
+            config_data["LUKS_DEV"] = fmt::format("{} cryptdevice={}:{}", luks_dev, cryptpart, luks_name);
+            config_data["LVM"]      = 1;
+        };
+        if (check_cryptparts(cryptparts, check_functor)) {
+            return true;
+        }
 
         // Check if LVM on LUKS
-        cryptparts=$(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')
-        for i in ${cryptparts}; do
-            if [[ $(lsblk -lno NAME ${i} | grep $LUKS_NAME) != "" ]]; then
-                LUKS_DEV="$LUKS_DEV cryptdevice=${i}:$LUKS_NAME"
-                LVM=1
-                return 0;
-            fi
-        done
+        cryptparts = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \" crypt$\" | grep -i \"LVM2_member\" | uniq | awk '{print \"/dev/mapper/\"$1}'"));
+        if (check_cryptparts(cryptparts, check_functor)) {
+            return true;
+        }
 
         // Check if LUKS alone (parent = part /dev/...)
-        cryptparts=$(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')
-        for i in ${cryptparts}; do
-            if [[ $(lsblk -lno NAME ${i} | grep $LUKS_NAME) != "" ]]; then
-                LUKS_UUID=$(lsblk -lno UUID,TYPE,FSTYPE ${i} | grep "part" | grep -i "crypto_luks" | awk '{print $1}')
-                LUKS_DEV="$LUKS_DEV cryptdevice=UUID=$LUKS_UUID:$LUKS_NAME"
-                return 0;
-            fi
-        done
+        cryptparts                 = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \"part\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/\"$1}'"));
+        const auto& check_func_dev = [&](const auto cryptpart) {
+            auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
+            luks_uuid               = utils::exec(fmt::format("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}", cryptpart, "awk '{print $1}'"));
+            config_data["LUKS_DEV"] = fmt::format("{} cryptdevice=UUID={}:{}", luks_dev, luks_uuid, luks_name);
+        };
+        if (check_cryptparts(cryptparts, check_func_dev)) {
+            return true;
+        }
+    }
+    /*
 
         // If LVM logical volume....
     elif [[ $(lsblk -lno TYPE ${PARTITION} | grep "lvm") != "" ]]; then
@@ -1088,7 +1098,6 @@ bool mount_current_partition() noexcept {
 
                 return 0;
             fi
-        done
     fi*/
     return true;
 }
@@ -1324,7 +1333,7 @@ void mount_partitions() noexcept {
     detail::msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
 
     // LVM Detection. If detected, activate.
-    lvm_detect();
+    tui::lvm_detect();
 
     // Ensure partitions are unmounted (i.e. where mounted previously)
     config_data["INCLUDE_PART"] = "\'part\\|lvm\\|crypt\'";
@@ -1542,17 +1551,15 @@ void create_partitions() noexcept {
         if (answer != optwipe && answer != optauto) {
             screen.Clear();
             utils::exec(fmt::format("{} {}", answer, std::get<std::string>(config_data["DEVICE"])), true);
-            return;
         }
 
         if (answer == optwipe) {
             utils::secure_wipe();
-            return;
         }
         if (answer == optauto) {
-            auto_partition();
-            return;
+            tui::auto_partition();
         }
+        screen.ExitLoopClosure()();
     };
 
     MenuOption menu_option{.on_enter = ok_callback};
@@ -1581,7 +1588,6 @@ void create_partitions() noexcept {
     screen.Loop(renderer);
 }
 
-void install_desktop_system_menu() { }
 void install_core_menu() noexcept {
     const std::vector<std::string> menu_entries = {
         "Install Base Packages",
@@ -1638,7 +1644,6 @@ void install_core_menu() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
 
-void install_custom_menu() { }
 void system_rescue_menu() {
     const std::vector<std::string> menu_entries = {
         "Install Hardware Drivers",
@@ -1746,9 +1751,7 @@ void prep_menu() noexcept {
 void init() noexcept {
     const std::vector<std::string> menu_entries = {
         "Prepare Installation",
-        "Install Desktop System",
-        "Install CLI System",
-        "Install Custom System",
+        "Install System",
         "System Rescue",
         "Done",
     };
@@ -1764,24 +1767,10 @@ void init() noexcept {
             if (!utils::check_mount()) {
                 screen.ExitLoopClosure()();
             }
-            tui::install_desktop_system_menu();
-            break;
-        }
-        case 2: {
-            if (!utils::check_mount()) {
-                screen.ExitLoopClosure()();
-            }
             tui::install_core_menu();
             break;
         }
-        case 3: {
-            if (!utils::check_mount()) {
-                screen.ExitLoopClosure()();
-            }
-            tui::install_custom_menu();
-            break;
-        }
-        case 4:
+        case 2:
             tui::system_rescue_menu();
             break;
         default:

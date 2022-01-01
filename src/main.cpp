@@ -25,8 +25,6 @@ int main() {
         return 1;
     }
 
-    utils::parse_config();
-
     if (!Config::initialize()) {
         return 1;
     }
@@ -45,6 +43,7 @@ int main() {
 
     // auto app_router = std::make_shared<router>(tui::screen_service::instance());
     // app_router->navigate("", std::any());
+    utils::parse_config();
     tui::init();
 
     spdlog::shutdown();

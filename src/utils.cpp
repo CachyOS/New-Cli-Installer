@@ -218,7 +218,7 @@ auto make_multiline(const std::string_view& str, bool reverse, const std::string
     static constexpr auto functor = [](auto&& rng) {
         return std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
     };
-    static constexpr auto second = [](auto&& rng) { return rng != ""; };
+    // static constexpr auto second = [](auto&& rng) { return rng != ""; };
 
 #if defined(__clang__)
     const auto& splitted_view = str
@@ -232,7 +232,7 @@ auto make_multiline(const std::string_view& str, bool reverse, const std::string
 #endif
 
     std::vector<std::string> lines{};
-    ranges::for_each(view_res | ranges::views::filter(second), [&](auto&& rng) { lines.emplace_back(rng); });
+    ranges::for_each(view_res /* | ranges::views::filter(second)*/, [&](auto&& rng) { lines.emplace_back(rng); });
     if (reverse) {
         ranges::reverse(lines);
     }
@@ -486,13 +486,13 @@ void parse_config() noexcept {
     using namespace simdjson;
 
     ondemand::parser parser;
-    padded_string json     = padded_string::load("test.json");
-    ondemand::document doc = parser.iterate(json);
+    auto json = padded_string::load("test.json");
+    auto doc  = parser.iterate(json);
 
     for (auto entry : doc["steps"]) {
         std::string_view step;
         entry.get(step);
-        std::cout << step << '\n';
+        spdlog::debug(step);
     }
 }
 
