@@ -488,7 +488,7 @@ void install_grub_uefi() noexcept {
     /* clang-format on */
 
     std::string bootid{"cachyos"};
-    const auto& ret_status = utils::exec("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos", true);
+    auto ret_status = utils::exec("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos", true);
     if (ret_status == "0") {
         static constexpr auto bootid_content = "\nInput the name identify your grub installation. Choosing an existing name overwrites it.\n";
         if (!detail::inputbox_widget(bootid, bootid_content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
@@ -547,7 +547,7 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
     }
 
     // If the root is on btrfs-subvolume, amend grub installation
-    const auto& ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
+    ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
     if (ret_status != "0") {
         utils::exec(fmt::format("sed -e 's/ grub-btrfs//g' -i {}", grub_installer_path));
     }
