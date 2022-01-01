@@ -100,7 +100,7 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& cmd_formatted = fmt::format("arch-chroot {} \"{}\"", mountpoint, command);
     if (follow) {
-        tui::detail::follow_process_log_widget({"/sbin/bash", "-c", fmt::format("\"{}\"", cmd_formatted)});
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         return;
     }
     utils::exec(cmd_formatted);

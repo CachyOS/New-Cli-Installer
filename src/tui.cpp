@@ -64,6 +64,40 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
     return true;
 }
 
+void boot_encrypted_setting() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    config_data["fde"] = 0;
+    auto& fde          = std::get<std::int32_t>(config_data["fde"]);
+
+    // Check if there is separate /boot partition
+    if (utils::exec("lsblk | grep \"/mnt/boot$\"").empty()) {
+        // There is no separate /boot parition
+        const auto& root_name = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+        const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
+        // Check if root is encrypted
+        if ((luks == 1)
+            || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", root_name), true) == "0")
+            || (utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0")
+            // Check if root is on encrypted lvm volume
+            || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", root_name, "awk '{print $6}'"), true) == "0")) {
+            fde = 1;
+            // setup_luks_keyfile
+        }
+        return;
+    }
+    // There is a separate /boot. Check if it is encrypted
+    const auto& boot_name = utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    if ((utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0")
+        // Check if the /boot is inside encrypted lvm volume
+        || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", boot_name, "awk '{print $6}'"), true) == "0")
+        || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", boot_name), true) == "0")) {
+        fde = 1;
+        // setup_luks_keyfile
+    }
+}
+
 // Fsck hook
 void set_fsck_hook() noexcept {
     auto* config_instance    = Config::instance();
@@ -423,11 +457,11 @@ void install_cust_pkgs() noexcept {
 
     if (hostcache) {
         // utils::exec(fmt::format("pacstrap {} {}", mountpoint, packages));
-        detail::follow_process_log_widget({"/bin/sh", "sh", "-c", fmt::format("pacstrap {} {}", mountpoint, packages)});
+        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} {}", mountpoint, packages)});
         return;
     }
     // utils::exec(fmt::format("pacstrap -c {} {}", mountpoint, packages));
-    detail::follow_process_log_widget({"/bin/sh", "sh", "-c", fmt::format("pacstrap -c {} {}", mountpoint, packages)});
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap -c {} {}", mountpoint, packages)});
 #endif
 }
 
@@ -446,6 +480,111 @@ void rm_pgs() noexcept {
 #endif
 }
 
+void install_grub_uefi() noexcept {
+    static constexpr auto content = "\nInstall UEFI Bootloader GRUB.\n";
+    const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_install_uefi) { return; }
+    /* clang-format on */
+
+    std::string bootid{"cachyos"};
+    const auto& ret_status = utils::exec("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos", true);
+    if (ret_status == "0") {
+        static constexpr auto bootid_content = "\nInput the name identify your grub installation. Choosing an existing name overwrites it.\n";
+        if (!detail::inputbox_widget(bootid, bootid_content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+            return;
+        }
+    }
+
+    utils::clear_screen();
+#ifdef NDEVENV
+    fs::create_directory("/mnt/hostlvm");
+    utils::exec("mount --bind /run/lvm /mnt/hostlvm");
+#endif
+
+    // if root is encrypted, amend /etc/default/grub
+    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_device = utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}", root_name, "awk '/disk/ {print $1}'"));
+    const auto& root_part   = utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'", root_name, "awk '/part/ {print $1}'"));
+#ifdef NDEVENV
+    boot_encrypted_setting();
+#endif
+
+    spdlog::info("root_name: {}. root_device: {}. root_part: {}", root_name, root_device, root_part);
+
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+
+#ifdef NDEVENV
+    const auto& mountpoint          = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& grub_installer_path = fmt::format("{}/usr/bin/grub_installer.sh", mountpoint);
+
+    // grub config changes for non zfs root
+    if (utils::exec(fmt::format("findmnt -ln -o FSTYPE \"{}\"", mountpoint)) == "zfs") {
+        return;
+    }
+    {
+        constexpr auto bash_codepart = R"(#!/bin/bash
+ln -s /hostlvm /run/lvm
+pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs
+findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
+lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub)";
+
+        const auto& bash_code = fmt::format("{}\ngrub-install --target=x86_64-efi --efi-directory={} --bootloader-id={} --recheck\n", bash_codepart, uefi_mount, bootid);
+        std::ofstream grub_installer{grub_installer_path};
+        grub_installer << bash_code;
+    }
+
+    fs::permissions(grub_installer_path,
+        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+        fs::perm_options::add);
+
+    // if the device is removable append removable to the grub-install
+    const auto& removable = utils::exec(fmt::format("cat /sys/block/{}/removable", root_device));
+    if (utils::to_int(removable.data()) == 1) {
+        utils::exec(fmt::format("sed -e '/^grub-install /s/$/ --removable/g' -i {}", grub_installer_path));
+    }
+
+    // If the root is on btrfs-subvolume, amend grub installation
+    const auto& ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
+    if (ret_status != "0") {
+        utils::exec(fmt::format("sed -e 's/ grub-btrfs//g' -i {}", grub_installer_path));
+    }
+
+    // If Full disk encryption is used, use a keyfile
+    const auto& fde = std::get<std::int32_t>(config_data["fde"]);
+    if (fde == 1) {
+        spdlog::info("Full disk encryption enabled");
+        utils::exec(fmt::format("sed '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' -i {}", grub_installer_path));
+    }
+
+    // install grub
+    utils::arch_chroot("grub_installer.sh");
+    umount("/mnt/hostlvm");
+    fs::remove("/mnt/hostlvm");
+
+    // the grub_installer is no longer needed
+    fs::remove(grub_installer_path);
+#endif
+    // Ask if user wishes to set Grub as the default bootloader and act accordingly
+    static constexpr auto set_boot_default_body  = "Some UEFI firmware may not detect the bootloader unless it is set\nas default by copying its efi stub to";
+    static constexpr auto set_boot_default_body2 = "and renaming it to bootx64.efi.\n\nIt is recommended to do so unless already using a default bootloader,\nor where intending to use multiple bootloaders.\n\nSet bootloader as default?";
+
+    const auto& do_set_default_bootloader = detail::yesno_widget(fmt::format("\n{} {}/EFI/boot {}\n", set_boot_default_body, uefi_mount, set_boot_default_body2), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_set_default_bootloader) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    utils::arch_chroot(fmt::format("mkdir {}/EFI/boot", uefi_mount));
+    utils::arch_chroot(fmt::format("cp -r {0}/EFI/cachyos/grubx64.efi {0}/EFI/boot/bootx64.efi", uefi_mount));
+#endif
+
+    detail::infobox_widget("\nGrub has been set as the default bootloader.\n");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+}
+
 void install_systemd_boot() noexcept {
     static constexpr auto content = "\nThis installs systemd-boot and generates boot entries\nfor the currently installed kernels.\nThis bootloader requires your kernels to be on the UEFI partition.\nThis is achieved by mounting the UEFI partition to /boot.\n";
     const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
@@ -461,7 +600,7 @@ void install_systemd_boot() noexcept {
 
     utils::arch_chroot(fmt::format("bootctl --path={} install", uefi_mount));
     // utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
-    detail::follow_process_log_widget({"/bin/sh", "sh", "-c", fmt::format("pacstrap {} systemd-boot-manager", mountpoint)});
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} systemd-boot-manager", mountpoint)});
     utils::arch_chroot("sdboot-manage gen");
 
     // Check if the volume is removable. If so, dont use autodetect
@@ -506,8 +645,7 @@ void uefi_bootloader() noexcept {
     auto ok_callback = [&] {
         switch (selected) {
         case 0:
-            // tui::install_grub_uefi();
-            spdlog::debug("grub");
+            tui::install_grub_uefi();
             break;
         case 1:
             // tui::install_refind();
@@ -611,7 +749,7 @@ void install_base() noexcept {
 #ifdef NDEVENV
         // filter_packages
         // utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
-        detail::follow_process_log_widget({"/bin/sh", "sh", "-c", fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
+        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
 
         std::filesystem::copy("/etc/pacman.conf", fmt::format("{}/etc/pacman.conf", mountpoint));
 #endif
