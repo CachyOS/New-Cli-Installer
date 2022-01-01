@@ -1911,9 +1911,12 @@ void init() noexcept {
         case 2:
             tui::system_rescue_menu();
             break;
-        default:
-            screen.ExitLoopClosure()();
+        default: {
+            if (utils::exit_done()) {
+                screen.ExitLoopClosure()();
+            }
             break;
+        }
         }
     };
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
