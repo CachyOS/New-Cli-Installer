@@ -83,7 +83,7 @@ void boot_encrypted_setting() noexcept {
             // Check if root is on encrypted lvm volume
             || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", root_name, "awk '{print $6}'"), true) == "0")) {
             fde = 1;
-            // setup_luks_keyfile
+            utils::setup_luks_keyfile();
         }
         return;
     }
@@ -94,7 +94,7 @@ void boot_encrypted_setting() noexcept {
         || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", boot_name, "awk '{print $6}'"), true) == "0")
         || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", boot_name), true) == "0")) {
         fde = 1;
-        // setup_luks_keyfile
+        utils::setup_luks_keyfile();
     }
 }
 

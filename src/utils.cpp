@@ -142,6 +142,8 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
 
     subprocess_join(&process, &ret);
     subprocess_destroy(&process);
+    child   = process;
+    running = false;
 }
 
 void exec(const std::vector<std::string>& vec) noexcept {
@@ -494,6 +496,113 @@ void parse_config() noexcept {
         entry.get(step);
         spdlog::debug(step);
     }
+}
+
+void setup_luks_keyfile() noexcept {
+    // Add keyfile to luks
+    const auto& root_name          = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_part          = utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'", root_name, "awk '/part/ {print $1}'"));
+    const auto& number_of_lukskeys = to_int(utils::exec(fmt::format("cryptsetup luksDump /dev/\"{}\" | grep \"ENABLED\" | wc -l", root_part)));
+    if (number_of_lukskeys < 4) {
+        // Create a keyfile
+#ifdef NDEVENV
+        if (!fs::exists("/mnt/crypto_keyfile.bin")) {
+            const auto& ret_status = utils::exec("dd bs=512 count=4 if=/dev/urandom of=/mnt/crypto_keyfile.bin", true);
+            /* clang-format off */
+            if (ret_status == "0") { spdlog::info("Generating a keyfile"); }
+            /* clang-format on */
+        }
+        utils::exec("chmod 000 /mnt/crypto_keyfile.bin");
+        spdlog::info("Adding the keyfile to the LUKS configuration");
+        auto ret_status = utils::exec(fmt::format("cryptsetup --pbkdf-force-iterations 200000 luksAddKey /dev/\"{}\" /mnt/crypto_keyfile.bin", root_part), true);
+        /* clang-format off */
+        if (ret_status != "0") { spdlog::info("Something went wrong with adding the LUKS key. Is /dev/{} the right partition?", root_part); }
+        /* clang-format on */
+
+        // Add keyfile to initcpio
+        ret_status = utils::exec("grep -q '/crypto_keyfile.bin' /mnt/etc/mkinitcpio.conf || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' /mnt/etc/mkinitcpio.conf", true);
+        /* clang-format off */
+        if (ret_status == "0") { spdlog::info("Adding keyfile to the initcpio"); }
+        /* clang-format on */
+        utils::arch_chroot("mkinitcpio -P");
+#endif
+    }
+}
+
+void final_check() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    config_data["CHECKLIST"] = "";
+    auto& checklist          = std::get<std::string>(config_data["CHECKLIST"]);
+
+    // Check if base is installed
+    if (!fs::exists("/mnt/.base_installed")) {
+        checklist += "- Base is not installed\n";
+        return;
+    }
+
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
+    // Check if bootloader is installed
+    if (system_info == "BIOS") {
+        if (utils::exec(fmt::format("arch-chroot {} \"pacman -Qq grub\" &> /dev/null", mountpoint), true) != "0") {
+            checklist += "- Bootloader is not installed\n";
+        }
+    }
+
+    // Check if fstab is generated
+    if (utils::exec("grep -qv '^#' /mnt/etc/fstab 2>/dev/null", true) != "0") {
+        checklist += "- Fstab has not been generated\n";
+    }
+
+    // Check if video-driver has been installed
+    //[[ ! -e /mnt/.video_installed ]] && echo "- $_GCCheck" >> ${CHECKLIST}
+
+    // Check if locales have been generated
+    //[[ $(manjaro-chroot /mnt 'locale -a' | wc -l) -ge '3' ]] || echo "- $_LocaleCheck" >> ${CHECKLIST}
+
+    // Check if root password has been set
+    if (utils::exec("arch-chroot /mnt 'passwd --status root' | cut -d' ' -f2 | grep -q 'NP'", true) == "0") {
+        checklist += "- Root password is not set\n";
+    }
+
+    // check if user account has been generated
+    if (!fs::exists("/mnt/home")) {
+        checklist += "- No user accounts have been generated\n";
+    }
+}
+
+bool exit_done() noexcept {
+#ifdef NDEVENV
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& target_mnt = fmt::format("findmnt --list -o TARGET | grep {} 2>/dev/null", mountpoint);
+    if (!target_mnt.empty()) {
+        utils::final_check();
+        /*dialog --backtitle "$VERSION - $SYSTEM ($ARCHI)" --yesno "$(printf "\n$_CloseInstBody\n$(cat ${CHECKLIST})\n ")" 20 40
+        if [[ $? -eq 0 ]]; then*/
+        spdlog::info("exit installer.");
+        /*dialog --backtitle "$VERSION - $SYSTEM ($ARCHI)" --yesno "\n$_LogInfo ${TARGLOG}\n " 0 0
+        if [[ $? -eq 0 ]]; then
+            [[ -e ${TARGLOG} ]] && cat ${LOGFILE} >> ${TARGLOG} || cp ${LOGFILE} ${TARGLOG}
+        }*/
+        utils::umount_partitions();
+        return true;
+        //}
+    } else {
+        // dialog --backtitle "$VERSION - $SYSTEM ($ARCHI)" --yesno "\n$_CloseInstBody\n " 10 40
+        // if [[ $? -eq 0 ]]; {
+        utils::umount_partitions();
+        //}
+        return true;
+    }
+    return false;
+#else
+    return true;
+#endif
 }
 
 }  // namespace utils

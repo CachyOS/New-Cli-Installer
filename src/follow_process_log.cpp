@@ -47,8 +47,12 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
         }
         if (running) {
             running = false;
-            refresh_ui.join();
-            t.join();
+            if (refresh_ui.joinable()) {
+                refresh_ui.join();
+            }
+            if (t.joinable()) {
+                t.join();
+            }
         }
         screen.ExitLoopClosure()();
     };
