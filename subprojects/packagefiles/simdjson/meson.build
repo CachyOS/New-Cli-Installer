@@ -9,17 +9,17 @@ project('simdjson', 'cpp',
 
 simdjson_lib = library('simdjson',
     sources : ['singleheader/simdjson.cpp'],
-    cpp_args : '-DSIMDJSON_THREADS_ENABLED=1',
+    cpp_args : ['-DSIMDJSON_THREADS_ENABLED=1', '-Wno-ambiguous-reversed-operator'],
     include_directories: include_directories('singleheader')
 )
 
 simdjson_dep = declare_dependency(
     include_directories: include_directories('singleheader'),
-    compile_args : '-DSIMDJSON_THREADS_ENABLED=1',
+    compile_args : ['-DSIMDJSON_THREADS_ENABLED=1', '-Wno-ambiguous-reversed-operator'],
     link_with : simdjson_lib
 )
 
 simdjson_multiple_headers = declare_dependency(
     include_directories: include_directories('include'),
-    compile_args : '-DSIMDJSON_THREADS_ENABLED=1'
+    compile_args : ['-DSIMDJSON_THREADS_ENABLED=1', '-Wno-ambiguous-reversed-operator'],
 )

@@ -58,6 +58,19 @@ function(set_project_warnings project_name)
         -Wduplicated-branches # warn if if / else branches have duplicated code
         -Wlogical-op # warn about logical operations being used where bitwise were probably wanted
         -Wuseless-cast # warn if you perform a cast to the same type
+
+        -Wsuggest-attribute=cold
+        -Wsuggest-attribute=format
+        -Wsuggest-attribute=malloc
+        -Wsuggest-attribute=noreturn
+        -Wsuggest-attribute=pure
+        -Wsuggest-final-methods
+        -Wsuggest-final-types
+        -Wdiv-by-zero
+        -Wanalyzer-double-fclose
+        -Wanalyzer-double-free
+        -Wanalyzer-malloc-leak
+        -Wanalyzer-use-after-free
     )
 
     if(MSVC)

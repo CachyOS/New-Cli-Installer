@@ -30,10 +30,10 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
             std::this_thread::sleep_for(0.05s);
         }
     };
-    std::jthread t(execute_thread);
+    std::thread t(execute_thread);
     auto screen = ScreenInteractive::Fullscreen();
 
-    std::jthread refresh_ui([&] {
+    std::thread refresh_ui([&] {
         while (running) {
             std::this_thread::sleep_for(0.05s);
             screen.PostEvent(Event::Custom);
@@ -63,11 +63,17 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
     auto container       = Container::Horizontal({button_back});
 
     auto renderer = Renderer(container, [&] {
-        return tui::detail::centered_widget(container, "New CLI Installer", tui::detail::multiline_text(utils::make_multiline(process_log)) | boxsize | vscroll_indicator | yframe | flex);
+        return tui::detail::centered_widget(container, "New CLI Installer", tui::detail::multiline_text(utils::make_multiline(process_log, true)) | boxsize | vscroll_indicator | yframe | flex);
     });
 
     screen.Loop(renderer);
     running = false;
+    if (refresh_ui.joinable()) {
+        refresh_ui.join();
+    }
+    if (t.joinable()) {
+        t.join();
+    }
 }
 
 }  // namespace tui::detail

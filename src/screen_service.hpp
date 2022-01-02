@@ -20,7 +20,7 @@ class screen_service final {
     virtual ~screen_service() noexcept = default;
 
     static bool initialize() noexcept;
-    static screen_service* instance();
+    [[gnu::pure]] static screen_service* instance();
 
     /* clang-format off */
 

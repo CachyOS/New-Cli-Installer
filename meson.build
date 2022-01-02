@@ -14,6 +14,7 @@ cc = meson.get_compiler('cpp')
 if cc.get_id() == 'clang'
     specific_cc_flags = [
         '-nostdlib++',
+        #'-stdlib=libc++',
         '-nodefaultlibs',
     ]
     specific_link_flags = [
@@ -32,7 +33,7 @@ if not is_dev_environment
 endif
 
 # Common dependencies
-spdlog = dependency('spdlog', version : ['>=1.9.2'])
+spdlog = dependency('spdlog', version : ['>=1.9.2'], fallback : ['spdlog', 'spdlog_dep'])
 fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 simdjson = dependency('simdjson', version : ['>=1.0.2'], fallback : ['simdjson', 'simdjson_dep'])
@@ -80,6 +81,19 @@ if cc.get_id() == 'gcc'
         '-Wduplicated-branches',
         '-Wlogical-op',
         '-Wuseless-cast',
+
+        '-Wsuggest-attribute=cold',
+        '-Wsuggest-attribute=format',
+        '-Wsuggest-attribute=malloc',
+        '-Wsuggest-attribute=noreturn',
+        '-Wsuggest-attribute=pure',
+        '-Wsuggest-final-methods',
+        '-Wsuggest-final-types',
+        '-Wdiv-by-zero',
+        '-Wanalyzer-double-fclose',
+        '-Wanalyzer-double-free',
+        '-Wanalyzer-malloc-leak',
+        '-Wanalyzer-use-after-free',
     ]
 endif
 
@@ -102,24 +116,30 @@ endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
+deps = [fmt, spdlog, ftxui, simdjson, cpr, glibmm]
+if cc.get_id() == 'clang'
+  ranges = dependency('range-v3', version : ['>=0.11.0'])
+  deps += [ranges]
+endif
+
 executable(
   'cachyos-installer',
   src_files,
-  dependencies: [fmt, spdlog, ftxui, simdjson, cpr, glibmm],
+  dependencies: deps,
   include_directories: [include_directories('src')],
   install: true)
 
 executable(
   'test-exec-interactive',
   files('src/config.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/main_test.cpp'),
-  dependencies: [fmt, spdlog, ftxui, simdjson, cpr, glibmm],
+  dependencies: deps,
   include_directories: [include_directories('src')],
   install: false)
 
 executable(
   'test-process-tailing',
   files('src/config.cpp', 'src/widgets.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/follow_process_log.cpp','src/test_proccess_tailing.cpp'),
-  dependencies: [fmt, spdlog, ftxui, simdjson, cpr, glibmm],
+  dependencies: deps,
   include_directories: [include_directories('src')],
   install: false)
 

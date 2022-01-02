@@ -18,7 +18,7 @@ class Config final {
     virtual ~Config() noexcept = default;
 
     static bool initialize() noexcept;
-    static Config* instance();
+    [[gnu::pure]] static Config* instance();
 
     /* clang-format off */
 

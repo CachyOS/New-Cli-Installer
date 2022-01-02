@@ -751,7 +751,7 @@ void install_base() noexcept {
         // utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
         detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
 
-        std::filesystem::copy("/etc/pacman.conf", fmt::format("{}/etc/pacman.conf", mountpoint));
+        std::filesystem::copy_file("/etc/pacman.conf", fmt::format("{}/etc/pacman.conf", mountpoint), fs::copy_options::overwrite_existing);
 #endif
         std::ofstream{base_installed};
     }

@@ -8,6 +8,7 @@
 
 #include <algorithm>      // for transform
 #include <array>          // for array
+#include <bit>            // for bit_cast
 #include <chrono>         // for filesystem, seconds
 #include <cstdint>        // for int32_t
 #include <cstdio>         // for feof, fgets, pclose, perror, popen
@@ -49,6 +50,7 @@ namespace ranges = std::ranges;
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wsign-conversion"
+#pragma clang diagnostic ignored "-Wambiguous-reversed-operator"
 #elif defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -257,12 +259,11 @@ auto make_multiline(std::vector<std::string>& multiline, bool reverse, const std
 
 // install a pkg in the live session if not installed
 void inst_needed(const std::string_view& pkg) {
-    const auto& pkg_info = utils::exec(fmt::format("pacman -Q {}", pkg));
-    const std::regex pkg_regex("/error/");
-    if (!std::regex_search(pkg_info, pkg_regex)) {
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+    if (utils::exec(fmt::format("pacman -Q {}", pkg), true) != "0") {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         utils::clear_screen();
-        utils::exec(fmt::format("pacman -Sy --noconfirm {}", pkg));
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacman -Sy --noconfirm {}", pkg)});
+        // utils::exec(fmt::format("pacman -Sy --noconfirm {}", pkg));
     }
 }
 
