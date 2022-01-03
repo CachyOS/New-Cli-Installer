@@ -36,7 +36,7 @@ void show_iwctl() noexcept;
 
 void parse_config() noexcept;
 void setup_luks_keyfile() noexcept;
-bool exit_done() noexcept;
+void final_check() noexcept;
 
 template <typename T = std::int32_t,
     typename         = std::enable_if_t<std::numeric_limits<T>::is_integer>>

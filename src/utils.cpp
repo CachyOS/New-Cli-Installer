@@ -113,18 +113,17 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
         spdlog::error("Implement me!");
         return;
     }
-    subprocess_s process{};
-    int32_t ret{-1};
-    static std::array<char, 1048576 + 1> data{};
-    uint32_t index{};
-    uint32_t bytes_read{};
 
     std::vector<char*> args;
     std::transform(vec.cbegin(), vec.cend(), std::back_inserter(args),
         [=](const std::string& arg) -> char* { return std::bit_cast<char*>(arg.data()); });
     args.push_back(nullptr);
 
+    static std::array<char, 1048576 + 1> data{};
     std::memset(data.data(), 0, data.size());
+
+    int32_t ret{-1};
+    subprocess_s process{};
     char** command                             = args.data();
     static constexpr const char* environment[] = {"PATH=/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin", nullptr};
     if ((ret = subprocess_create_ex(command, subprocess_option_enable_async | subprocess_option_combined_stdout_stderr, environment, &process)) != 0) {
@@ -134,6 +133,8 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
 
     child = process;
 
+    uint32_t index{};
+    uint32_t bytes_read;
     do {
         bytes_read = subprocess_read_stdout(&process, data.data() + index,
             static_cast<uint32_t>(data.size()) - 1 - index);
@@ -296,9 +297,9 @@ void secure_wipe() noexcept {
 
 #ifdef NDEVENV
     utils::inst_needed("wipe");
-    utils::exec(fmt::format("wipe -Ifre {}", device_info));
+    tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("wipe -Ifre {}", device_info)});
+    // utils::exec(fmt::format("wipe -Ifre {}", device_info));
 #else
-    utils::inst_needed("bash");
     spdlog::debug("{}\n", device_info);
 #endif
 }
@@ -572,38 +573,6 @@ void final_check() noexcept {
     if (!fs::exists("/mnt/home")) {
         checklist += "- No user accounts have been generated\n";
     }
-}
-
-bool exit_done() noexcept {
-#ifdef NDEVENV
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& target_mnt = fmt::format("findmnt --list -o TARGET | grep {} 2>/dev/null", mountpoint);
-    if (!target_mnt.empty()) {
-        utils::final_check();
-        /*dialog --backtitle "$VERSION - $SYSTEM ($ARCHI)" --yesno "$(printf "\n$_CloseInstBody\n$(cat ${CHECKLIST})\n ")" 20 40
-        if [[ $? -eq 0 ]]; then*/
-        spdlog::info("exit installer.");
-        /*dialog --backtitle "$VERSION - $SYSTEM ($ARCHI)" --yesno "\n$_LogInfo ${TARGLOG}\n " 0 0
-        if [[ $? -eq 0 ]]; then
-            [[ -e ${TARGLOG} ]] && cat ${LOGFILE} >> ${TARGLOG} || cp ${LOGFILE} ${TARGLOG}
-        }*/
-        utils::umount_partitions();
-        return true;
-        //}
-    } else {
-        // dialog --backtitle "$VERSION - $SYSTEM ($ARCHI)" --yesno "\n$_CloseInstBody\n " 10 40
-        // if [[ $? -eq 0 ]]; {
-        utils::umount_partitions();
-        //}
-        return true;
-    }
-    return false;
-#else
-    return true;
-#endif
 }
 
 }  // namespace utils

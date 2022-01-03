@@ -27,6 +27,9 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
     auto execute_thread = [&]() {
         while (running) {
             utils::exec_follow(vec, process_log, running, child);
+            /*if (child.child == 0) {
+                process_log += "\n----------DONE----------";
+            }*/
             std::this_thread::sleep_for(0.05s);
         }
     };

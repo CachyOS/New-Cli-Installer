@@ -106,6 +106,64 @@ void set_fsck_hook() noexcept {
     config_data["FSCK_HOOK"] = do_sethook;
 }
 
+// Choose pacman cache
+void set_cache() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    static constexpr auto content = "\nDo you want to use the pacman cache of the running system instead\nof the installation target?\nThis can reduce the size of the required downloads in the installation.\n";
+    if (!detail::yesno_widget(content, size(HEIGHT, GREATER_THAN, 3))) {
+        config_data["hostcache"] = 0;
+        config_data["cachepath"] = "/mnt/var/cache/pacman/pkg/";
+        return;
+    }
+
+    config_data["hostcache"] = 1;
+    config_data["cachepath"] = "/var/cache/pacman/pkg/";
+}
+
+bool exit_done() noexcept {
+#ifdef NDEVENV
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    static constexpr auto CloseInstBody = "Close installer?";
+    const auto& mountpoint              = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& target_mnt              = fmt::format("findmnt --list -o TARGET | grep {} 2>/dev/null", mountpoint);
+    if (!target_mnt.empty()) {
+        utils::final_check();
+        const auto& checklist = std::get<std::string>(config_data["CHECKLIST"]);
+        const auto& do_close  = detail::yesno_widget(fmt::format("\n{}\n{}\n", CloseInstBody, checklist), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
+        /* clang-format off */
+        if (!do_close) { return false; }
+        /* clang-format on */
+
+        spdlog::info("exit installer.");
+
+        static constexpr auto LogInfo = "Would you like to save the installation-log to the installed system?\nIt will be copied to";
+        const auto& do_save_log       = detail::yesno_widget(fmt::format("\n{} {}/cachyos-install.log\n", LogInfo, mountpoint), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
+        if (do_save_log) {
+            std::filesystem::copy_file("/tmp/cachyos-install.log", fmt::format("{}/cachyos-install.log", mountpoint), fs::copy_options::overwrite_existing);
+        }
+        utils::umount_partitions();
+        utils::clear_screen();
+        return true;
+    } else {
+        const auto& do_close = detail::yesno_widget(fmt::format("\n{}\n", CloseInstBody), size(HEIGHT, LESS_THAN, 10) | size(WIDTH, LESS_THAN, 40));
+        /* clang-format off */
+        if (!do_close) { return false; }
+        /* clang-format on */
+
+        utils::umount_partitions();
+        utils::clear_screen();
+        return true;
+    }
+    return false;
+#else
+    return true;
+#endif
+}
+
 // Function will not allow incorrect UUID type for installed system.
 void generate_fstab() noexcept {
     const std::vector<std::string> menu_entries = {
@@ -325,6 +383,12 @@ void create_new_user() noexcept {
         }
     }
 
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+#endif
+
     std::string_view shell{};
     {
         static constexpr auto DefShell               = "\nChoose the default shell.\n";
@@ -353,9 +417,20 @@ void create_new_user() noexcept {
             case 1:
                 shell = "/bin/bash";
                 break;
-            case 2:
+            case 2: {
                 shell = "/usr/bin/fish";
+
+#ifdef NDEVENV
+                std::string_view packages{"cachyos-fish-config"};
+                const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
+                if (hostcache) {
+                    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
+                    break;
+                }
+                detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap -c {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
+#endif
                 break;
+            }
             }
             screen.ExitLoopClosure()();
         };
@@ -418,10 +493,6 @@ void create_new_user() noexcept {
     utils::arch_chroot(fmt::format("groupadd {}", user));
     utils::arch_chroot(fmt::format("useradd {0} -m -g {0} -G wheel,storage,power,network,video,audio,lp,sys,input -s {1}", user, shell));
     spdlog::info("add user to groups");
-
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
     utils::exec(fmt::format("echo -e \"{}\n{}\" > /tmp/.passwd", pass, confirm));
     utils::exec(fmt::format("arch-chroot {} \"passwd {}\" < /tmp/.passwd >/dev/null", mountpoint, user));
@@ -734,27 +805,152 @@ void install_base() noexcept {
 
     screen.Loop(renderer);
 
-    if (!packages.empty()) {
-        auto pkg_list = utils::make_multiline(packages, false, " ");
+    /* clang-format off */
+    if (packages.empty()) { return; }
+    /* clang-format on */
 
-        const auto pkg_count = pkg_list.size();
-        for (std::size_t i = 0; i < pkg_count; ++i) {
-            const auto& pkg = pkg_list[i];
-            pkg_list.emplace_back(fmt::format("{}-headers", pkg));
-        }
-        pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "cachyos-keyring", "cachyos-mirrorlist"});
-        packages = utils::make_multiline(pkg_list, false, " ");
+    auto pkg_list = utils::make_multiline(packages, false, " ");
 
-        spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
-#ifdef NDEVENV
-        // filter_packages
-        // utils::exec(fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages));
-        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
-
-        std::filesystem::copy_file("/etc/pacman.conf", fmt::format("{}/etc/pacman.conf", mountpoint), fs::copy_options::overwrite_existing);
-#endif
-        std::ofstream{base_installed};
+    const auto pkg_count = pkg_list.size();
+    for (std::size_t i = 0; i < pkg_count; ++i) {
+        const auto& pkg = pkg_list[i];
+        pkg_list.emplace_back(fmt::format("{}-headers", pkg));
     }
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist"});
+    packages = utils::make_multiline(pkg_list, false, " ");
+
+    spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
+
+#ifdef NDEVENV
+    // filter_packages
+    const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
+    if (hostcache) {
+        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
+    } else {
+        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap -c {} {} |& tee /tmp/pacstrap.log", mountpoint, packages)});
+    }
+
+    std::filesystem::copy_file("/etc/pacman.conf", fmt::format("{}/etc/pacman.conf", mountpoint), fs::copy_options::overwrite_existing);
+    std::ofstream{base_installed};
+#endif
+}
+
+void install_desktop() noexcept {
+#ifdef NDEVENV
+    static constexpr auto base_installed = "/mnt/.base_installed";
+    if (!fs::exists(base_installed)) {
+        static constexpr auto content = "\nA CachyOS Base is not installed on this partition.\n";
+        detail::infobox_widget(content);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        return;
+    }
+#endif
+
+    // Prep variables
+    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "i3wm"};
+
+    // Create the base list of packages
+    std::vector<std::string> install_packages{};
+
+    std::unique_ptr<bool[]> des_state{new bool[available_des.size()]{false}};
+
+    auto kernels{Container::Vertical(detail::from_vector_checklist(available_des, des_state.get()))};
+
+    auto screen  = ScreenInteractive::Fullscreen();
+    auto content = Renderer(kernels, [&] {
+        return kernels->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+    });
+
+    std::string desktop_env{};
+    auto ok_callback = [&] {
+        desktop_env = detail::from_checklist_string(available_des, des_state.get());
+        spdlog::info("selected: {}", desktop_env);
+        screen.ExitLoopClosure()();
+    };
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    static constexpr auto InstManDEBody = "\nPlease choose a desktop environment.\n";
+    static constexpr auto UseSpaceBar   = "Use [Spacebar] to de/select options listed.";
+    const auto& kernels_options_body    = fmt::format("\n{}{}\n", InstManDEBody, UseSpaceBar);
+    auto global                         = Container::Vertical({
+        Renderer([&] { return detail::multiline_text(utils::make_multiline(kernels_options_body)); }),
+        Renderer([] { return separator(); }),
+        content,
+        Renderer([] { return separator(); }),
+        controls,
+    });
+
+    auto renderer = Renderer(global, [&] {
+        constexpr auto title = "New CLI Installer | Install Desktop";
+        return detail::centered_interative_multi(title, global);
+    });
+
+    screen.Loop(renderer);
+
+    /* clang-format off */
+    if (desktop_env.empty()) { return; }
+    /* clang-format on */
+
+    std::vector<std::string> pkg_list{};
+
+    constexpr std::string_view kde{"kde"};
+    constexpr std::string_view sway{"sway"};
+    constexpr std::string_view i3wm{"i3wm"};
+    constexpr std::string_view xfce{"xfce"};
+    constexpr std::string_view cutefish{"cutefish"};
+
+    auto found = ranges::search(desktop_env, i3wm);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock", "i3status"});
+    }
+    found = ranges::search(desktop_env, sway);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"sway", "waybar"});
+    }
+    found = ranges::search(desktop_env, kde);
+    if (!found.empty()) {
+        /* clang-format off */
+        static constexpr std::array to_be_inserted{"plasma-desktop", "plasma-framework", "plasma-nm", "plasma-pa", "plasma-workspace",
+            "konsole", "kate", "dolphin", "sddm", "sddm-kcm", "plasma", "plasma-wayland-protocols", "plasma-wayland-session",
+            "gamemode", "lib32-gamemode", "ksysguard", "pamac-aur", "openssh", "htop"};
+        /* clang-format on */
+        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
+            std::move_iterator(to_be_inserted.end()));
+    }
+    found = ranges::search(desktop_env, xfce);
+    if (!found.empty()) {
+        /* clang-format off */
+        static constexpr std::array to_be_inserted{"file-roller", "galculator", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lightdm", "lightdm-gtk-greeter", "lightdm-gtk-greeter-settings", "network-manager-applet", "parole", "ristretto", "thunar-archive-plugin", "thunar-media-tags-plugin", "xdg-user-dirs-gtk", "xed", "xfce4", "xfce4-battery-plugin", "xfce4-datetime-plugin", "xfce4-mount-plugin", "xfce4-netload-plugin", "xfce4-notifyd", "xfce4-pulseaudio-plugin", "xfce4-screensaver", "xfce4-screenshooter", "xfce4-taskmanager", "xfce4-wavelan-plugin", "xfce4-weather-plugin", "xfce4-whiskermenu-plugin", "xfce4-xkb-plugin"};
+        /* clang-format on */
+        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
+            std::move_iterator(to_be_inserted.end()));
+    }
+    found = ranges::search(desktop_env, cutefish);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"cutefish", "fish-ui"});
+    }
+
+    const std::string packages = utils::make_multiline(pkg_list, false, " ");
+
+    spdlog::info(fmt::format("Preparing for desktop envs to install: \"{}\"", packages));
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
+
+    if (hostcache) {
+        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} {}", mountpoint, packages)});
+        return;
+    }
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap -c {} {}", mountpoint, packages)});
+#endif
 }
 
 // Base Configuration
@@ -811,8 +1007,9 @@ void config_base_menu() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, config_base_body, {content_size, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
 }
 
+// Grub auto-detects installed kernel
 void bios_bootloader() {
-    static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step.\n \nos-prober is needed for automatic detection of already installed systems on other partitions.";
+    static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step.\n \nos-prober is needed for automatic detection of already installed\nsystems on other partitions.";
     const std::vector<std::string> menu_entries = {
         "grub",
         "grub + os-prober",
@@ -820,7 +1017,7 @@ void bios_bootloader() {
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
-    std::string_view selected_bootloader{};
+    std::string selected_bootloader{};
     auto ok_callback = [&] {
         selected_bootloader = menu_entries[static_cast<std::size_t>(selected)];
         screen.ExitLoopClosure()();
@@ -831,7 +1028,106 @@ void bios_bootloader() {
     if (selected_bootloader.empty()) { return; }
     /* clang-format on */
 
-    tui::select_device();
+    selected_bootloader = utils::exec(fmt::format("echo \"{}\" | sed 's/+ \\|\"//g'", selected_bootloader));
+
+    if (!tui::select_device()) {
+        return;
+    }
+#ifdef NDEVENV
+    // if root is encrypted, amend /etc/default/grub
+    boot_encrypted_setting();
+
+    auto* config_instance    = Config::instance();
+    auto& config_data        = config_instance->data();
+    const auto& lvm          = std::get<std::int32_t>(config_data["LVM"]);
+    const auto& lvm_sep_boot = std::get<std::int32_t>(config_data["LVM_SEP_BOOT"]);
+    const auto& luks_dev     = std::get<std::string>(config_data["LUKS_DEV"]);
+    const auto& mountpoint   = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& device_info  = std::get<std::string>(config_data["DEVICE"]);
+
+    // if /boot is LVM (whether using a seperate /boot mount or not), amend grub
+    if ((lvm == 1 && lvm_sep_boot == 0) || lvm_sep_boot == 2) {
+        utils::exec(fmt::format("sed -i \"s/GRUB_PRELOAD_MODULES=\\\"/GRUB_PRELOAD_MODULES=\\\"lvm /g\" {}/etc/default/grub", mountpoint));
+        utils::exec(fmt::format("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub", mountpoint));
+    }
+
+    // If root is on btrfs volume, amend grub
+    if (utils::exec(fmt::format("findmnt -no FSTYPE {}", mountpoint)) == "btrfs") {
+        utils::exec(fmt::format("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub", mountpoint));
+    }
+
+    // Same setting is needed for LVM
+    if (lvm == 1) {
+        utils::exec(fmt::format("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub", mountpoint));
+    }
+
+    // grub config changes for non zfs root
+    if (utils::exec(fmt::format("findmnt -ln -o FSTYPE \"{}\"", mountpoint)) == "zfs") {
+        return;
+    }
+
+    const auto& grub_installer_path = fmt::format("{}/usr/bin/grub_installer.sh", mountpoint);
+    {
+        constexpr auto bash_codepart = R"(#!/bin/bash
+ln -s /hostlvm /run/lvm
+pacman -S --noconfirm --needed grub os-prober grub-btrfs
+findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
+grub-install --target=i386-pc --recheck)";
+
+        const auto& bash_code = fmt::format("{} {}\n", bash_codepart, device_info);
+        std::ofstream grub_installer{grub_installer_path};
+        grub_installer << bash_code;
+    }
+
+    // If the root is on btrfs-subvolume, amend grub installation
+    auto ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
+    if (ret_status != "0") {
+        utils::exec(fmt::format("sed -e 's/ grub-btrfs//g' -i {}", grub_installer_path));
+    }
+
+    // If encryption used amend grub
+    if (luks_dev != "") {
+        utils::exec(fmt::format("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub", mountpoint));
+
+        const auto& luks_dev_formatted = utils::exec(fmt::format("echo \"{}\" | {}", luks_dev, "awk '{print $1}'"));
+        ret_status                     = utils::exec(fmt::format("echo \"sed -i \"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\"\"{}\\\"~g\"\" /etc/default/grub\" >> {}", luks_dev_formatted, grub_installer_path), true);
+        if (ret_status == "0") {
+            spdlog::info("adding kernel parameter {}", luks_dev);
+        }
+    }
+
+    // If Full disk encryption is used, use a keyfile
+    const auto& fde = std::get<std::int32_t>(config_data["fde"]);
+    if (fde == 1) {
+        spdlog::info("Full disk encryption enabled");
+        utils::exec(fmt::format("sed '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' -i {}", grub_installer_path));
+    }
+
+    // Remove os-prober if not selected
+    constexpr std::string_view needle{"os-prober"};
+    const auto& found = ranges::search(selected_bootloader, needle);
+    if (found.empty()) {
+        utils::exec(fmt::format("sed -e 's/ os-prober//g' -i {}", grub_installer_path));
+    }
+
+    fs::permissions(grub_installer_path,
+        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+        fs::perm_options::add);
+
+    detail::infobox_widget("\nPlease wait...\n");
+    utils::exec(fmt::format("dd if=/dev/zero of={} seek=1 count=2047", device_info));
+    fs::create_directory("/mnt/hostlvm");
+    utils::exec("mount --bind /run/lvm /mnt/hostlvm");
+
+    // install grub
+    utils::arch_chroot("grub_installer.sh");
+
+    // the grub_installer is no longer needed - there still needs to be a better way to do this
+    fs::remove(grub_installer_path);
+
+    umount("/mnt/hostlvm");
+    fs::remove("/mnt/hostlvm");
+#endif
 }
 
 void install_bootloader() {
@@ -1402,10 +1698,10 @@ void make_esp() noexcept {
     }
 
     {
-        static constexpr auto MntUefiBody      = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n";
-        static constexpr auto MntUefiCrypt     = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption. Encrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n";
-        const auto& MntUefiMessage             = (luks == 0) ? MntUefiBody : MntUefiCrypt;
-        std::vector<std::string> radiobox_list = {
+        static constexpr auto MntUefiBody            = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n";
+        static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption. Encrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n";
+        const auto& MntUefiMessage                   = (luks == 0) ? MntUefiBody : MntUefiCrypt;
+        const std::vector<std::string> radiobox_list = {
             "/boot/efi",
             "/boot",
         };
@@ -1729,6 +2025,7 @@ void create_partitions() noexcept {
 void install_core_menu() noexcept {
     const std::vector<std::string> menu_entries = {
         "Install Base Packages",
+        "Install Desktop Environment",
         "Install Bootloader",
         "Configure Base",
         "Install Custom Packages",
@@ -1749,7 +2046,14 @@ void install_core_menu() noexcept {
             }
             tui::install_base();
             break;
-        case 1: {
+        case 1:
+            if (!utils::check_mount()) {
+                screen.ExitLoopClosure()();
+                break;
+            }
+            tui::install_desktop();
+            break;
+        case 2: {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
                 break;
@@ -1757,7 +2061,7 @@ void install_core_menu() noexcept {
             tui::install_bootloader();
             break;
         }
-        case 2: {
+        case 3: {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
                 break;
@@ -1765,10 +2069,10 @@ void install_core_menu() noexcept {
             tui::config_base_menu();
             break;
         }
-        case 3:
+        case 4:
             tui::install_cust_pkgs();
             break;
-        case 4:
+        case 5:
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
             }
@@ -1782,7 +2086,7 @@ void install_core_menu() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
 
-void system_rescue_menu() {
+void system_rescue_menu() noexcept {
     const std::vector<std::string> menu_entries = {
         "Install Hardware Drivers",
         "Install Bootloader",
@@ -1829,7 +2133,7 @@ void system_rescue_menu() {
 }
 
 void prep_menu() noexcept {
-    std::vector<std::string> menu_entries = {
+    const std::vector<std::string> menu_entries = {
         "Set Virtual Console",
         "List Devices (optional)",
         "Partition Disk",
@@ -1872,11 +2176,13 @@ void prep_menu() noexcept {
         case 6:
         case 8:
         case 9:
-        case 10:
             SPDLOG_ERROR("Implement me!");
             break;
+        case 10:
+            tui::set_cache();
+            break;
         case 11:
-            set_fsck_hook();
+            tui::set_fsck_hook();
             break;
         default:
             screen.ExitLoopClosure()();
@@ -1912,7 +2218,7 @@ void init() noexcept {
             tui::system_rescue_menu();
             break;
         default: {
-            if (utils::exit_done()) {
+            if (tui::exit_done()) {
                 screen.ExitLoopClosure()();
             }
             break;
