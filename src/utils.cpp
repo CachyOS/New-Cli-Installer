@@ -340,18 +340,24 @@ void find_partitions() noexcept {
     // for test delete /dev:sda8
     // delete_partition_in_list "/dev/sda8"
 
+    // TODO(vnepogodin): rewatch that part later on..
+#if 0
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
     // Deal with partitioning schemes appropriate to mounting, lvm, and/or luks.
     if (include_part == "\'part\\|lvm\\|crypt\'" && (((system_info == "UEFI") && (number_partitions < 2)) || ((system_info == "BIOS") && (number_partitions == 0)))) {
         // Deal with incorrect partitioning for main mounting function
         tui::create_partitions();
+        return;
     } else if (include_part == "\'part\\|crypt\'" && number_partitions == 0) {
         // Ensure there is at least one partition for LVM
         tui::create_partitions();
+        return;
     } else if (include_part == "\'part\\|lvm\'" && number_partitions < 2) {
         // Ensure there are at least two partitions for LUKS
         tui::create_partitions();
+        return;
     }
+#endif
 }
 
 // List partitions to be hidden from the mounting menu

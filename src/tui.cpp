@@ -140,7 +140,7 @@ bool exit_done() noexcept {
 
         spdlog::info("exit installer.");
 
-        static constexpr auto LogInfo = "Would you like to save the installation-log to the installed system?\nIt will be copied to";
+        static constexpr auto LogInfo = "Would you like to save\nthe installation-log to the installed system?\nIt will be copied to\n";
         const auto& do_save_log       = detail::yesno_widget(fmt::format("\n{} {}/cachyos-install.log\n", LogInfo, mountpoint), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
         if (do_save_log) {
             std::filesystem::copy_file("/tmp/cachyos-install.log", fmt::format("{}/cachyos-install.log", mountpoint), fs::copy_options::overwrite_existing);
@@ -1685,12 +1685,12 @@ void make_esp() noexcept {
 
     // If it is already a fat/vfat partition...
     const auto& ret_status = utils::exec(fmt::format("fsck -N {} | grep fat", partition), true);
-    bool do_bootpartition{};
+    bool do_boot_partition{};
     if (ret_status != "0") {
         const auto& content = fmt::format("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n", partition);
-        do_bootpartition    = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        do_boot_partition   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     }
-    if (do_bootpartition) {
+    if (do_boot_partition) {
 #ifdef NDEVENV
         utils::exec(fmt::format("mkfs.vfat -F32 {} >/dev/null", partition));
 #endif
@@ -1710,6 +1710,7 @@ void make_esp() noexcept {
             Radiobox(&radiobox_list, &selected),
         });
 
+        // TODO(vnepogodin): create helper for radiobox component
         auto screen  = ScreenInteractive::Fullscreen();
         auto content = Renderer(component, [&] {
             return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
@@ -1821,9 +1822,10 @@ void mount_partitions() noexcept {
                 success                  = true;
                 screen.ExitLoopClosure()();
             };
+            /* clang-format off */
             detail::menu_widget(partitions, ok_callback, &selected, &screen);
-            if (!success)
-                return;
+            if (!success) { return; }
+            /* clang-format on */
         }
         spdlog::info("partition: {}", std::get<std::string>(config_data["PARTITION"]));
 
@@ -1831,10 +1833,10 @@ void mount_partitions() noexcept {
         config_data["MOUNT"] = "";
 
         // Format with FS (or skip) -> // Make the directory and mount. Also identify LUKS and/or LVM
-        if (!tui::select_filesystem())
-            return;
-        if (!tui::mount_current_partition())
-            return;
+        /* clang-format off */
+        if (!tui::select_filesystem()) { return; }
+        if (!tui::mount_current_partition()) { return; }
+        /* clang-format on */
 
         // Extra check if root is on LUKS or lvm
         // get_cryptroot
@@ -1984,7 +1986,14 @@ void create_partitions() noexcept {
         const auto& answer = menu_entries[static_cast<std::size_t>(selected)];
         if (answer != optwipe && answer != optauto) {
             screen.Clear();
+            screen.PostEvent(Event::Custom);
+            screen.ExitLoopClosure()();
+#ifdef NDEVENV
             utils::exec(fmt::format("{} {}", answer, std::get<std::string>(config_data["DEVICE"])), true);
+#else
+            spdlog::debug("to be executed: {}", fmt::format("{} {}", answer, std::get<std::string>(config_data["DEVICE"])));
+#endif
+            return;
         }
 
         if (answer == optwipe) {
@@ -1995,31 +2004,7 @@ void create_partitions() noexcept {
         }
         screen.ExitLoopClosure()();
     };
-
-    MenuOption menu_option{.on_enter = ok_callback};
-    auto menu    = Menu(&menu_entries, &selected, &menu_option);
-    auto content = Renderer(menu, [&] {
-        return menu->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    });
-
-    ButtonOption button_option{.border = false};
-    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
-
-    auto controls = Renderer(controls_container, [&] {
-        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
-    });
-
-    auto global = Container::Vertical({
-        content,
-        Renderer([] { return separator(); }),
-        controls,
-    });
-
-    auto renderer = Renderer(global, [&] {
-        return detail::centered_interative_multi("New CLI Installer", global);
-    });
-
-    screen.Loop(renderer);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
 
 void install_core_menu() noexcept {
@@ -2192,7 +2177,7 @@ void prep_menu() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, "", {size(HEIGHT, GREATER_THAN, 15) | size(WIDTH, GREATER_THAN, 50)});
 }
 
-void init() noexcept {
+void menu_advanced() noexcept {
     const std::vector<std::string> menu_entries = {
         "Prepare Installation",
         "Install System",
@@ -2226,6 +2211,62 @@ void init() noexcept {
         }
     };
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+}
+
+void menu_simple() noexcept {
+    // some simple ui
+    const std::vector<std::string> menu_entries = {
+        "entry 1",
+        "entry 2",
+        "entry 3",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    bool success{};
+    auto ok_callback = [&] {
+        success = true;
+        screen.ExitLoopClosure()();
+    };
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    /* clang-format off */
+    if (!success) { return; }
+    /* clang-format on */
+
+    fmt::print("Selected element = {}\n", selected);
+}
+
+void init() noexcept {
+#if 0
+    const std::vector<std::string> menu_entries = {
+        "Simple installation",
+        "Advanced installation",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    bool success{};
+    auto ok_callback = [&] {
+        success = true;
+        screen.ExitLoopClosure()();
+    };
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    /* clang-format off */
+    if (!success) { return; }
+    /* clang-format on */
+
+    switch (selected) {
+    case 0:
+        tui::menu_simple();
+        break;
+    case 1:
+        tui::menu_advanced();
+        break;
+    default:
+        break;
+    }
+#endif
+    tui::menu_advanced();
 }
 
 }  // namespace tui
