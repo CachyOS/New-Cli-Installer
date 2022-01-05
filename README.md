@@ -3,6 +3,54 @@ CLI net-installer for CachyOS, inspired by manjaro-architect
 
 This installer provides online installation for CachyOS.
 
+Requirements
+------------
+* C++20 feature required (tested with GCC 11.1.0 and Clang 13(clang will not compile it with libstdc++ 11.1.0 because of c++20 standard ranges library)
+Any compiler which support C++20 standard should work.
+
+######
+## Installing from source
+
+This is tested on Arch Linux, but *any* recent Linux with latest C++20 compiler should do:
+
+```sh
+sudo pacman -Sy \
+    base-devel cmake pkg-config make glibmm libnm
+```
+
+### Cloning the source code
+```sh
+git clone https://github.com/cachyos/new-cli-installer.git
+cd new-cli-installer
+```
+
+### Building and Configuring
+#### cmake(recommended):
+To build, first, configure it(if you intend to install it globally, you
+might also want `-DCMAKE_INSTALL_PREFIX=/usr`):
+```sh
+cmake -S . -B build
+```
+Second, build it:
+```sh
+cmake --build build
+```
+
+#### meson:
+To build, first, configure it (if you intend to install it globally, you
+might also want `--prefix=/usr`):
+```sh
+meson build
+```
+Second, compile it:
+```sh
+meson compile -C build
+```
+
+Optionally, to disable developer environment:
+pass `-DENABLE_DEVENV=OFF` to cmake or `-Ddevenv=false` to meson when configuring the project.
+
+
 ### Libraries used in this project
 
 * [Functional Terminal (X) User interface](https://github.com/ArthurSonzogni/FTXUI) used for TUI.
