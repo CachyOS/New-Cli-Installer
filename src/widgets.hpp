@@ -36,6 +36,7 @@ namespace detail {
     bool yesno_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     bool yesno_widget(ftxui::Component& container, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const WidgetBoxSize widget_sizes = {}) noexcept;
+    void radiolist_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const WidgetBoxSize widget_sizes = {}) noexcept;
 }  // namespace detail
 }  // namespace tui
 

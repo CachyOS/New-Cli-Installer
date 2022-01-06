@@ -23,12 +23,15 @@
 #include <unistd.h>       // for execvp, fork
 #include <unordered_map>  // for unordered_map
 
+#include <fmt/ranges.h>
+
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
 
 #include <range/v3/algorithm/for_each.hpp>
 #include <range/v3/algorithm/reverse.hpp>
+#include <range/v3/algorithm/search.hpp>
 #include <range/v3/core.hpp>
 #include <range/v3/view/filter.hpp>
 #include <range/v3/view/split.hpp>
@@ -314,9 +317,10 @@ void find_partitions() noexcept {
     config_data["NUMBER_PARTITIONS"] = 0;
     auto& number_partitions          = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
     const auto& include_part         = std::get<std::string>(config_data["INCLUDE_PART"]);
+
     // get the list of partitions and also include the zvols since it is common to mount filesystems directly on them.  It should be safe to include them here since they present as block devices.
-    const std::string other_piece = "sed \'s/part$/\\/dev\\//g\' | sed \'s/lvm$\\|crypt$/\\/dev\\/mapper\\//g\' | awk \'{print $3$1 \" \" $2}\' | awk \'!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}\' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk \'{printf \"/dev/zvol/%s %s\\n\", $1, $2}\'";
-    auto partition_list           = utils::exec(fmt::format("lsblk -lno NAME,SIZE,TYPE | grep {} | {}", include_part, other_piece));
+    static constexpr auto other_piece = "sed 's/part$/\\/dev\\//g' | sed 's/lvm$\\|crypt$/\\/dev\\/mapper\\//g' | awk '{print $3$1 \" \" $2}' | awk '!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk '{printf \"/dev/zvol/%s %s\\n\", $1, $2}'";
+    const auto& partitions_tmp        = utils::exec(fmt::format("lsblk -lno NAME,SIZE,TYPE | grep '{}' | {}", include_part, other_piece));
 
     // create a raid partition list
     // old_ifs="$IFS"
@@ -330,34 +334,34 @@ void find_partitions() noexcept {
     //    partition_list="${partition_list} /dev/md/${i}"
     // done
 
-    const auto& partitions    = utils::make_multiline(partition_list, true);
-    config_data["PARTITIONS"] = partitions;
-    number_partitions         = static_cast<std::int32_t>(partitions.size()) - 1;
-
-    // Double-partitions will be counted due to counting sizes, so fix
-    number_partitions /= 2;
+    const auto& partition_list = utils::make_multiline(partitions_tmp, true);
+    config_data["PARTITIONS"]  = partition_list;
+    number_partitions          = static_cast<std::int32_t>(partition_list.size());
 
     // for test delete /dev:sda8
     // delete_partition_in_list "/dev/sda8"
 
-    // TODO(vnepogodin): rewatch that part later on..
-#if 0
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
     // Deal with partitioning schemes appropriate to mounting, lvm, and/or luks.
-    if (include_part == "\'part\\|lvm\\|crypt\'" && (((system_info == "UEFI") && (number_partitions < 2)) || ((system_info == "BIOS") && (number_partitions == 0)))) {
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    if ((include_part == "part\\|lvm\\|crypt") && (((system_info == "UEFI") && (number_partitions < 2)) || ((system_info == "BIOS") && (number_partitions == 0)))) {
         // Deal with incorrect partitioning for main mounting function
+        static constexpr auto PartErrBody = "\nBIOS systems require a minimum of one partition (ROOT).\n \nUEFI systems require a minimum of two partitions (ROOT and UEFI).\n";
+        tui::detail::msgbox_widget(PartErrBody);
         tui::create_partitions();
         return;
-    } else if (include_part == "\'part\\|crypt\'" && number_partitions == 0) {
+    } else if (include_part == "part\\|crypt" && (number_partitions == 0)) {
         // Ensure there is at least one partition for LVM
+        static constexpr auto LvmPartErrBody = "\nThere are no viable partitions available to use Logical Volume Manager.\nA minimum of one is required.\n\nIf LVM is already in use, deactivating it will allow the partition(s)\nused for its Physical Volume(s) to be used again.\n";
+        tui::detail::msgbox_widget(LvmPartErrBody);
         tui::create_partitions();
         return;
-    } else if (include_part == "\'part\\|lvm\'" && number_partitions < 2) {
+    } else if (include_part == "part\\|lvm" && (number_partitions < 2)) {
         // Ensure there are at least two partitions for LUKS
+        static constexpr auto LuksPartErrBody = "\nA minimum of two partitions are required for encryption:\n\n1. Root (/) - standard or lvm partition types.\n\n2. Boot (/boot or /boot/efi) - standard partition types only\n(except lvm where using BIOS Grub).\n";
+        tui::detail::msgbox_widget(LuksPartErrBody);
         tui::create_partitions();
         return;
     }
-#endif
 }
 
 // List partitions to be hidden from the mounting menu
@@ -367,11 +371,107 @@ std::string list_mounted() noexcept {
 }
 
 std::string list_containing_crypt() noexcept {
-    return utils::exec("blkid | awk \'/TYPE=\"crypto_LUKS\"/{print $1}\' | sed 's/.$//\'");
+    return utils::exec("blkid | awk '/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
 }
 
 std::string list_non_crypt() noexcept {
-    return utils::exec("blkid | awk \'!/TYPE=\"crypto_LUKS\"/{print $1}\' | sed \'s/.$//\'");
+    return utils::exec("blkid | awk '!/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
+}
+
+void get_cryptroot() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    // Identify if /mnt or partition is type "crypt" (LUKS on LVM, or LUKS alone)
+    if ((utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt", true) == "0")
+        || (utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt$/,/part/p\" | awk '{print $6}' | grep -q crypt", true) == "0")) {
+        config_data["LUKS"]  = 1;
+        auto& luks_name      = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
+        const auto& luks_dev = std::get<std::string>(config_data["LUKS_DEV"]);
+        luks_name            = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+        // Get the name of the Luks device
+        if (utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
+            // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
+            luks_name = utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt$/,/crypt/p\" | awk '/crypt/ {print $1}'");
+        }
+
+        const auto& check_cryptparts = [&](const auto cryptparts, auto functor) {
+            for (const auto& cryptpart : cryptparts) {
+                if (!utils::exec(fmt::format("lsblk -lno NAME {} | grep \"{}\"", cryptpart, luks_name)).empty()) {
+                    functor(cryptpart);
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
+        auto cryptparts    = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"lvm\" | grep \"/mnt$\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/mapper/\"$1}'"));
+        auto check_functor = [&](const auto cryptpart) {
+            config_data["LUKS_DEV"] = fmt::format("cryptdevice={}:{}", cryptpart, luks_name);
+            config_data["LVM"]      = 1;
+        };
+        if (check_cryptparts(cryptparts, check_functor)) {
+            return;
+        }
+
+        // Check if LVM on LUKS
+        cryptparts                     = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \" crypt$\" | grep -i \"LVM2_member\" | uniq | awk '{print \"/dev/mapper/\"$1}'"));
+        const auto& check_lvm_luks_dev = [&]([[maybe_unused]] const auto cryptpart) {
+            auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
+            luks_uuid               = utils::exec("lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt /,/part/p\" | awk '/crypto_LUKS/ {print $4}'");
+            config_data["LUKS_DEV"] = fmt::format("cryptdevice=UUID={}:{}", luks_uuid, luks_name);
+            config_data["LVM"]      = 1;
+        };
+        if (check_cryptparts(cryptparts, check_lvm_luks_dev)) {
+            return;
+        }
+
+        // Check if LUKS alone (parent = part /dev/...)
+        cryptparts                 = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"/mnt$\" | grep \"part\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/\"$1}'"));
+        const auto& check_func_dev = [&](const auto cryptpart) {
+            auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
+            luks_uuid               = utils::exec(fmt::format("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}", cryptpart, "awk '{print $1}'"));
+            config_data["LUKS_DEV"] = fmt::format("cryptdevice=UUID={}:{}", luks_uuid, luks_name);
+        };
+        if (check_cryptparts(cryptparts, check_func_dev)) {
+            return;
+        }
+    }
+}
+
+void boot_encrypted_setting() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    config_data["fde"] = 0;
+    auto& fde          = std::get<std::int32_t>(config_data["fde"]);
+
+    // Check if there is separate /boot partition
+    if (utils::exec("lsblk | grep \"/mnt/boot$\"").empty()) {
+        // There is no separate /boot parition
+        const auto& root_name = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+        const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
+        // Check if root is encrypted
+        if ((luks == 1)
+            || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", root_name), true) == "0")
+            || (utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0")
+            // Check if root is on encrypted lvm volume
+            || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", root_name, "awk '{print $6}'"), true) == "0")) {
+            fde = 1;
+            utils::setup_luks_keyfile();
+        }
+        return;
+    }
+    // There is a separate /boot. Check if it is encrypted
+    const auto& boot_name = utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    if ((utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0")
+        // Check if the /boot is inside encrypted lvm volume
+        || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", boot_name, "awk '{print $6}'"), true) == "0")
+        || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", boot_name), true) == "0")) {
+        fde = 1;
+        utils::setup_luks_keyfile();
+    }
 }
 
 // Ensure that a partition is mounted
@@ -560,7 +660,7 @@ void final_check() noexcept {
     }
 
     // Check if fstab is generated
-    if (utils::exec("grep -qv '^#' /mnt/etc/fstab 2>/dev/null", true) != "0") {
+    if (utils::exec(fmt::format("grep -qv '^#' {}/etc/fstab 2>/dev/null", mountpoint), true) != "0") {
         checklist += "- Fstab has not been generated\n";
     }
 
@@ -568,7 +668,9 @@ void final_check() noexcept {
     //[[ ! -e /mnt/.video_installed ]] && echo "- $_GCCheck" >> ${CHECKLIST}
 
     // Check if locales have been generated
-    //[[ $(manjaro-chroot /mnt 'locale -a' | wc -l) -ge '3' ]] || echo "- $_LocaleCheck" >> ${CHECKLIST}
+    if (to_int(utils::exec(fmt::format("arch-chroot {} 'locale -a' | wc -l", mountpoint), true)) < 3) {
+        checklist += "- Locales have not been generated\n";
+    }
 
     // Check if root password has been set
     if (utils::exec("arch-chroot /mnt 'passwd --status root' | cut -d' ' -f2 | grep -q 'NP'", true) == "0") {

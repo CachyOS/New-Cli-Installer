@@ -294,4 +294,42 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
     screen->Loop(renderer);
 }
 
+void radiolist_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ScreenInteractive* screen, const std::string_view& text, const WidgetBoxSize widget_sizes) noexcept {
+    auto radiolist = Container::Vertical({
+        Radiobox(&entries, selected),
+    });
+    auto content   = Renderer(radiolist, [&] {
+        return radiolist->Render() | center | widget_sizes.content_size;
+      });
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    Components children{};
+    if (!text.empty()) {
+        children = {
+            Renderer([&] { return detail::multiline_text(utils::make_multiline(text)) | widget_sizes.text_size; }),
+            Renderer([] { return separator(); }),
+            content,
+            Renderer([] { return separator(); }),
+            controls};
+    } else {
+        children = {
+            content,
+            Renderer([] { return separator(); }),
+            controls};
+    }
+    auto global{Container::Vertical(children)};
+
+    auto renderer = Renderer(global, [&] {
+        return centered_interative_multi("New CLI Installer", global);
+    });
+
+    screen->Loop(renderer);
+}
+
 }  // namespace tui::detail

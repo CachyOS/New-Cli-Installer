@@ -64,40 +64,6 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
     return true;
 }
 
-void boot_encrypted_setting() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    config_data["fde"] = 0;
-    auto& fde          = std::get<std::int32_t>(config_data["fde"]);
-
-    // Check if there is separate /boot partition
-    if (utils::exec("lsblk | grep \"/mnt/boot$\"").empty()) {
-        // There is no separate /boot parition
-        const auto& root_name = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-        const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
-        // Check if root is encrypted
-        if ((luks == 1)
-            || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", root_name), true) == "0")
-            || (utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0")
-            // Check if root is on encrypted lvm volume
-            || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", root_name, "awk '{print $6}'"), true) == "0")) {
-            fde = 1;
-            utils::setup_luks_keyfile();
-        }
-        return;
-    }
-    // There is a separate /boot. Check if it is encrypted
-    const auto& boot_name = utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    if ((utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0")
-        // Check if the /boot is inside encrypted lvm volume
-        || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", boot_name, "awk '{print $6}'"), true) == "0")
-        || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", boot_name), true) == "0")) {
-        fde = 1;
-        utils::setup_luks_keyfile();
-    }
-}
-
 // Fsck hook
 void set_fsck_hook() noexcept {
     auto* config_instance    = Config::instance();
@@ -240,8 +206,8 @@ void set_xkbmap() noexcept {
     bool success{};
     std::string_view xkbmap_choice{};
     auto ok_callback = [&] {
-        const auto& answer = xkbmap_list[static_cast<std::size_t>(selected)];
-        xkbmap_choice      = utils::exec(fmt::format("echo \"{}\" | sed 's/_.*//'", answer));
+        const auto& keymap = xkbmap_list[static_cast<std::size_t>(selected)];
+        xkbmap_choice      = utils::exec(fmt::format("echo \"{}\" | sed 's/_.*//'", keymap));
         success            = true;
         screen.ExitLoopClosure()();
     };
@@ -273,8 +239,7 @@ bool set_timezone() noexcept {
 
         std::int32_t selected{};
         auto ok_callback = [&] {
-            const auto& answer = zone_list[static_cast<std::size_t>(selected)];
-            zone               = answer;
+            zone = zone_list[static_cast<std::size_t>(selected)];
             screen.ExitLoopClosure()();
         };
 
@@ -294,8 +259,7 @@ bool set_timezone() noexcept {
 
         std::int32_t selected{};
         auto ok_callback = [&] {
-            const auto& answer = city_list[static_cast<std::size_t>(selected)];
-            subzone            = answer;
+            subzone = city_list[static_cast<std::size_t>(selected)];
             screen.ExitLoopClosure()();
         };
 
@@ -327,8 +291,8 @@ void set_hw_clock() noexcept {
     std::int32_t selected{};
     auto ok_callback = [&] {
 #ifdef NDEVENV
-        const auto& answer = menu_entries[static_cast<std::size_t>(selected)];
-        utils::arch_chroot(fmt::format("hwclock --systohc --{}", answer));
+        const auto& clock_type = menu_entries[static_cast<std::size_t>(selected)];
+        utils::arch_chroot(fmt::format("hwclock --systohc --{}", clock_type));
 #endif
         screen.ExitLoopClosure()();
     };
@@ -399,16 +363,9 @@ void create_new_user() noexcept {
             "bash",
             "fish",
         };
+
+        auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
-        auto component = Container::Vertical({
-            Radiobox(&radiobox_list, &selected),
-        });
-
-        auto screen  = ScreenInteractive::Fullscreen();
-        auto content = Renderer(component, [&] {
-            return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        });
-
         auto ok_callback = [&] {
             switch (selected) {
             case 0:
@@ -434,27 +391,7 @@ void create_new_user() noexcept {
             }
             screen.ExitLoopClosure()();
         };
-
-        ButtonOption button_option{.border = false};
-        auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
-
-        auto controls = Renderer(controls_container, [&] {
-            return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
-        });
-
-        auto global = Container::Vertical({
-            Renderer([&] { return detail::multiline_text(utils::make_multiline(shells_options_body)); }),
-            Renderer([] { return separator(); }),
-            content,
-            Renderer([] { return separator(); }),
-            controls,
-        });
-
-        auto renderer = Renderer(global, [&] {
-            return detail::centered_interative_multi("New CLI Installer", global);
-        });
-
-        screen.Loop(renderer);
+        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, shells_options_body, detail::WidgetBoxSize{.text_size = nothing});
     }
 
     spdlog::info("default shell: [{}]", shell);
@@ -578,7 +515,7 @@ void install_grub_uefi() noexcept {
     const auto& root_device = utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}", root_name, "awk '/disk/ {print $1}'"));
     const auto& root_part   = utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'", root_name, "awk '/part/ {print $1}'"));
 #ifdef NDEVENV
-    boot_encrypted_setting();
+    utils::boot_encrypted_setting();
 #endif
 
     spdlog::info("root_name: {}. root_device: {}. root_part: {}", root_name, root_device, root_part);
@@ -1035,7 +972,7 @@ void bios_bootloader() {
     }
 #ifdef NDEVENV
     // if root is encrypted, amend /etc/default/grub
-    boot_encrypted_setting();
+    utils::boot_encrypted_setting();
 
     auto* config_instance    = Config::instance();
     auto& config_data        = config_instance->data();
@@ -1544,6 +1481,7 @@ void make_swap() noexcept {
     auto& config_data           = config_instance->data();
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
 
+    std::string answer{};
     {
         std::vector<std::string> temp{"None -"};
         const auto& root_filesystem = utils::exec(fmt::format("findmnt -ln -o FSTYPE \"{}\"", mountpoint_info));
@@ -1558,10 +1496,10 @@ void make_swap() noexcept {
         std::int32_t selected{};
         bool success{};
         auto ok_callback = [&] {
-            const auto& src       = temp[static_cast<std::size_t>(selected)];
-            const auto& lines     = utils::make_multiline(src, false, " ");
-            config_data["ANSWER"] = lines[0];
-            success               = true;
+            const auto& src   = temp[static_cast<std::size_t>(selected)];
+            const auto& lines = utils::make_multiline(src, false, " ");
+            answer            = lines[0];
+            success           = true;
             screen.ExitLoopClosure()();
         };
         /* clang-format off */
@@ -1570,8 +1508,7 @@ void make_swap() noexcept {
         /* clang-format on */
     }
 
-    const auto& answer = std::get<std::string>(config_data["ANSWER"]);
-    auto& partition    = std::get<std::string>(config_data["PARTITION"]);
+    auto& partition = std::get<std::string>(config_data["PARTITION"]);
     /* clang-format off */
     if (answer == SelSwpNone) { return; }
     partition = answer;
@@ -1657,6 +1594,8 @@ void make_esp() noexcept {
     /* clang-format off */
     if (sys_info != "UEFI") { return; }
     /* clang-format on */
+
+    std::string answer{};
     {
         const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
 
@@ -1664,10 +1603,10 @@ void make_esp() noexcept {
         std::int32_t selected{};
         bool success{};
         auto ok_callback = [&] {
-            const auto& src       = partitions[static_cast<std::size_t>(selected)];
-            const auto& lines     = utils::make_multiline(src, false, " ");
-            config_data["ANSWER"] = lines[0];
-            success               = true;
+            const auto& src   = partitions[static_cast<std::size_t>(selected)];
+            const auto& lines = utils::make_multiline(src, false, " ");
+            answer            = lines[0];
+            success           = true;
             screen.ExitLoopClosure()();
         };
         /* clang-format off */
@@ -1676,7 +1615,6 @@ void make_esp() noexcept {
         /* clang-format on */
     }
 
-    const auto& answer        = std::get<std::string>(config_data["ANSWER"]);
     const auto& luks          = std::get<std::int32_t>(config_data["LUKS"]);
     auto& partition           = std::get<std::string>(config_data["PARTITION"]);
     partition                 = answer;
@@ -1705,44 +1643,15 @@ void make_esp() noexcept {
             "/boot/efi",
             "/boot",
         };
+        answer.clear();
+
+        auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
-        auto component = Container::Vertical({
-            Radiobox(&radiobox_list, &selected),
-        });
-
-        // TODO(vnepogodin): create helper for radiobox component
-        auto screen  = ScreenInteractive::Fullscreen();
-        auto content = Renderer(component, [&] {
-            return component->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-        });
-
-        config_data["ANSWER"] = "";
-        auto ok_callback      = [&] {
-            auto src              = radiobox_list[static_cast<std::size_t>(selected)];
-            config_data["ANSWER"] = src;
+        auto ok_callback = [&] {
+            answer = radiobox_list[static_cast<std::size_t>(selected)];
             screen.ExitLoopClosure()();
         };
-
-        ButtonOption button_option{.border = false};
-        auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
-
-        auto controls = Renderer(controls_container, [&] {
-            return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
-        });
-
-        auto global = Container::Vertical({
-            Renderer([&] { return detail::multiline_text(utils::make_multiline(MntUefiMessage)); }),
-            Renderer([] { return separator(); }),
-            content,
-            Renderer([] { return separator(); }),
-            controls,
-        });
-
-        auto renderer = Renderer(global, [&] {
-            return detail::centered_interative_multi("New CLI Installer", global);
-        });
-
-        screen.Loop(renderer);
+        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, MntUefiMessage, detail::WidgetBoxSize{.text_size = nothing});
     }
 
     /* clang-format off */
@@ -1771,7 +1680,7 @@ void mount_partitions() noexcept {
     tui::lvm_detect();
 
     // Ensure partitions are unmounted (i.e. where mounted previously)
-    config_data["INCLUDE_PART"] = "\'part\\|lvm\\|crypt\'";
+    config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
     utils::umount_partitions();
 
     // We need to remount the zfs filesystems that have defined mountpoints already
@@ -1792,14 +1701,10 @@ void mount_partitions() noexcept {
     // ignore_part += utils::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
-    // const auto& parts = utils::make_multiline(ignore_part);
-    // for (const auto& part : parts) {
-    //#ifdef NDEVENV
-    // utils::delete_partition_in_list(part);
-    //#else
-    //        spdlog::debug("{}", part);
-    //#endif
-    //    }
+    /* const auto& parts = utils::make_multiline(ignore_part);
+    for (const auto& part : parts) {
+        utils::delete_partition_in_list(part);
+    }*/
 
     // check to see if we already have a zfs root mounted
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
@@ -1837,6 +1742,8 @@ void mount_partitions() noexcept {
         if (!tui::select_filesystem()) { return; }
         if (!tui::mount_current_partition()) { return; }
         /* clang-format on */
+
+        // utils::delete_partition_in_list(std::get<std::string>(config_data["ROOT_PART"]));
 
         // Extra check if root is on LUKS or lvm
         // get_cryptroot
@@ -1880,11 +1787,12 @@ void mount_partitions() noexcept {
         PARTITIONS="${PARTITIONS} ${i}"
         PARTITIONS="${PARTITIONS} zfs"
         NUMBER_PARTITIONS=$(( NUMBER_PARTITIONS + 1 ))
-    done
-
-    for part in $(list_mounted); do
-        delete_partition_in_list $part
     done*/
+
+    /*const auto& parts_tmp = utils::make_multiline(utils::list_mounted());
+    for (const auto& part : parts_tmp) {
+        utils::delete_partition_in_list(part);
+    }*/
 
     // All other partitions
     const auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
@@ -1915,7 +1823,7 @@ void mount_partitions() noexcept {
 
         if (partition == "Done") {
             make_esp();
-            // get_cryptroot();
+            utils::get_cryptroot();
             // get_cryptboot();
             return;
         }
@@ -1947,13 +1855,14 @@ void mount_partitions() noexcept {
         }
         // Create directory and mount.
         tui::mount_current_partition();
+        // utils::delete_partition_in_list(partition);
 
         // Determine if a separate /boot is used.
         // 0 = no separate boot,
         // 1 = separate non-lvm boot,
         // 2 = separate lvm boot. For Grub configuration
         if (mount_dev == "/boot") {
-            const auto& cmd             = fmt::format("lsblk -lno TYPE {} | grep \"lvm\"", std::get<std::string>(config_data["PARTITION"]));
+            const auto& cmd             = fmt::format("lsblk -lno TYPE {} | grep \"lvm\"", partition);
             const auto& cmd_out         = utils::exec(cmd);
             config_data["LVM_SEP_BOOT"] = 1;
             if (!cmd_out.empty()) {
@@ -1983,23 +1892,23 @@ void create_partitions() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
-        const auto& answer = menu_entries[static_cast<std::size_t>(selected)];
-        if (answer != optwipe && answer != optauto) {
+        const auto& selected_entry = menu_entries[static_cast<std::size_t>(selected)];
+        if (selected_entry != optwipe && selected_entry != optauto) {
             screen.Clear();
             screen.PostEvent(Event::Custom);
             screen.ExitLoopClosure()();
 #ifdef NDEVENV
-            utils::exec(fmt::format("{} {}", answer, std::get<std::string>(config_data["DEVICE"])), true);
+            utils::exec(fmt::format("{} {}", selected_entry, std::get<std::string>(config_data["DEVICE"])), true);
 #else
-            spdlog::debug("to be executed: {}", fmt::format("{} {}", answer, std::get<std::string>(config_data["DEVICE"])));
+            spdlog::debug("to be executed: {}", fmt::format("{} {}", selected_entry, std::get<std::string>(config_data["DEVICE"])));
 #endif
             return;
         }
 
-        if (answer == optwipe) {
+        if (selected_entry == optwipe) {
             utils::secure_wipe();
         }
-        if (answer == optauto) {
+        if (selected_entry == optauto) {
             tui::auto_partition();
         }
         screen.ExitLoopClosure()();

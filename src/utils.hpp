@@ -25,6 +25,10 @@ void secure_wipe() noexcept;
 void umount_partitions() noexcept;
 void find_partitions() noexcept;
 
+void get_cryptroot() noexcept;
+void get_cryptboot() noexcept;
+void boot_encrypted_setting() noexcept;
+
 void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
 void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept;
 void exec(const std::vector<std::string>& vec) noexcept;
@@ -45,6 +49,7 @@ inline T to_int(const std::string_view& str) {
     std::from_chars(str.data(), str.data() + str.size(), result);
     return result;
 }
+
 }  // namespace utils
 
 #endif  // UTILS_HPP
