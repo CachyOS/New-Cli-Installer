@@ -137,15 +137,12 @@ void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept 
     auto button_option   = ButtonOption();
     button_option.border = false;
     auto button_back     = Button("OK", screen.ExitLoopClosure(), &button_option);
-    /* clang-format on */
 
-    auto container = Container::Horizontal({
-        button_back,
-    });
-
+    auto container = Container::Horizontal({button_back});
     auto renderer = Renderer(container, [&] {
-        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(content.data())) | hcenter | boxsize);
+        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(content)) | boxsize);
     });
+    /* clang-format on */
 
     screen.Loop(renderer);
 }
@@ -298,9 +295,10 @@ void radiolist_widget(const std::vector<std::string>& entries, const std::functi
     auto radiolist = Container::Vertical({
         Radiobox(&entries, selected),
     });
-    auto content   = Renderer(radiolist, [&] {
+
+    auto content = Renderer(radiolist, [&] {
         return radiolist->Render() | center | widget_sizes.content_size;
-      });
+    });
 
     ButtonOption button_option{.border = false};
     auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()}, &button_option);
@@ -327,6 +325,42 @@ void radiolist_widget(const std::vector<std::string>& entries, const std::functi
 
     auto renderer = Renderer(global, [&] {
         return centered_interative_multi("New CLI Installer", global);
+    });
+
+    screen->Loop(renderer);
+}
+
+void checklist_widget(const std::vector<std::string>& opts, const std::function<void()>&& ok_callback, bool* opts_state, ScreenInteractive* screen, const std::string_view& text, const std::string_view& title, const WidgetBoxSize widget_sizes) noexcept {
+    auto checklist{Container::Vertical(detail::from_vector_checklist(opts, opts_state))};
+    auto content = Renderer(checklist, [&] {
+        return checklist->Render() | center | widget_sizes.content_size;
+    });
+
+    ButtonOption button_option{.border = false};
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()}, &button_option);
+
+    auto controls = Renderer(controls_container, [&] {
+        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
+    });
+
+    Components children{};
+    if (!text.empty()) {
+        children = {
+            Renderer([&] { return detail::multiline_text(utils::make_multiline(text)) | widget_sizes.text_size; }),
+            Renderer([] { return separator(); }),
+            content,
+            Renderer([] { return separator(); }),
+            controls};
+    } else {
+        children = {
+            content,
+            Renderer([] { return separator(); }),
+            controls};
+    }
+    auto global{Container::Vertical(children)};
+
+    auto renderer = Renderer(global, [&] {
+        return centered_interative_multi(title, global);
     });
 
     screen->Loop(renderer);

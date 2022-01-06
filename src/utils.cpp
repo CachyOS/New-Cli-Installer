@@ -32,7 +32,6 @@
 #include <range/v3/algorithm/for_each.hpp>
 #include <range/v3/algorithm/reverse.hpp>
 #include <range/v3/algorithm/search.hpp>
-#include <range/v3/core.hpp>
 #include <range/v3/view/filter.hpp>
 #include <range/v3/view/split.hpp>
 #include <range/v3/view/transform.hpp>
@@ -71,7 +70,6 @@ namespace ranges = std::ranges;
 namespace fs = std::filesystem;
 
 namespace utils {
-static constexpr std::int32_t CONNECTION_TIMEOUT = 15;
 
 bool is_connected() noexcept {
 #ifdef NDEVENV
@@ -383,60 +381,101 @@ void get_cryptroot() noexcept {
     auto& config_data     = config_instance->data();
 
     // Identify if /mnt or partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    if ((utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt", true) == "0")
-        || (utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt$/,/part/p\" | awk '{print $6}' | grep -q crypt", true) == "0")) {
-        config_data["LUKS"]  = 1;
-        auto& luks_name      = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
-        const auto& luks_dev = std::get<std::string>(config_data["LUKS_DEV"]);
-        luks_name            = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-        // Get the name of the Luks device
-        if (utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
-            // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-            luks_name = utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt$/,/crypt/p\" | awk '/crypt/ {print $1}'");
-        }
+    if ((utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt", true) != "0")
+        || (utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt$/,/part/p\" | awk '{print $6}' | grep -q crypt", true) != "0")) {
+        return;
+    }
 
-        const auto& check_cryptparts = [&](const auto cryptparts, auto functor) {
-            for (const auto& cryptpart : cryptparts) {
-                if (!utils::exec(fmt::format("lsblk -lno NAME {} | grep \"{}\"", cryptpart, luks_name)).empty()) {
-                    functor(cryptpart);
-                    return true;
-                }
+    config_data["LUKS"] = 1;
+    auto& luks_name     = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
+    luks_name           = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    // Get the name of the Luks device
+    if (utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
+        // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
+        luks_name = utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt$/,/crypt/p\" | awk '/crypt/ {print $1}'");
+    }
+
+    const auto& check_cryptparts = [&luks_name](const auto& cryptparts, auto functor) {
+        for (const auto& cryptpart : cryptparts) {
+            if (!utils::exec(fmt::format("lsblk -lno NAME {} | grep \"{}\"", cryptpart, luks_name)).empty()) {
+                functor(cryptpart);
             }
-            return false;
-        };
+        }
+    };
 
-        // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-        auto cryptparts    = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"lvm\" | grep \"/mnt$\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/mapper/\"$1}'"));
-        auto check_functor = [&](const auto cryptpart) {
+    // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
+    auto temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"lvm\" | grep \"/mnt$\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/mapper/\"$1}'");
+    if (!temp_out.empty()) {
+        const auto& cryptparts    = utils::make_multiline(temp_out);
+        const auto& check_functor = [&](const auto cryptpart) {
             config_data["LUKS_DEV"] = fmt::format("cryptdevice={}:{}", cryptpart, luks_name);
             config_data["LVM"]      = 1;
         };
-        if (check_cryptparts(cryptparts, check_functor)) {
-            return;
-        }
+        check_cryptparts(cryptparts, check_functor);
+        return;
+    }
 
-        // Check if LVM on LUKS
-        cryptparts                     = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \" crypt$\" | grep -i \"LVM2_member\" | uniq | awk '{print \"/dev/mapper/\"$1}'"));
-        const auto& check_lvm_luks_dev = [&]([[maybe_unused]] const auto cryptpart) {
+    // Check if LVM on LUKS
+    temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \" crypt$\" | grep -i \"LVM2_member\" | uniq | awk '{print \"/dev/mapper/\"$1}'");
+    if (!temp_out.empty()) {
+        const auto& cryptparts    = utils::make_multiline(temp_out);
+        const auto& check_functor = [&]([[maybe_unused]] const auto cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec("lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt /,/part/p\" | awk '/crypto_LUKS/ {print $4}'");
             config_data["LUKS_DEV"] = fmt::format("cryptdevice=UUID={}:{}", luks_uuid, luks_name);
             config_data["LVM"]      = 1;
         };
-        if (check_cryptparts(cryptparts, check_lvm_luks_dev)) {
-            return;
-        }
+        check_cryptparts(cryptparts, check_functor);
+        return;
+    }
 
-        // Check if LUKS alone (parent = part /dev/...)
-        cryptparts                 = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"/mnt$\" | grep \"part\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/\"$1}'"));
-        const auto& check_func_dev = [&](const auto cryptpart) {
+    // Check if LUKS alone (parent = part /dev/...)
+    temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"/mnt$\" | grep \"part\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/\"$1}'");
+    if (!temp_out.empty()) {
+        const auto& cryptparts    = utils::make_multiline(temp_out);
+        const auto& check_functor = [&](const auto cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec(fmt::format("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}", cryptpart, "awk '{print $1}'"));
             config_data["LUKS_DEV"] = fmt::format("cryptdevice=UUID={}:{}", luks_uuid, luks_name);
         };
-        if (check_cryptparts(cryptparts, check_func_dev)) {
-            return;
-        }
+        check_cryptparts(cryptparts, check_functor);
+        return;
+    }
+}
+
+void get_cryptboot() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    // If /boot is encrypted
+    if ((utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt\\/boot$/ {print $6}' | grep -q crypt", true) != "0")
+        || (utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt\\/boot$/,/part/p\" | awk '{print $6}' | grep -q crypt", true) != "0")) {
+        return;
+    }
+    config_data["LUKS"] = 1;
+
+    // Mountpoint is directly on the LUKS device, so LUKS deivece is the same as root name
+    std::string boot_name{utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g")};
+    // Get UUID of the encrypted /boot
+    std::string boot_uuid{utils::exec("lsblk -lno UUID,MOUNTPOINT | awk '/\\mnt\\/boot$/ {print $1}'")};
+
+    // Get the name of the Luks device
+    if (utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
+        // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
+        boot_name = utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt\\/boot$/,/crypt/p\" | awk '/crypt/ {print $1}'");
+        boot_uuid = utils::exec("lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt\\/boot /,/part/p\" | awk '/crypto_LUKS/ {print $4}'");
+    }
+
+    // Check if LVM on LUKS
+    if (utils::exec("lsblk -lno TYPE,MOUNTPOINT | grep \"/mnt/boot$\" | grep -q lvm", true) == "0") {
+        config_data["LVM"] = 1;
+    }
+
+    // Add cryptdevice to LUKS_DEV, if not already present (if on same LVM on LUKS as /)
+    auto& luks_dev    = std::get<std::string>(config_data["LUKS_DEV"]);
+    const auto& found = ranges::search(luks_dev, boot_uuid);
+    if (found.empty()) {
+        luks_dev = fmt::format("{} cryptdevice=UUID={}:{}", luks_dev, boot_uuid, boot_name);
     }
 }
 
@@ -538,9 +577,11 @@ void id_system() noexcept {
 }
 
 bool handle_connection() noexcept {
-    bool connected{};
+    bool connected{utils::is_connected()};
 
-    if (!(connected = utils::is_connected())) {
+#ifdef NDEVENV
+    static constexpr std::int32_t CONNECTION_TIMEOUT = 15;
+    if (!connected) {
         warning_inter("An active network connection could not be detected, waiting 15 seconds ...\n");
 
         std::int32_t time_waited{};
@@ -568,7 +609,6 @@ bool handle_connection() noexcept {
         }
     }
 
-#ifdef NDEVENV
     if (connected) {
         utils::exec("yes | pacman -Sy --noconfirm", true);
     }

@@ -24,6 +24,7 @@ namespace fs = std::filesystem;
 #pragma clang diagnostic ignored "-Wold-style-cast"
 
 #include <range/v3/algorithm/copy.hpp>
+#include <range/v3/algorithm/search.hpp>
 
 #pragma clang diagnostic pop
 #else
@@ -687,16 +688,9 @@ void install_base() noexcept {
 
     // Create the base list of packages
     std::vector<std::string> install_packages{};
-
     std::unique_ptr<bool[]> kernels_state{new bool[available_kernels.size()]{false}};
 
-    auto kernels{Container::Vertical(detail::from_vector_checklist(available_kernels, kernels_state.get()))};
-
-    auto screen  = ScreenInteractive::Fullscreen();
-    auto content = Renderer(kernels, [&] {
-        return kernels->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    });
-
+    auto screen = ScreenInteractive::Fullscreen();
     std::string packages{};
     auto ok_callback = [&] {
         packages        = detail::from_checklist_string(available_kernels, kernels_state.get());
@@ -717,30 +711,12 @@ void install_base() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    ButtonOption button_option{.border = false};
-    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
-
-    auto controls = Renderer(controls_container, [&] {
-        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
-    });
-
     static constexpr auto InstStandBseBody = "\nThe base package group will be installed automatically.\nThe base-devel package group is required to use the Arch User Repository (AUR).\n";
     static constexpr auto UseSpaceBar      = "Use [Spacebar] to de/select options listed.";
     const auto& kernels_options_body       = fmt::format("\n{}{}\n", InstStandBseBody, UseSpaceBar);
-    auto global                            = Container::Vertical({
-        Renderer([&] { return detail::multiline_text(utils::make_multiline(kernels_options_body)); }),
-        Renderer([] { return separator(); }),
-        content,
-        Renderer([] { return separator(); }),
-        controls,
-    });
 
-    auto renderer = Renderer(global, [&] {
-        constexpr auto title = "New CLI Installer | Install Base";
-        return detail::centered_interative_multi(title, global);
-    });
-
-    screen.Loop(renderer);
+    constexpr auto base_title = "New CLI Installer | Install Base";
+    detail::checklist_widget(available_kernels, ok_callback, kernels_state.get(), &screen, kernels_options_body, base_title, {.text_size = nothing});
 
     /* clang-format off */
     if (packages.empty()) { return; }
@@ -788,16 +764,9 @@ void install_desktop() noexcept {
 
     // Create the base list of packages
     std::vector<std::string> install_packages{};
-
     std::unique_ptr<bool[]> des_state{new bool[available_des.size()]{false}};
 
-    auto kernels{Container::Vertical(detail::from_vector_checklist(available_des, des_state.get()))};
-
-    auto screen  = ScreenInteractive::Fullscreen();
-    auto content = Renderer(kernels, [&] {
-        return kernels->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    });
-
+    auto screen = ScreenInteractive::Fullscreen();
     std::string desktop_env{};
     auto ok_callback = [&] {
         desktop_env = detail::from_checklist_string(available_des, des_state.get());
@@ -805,30 +774,12 @@ void install_desktop() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    ButtonOption button_option{.border = false};
-    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
-
-    auto controls = Renderer(controls_container, [&] {
-        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
-    });
-
     static constexpr auto InstManDEBody = "\nPlease choose a desktop environment.\n";
     static constexpr auto UseSpaceBar   = "Use [Spacebar] to de/select options listed.";
-    const auto& kernels_options_body    = fmt::format("\n{}{}\n", InstManDEBody, UseSpaceBar);
-    auto global                         = Container::Vertical({
-        Renderer([&] { return detail::multiline_text(utils::make_multiline(kernels_options_body)); }),
-        Renderer([] { return separator(); }),
-        content,
-        Renderer([] { return separator(); }),
-        controls,
-    });
+    const auto& des_options_body        = fmt::format("\n{}{}\n", InstManDEBody, UseSpaceBar);
 
-    auto renderer = Renderer(global, [&] {
-        constexpr auto title = "New CLI Installer | Install Desktop";
-        return detail::centered_interative_multi(title, global);
-    });
-
-    screen.Loop(renderer);
+    constexpr auto desktop_title = "New CLI Installer | Install Desktop";
+    detail::checklist_widget(available_des, ok_callback, des_state.get(), &screen, des_options_body, desktop_title, {.text_size = nothing});
 
     /* clang-format off */
     if (desktop_env.empty()) { return; }
@@ -1122,39 +1073,13 @@ void auto_partition() noexcept {
 
     // Show created partitions
     const auto& disk_list = utils::exec(fmt::format("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info));
-
-    auto screen = ScreenInteractive::Fullscreen();
-    /* clang-format off */
-    auto button_option   = ButtonOption();
-    button_option.border = false;
-    auto button_back     = Button("Back", screen.ExitLoopClosure(), &button_option);
-
-    auto container = Container::Horizontal({button_back});
-    auto renderer  = Renderer(container, [&] {
-        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(disk_list)) | size(HEIGHT, GREATER_THAN, 5));
-    });
-    /* clang-format on */
-
-    screen.Loop(renderer);
+    detail::msgbox_widget(disk_list, size(HEIGHT, GREATER_THAN, 5));
 }
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    auto screen       = ScreenInteractive::Fullscreen();
     const auto& lsblk = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
-
-    /* clang-format off */
-    auto button_option   = ButtonOption();
-    button_option.border = false;
-    auto button_back     = Button("Back", screen.ExitLoopClosure(), &button_option);
-
-    auto container = Container::Horizontal({button_back});
-    auto renderer  = Renderer(container, [&] {
-        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(lsblk)) | size(HEIGHT, GREATER_THAN, 5));
-    });
-    /* clang-format on */
-
-    screen.Loop(renderer);
+    detail::msgbox_widget(lsblk, size(HEIGHT, GREATER_THAN, 5));
 }
 
 // This function does not assume that the formatted device is the Root installation device as
@@ -1305,42 +1230,19 @@ void mount_opts() noexcept {
         /* clang-format on */
     }
 
-    auto flags = Container::Vertical(detail::from_vector_checklist(fs_opts, fs_opts_state.get()));
-
-    auto screen  = ScreenInteractive::Fullscreen();
-    auto content = Renderer(flags, [&] {
-        return flags->Render() | center | size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    });
-
+    auto screen           = ScreenInteractive::Fullscreen();
     auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
     auto ok_callback      = [&] {
         mount_opts_info = detail::from_checklist_string(fs_opts, fs_opts_state.get());
         screen.ExitLoopClosure()();
     };
 
-    ButtonOption button_option{.border = false};
-    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+    const auto& file_sys_formatted = utils::exec(fmt::format("echo {} | sed \"s/.*\\.//g;s/-.*//g\"", file_sys));
+    const auto& fs_title           = fmt::format("New CLI Installer | {}", file_sys_formatted);
+    const auto& content_size       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
 
-    auto controls = Renderer(controls_container, [&] {
-        return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
-    });
-
-    std::string mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n";
-    auto global                    = Container::Vertical({
-        Renderer([&] { return detail::multiline_text(utils::make_multiline(mount_options_body)); }),
-        Renderer([] { return separator(); }),
-        content,
-        Renderer([] { return separator(); }),
-        controls,
-    });
-
-    auto renderer = Renderer(global, [&] {
-        const auto& file_sys_formatted = utils::exec(fmt::format("echo {} | sed \"s/.*\\.//g;s/-.*//g\"", file_sys));
-        const auto& title              = fmt::format("New CLI Installer | {}", file_sys_formatted);
-        return detail::centered_interative_multi(title, global);
-    });
-
-    screen.Loop(renderer);
+    static constexpr auto mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n";
+    detail::checklist_widget(fs_opts, ok_callback, fs_opts_state.get(), &screen, mount_options_body, fs_title, {content_size, nothing});
 
     // Now clean up the file
     mount_opts_info = utils::exec(fmt::format("echo \"{}\" | sed \'s/ /,/g\'", mount_opts_info));
@@ -1651,7 +1553,7 @@ void make_esp() noexcept {
             answer = radiobox_list[static_cast<std::size_t>(selected)];
             screen.ExitLoopClosure()();
         };
-        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, MntUefiMessage, detail::WidgetBoxSize{.text_size = nothing});
+        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, MntUefiMessage, {.text_size = nothing});
     }
 
     /* clang-format off */
@@ -1824,7 +1726,7 @@ void mount_partitions() noexcept {
         if (partition == "Done") {
             make_esp();
             utils::get_cryptroot();
-            // get_cryptboot();
+            utils::get_cryptboot();
             return;
         }
         config_data["MOUNT"] = "";
