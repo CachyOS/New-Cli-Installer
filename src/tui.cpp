@@ -154,7 +154,7 @@ void generate_fstab() noexcept {
             return;
         }
 #ifdef NDEVENV
-        const auto& src = mountpoint[static_cast<std::size_t>(selected)];
+        const auto& src = menu_entries[static_cast<std::size_t>(selected)];
         utils::exec(fmt::format("{0} {1} > {1}/etc/fstab", src, mountpoint));
 #endif
         const auto& swap_file = fmt::format("{}/swapfile", mountpoint);
@@ -175,6 +175,8 @@ void generate_fstab() noexcept {
     utils::exec(fmt::format("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab", mountpoint));
 #endif
 }
+
+// Set system hostname
 void set_hostname() noexcept {
     std::string hostname{"cachyos"};
     static constexpr auto hostname_body = "\nThe hostname is used to identify the system on a network.\n \nIt is restricted to alphanumeric characters, can contain a hyphen\n(-) - but not at the start or end - and must be no longer than 63 characters.\n";
@@ -195,7 +197,43 @@ void set_hostname() noexcept {
     utils::exec(cmd);
 #endif
 }
-void set_locale() noexcept { }
+
+// Set system language
+void set_locale() noexcept {
+    const auto& locales = utils::make_multiline(utils::exec("cat /etc/locale.gen | grep -v \"#  \" | sed 's/#//g' | awk '/UTF-8/ {print $1}'"));
+
+    // System language
+    std::string locale{};
+    {
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{95};
+        auto ok_callback = [&] {
+            locale = locales[static_cast<std::size_t>(selected)];
+            screen.ExitLoopClosure()();
+        };
+
+        // static constexpr auto timezone_body = "The time zone is used to correctly set your system clock.";
+        // const auto& content_size            = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        static constexpr auto langBody = "\nChoose the system language.\n\nThe format is language_COUNTRY (e.g. en_US is english, United States;\nen_GB is english, Great Britain).\n";
+        const auto& content_size       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+        detail::menu_widget(locales, ok_callback, &selected, &screen, langBody, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+    }
+    /* clang-format off */
+    if (!locale.empty()) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    auto* config_instance          = Config::instance();
+    auto& config_data              = config_instance->data();
+    const auto& mountpoint         = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& locale_config_path = fmt::format("{}/etc/locale.conf", mountpoint);
+    const auto& locale_gen_path    = fmt::format("{}/etc/locale.gen", mountpoint);
+
+    utils::exec(fmt::format("echo \"LANG=\\\"{}\\\"\" > {}", locale, locale_config_path));
+    utils::exec(fmt::format("echo \"LC_MESSAGES=\\\"{}\\\"\" >> {}", locale, locale_config_path));
+    utils::exec(fmt::format("sed -i \"s/#{0}/{0}/\" {1}", locale, locale_gen_path));
+#endif
+}
 
 // Set keymap for X11
 void set_xkbmap() noexcept {
@@ -215,7 +253,7 @@ void set_xkbmap() noexcept {
 
     static constexpr auto xkbmap_body = "\nSelect Desktop Environment Keymap.\n";
     const auto& content_size          = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {content_size, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
 
     /* clang-format off */
     if (!success) { return; }
@@ -286,6 +324,7 @@ bool set_timezone() noexcept {
     return true;
 }
 
+// Set system clock type
 void set_hw_clock() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     const std::vector<std::string> menu_entries{"utc", "localtime"};
@@ -303,6 +342,7 @@ void set_hw_clock() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, hw_clock_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
 }
 
+// Set password for root user
 void set_root_password() noexcept {
     std::string pass{};
     static constexpr auto root_pass_body = "Enter Root password";
@@ -332,6 +372,7 @@ void set_root_password() noexcept {
 #endif
 }
 
+// Create user on the system
 void create_new_user() noexcept {
     std::string user{};
     static constexpr auto user_body = "Enter the user name. Letters MUST be lower case.";
@@ -432,21 +473,22 @@ void create_new_user() noexcept {
     utils::arch_chroot(fmt::format("useradd {0} -m -g {0} -G wheel,storage,power,network,video,audio,lp,sys,input -s {1}", user, shell));
     spdlog::info("add user to groups");
 
-    utils::exec(fmt::format("echo -e \"{}\n{}\" > /tmp/.passwd", pass, confirm));
-    utils::exec(fmt::format("arch-chroot {} \"passwd {}\" < /tmp/.passwd >/dev/null", mountpoint, user));
-    spdlog::info("create user pwd");
-    utils::exec("rm /tmp/.passwd");
+    utils::exec(fmt::format("echo -e \"{}\\n{}\" > /tmp/.passwd", pass, confirm));
+    const auto& ret_status = utils::exec(fmt::format("arch-chroot {} \"passwd {}\" < /tmp/.passwd >/dev/null", mountpoint, user), true);
+    spdlog::info("create user pwd: {}", ret_status);
+    fs::remove("/tmp/.passwd");
 
     // Set up basic configuration files and permissions for user
     // arch_chroot "cp /etc/skel/.bashrc /home/${USER}"
     utils::arch_chroot(fmt::format("chown -R {0}:{0} /home/{0}", user));
     const auto& sudoers_file = fmt::format("{}/etc/sudoers", mountpoint);
     if (fs::exists(sudoers_file)) {
-        utils::exec(fmt::format("sed -i \'/%wheel ALL=(ALL) ALL/s/^#//\' {}", sudoers_file));
+        utils::exec(fmt::format("sed -i '/%wheel ALL=(ALL) ALL/s/^#//' {}", sudoers_file));
     }
 #endif
 }
 
+// Install pkgs from user input
 void install_cust_pkgs() noexcept {
     std::string packages{};
     static constexpr auto content = "\nType any extra packages you would like to add, separated by spaces.\n \nFor example, to install Firefox, MPV, FZF:\nfirefox mpv fzf\n";

@@ -94,7 +94,7 @@ Main Menu
 │   ├── Configure Base
 |   │   ├── Generate FSTAB (seems broken)
 |   │   ├── Set Hostname
-|   │   ├── Set System Locale (WIP)
+|   │   ├── Set System Locale
 |   │   ├── Set Timezone and Clock
 |   │   ├── Set Root Password
 |   │   └── Add New User(s) (seems broken)
