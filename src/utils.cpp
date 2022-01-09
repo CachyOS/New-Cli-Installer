@@ -182,7 +182,7 @@ std::string exec(const std::string_view& command, const bool& interactive) noexc
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.data(), "r"), pclose);
 
     if (!pipe)
-        throw std::runtime_error("popen failed!");
+        throw fmt::system_error(errno, "popen failed! '{}'", command);
 
     std::string result{};
     std::array<char, 128> buffer{};

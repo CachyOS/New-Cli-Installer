@@ -184,7 +184,7 @@ void luks_express() noexcept {
 }
 
 void luks_show() noexcept {
-    static constexpr auto luks_success = "Done! Opened and ready for LVM (recommended) or direct mounting.";
+    static constexpr auto luks_success = "Done!";
     const auto& lsblk                  = utils::exec("lsblk -o NAME,TYPE,FSTYPE,SIZE | grep \"part\\|crypt\\|NAME\\|TYPE\\|FSTYPE\\|SIZE\"");
     const auto& content                = fmt::format("\n{}\n \n{}", luks_success, lsblk);
     detail::msgbox_widget(content, size(HEIGHT, GREATER_THAN, 5));
