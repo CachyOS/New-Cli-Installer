@@ -269,6 +269,32 @@ void set_xkbmap() noexcept {
 #endif
 }
 
+void select_keymap() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    auto& keymap          = std::get<std::string>(config_data["KEYMAP"]);
+
+    // does user want to change the default settings?
+    static constexpr auto default_keymap = "Currently configured keymap setting is:";
+    const auto& content                  = fmt::format("\n {}\n \n[ {} ]\n", default_keymap, keymap);
+    const auto& keep_default             = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!keep_default) { return; }
+    /* clang-format on */
+
+    const auto& keymaps = utils::make_multiline(utils::exec("ls -R /usr/share/kbd/keymaps | grep \"map.gz\" | sed 's/\\.map\\.gz//g' | sort"));
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{226};
+    auto ok_callback = [&] {
+        keymap = keymaps[static_cast<std::size_t>(selected)];
+        screen.ExitLoopClosure()();
+    };
+    static constexpr auto vc_keymap_body = "\nA virtual console is a shell prompt in a non-graphical environment.\nIts keymap is independent of a desktop environment / terminal.\n";
+    const auto& content_size             = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+    detail::menu_widget(keymaps, ok_callback, &selected, &screen, vc_keymap_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+}
+
 // Set Zone and Sub-Zone
 bool set_timezone() noexcept {
     std::string zone{};
@@ -1993,7 +2019,8 @@ void prep_menu() noexcept {
     auto ok_callback = [&] {
         switch (selected) {
         case 0:
-            SPDLOG_ERROR("Implement me!");
+            tui::select_keymap();
+            utils::set_keymap();
             break;
         case 1:
             tui::show_devices();

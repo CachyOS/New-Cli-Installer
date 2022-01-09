@@ -103,8 +103,6 @@ bool luks_open() noexcept {
     if (!tui::get_crypt_password(luks_password)) { return false; }
     /* clang-format on */
 
-    spdlog::info("partition: {}, luks_root_name: {}, luks_password: {}", partition, luks_root_name, luks_password);
-
     // Try to open the luks partition with the credentials given. If successful show this, otherwise
     // show the error
     detail::infobox_widget("\nPlease wait...\n");
@@ -207,8 +205,9 @@ void luks_menu_advanced() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    const auto& content = fmt::format("\n{}\n \n{}\n \n{}\n", luks_menu_body, luks_menu_body2, luks_menu_body3);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, content);
+    const auto& content      = fmt::format("\n{}\n \n{}\n \n{}\n", luks_menu_body, luks_menu_body2, luks_menu_body3);
+    const auto& content_size = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, content, {.content_size = content_size});
     /* clang-format off */
     if (!success) { return; }
 

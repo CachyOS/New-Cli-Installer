@@ -632,6 +632,14 @@ void show_iwctl() noexcept {
     }
 }
 
+void set_keymap() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& keymap    = std::get<std::string>(config_data["KEYMAP"]);
+
+    utils::exec(fmt::format("loadkeys {}", keymap));
+}
+
 void parse_config() noexcept {
     using namespace simdjson;
 

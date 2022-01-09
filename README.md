@@ -73,7 +73,7 @@ TODO: should be simple as calamares
 Main Menu
 |
 ├── Prepare Installation
-|   ├── Set Virtual Console (TODO)
+|   ├── Set Virtual Console
 |   ├── List Devices
 |   ├── Partition Disk
 |   ├── RAID (WIP)
