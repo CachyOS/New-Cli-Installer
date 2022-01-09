@@ -135,10 +135,10 @@ bool exit_done() noexcept {
 // Function will not allow incorrect UUID type for installed system.
 void generate_fstab() noexcept {
     const std::vector<std::string> menu_entries = {
-        "fstabgen -U -p",
-        "fstabgen -p",
-        "fstabgen -L -p",
-        "fstabgen -t PARTUUID -p",
+        "genfstab -U -p",
+        "genfstab -p",
+        "genfstab -L -p",
+        "genfstab -t PARTUUID -p",
     };
 
     auto* config_instance   = Config::instance();
@@ -496,8 +496,8 @@ void create_new_user() noexcept {
 
 #ifdef NDEVENV
     // Create the user, set password, then remove temporary password file
-    utils::arch_chroot(fmt::format("groupadd {}", user));
-    utils::arch_chroot(fmt::format("useradd {0} -m -g {0} -G wheel,storage,power,network,video,audio,lp,sys,input -s {1}", user, shell));
+    utils::arch_chroot(fmt::format("groupadd {}", user), false);
+    utils::arch_chroot(fmt::format("useradd {0} -m -g {0} -G wheel,storage,power,network,video,audio,lp,sys,input -s {1}", user, shell), false);
     spdlog::info("add user to groups");
 
     utils::exec(fmt::format("echo -e \"{}\\n{}\" > /tmp/.passwd", pass, confirm));
@@ -507,7 +507,7 @@ void create_new_user() noexcept {
 
     // Set up basic configuration files and permissions for user
     // arch_chroot "cp /etc/skel/.bashrc /home/${USER}"
-    utils::arch_chroot(fmt::format("chown -R {0}:{0} /home/{0}", user));
+    utils::arch_chroot(fmt::format("chown -R {0}:{0} /home/{0}", user), false);
     const auto& sudoers_file = fmt::format("{}/etc/sudoers", mountpoint);
     if (fs::exists(sudoers_file)) {
         utils::exec(fmt::format("sed -i '/%wheel ALL=(ALL) ALL/s/^#//' {}", sudoers_file));
@@ -676,10 +676,10 @@ void install_systemd_boot() noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
-    utils::arch_chroot(fmt::format("bootctl --path={} install", uefi_mount));
+    utils::arch_chroot(fmt::format("bootctl --path={} install", uefi_mount), false);
     // utils::exec(fmt::format("pacstrap {} systemd-boot-manager", mountpoint));
     detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacstrap {} systemd-boot-manager", mountpoint)});
-    utils::arch_chroot("sdboot-manage gen");
+    utils::arch_chroot("sdboot-manage gen", false);
 
     // Check if the volume is removable. If so, dont use autodetect
     const auto& root_name   = utils::exec("mount | awk \'/\\/mnt / {print $1}\' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
@@ -798,7 +798,7 @@ void install_base() noexcept {
         const auto& pkg = pkg_list[i];
         pkg_list.emplace_back(fmt::format("{}-headers", pkg));
     }
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
     packages = utils::make_multiline(pkg_list, false, " ");
 
     spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
@@ -1608,7 +1608,7 @@ void make_esp() noexcept {
 
     {
         static constexpr auto MntUefiBody            = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n";
-        static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption. Encrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n";
+        static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption.\nEncrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n";
         const auto& MntUefiMessage                   = (luks == 0) ? MntUefiBody : MntUefiCrypt;
         const std::vector<std::string> radiobox_list = {
             "/boot/efi",
