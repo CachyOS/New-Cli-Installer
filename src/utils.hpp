@@ -38,6 +38,8 @@ void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;
 void show_iwctl() noexcept;
 
+void try_v3() noexcept;
+
 void set_keymap() noexcept;
 void parse_config() noexcept;
 void setup_luks_keyfile() noexcept;

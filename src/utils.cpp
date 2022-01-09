@@ -632,6 +632,31 @@ void show_iwctl() noexcept {
     }
 }
 
+void try_v3() noexcept {
+    const auto& ret_status = utils::exec("/lib/ld-linux-x86-64.so.2 --help | grep \"x86-64-v3 (supported, searched)\" > /dev/null", true);
+    if (ret_status != "0") {
+        spdlog::warn("x86-64-v3 is not supported");
+        return;
+    }
+    spdlog::info("x86-64-v3 is supported");
+
+#ifdef NDEVENV
+    static constexpr auto pacman_conf             = "/etc/pacman.conf";
+    static constexpr auto pacman_conf_cachyos     = "/etc/pacman-more.conf";
+    static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
+    std::error_code err{};
+
+    utils::exec(fmt::format("sed -i 's/Architecture = auto/#Architecture = auto/' {}", pacman_conf_cachyos));
+    utils::exec(fmt::format("sed -i 's/#<disabled_v3>//g' {}", pacman_conf_cachyos));
+
+    spdlog::info("backup old config");
+    fs::rename(pacman_conf, pacman_conf_path_backup, err);
+
+    spdlog::info("CachyOS -v3 Repo changed");
+    fs::rename(pacman_conf_cachyos, pacman_conf, err);
+#endif
+}
+
 void set_keymap() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
