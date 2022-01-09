@@ -189,7 +189,7 @@ void infobox_widget(const std::string_view& content, Decorator boxsize) noexcept
         Dimension::Full()   // Height
     );
 
-    auto element = centered_widget_nocontrols("New CLI Installer", multiline_text(utils::make_multiline(content.data())) | vcenter | boxsize);
+    auto element = centered_widget_nocontrols("New CLI Installer", multiline_text(utils::make_multiline(content)) | vcenter | boxsize);
     Render(screen, element);
     screen.Print();
 }
@@ -214,7 +214,7 @@ bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
     });
 
     auto renderer = Renderer(container, [&] {
-        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(content.data())) | hcenter | boxsize);
+        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(content)) | hcenter | boxsize);
     });
 
     screen.Loop(renderer);

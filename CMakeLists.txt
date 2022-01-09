@@ -89,6 +89,7 @@ add_executable(${PROJECT_NAME}
    src/utils.cpp src/utils.hpp
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
+   src/crypto.cpp src/crypto.hpp
    src/tui.cpp src/tui.hpp
    src/main.cpp
    )

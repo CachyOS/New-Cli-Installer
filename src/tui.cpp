@@ -1,5 +1,6 @@
 #include "tui.hpp"
 #include "config.hpp"
+#include "crypto.hpp"
 #include "definitions.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
@@ -726,7 +727,7 @@ void install_base() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const std::vector<std::string> available_kernels{"linux-cachyos", "linux", "linux-zen", "linux-lts", "linux-cachyos-cacule", "linux-cachyos-cacule-rdb", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-baby", "linux-cachyos-cacule-lts"};
+    const std::vector<std::string> available_kernels{"linux-cachyos", "linux", "linux-zen", "linux-lts", "linux-cachyos-cacule", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-tt", "linux-cachyos-bore"};
 
     // Create the base list of packages
     std::vector<std::string> install_packages{};
@@ -771,7 +772,7 @@ void install_base() noexcept {
         const auto& pkg = pkg_list[i];
         pkg_list.emplace_back(fmt::format("{}-headers", pkg));
     }
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
     packages = utils::make_multiline(pkg_list, false, " ");
 
     spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
@@ -848,7 +849,7 @@ void install_desktop() noexcept {
         /* clang-format off */
         static constexpr std::array to_be_inserted{"plasma-desktop", "plasma-framework", "plasma-nm", "plasma-pa", "plasma-workspace",
             "konsole", "kate", "dolphin", "sddm", "sddm-kcm", "plasma", "plasma-wayland-protocols", "plasma-wayland-session",
-            "gamemode", "lib32-gamemode", "ksysguard", "pamac-aur", "openssh", "htop"};
+            "gamemode", "lib32-gamemode", "ksysguard", "pamac-aur", "openssh", "btop"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
@@ -1997,7 +1998,6 @@ void prep_menu() noexcept {
         case 1:
             tui::show_devices();
             break;
-
         case 2: {
             utils::umount_partitions();
             if (tui::select_device()) {
@@ -2005,12 +2005,14 @@ void prep_menu() noexcept {
             }
             break;
         }
+        case 5:
+            tui::luks_menu_advanced();
+            break;
         case 7:
             tui::mount_partitions();
             break;
         case 3:
         case 4:
-        case 5:
         case 6:
         case 8:
         case 9:
