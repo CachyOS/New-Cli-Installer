@@ -561,6 +561,26 @@ void rm_pgs() noexcept {
 #endif
 }
 
+void chroot_interactive() noexcept {
+    static constexpr auto chroot_return = "\nYou will now chroot into your installed system.\nYou can do changes almost as if you had booted into your installation.\n \nType \"exit\" to exit chroot.\n";
+    detail::infobox_widget(chroot_return);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    utils::clear_screen();
+    std::cout << '\0' << std::flush;
+    const auto& cmd_formatted = fmt::format("arch-chroot {} bash", mountpoint);
+    utils::exec(cmd_formatted, true);
+#else
+    utils::clear_screen();
+    utils::exec("bash", true);
+#endif
+}
+
 void install_grub_uefi() noexcept {
     static constexpr auto content = "\nInstall UEFI Bootloader GRUB.\n";
     const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
@@ -1960,6 +1980,12 @@ void install_core_menu() noexcept {
                 screen.ExitLoopClosure()();
             }
             // tweaks_menu
+            break;
+        case 7:
+            if (!utils::check_base()) {
+                screen.ExitLoopClosure()();
+            }
+            tui::chroot_interactive();
             break;
         default:
             screen.ExitLoopClosure()();
