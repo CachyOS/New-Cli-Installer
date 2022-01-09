@@ -77,7 +77,7 @@ Main Menu
 |   ├── List Devices
 |   ├── Partition Disk
 |   ├── RAID (WIP)
-|   ├── LUKS Encryption (WIP)
+|   ├── LUKS Encryption
 |   ├── Logical Volume Management (WIP)
 |   ├── Mount Partitions
 |   ├── Configure Installer Mirrorlist (TODO)
