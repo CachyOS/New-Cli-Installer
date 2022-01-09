@@ -233,6 +233,9 @@ void set_locale() noexcept {
     utils::exec(fmt::format("echo \"LANG=\\\"{}\\\"\" > {}", locale, locale_config_path));
     utils::exec(fmt::format("echo \"LC_MESSAGES=\\\"{}\\\"\" >> {}", locale, locale_config_path));
     utils::exec(fmt::format("sed -i \"s/#{0}/{0}/\" {1}", locale, locale_gen_path));
+
+    // Generate locales
+    utils::arch_chroot("locale-gen", false);
 #endif
 }
 
@@ -345,7 +348,7 @@ bool set_timezone() noexcept {
     /* clang-format on */
 
 #ifdef NDEVENV
-    utils::arch_chroot(fmt::format("ln -sf /usr/share/zoneinfo/{}/{} /etc/localtime", zone, subzone));
+    utils::arch_chroot(fmt::format("ln -sf /usr/share/zoneinfo/{}/{} /etc/localtime", zone, subzone), false);
 #endif
     spdlog::info("Timezone is set to {}/{}", zone, subzone);
     return true;
