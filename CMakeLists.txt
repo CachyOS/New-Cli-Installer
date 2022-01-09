@@ -41,20 +41,20 @@ FetchContent_Declare(ftxui
 )
 FetchContent_Declare(fmt
   GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
-  GIT_TAG "3a951a66cb0fb53ff5a9d5ce9c77e05ef9d382ce"
+  GIT_TAG "c06bef7273e594bfa91739e29d339fba51fd4e0e"
 )
 FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(spdlog
   GIT_REPOSITORY "https://github.com/gabime/spdlog.git"
-  GIT_TAG "cc30229abb1e22ebe1f8657de4011a53db7bd6ac"
+  GIT_TAG "729d7f6d8837b6693e7b378408518ea1710f80cb"
 )
 FetchContent_Declare(simdjson
   GIT_REPOSITORY "https://github.com/simdjson/simdjson.git"
-  GIT_TAG "3a93e45dd166d8e614a33b0ba4da39c1a01660b7"
+  GIT_TAG "5beef701e741f23de450fc120a30b87fa0a0cec8"
 )
 FetchContent_Declare(cpr
   GIT_REPOSITORY "https://github.com/libcpr/cpr.git"
-  GIT_TAG "beb9e98806bb84bcc130a2cebfbcbbc6ce62b335"
+  GIT_TAG "9b2bda734dffdd76096e1364290c58fe3a30c59a"
 )
 FetchContent_MakeAvailable(ftxui spdlog simdjson cpr)
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
