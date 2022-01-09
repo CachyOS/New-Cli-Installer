@@ -801,6 +801,7 @@ void install_base() noexcept {
         const auto& pkg = pkg_list[i];
         pkg_list.emplace_back(fmt::format("{}-headers", pkg));
     }
+    pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
     pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
     packages = utils::make_multiline(pkg_list, false, " ");
 
@@ -865,9 +866,11 @@ void install_desktop() noexcept {
     constexpr std::string_view xfce{"xfce"};
     constexpr std::string_view cutefish{"cutefish"};
 
+    bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
     if (!found.empty()) {
         pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock", "i3status"});
+        needed_xorg = true;
     }
     found = ranges::search(desktop_env, sway);
     if (!found.empty()) {
@@ -882,6 +885,7 @@ void install_desktop() noexcept {
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
+        needed_xorg = true;
     }
     found = ranges::search(desktop_env, xfce);
     if (!found.empty()) {
@@ -890,10 +894,16 @@ void install_desktop() noexcept {
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
+        needed_xorg = true;
     }
     found = ranges::search(desktop_env, cutefish);
     if (!found.empty()) {
         pkg_list.insert(pkg_list.cend(), {"cutefish", "fish-ui"});
+        needed_xorg = true;
+    }
+
+    if (needed_xorg) {
+        pkg_list.insert(pkg_list.cend(), {"libwnck3", "xf86-input-libinput", "xf86-video-fbdev", "xf86-video-vesa", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr", "xf86-video-amdgpu", "xf86-video-ati", "xf86-video-intel"});
     }
 
     const std::string packages = utils::make_multiline(pkg_list, false, " ");
