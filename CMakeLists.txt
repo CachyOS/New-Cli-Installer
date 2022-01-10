@@ -37,7 +37,7 @@ pkg_check_modules(
 
 FetchContent_Declare(ftxui
   GIT_REPOSITORY "https://github.com/vnepogodin/ftxui.git"
-  GIT_TAG "constexpr"
+  GIT_TAG "c++20"
 )
 FetchContent_Declare(fmt
   GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
