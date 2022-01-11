@@ -571,12 +571,9 @@ void chroot_interactive() noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    utils::clear_screen();
-    std::cout << '\0' << std::flush;
     const auto& cmd_formatted = fmt::format("arch-chroot {} bash", mountpoint);
     utils::exec(cmd_formatted, true);
 #else
-    utils::clear_screen();
     utils::exec("bash", true);
 #endif
 }
@@ -1905,14 +1902,15 @@ void create_partitions() noexcept {
     auto ok_callback = [&] {
         const auto& selected_entry = menu_entries[static_cast<std::size_t>(selected)];
         if (selected_entry != optwipe && selected_entry != optauto) {
-            screen.Clear();
-            screen.PostEvent(Event::Custom);
-            screen.ExitLoopClosure()();
+            screen.Uninstall();
+            std::cout << screen.ResetPosition(true) << std::flush;
 #ifdef NDEVENV
             utils::exec(fmt::format("{} {}", selected_entry, std::get<std::string>(config_data["DEVICE"])), true);
 #else
             spdlog::debug("to be executed: {}", fmt::format("{} {}", selected_entry, std::get<std::string>(config_data["DEVICE"])));
 #endif
+            screen.Install();
+            screen.ExitLoopClosure()();
             return;
         }
 
@@ -1987,7 +1985,10 @@ void install_core_menu() noexcept {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
             }
+            screen.Uninstall();
             tui::chroot_interactive();
+            screen.Install();
+
             break;
         default:
             screen.ExitLoopClosure()();
