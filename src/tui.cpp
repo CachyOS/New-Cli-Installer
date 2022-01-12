@@ -158,7 +158,7 @@ void generate_fstab() noexcept {
         const auto& src = menu_entries[static_cast<std::size_t>(selected)];
         utils::exec(fmt::format("{0} {1} > {1}/etc/fstab", src, mountpoint));
         spdlog::info("Created fstab file:\n");
-        utils::exec(fmt::format("cat {1}/etc/fstab >> /tmp/cachyos-install.log", src, mountpoint));
+        utils::exec(fmt::format("cat {}/etc/fstab >> /tmp/cachyos-install.log", mountpoint));
 #endif
         const auto& swap_file = fmt::format("{}/swapfile", mountpoint);
         if (fs::exists(swap_file) && fs::is_regular_file(swap_file)) {
