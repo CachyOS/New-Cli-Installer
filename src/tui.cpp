@@ -1902,14 +1902,13 @@ void create_partitions() noexcept {
     auto ok_callback = [&] {
         const auto& selected_entry = menu_entries[static_cast<std::size_t>(selected)];
         if (selected_entry != optwipe && selected_entry != optauto) {
-            screen.Uninstall();
-            std::cout << screen.ResetPosition(true) << std::flush;
+            screen.Suspend();
 #ifdef NDEVENV
             utils::exec(fmt::format("{} {}", selected_entry, std::get<std::string>(config_data["DEVICE"])), true);
 #else
             spdlog::debug("to be executed: {}", fmt::format("{} {}", selected_entry, std::get<std::string>(config_data["DEVICE"])));
 #endif
-            screen.Install();
+            screen.Resume();
             screen.ExitLoopClosure()();
             return;
         }
@@ -1985,9 +1984,9 @@ void install_core_menu() noexcept {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
             }
-            screen.Uninstall();
+            screen.Suspend();
             tui::chroot_interactive();
-            screen.Install();
+            screen.Resume();
 
             break;
         default:
