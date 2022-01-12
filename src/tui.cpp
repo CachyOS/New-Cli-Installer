@@ -157,6 +157,8 @@ void generate_fstab() noexcept {
 #ifdef NDEVENV
         const auto& src = menu_entries[static_cast<std::size_t>(selected)];
         utils::exec(fmt::format("{0} {1} > {1}/etc/fstab", src, mountpoint));
+        splog::info("Created fstab file:\n");
+        utils::exec(fmt::format("cat {1}/etc/fstab >> /tmp/cachyos-install.log", src, mountpoint));
 #endif
         const auto& swap_file = fmt::format("{}/swapfile", mountpoint);
         if (fs::exists(swap_file) && fs::is_regular_file(swap_file)) {
@@ -503,6 +505,12 @@ void create_new_user() noexcept {
     utils::arch_chroot(fmt::format("useradd {0} -m -g {0} -G wheel,storage,power,network,video,audio,lp,sys,input -s {1}", user, shell), false);
     spdlog::info("add user to groups");
 
+    // check if user has been created
+    const auto& user_check = utils::exec(fmt::format("arch-chroot {} getent passwd {}", mountpoint, user));
+    if (user_check.empty()) {
+        spdlog::error("User has not been created!");
+    }
+
     utils::exec(fmt::format("echo -e \"{}\\n{}\" > /tmp/.passwd", pass, confirm));
     const auto& ret_status = utils::exec(fmt::format("arch-chroot {} \"passwd {}\" < /tmp/.passwd >/dev/null", mountpoint, user), true);
     spdlog::info("create user pwd: {}", ret_status);
@@ -837,6 +845,40 @@ void install_base() noexcept {
 
     std::filesystem::copy_file("/etc/pacman.conf", fmt::format("{}/etc/pacman.conf", mountpoint), fs::copy_options::overwrite_existing);
     std::ofstream{base_installed};
+
+    // mkinitcpio handling for specific filesystems
+    std::int32_t btrfs_root = 0;
+    std::int32_t zfs_root   = 0;
+
+    const auto& filesystem_type = fmt::format("findmnt -ln -o FSTYPE {}", mountpoint);
+    if (filesystem_type == "btrfs") {
+        btrfs_root = 1;
+        utils::exec(fmt::format("sed -e '/^HOOKS=/s/\\ fsck//g' -e '/^MODULES=/s/\"$/ btrfs\"/g' -i {}/etc/mkinitcpio.conf", mountpoint));
+    } else if (filesystem_type == "zfs") {
+        zfs_root = 1;
+        utils::exec(fmt::format("sed -e '/^HOOKS=/s/\\ filesystems//g' -e '/^HOOKS=/s/\\ keyboard/\\ keyboard\\ zfs\\ filesystems/g' -e '/^HOOKS=/s/\\ fsck//g' -e '/^FILES=/c\\FILES=(\"/usr/lib/libgcc_s.so.1\")' -i {}/etc/mkinitcpio.conf", mountpoint));
+    }
+
+    // add luks and lvm hooks as needed
+    const auto& lvm  = std::get<std::int32_t>(config_data["LVM"]);
+    const auto& luks = std::get<std::int32_t>(config_data["LUKS"]);
+
+    if (lvm == 1 && luks == 0) {
+        utils::exec(fmt::format("sed -i 's/block filesystems/block lvm2 filesystems/g' {}/etc/mkinitcpio.conf", mountpoint));
+    } else if (lvm == 0 && luks == 1) {
+        utils::exec(fmt::format("sed -i 's/block filesystems keyboard/block consolefont keymap keyboard encrypt filesystems/g' {}/etc/mkinitcpio.conf", mountpoint));
+    } else if (lvm == 1 && luks == 1) {
+        utils::exec(fmt::format("sed -i 's/block filesystems keyboard/block consolefont keymap keyboard encrypt lvm2 filesystems/g' {}/etc/mkinitcpio.conf", mountpoint));
+    }
+
+    if (lvm + luks + btrfs_root + zfs_root > 0) {
+        utils::arch_chroot("mkinitcpio -P");
+    }
+
+    // Generate fstab with UUID
+    utils::exec(fmt::format("genfstab -U -p {} > {}/etc/fstab", mountpoint));
+    // Edit fstab in case of btrfs subvolumes
+    utils::exec(fmt::format("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab", mountpoint));
 #endif
 }
 
@@ -1979,6 +2021,15 @@ void install_core_menu() noexcept {
                 screen.ExitLoopClosure()();
             }
             // tweaks_menu
+            break;
+        case 6:
+            if (!utils::check_base()) {
+                screen.ExitLoopClosure()();
+            }
+            // screen.Suspend();
+            // tui::edit_configs();
+            // screen.Resume();
+
             break;
         case 7:
             if (!utils::check_base()) {
