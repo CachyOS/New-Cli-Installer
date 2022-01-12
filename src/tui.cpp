@@ -157,7 +157,7 @@ void generate_fstab() noexcept {
 #ifdef NDEVENV
         const auto& src = menu_entries[static_cast<std::size_t>(selected)];
         utils::exec(fmt::format("{0} {1} > {1}/etc/fstab", src, mountpoint));
-        splog::info("Created fstab file:\n");
+        spdlog::info("Created fstab file:\n");
         utils::exec(fmt::format("cat {1}/etc/fstab >> /tmp/cachyos-install.log", src, mountpoint));
 #endif
         const auto& swap_file = fmt::format("{}/swapfile", mountpoint);
