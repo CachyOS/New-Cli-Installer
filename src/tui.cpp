@@ -876,7 +876,7 @@ void install_base() noexcept {
     }
 
     // Generate fstab with UUID
-    utils::exec(fmt::format("genfstab -U -p {} > {}/etc/fstab", mountpoint));
+    utils::exec(fmt::format("genfstab -U -p {0} > {0}/etc/fstab", mountpoint));
     // Edit fstab in case of btrfs subvolumes
     utils::exec(fmt::format("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab", mountpoint));
 #endif
