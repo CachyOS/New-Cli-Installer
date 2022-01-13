@@ -833,8 +833,6 @@ void install_base() noexcept {
     spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
 
 #ifdef NDEVENV
-    utils::try_v3();
-
     // filter_packages
     const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
     if (hostcache) {
