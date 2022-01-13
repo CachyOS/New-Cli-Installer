@@ -654,6 +654,9 @@ void try_v3() noexcept {
 
     spdlog::info("CachyOS -v3 Repo changed");
     fs::rename(pacman_conf_cachyos, pacman_conf, err);
+
+    // utils::exec("yes | pacman -Sy --noconfirm", true);
+    detail::follow_process_log_widget({"/bin/sh", "-c", "yes | pacman -Sy --noconfirm"});
 #endif
 }
 
