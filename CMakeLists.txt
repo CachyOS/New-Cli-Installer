@@ -41,7 +41,7 @@ FetchContent_Declare(ftxui
 )
 FetchContent_Declare(fmt
   GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
-  GIT_TAG "c06bef7273e594bfa91739e29d339fba51fd4e0e"
+  GIT_TAG "a7aecbfcaa0e1586da9cf8175bd8d1c4383acd8c"
 )
 FetchContent_MakeAvailable(fmt)
 FetchContent_Declare(spdlog

@@ -3,6 +3,7 @@
 *.ctu-info
 .cache
 .idea
+build.sh
 build
 cmake-build-release
 cmake-build-debug
