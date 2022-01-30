@@ -1,5 +1,5 @@
 project('ftxui', 'cpp',
-    version: '0.11.1',
+    version: '2.0.0',
     license : 'MIT',
     default_options: ['cpp_std=c++17']
 )
