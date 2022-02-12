@@ -9,6 +9,8 @@
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
+#include <fmt/compile.h>
+
 namespace utils {
 
 [[nodiscard]] bool is_connected() noexcept;

@@ -37,7 +37,7 @@ bool select_crypt_partition(const std::string_view& text) noexcept {
         success                  = true;
         screen.ExitLoopClosure()();
     };
-    const auto& content = fmt::format("\n{}\n", text);
+    const auto& content = fmt::format(FMT_COMPILE("\n{}\n"), text);
     detail::menu_widget(partitions, ok_callback, &selected, &screen, content, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
 
     return success;
@@ -107,10 +107,10 @@ bool luks_open() noexcept {
     // show the error
     detail::infobox_widget("\nPlease wait...\n");
 #ifdef NDEVENV
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("echo \"{}\" | cryptsetup open --type luks {} {}", luks_password, partition, luks_root_name)});
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup open --type luks {} {}"), luks_password, partition, luks_root_name)});
 #endif
 
-    const auto& devlist = utils::exec(fmt::format("lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT {} | grep \"crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\"", partition));
+    const auto& devlist = utils::exec(fmt::format(FMT_COMPILE("lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT {} | grep \"crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\""), partition));
     detail::msgbox_widget(devlist);
 
     return true;
@@ -155,10 +155,10 @@ void luks_encrypt([[maybe_unused]] const std::string_view& command) noexcept {
     const auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
     const auto& luks_password  = std::get<std::string>(config_data["PASSWD"]);
 
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("echo \"{}\" | cryptsetup -q {} {}", luks_password, command, partition)});
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup -q {} {}"), luks_password, command, partition)});
 
     // Now open the encrypted partition or LV
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("echo \"{}\" | cryptsetup open {} {}", luks_password, partition, luks_root_name)});
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup open {} {}"), luks_password, partition, luks_root_name)});
 #endif
 }
 
@@ -184,7 +184,7 @@ void luks_express() noexcept {
 void luks_show() noexcept {
     static constexpr auto luks_success = "Done!";
     const auto& lsblk                  = utils::exec("lsblk -o NAME,TYPE,FSTYPE,SIZE | grep \"part\\|crypt\\|NAME\\|TYPE\\|FSTYPE\\|SIZE\"");
-    const auto& content                = fmt::format("\n{}\n \n{}", luks_success, lsblk);
+    const auto& content                = fmt::format(FMT_COMPILE("\n{}\n \n{}"), luks_success, lsblk);
     detail::msgbox_widget(content, size(HEIGHT, GREATER_THAN, 5));
 }
 
@@ -205,7 +205,7 @@ void luks_menu_advanced() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    const auto& content      = fmt::format("\n{}\n \n{}\n \n{}\n", luks_menu_body, luks_menu_body2, luks_menu_body3);
+    const auto& content      = fmt::format(FMT_COMPILE("\n{}\n \n{}\n \n{}\n"), luks_menu_body, luks_menu_body2, luks_menu_body3);
     const auto& content_size = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, content, {.content_size = content_size});
     /* clang-format off */

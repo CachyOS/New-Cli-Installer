@@ -20,7 +20,7 @@ include(EnableCcache)
 include(Linker)
 include(StaticAnalyzers)
 include(Sanitizers)
-include(FetchContent)
+include(CPM)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(
@@ -35,34 +35,43 @@ pkg_check_modules(
   IMPORTED_TARGET
   glibmm-2.4>=2.56.0)
 
-FetchContent_Declare(ftxui
-  GIT_REPOSITORY "https://github.com/vnepogodin/ftxui.git"
+CPMAddPackage(
+  NAME ftxui
+  GITHUB_REPOSITORY vnepogodin/ftxui
   GIT_TAG "c++20"
+  EXCLUDE_FROM_ALL YES
 )
-FetchContent_Declare(fmt
-  GIT_REPOSITORY "https://github.com/fmtlib/fmt.git"
-  GIT_TAG "ae1aaaee5f5f36ce5303bb140d51b6db21e1af4e"
+CPMAddPackage(
+  NAME fmt
+  GITHUB_REPOSITORY fmtlib/fmt
+  GIT_TAG a44716f58e943905d1357160b98cae2618d053cf
+  EXCLUDE_FROM_ALL YES
 )
-FetchContent_MakeAvailable(fmt)
-FetchContent_Declare(spdlog
-  GIT_REPOSITORY "https://github.com/gabime/spdlog.git"
-  GIT_TAG "8fb112158a64afe1bd58c82c06bf6a142c9b3823"
+CPMAddPackage(
+  NAME spdlog
+  GITHUB_REPOSITORY gabime/spdlog
+  GIT_TAG 8fb112158a64afe1bd58c82c06bf6a142c9b3823
+  EXCLUDE_FROM_ALL YES
 )
-FetchContent_Declare(simdjson
-  GIT_REPOSITORY "https://github.com/simdjson/simdjson.git"
-  GIT_TAG "6698eb96b99576b8d53f8d90c9023717379e1c0f"
+CPMAddPackage(
+  NAME simdjson
+  GITHUB_REPOSITORY simdjson/simdjson
+  GIT_TAG 6698eb96b99576b8d53f8d90c9023717379e1c0f
+  EXCLUDE_FROM_ALL YES
 )
-FetchContent_Declare(cpr
-  GIT_REPOSITORY "https://github.com/libcpr/cpr.git"
-  GIT_TAG "da381bb2afe4e36b18b1fe206bc06951d8fdc06e"
+CPMAddPackage(
+  NAME cpr
+  GITHUB_REPOSITORY libcpr/cpr
+  GIT_TAG da381bb2afe4e36b18b1fe206bc06951d8fdc06e
+  EXCLUDE_FROM_ALL YES
 )
-FetchContent_MakeAvailable(ftxui spdlog simdjson cpr)
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-   FetchContent_Declare(range-v3
-     GIT_REPOSITORY "https://github.com/ericniebler/range-v3.git"
-     GIT_TAG "9aa032ccd0eb4bd77f58e5b181168f1038c222c6"
+   CPMAddPackage(
+     NAME range-v3
+     GITHUB_REPOSITORY ericniebler/range-v3
+     GIT_TAG 9aa032ccd0eb4bd77f58e5b181168f1038c222c6
+     EXCLUDE_FROM_ALL YES
    )
-   FetchContent_MakeAvailable(range-v3)
 endif()
 
 ##
@@ -87,6 +96,7 @@ add_executable(${PROJECT_NAME}
    src/screen_service.hpp src/screen_service.cpp
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
+   src/disk.cpp src/disk.hpp
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
    src/crypto.cpp src/crypto.hpp
@@ -97,8 +107,10 @@ add_executable(${PROJECT_NAME}
 add_executable(test-exec-interactive
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
+   src/disk.cpp src/disk.hpp
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
+   src/crypto.cpp src/crypto.hpp
    src/tui.cpp src/tui.hpp
    src/main_test.cpp
    )
@@ -106,8 +118,10 @@ add_executable(test-exec-interactive
 add_executable(test-process-tailing
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
+   src/disk.cpp src/disk.hpp
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
+   src/crypto.cpp src/crypto.hpp
    src/tui.cpp src/tui.hpp
    src/test_proccess_tailing.cpp
    )

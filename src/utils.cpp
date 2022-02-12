@@ -101,7 +101,7 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& cmd_formatted = fmt::format("arch-chroot {} {}", mountpoint, command);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {}"), mountpoint, command);
     if (follow) {
         tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         return;
@@ -261,11 +261,11 @@ auto make_multiline(std::vector<std::string>& multiline, bool reverse, const std
 
 // install a pkg in the live session if not installed
 void inst_needed(const std::string_view& pkg) {
-    if (utils::exec(fmt::format("pacman -Q {}", pkg), true) != "0") {
+    if (utils::exec(fmt::format(FMT_COMPILE("pacman -Q {}"), pkg), true) != "0") {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         utils::clear_screen();
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("pacman -Sy --noconfirm {}", pkg)});
-        // utils::exec(fmt::format("pacman -Sy --noconfirm {}", pkg));
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg)});
+        // utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg));
     }
 }
 
@@ -275,7 +275,7 @@ void umount_partitions() noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    auto mount_info             = utils::exec(fmt::format("mount | grep \"{}\" | {}", mountpoint_info, "awk \'{print $3}\' | sort -r"));
+    auto mount_info             = utils::exec(fmt::format(FMT_COMPILE("mount | grep \"{}\" | {}"), mountpoint_info, "awk \'{print $3}\' | sort -r"));
 #ifdef NDEVENV
     utils::exec("swapoff -a");
 #endif
@@ -298,8 +298,8 @@ void secure_wipe() noexcept {
 
 #ifdef NDEVENV
     utils::inst_needed("wipe");
-    tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format("wipe -Ifre {}", device_info)});
-    // utils::exec(fmt::format("wipe -Ifre {}", device_info));
+    tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info)});
+    // utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info));
 #else
     spdlog::debug("{}\n", device_info);
 #endif
@@ -318,7 +318,7 @@ void find_partitions() noexcept {
 
     // get the list of partitions and also include the zvols since it is common to mount filesystems directly on them.  It should be safe to include them here since they present as block devices.
     static constexpr auto other_piece = "sed 's/part$/\\/dev\\//g' | sed 's/lvm$\\|crypt$/\\/dev\\/mapper\\//g' | awk '{print $3$1 \" \" $2}' | awk '!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk '{printf \"/dev/zvol/%s %s\\n\", $1, $2}'";
-    const auto& partitions_tmp        = utils::exec(fmt::format("lsblk -lno NAME,SIZE,TYPE | grep '{}' | {}", include_part, other_piece));
+    const auto& partitions_tmp        = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME,SIZE,TYPE | grep '{}' | {}"), include_part, other_piece));
 
     // create a raid partition list
     // old_ifs="$IFS"
@@ -397,7 +397,7 @@ void get_cryptroot() noexcept {
 
     const auto& check_cryptparts = [&luks_name](const auto& cryptparts, auto functor) {
         for (const auto& cryptpart : cryptparts) {
-            if (!utils::exec(fmt::format("lsblk -lno NAME {} | grep \"{}\"", cryptpart, luks_name)).empty()) {
+            if (!utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep \"{}\""), cryptpart, luks_name)).empty()) {
                 functor(cryptpart);
             }
         }
@@ -408,7 +408,7 @@ void get_cryptroot() noexcept {
     if (!temp_out.empty()) {
         const auto& cryptparts    = utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto cryptpart) {
-            config_data["LUKS_DEV"] = fmt::format("cryptdevice={}:{}", cryptpart, luks_name);
+            config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice={}:{}"), cryptpart, luks_name);
             config_data["LVM"]      = 1;
         };
         check_cryptparts(cryptparts, check_functor);
@@ -422,7 +422,7 @@ void get_cryptroot() noexcept {
         const auto& check_functor = [&]([[maybe_unused]] const auto cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec("lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt /,/part/p\" | awk '/crypto_LUKS/ {print $4}'");
-            config_data["LUKS_DEV"] = fmt::format("cryptdevice=UUID={}:{}", luks_uuid, luks_name);
+            config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
             config_data["LVM"]      = 1;
         };
         check_cryptparts(cryptparts, check_functor);
@@ -435,8 +435,8 @@ void get_cryptroot() noexcept {
         const auto& cryptparts    = utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = utils::exec(fmt::format("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}", cryptpart, "awk '{print $1}'"));
-            config_data["LUKS_DEV"] = fmt::format("cryptdevice=UUID={}:{}", luks_uuid, luks_name);
+            luks_uuid               = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
+            config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
         };
         check_cryptparts(cryptparts, check_functor);
         return;
@@ -475,7 +475,7 @@ void get_cryptboot() noexcept {
     auto& luks_dev    = std::get<std::string>(config_data["LUKS_DEV"]);
     const auto& found = ranges::search(luks_dev, boot_uuid);
     if (found.empty()) {
-        luks_dev = fmt::format("{} cryptdevice=UUID={}:{}", luks_dev, boot_uuid, boot_name);
+        luks_dev = fmt::format(FMT_COMPILE("{} cryptdevice=UUID={}:{}"), luks_dev, boot_uuid, boot_name);
     }
 }
 
@@ -493,10 +493,10 @@ void boot_encrypted_setting() noexcept {
         const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
         // Check if root is encrypted
         if ((luks == 1)
-            || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", root_name), true) == "0")
+            || (utils::exec(fmt::format(FMT_COMPILE("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'"), root_name), true) == "0")
             || (utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0")
             // Check if root is on encrypted lvm volume
-            || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", root_name, "awk '{print $6}'"), true) == "0")) {
+            || (utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), root_name, "awk '{print $6}'"), true) == "0")) {
             fde = 1;
             utils::setup_luks_keyfile();
         }
@@ -506,8 +506,8 @@ void boot_encrypted_setting() noexcept {
     const auto& boot_name = utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
     if ((utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0")
         // Check if the /boot is inside encrypted lvm volume
-        || (utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt", boot_name, "awk '{print $6}'"), true) == "0")
-        || (utils::exec(fmt::format("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'", boot_name), true) == "0")) {
+        || (utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), boot_name, "awk '{print $6}'"), true) == "0")
+        || (utils::exec(fmt::format(FMT_COMPILE("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'"), boot_name), true) == "0")) {
         fde = 1;
         utils::setup_luks_keyfile();
     }
@@ -519,7 +519,7 @@ bool check_mount() noexcept {
     auto* config_instance       = Config::instance();
     auto& config_data           = config_instance->data();
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    if (utils::exec(fmt::format("findmnt -nl {}", mountpoint_info)) == "") {
+    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -nl {}"), mountpoint_info)) == "") {
         return false;
     }
 #endif
@@ -590,8 +590,8 @@ void try_v3() noexcept {
     static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
     std::error_code err{};
 
-    utils::exec(fmt::format("sed -i 's/Architecture = auto/#Architecture = auto/' {}", pacman_conf_cachyos));
-    utils::exec(fmt::format("sed -i 's/#<disabled_v3>//g' {}", pacman_conf_cachyos));
+    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/Architecture = auto/#Architecture = auto/' {}"), pacman_conf_cachyos));
+    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/#<disabled_v3>//g' {}"), pacman_conf_cachyos));
 
     spdlog::info("backup old config");
     fs::rename(pacman_conf, pacman_conf_path_backup, err);
@@ -663,7 +663,7 @@ void set_keymap() noexcept {
     auto& config_data     = config_instance->data();
     const auto& keymap    = std::get<std::string>(config_data["KEYMAP"]);
 
-    utils::exec(fmt::format("loadkeys {}", keymap));
+    utils::exec(fmt::format(FMT_COMPILE("loadkeys {}"), keymap));
 }
 
 void parse_config() noexcept {
@@ -683,8 +683,8 @@ void parse_config() noexcept {
 void setup_luks_keyfile() noexcept {
     // Add keyfile to luks
     const auto& root_name          = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_part          = utils::exec(fmt::format("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'", root_name, "awk '/part/ {print $1}'"));
-    const auto& number_of_lukskeys = to_int(utils::exec(fmt::format("cryptsetup luksDump /dev/\"{}\" | grep \"ENABLED\" | wc -l", root_part)));
+    const auto& root_part          = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
+    const auto& number_of_lukskeys = to_int(utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump /dev/\"{}\" | grep \"ENABLED\" | wc -l"), root_part)));
     if (number_of_lukskeys < 4) {
         // Create a keyfile
 #ifdef NDEVENV
@@ -696,7 +696,7 @@ void setup_luks_keyfile() noexcept {
         }
         utils::exec("chmod 000 /mnt/crypto_keyfile.bin");
         spdlog::info("Adding the keyfile to the LUKS configuration");
-        auto ret_status = utils::exec(fmt::format("cryptsetup --pbkdf-force-iterations 200000 luksAddKey /dev/\"{}\" /mnt/crypto_keyfile.bin", root_part), true);
+        auto ret_status = utils::exec(fmt::format(FMT_COMPILE("cryptsetup --pbkdf-force-iterations 200000 luksAddKey /dev/\"{}\" /mnt/crypto_keyfile.bin"), root_part), true);
         /* clang-format off */
         if (ret_status != "0") { spdlog::info("Something went wrong with adding the LUKS key. Is /dev/{} the right partition?", root_part); }
         /* clang-format on */
@@ -728,13 +728,13 @@ void final_check() noexcept {
     const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
     // Check if bootloader is installed
     if (system_info == "BIOS") {
-        if (utils::exec(fmt::format("arch-chroot {} \"pacman -Qq grub\" &> /dev/null", mountpoint), true) != "0") {
+        if (utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"pacman -Qq grub\" &> /dev/null"), mountpoint), true) != "0") {
             checklist += "- Bootloader is not installed\n";
         }
     }
 
     // Check if fstab is generated
-    if (utils::exec(fmt::format("grep -qv '^#' {}/etc/fstab 2>/dev/null", mountpoint), true) != "0") {
+    if (utils::exec(fmt::format(FMT_COMPILE("grep -qv '^#' {}/etc/fstab 2>/dev/null"), mountpoint), true) != "0") {
         checklist += "- Fstab has not been generated\n";
     }
 
@@ -742,7 +742,7 @@ void final_check() noexcept {
     //[[ ! -e /mnt/.video_installed ]] && echo "- $_GCCheck" >> ${CHECKLIST}
 
     // Check if locales have been generated
-    if (to_int(utils::exec(fmt::format("arch-chroot {} 'locale -a' | wc -l", mountpoint), true)) < 3) {
+    if (to_int(utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} 'locale -a' | wc -l"), mountpoint), true)) < 3) {
         checklist += "- Locales have not been generated\n";
     }
 

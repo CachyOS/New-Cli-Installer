@@ -47,6 +47,7 @@ src_files = files(
     'src/screen_service.hpp', 'src/screen_service.cpp',
     'src/config.cpp', 'src/config.hpp',
     'src/utils.cpp', 'src/utils.hpp',
+    'src/disk.cpp', 'src/disk.hpp',
     'src/widgets.cpp', 'src/widgets.hpp',
     'src/follow_process_log.cpp', 'src/follow_process_log.hpp',
     'src/crypto.cpp', 'src/crypto.hpp',
@@ -103,6 +104,7 @@ if not is_debug_build
       possible_cc_flags += [
          '-flto',
          '-fwhole-program',
+         '-fuse-linker-plugin',
       ]
    else
       possible_cc_flags += [

@@ -64,8 +64,8 @@ function(set_project_warnings project_name)
         -Wsuggest-attribute=malloc
         -Wsuggest-attribute=noreturn
         -Wsuggest-attribute=pure
-        -Wsuggest-final-methods
-        -Wsuggest-final-types
+        #-Wsuggest-final-methods
+        #-Wsuggest-final-types
         -Wdiv-by-zero
         -Wanalyzer-double-fclose
         -Wanalyzer-double-free
