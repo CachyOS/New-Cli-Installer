@@ -75,9 +75,9 @@ bool luks_open() noexcept {
     utils::find_partitions();
 
     // Filter out partitions that don't contain crypt device
-    const auto& ignore_part = utils::list_non_crypt();
+    /*const auto& ignore_part = utils::list_non_crypt();
 
-    /* const auto& parts = utils::make_multiline(ignore_part);
+    const auto& parts = utils::make_multiline(ignore_part);
     for (const auto& part : parts) {
         utils::delete_partition_in_list(part);
     }*/

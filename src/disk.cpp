@@ -16,6 +16,75 @@ namespace fs = std::filesystem;
 
 namespace utils {
 
+void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::string_view& mode) noexcept {
+    /* clang-format off */
+    if (mode.empty()) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    // save mount options and name of the root partition
+    utils::exec("mount | grep \"on /mnt \" | grep -Po '(?<=\\().*(?=\\))' > /tmp/.root_mount_options");
+    // utils::exec("lsblk -lno MOUNTPOINT,NAME | awk '/^\\/mnt / {print $2}' > /tmp/.root_partition");
+
+    if (mode == "manual") {
+        // Create subvolumes manually
+        std::string subvols{"@ @home @cache"};
+        static constexpr auto subvols_body = "\nInput names of the subvolumes separated by spaces.\nThe first one will be used for mounting /.\n";
+        if (!tui::detail::inputbox_widget(subvols, subvols_body, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 4))) {
+            return;
+        }
+        const auto& saved_path = fs::current_path();
+        fs::current_path("/mnt");
+        auto subvol_list = utils::make_multiline(subvols, false, " ");
+        for (const auto& subvol : subvol_list) {
+            utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume create {}"), subvol), true);
+        }
+        fs::current_path(saved_path);
+        // Mount subvolumes
+        umount("/mnt");
+        // Mount the first subvolume as /
+        utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=\"{}\" \"{}\" /mnt"), disk.mount_opts, subvol_list[0], disk.root));
+        // Remove the first subvolume from the subvolume list
+        subvol_list.erase(subvol_list.begin());
+
+        // Loop to mount all created subvolumes
+        for (const auto& subvol : subvol_list) {
+            std::string mountp{"/home"};
+            const auto& mountp_body = fmt::format(FMT_COMPILE("\nInput mountpoint of the subvolume {}\nas it would appear in installed system\n(without prepending /mnt).\n"), subvol);
+            if (!tui::detail::inputbox_widget(mountp, mountp_body, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 4))) {
+                return;
+            }
+
+            const auto& mountp_formatted = fmt::format(FMT_COMPILE("/mnt{}"), mountp);
+            fs::create_directories(mountp_formatted);
+            utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=\"{}\" \"{}\" \"{}\""), disk.mount_opts, subvol, disk.root, mountp_formatted));
+        }
+        return;
+    }
+    static constexpr auto content = "\nThis creates subvolumes:\n@ for /,\n@home for /home,\n@cache for /var/cache.\n";
+    const auto& do_create         = tui::detail::yesno_widget(content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 15) | size(ftxui::WIDTH, ftxui::LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_create) { return; }
+    /* clang-format on */
+
+    // Create subvolumes automatically
+    const auto& saved_path = fs::current_path();
+    fs::current_path("/mnt");
+    utils::exec("btrfs subvolume create @", true);
+    utils::exec("btrfs subvolume create @home", true);
+    utils::exec("btrfs subvolume create @cache", true);
+    // utils::exec("btrfs subvolume create @snapshots", true);
+    fs::current_path(saved_path);
+    // Mount subvolumes
+    umount("/mnt");
+    utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=@ \"{}\" /mnt"), disk.mount_opts, disk.root));
+    fs::create_directories("/mnt/home");
+    fs::create_directories("/mnt/var/cache");
+    utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=@home \"{}\" /mnt/home"), disk.mount_opts, disk.root));
+    utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=@cache \"{}\" /mnt/var/cache"), disk.mount_opts, disk.root));
+#endif
+}
+
 void mount_existing_subvols(const disk_part& disk) noexcept {
     // Set mount options
     const auto& format_name   = utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), disk.part));
@@ -36,7 +105,7 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
         // Ask for mountpoint
         const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of the subvolume {}\nas it would appear in installed system\n(without prepending /mnt).\n"), subvol);
         std::string mountpoint{"/"};
-        if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+        if (!tui::tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return;
         }
         const auto& mount_dir{fmt::format(FMT_COMPILE("/mnt/{}"), mountpoint)};

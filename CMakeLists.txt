@@ -22,18 +22,12 @@ include(StaticAnalyzers)
 include(Sanitizers)
 include(CPM)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(
-  LIBNM
-  REQUIRED
-  IMPORTED_TARGET
-  libnm>=1.10.6)
-
-pkg_check_modules(
-  GLIBMM
-  REQUIRED
-  IMPORTED_TARGET
-  glibmm-2.4>=2.56.0)
+#find_package(PkgConfig REQUIRED)
+#pkg_check_modules(
+#  GLIBMM
+#  REQUIRED
+#  IMPORTED_TARGET
+#  glibmm-2.4>=2.56.0)
 
 CPMAddPackage(
   NAME ftxui
@@ -80,7 +74,7 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fwhole-program")
+   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fwhole-program -fuse-linker-plugin")
 endif()
 
 # Link this 'library' to set the c++ standard / compile-time options requested
@@ -138,9 +132,9 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component simdjson::simdjson cpr::cpr PkgConfig::GLIBMM)
-target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component simdjson::simdjson cpr::cpr PkgConfig::GLIBMM)
-target_link_libraries(test-process-tailing PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component simdjson::simdjson cpr::cpr PkgConfig::GLIBMM)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component simdjson::simdjson cpr::cpr)
+target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component simdjson::simdjson cpr::cpr)
+target_link_libraries(test-process-tailing PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component simdjson::simdjson cpr::cpr)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
    target_link_libraries(${PROJECT_NAME} PRIVATE range-v3::range-v3)

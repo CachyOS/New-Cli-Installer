@@ -133,6 +133,33 @@ bool exit_done() noexcept {
 #endif
 }
 
+void btrfs_subvolumes() noexcept {
+    const std::vector<std::string> menu_entries = {
+        "automatic",
+        "manual",
+    };
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    std::string btrfsvols_mode{};
+    auto ok_callback = [&] {
+        btrfsvols_mode = menu_entries[static_cast<std::size_t>(selected)];
+        screen.ExitLoopClosure()();
+    };
+    static constexpr auto btrfsvols_body = "\nAutomatic mode\nis designed to allow integration\nwith snapper, non-recursive snapshots,\nseparating system and user data and\nrestoring snapshots without losing data.\n";
+    /* clang-format off */
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, btrfsvols_body);
+
+    if (btrfsvols_mode.empty()) { return; }
+    /* clang-format on */
+
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+    const auto& root_part       = std::get<std::string>(config_data["ROOT_PART"]);
+    utils::btrfs_create_subvols({.root = root_part, .mount_opts = mount_opts_info}, btrfsvols_mode);
+}
+
 // Function will not allow incorrect UUID type for installed system.
 void generate_fstab() noexcept {
     const std::vector<std::string> menu_entries = {
@@ -1809,16 +1836,17 @@ void mount_partitions() noexcept {
                 const auto& subvolumes_formated = utils::exec(fmt::format(FMT_COMPILE("{} | cut -d\" \" -f9"), subvolumes));
                 const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes_formated), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
                 // Pre-existing subvolumes and user wants to mount them
-                if (existing_subvolumes) {
-                    utils::mount_existing_subvols({root_part, part});
-                }
+                /* clang-format off */
+                if (existing_subvolumes) { utils::mount_existing_subvols({root_part, part}); }
+                /* clang-format on */
             } else {
                 // No subvolumes present. Make some new ones
                 const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+                /* clang-format on */
                 if (create_subvolumes) {
-                    spdlog::debug("Implement me!");
-                    // utils::btrfs_subvolumes({root_part, part});
+                    tui::btrfs_subvolumes();
                 }
+                /* clang-format on */
             }
         }
     }

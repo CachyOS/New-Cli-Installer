@@ -38,8 +38,7 @@ fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 simdjson = dependency('simdjson', version : ['>=1.0.2'], fallback : ['simdjson', 'simdjson_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
-libnm = dependency('libnm', version : ['>=1.10.6'])
-glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
+#glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 
 src_files = files(
     'src/view.hpp',
@@ -113,13 +112,13 @@ if not is_debug_build
    endif
 
    possible_cc_flags += ['-fdata-sections', '-ffunction-sections']
-   possible_link_flags = ['-Wl,--gc-sections']
+   possible_link_flags = ['-Wl,--gc-sections', '-static-libgcc', '-static-libstdc++']
    add_project_link_arguments(cc.get_supported_link_arguments(possible_link_flags), language : 'cpp')
 endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
-deps = [fmt, spdlog, ftxui, simdjson, cpr, glibmm]
+deps = [fmt, spdlog, ftxui, simdjson, cpr]
 if cc.get_id() == 'clang'
   ranges = dependency('range-v3', version : ['>=0.11.0'])
   deps += [ranges]
