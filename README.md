@@ -100,23 +100,20 @@ Main Menu
 |   │   └── Add New User(s) (seems broken)
 |   │
 │   ├── Install Custom Packages
-│   ├── System Tweaks (TODO)
+│   ├── System Tweaks
 |   │   ├── Enable Automatic Login
-|   │   ├── Enable Hibernation
-|   │   ├── Performance
+|   │   ├── Performance (TODO)
 |   |   │   ├── I/O schedulers
 |   |   │   ├── Swap configuration
-|   |   │   └── Preload
+|   |   │   └── zram
 |   |   │
-|   │   ├── Security and systemd Tweaks
-|   |   │   ├── Amend journald Logging
-|   |   │   ├── Disable Coredump Logging
-|   |   │   └── Restrict Access to Kernel Logs
-|   |   │
-|   │   └── Restrict Access to Kernel Logs
+|   │   └── Security and systemd Tweaks (TODO)
+|   |       ├── Amend journald Logging
+|   |       ├── Disable Coredump Logging
+|   |       └── Restrict Access to Kernel Logs
 |   │
 │   ├── Review Configuration Files (TODO)
-│   └── Chroot into Installation (TODO)
+│   └── Chroot into Installation
 |
 └── System Rescue
     ├── Install Hardware Drivers (TODO)
@@ -130,7 +127,7 @@ Main Menu
     ├── Install Custom Packages
     ├── Remove Packages
     ├── Review Configuration Files (TODO)
-    ├── Chroot into Installation (TODO)
+    ├── Chroot into Installation
     ├── Data Recovery (TODO)
     │   └── Btrfs snapshots..
     │

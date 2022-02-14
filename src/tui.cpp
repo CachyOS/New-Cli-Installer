@@ -1192,7 +1192,53 @@ grub-install --target=i386-pc --recheck)";
 #endif
 }
 
-void install_bootloader() {
+void enable_autologin() {
+    // detect displaymanager
+    const auto& dm      = utils::exec("file /mnt/etc/systemd/system/display-manager.service 2>/dev/null | awk -F'/' '{print $NF}' | cut -d. -f1");
+    const auto& content = fmt::format(FMT_COMPILE("\nThis option enables autologin using {}.\n\nProceed?\n"), dm);
+    /* clang-format off */
+    if (!detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75))) { return; }
+    if (utils::exec("echo /mnt/home/* | xargs -n1 | wc -l") != "1") { return; }
+    /* clang-format on */
+
+    const auto& autologin_user = utils::exec("echo /mnt/home/* | cut -d/ -f4");
+    utils::enable_autologin(dm, autologin_user);
+}
+
+void performance_menu() { }
+void security_menu() { }
+
+void tweaks_menu() noexcept {
+    const std::vector<std::string> menu_entries = {
+        "Enable Automatic Login",
+        "Performance",
+        "Security and systemd Tweaks",
+        "Back",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+        switch (selected) {
+        case 0:
+            tui::enable_autologin();
+            break;
+        case 1:
+            tui::performance_menu();
+            break;
+        case 2:
+            tui::security_menu();
+            break;
+        default:
+            screen.ExitLoopClosure()();
+            break;
+        }
+    };
+    static constexpr auto tweaks_body = "Various configuration options";
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, tweaks_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+}
+
+void install_bootloader() noexcept {
     /* clang-format off */
     if (!utils::check_base()) { return; }
     /* clang-format on */
@@ -2048,7 +2094,7 @@ void install_core_menu() noexcept {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
             }
-            // tweaks_menu
+            tui::tweaks_menu();
             break;
         case 6:
             if (!utils::check_base()) {

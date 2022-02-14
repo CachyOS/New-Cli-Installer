@@ -666,6 +666,29 @@ void set_keymap() noexcept {
     utils::exec(fmt::format(FMT_COMPILE("loadkeys {}"), keymap));
 }
 
+void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unused]] const std::string_view& user) noexcept {
+#ifdef NDEVENV
+    // enable autologin
+    if (dm == "gdm") {
+        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^AutomaticLogin=*/AutomaticLogin={}/g' /mnt/etc/gdm/custom.conf"), user));
+        utils::exec("sed -i 's/^AutomaticLoginEnable=*/AutomaticLoginEnable=true/g' /mnt/etc/gdm/custom.conf");
+        utils::exec("sed -i 's/^TimedLoginEnable=*/TimedLoginEnable=true/g' /mnt/etc/gdm/custom.conf");
+        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^TimedLogin=*/TimedLoginEnable={}/g' /mnt/etc/gdm/custom.conf"), user));
+        utils::exec("sed -i 's/^TimedLoginDelay=*/TimedLoginDelay=0/g' /mnt/etc/gdm/custom.conf");
+    } else if (dm == "lightdm") {
+        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^#autologin-user=/autologin-user={}/' /mnt/etc/lightdm/lightdm.conf"), user));
+        utils::exec("sed -i 's/^#autologin-user-timeout=0/autologin-user-timeout=0/' /mnt/etc/lightdm/lightdm.conf");
+
+        utils::arch_chroot("groupadd -r autologin");
+        utils::arch_chroot(fmt::format(FMT_COMPILE("gpasswd -a {} autologin"), user));
+    } else if (dm == "sddm") {
+        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' /mnt/etc/sddm.conf"), user));
+    } else if (dm == "lxdm") {
+        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^# autologin=dgod/autologin={}/g' /mnt/etc/lxdm/lxdm.conf"), user));
+    }
+#endif
+}
+
 void parse_config() noexcept {
     using namespace simdjson;
 
