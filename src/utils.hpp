@@ -44,6 +44,7 @@ void set_keymap() noexcept;
 void enable_autologin(const std::string_view& dm, const std::string_view& user) noexcept;
 void parse_config() noexcept;
 void setup_luks_keyfile() noexcept;
+void grub_mkconfig() noexcept;
 void final_check() noexcept;
 
 template <typename T = std::int32_t,

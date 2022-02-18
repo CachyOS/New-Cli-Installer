@@ -35,6 +35,9 @@ bool Config::initialize() noexcept {
 
         // Mounting
         s_config->m_data["MOUNTPOINT"] = "/mnt";
+
+        // Installation
+        s_config->m_data["GRAPHIC_CARD"] = "";
     }
 
     return s_config.get();

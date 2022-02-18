@@ -699,7 +699,7 @@ void parse_config() noexcept {
     for (auto entry : doc["steps"]) {
         std::string_view step;
         entry.get(step);
-        spdlog::debug(step);
+        // spdlog::debug(step);
     }
 }
 
@@ -732,6 +732,11 @@ void setup_luks_keyfile() noexcept {
         utils::arch_chroot("mkinitcpio -P");
 #endif
     }
+}
+
+void grub_mkconfig() noexcept {
+    utils::arch_chroot("grub-mkconfig -o /boot/grub/grub.cfg");
+    // check_for_error "grub-mkconfig" $?
 }
 
 void final_check() noexcept {

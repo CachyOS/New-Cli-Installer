@@ -3,6 +3,8 @@
 #include "crypto.hpp"
 #include "definitions.hpp"
 #include "disk.hpp"
+#include "drivers.hpp"
+#include "misc.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 
@@ -13,7 +15,6 @@
 #include <regex>                                   // for regex_search, match_results<>::_Base_type
 #include <string>                                  // for basic_string
 #include <ftxui/component/component.hpp>           // for Renderer, Button
-#include <ftxui/component/component_options.hpp>   // for ButtonOption
 #include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
 #include <ftxui/dom/elements.hpp>                  // for operator|, size
 /* clang-format on */
@@ -38,58 +39,6 @@ namespace ranges = std::ranges;
 #endif
 
 namespace tui {
-
-// Revised to deal with partion sizes now being displayed to the user
-bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
-#ifdef NDEVENV
-    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("mount | grep {}"), part_user), true);
-    if (ret_status != "0") {
-        detail::infobox_widget("\nMount Failed!\n");
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        return false;
-    }
-#endif
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& partition   = std::get<std::string>(config_data["PARTITION"]);
-    auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-    auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
-
-    detail::infobox_widget("\nMount Successful!\n");
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
-    // TODO: reimplement natively
-    const auto& str      = utils::make_multiline(partitions);
-    const auto& cmd      = fmt::format(FMT_COMPILE("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed \"s~{1}$\' -\'~~\""), str, partition);
-    const auto& res_text = utils::exec(cmd);
-    partitions           = utils::make_multiline(res_text);
-    number_partitions -= 1;
-    return true;
-}
-
-// Fsck hook
-void set_fsck_hook() noexcept {
-    auto* config_instance    = Config::instance();
-    auto& config_data        = config_instance->data();
-    const auto& do_sethook   = detail::yesno_widget("\nDo you want to use fsck hook?\n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    config_data["FSCK_HOOK"] = do_sethook;
-}
-
-// Choose pacman cache
-void set_cache() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    static constexpr auto content = "\nDo you want to use the pacman cache of the running system instead\nof the installation target?\nThis can reduce the size of the required downloads in the installation.\n";
-    if (!detail::yesno_widget(content, size(HEIGHT, GREATER_THAN, 3))) {
-        config_data["hostcache"] = 0;
-        config_data["cachepath"] = "/mnt/var/cache/pacman/pkg/";
-        return;
-    }
-
-    config_data["hostcache"] = 1;
-    config_data["cachepath"] = "/var/cache/pacman/pkg/";
-}
 
 bool exit_done() noexcept {
 #ifdef NDEVENV
@@ -243,8 +192,6 @@ void set_locale() noexcept {
             screen.ExitLoopClosure()();
         };
 
-        // static constexpr auto timezone_body = "The time zone is used to correctly set your system clock.";
-        // const auto& content_size            = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         static constexpr auto langBody = "\nChoose the system language.\n\nThe format is language_COUNTRY (e.g. en_US is english, United States;\nen_GB is english, Great Britain).\n";
         const auto& content_size       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
         detail::menu_widget(locales, ok_callback, &selected, &screen, langBody, {content_size, size(HEIGHT, GREATER_THAN, 1)});
@@ -2100,10 +2047,7 @@ void install_core_menu() noexcept {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
             }
-            // screen.Suspend();
-            // tui::edit_configs();
-            // screen.Resume();
-
+            tui::edit_configs();
             break;
         case 7:
             if (!utils::check_base()) {
@@ -2139,6 +2083,13 @@ void system_rescue_menu() noexcept {
     std::int32_t selected{};
     auto ok_callback = [&] {
         switch (selected) {
+        case 0:
+            if (!utils::check_mount() && !utils::check_base()) {
+                screen.ExitLoopClosure()();
+                break;
+            }
+            tui::install_drivers_menu();
+            break;
         case 1:
             if (!utils::check_mount() && !utils::check_base()) {
                 screen.ExitLoopClosure()();
@@ -2154,11 +2105,32 @@ void system_rescue_menu() noexcept {
             tui::install_cust_pkgs();
             break;
         case 3:
-            if (!utils::check_mount() && !utils::check_base()) {
+            if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
                 break;
             }
             tui::rm_pgs();
+            break;
+        case 4:
+            if (!utils::check_base()) {
+                screen.ExitLoopClosure()();
+            }
+            tui::edit_configs();
+            break;
+        case 5:
+            if (!utils::check_base()) {
+                screen.ExitLoopClosure()();
+            }
+            screen.Suspend();
+            tui::chroot_interactive();
+            screen.Resume();
+
+            break;
+        case 7:
+            if (!utils::check_base()) {
+                screen.ExitLoopClosure()();
+            }
+            tui::logs_menu();
             break;
         default:
             screen.ExitLoopClosure()();

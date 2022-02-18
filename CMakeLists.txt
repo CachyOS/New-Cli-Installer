@@ -91,9 +91,11 @@ add_executable(${PROJECT_NAME}
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
    src/disk.cpp src/disk.hpp
+   src/drivers.cpp src/drivers.hpp
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
    src/crypto.cpp src/crypto.hpp
+   src/misc.cpp src/misc.hpp
    src/tui.cpp src/tui.hpp
    src/main.cpp
    )

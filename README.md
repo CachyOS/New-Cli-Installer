@@ -63,7 +63,7 @@ pass `-DENABLE_DEVENV=OFF` to cmake or `-Ddevenv=false` to meson when configurin
 
 **Simple menu overview:**
 
-TODO: should be simple as calamares
+TODO: should be simple as Calamares Installer
 
 ---
 
@@ -112,13 +112,13 @@ Main Menu
 |   |       ├── Disable Coredump Logging
 |   |       └── Restrict Access to Kernel Logs
 |   │
-│   ├── Review Configuration Files (TODO)
+│   ├── Review Configuration Files
 │   └── Chroot into Installation
 |
 └── System Rescue
-    ├── Install Hardware Drivers (TODO)
-    │   ├── Install Display Drivers
-    │   └── Install Network Drivers
+    ├── Install Hardware Drivers
+    │   ├── Install Display Drivers (WIP)
+    │   └── Install Network Drivers (TODO)
     |
     ├── Install Bootloader
     ├── Configure Base
@@ -126,12 +126,12 @@ Main Menu
     │
     ├── Install Custom Packages
     ├── Remove Packages
-    ├── Review Configuration Files (TODO)
+    ├── Review Configuration Files
     ├── Chroot into Installation
     ├── Data Recovery (TODO)
     │   └── Btrfs snapshots..
     │
-    └── View System Logs (TODO)
+    └── View System Logs
         ├── Dmesg
         ├── Pacman log
         ├── Xorg log
