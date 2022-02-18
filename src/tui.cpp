@@ -1061,7 +1061,7 @@ void bios_bootloader() {
     }
 
     // If root is on btrfs volume, amend grub
-    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -no FSTYPE {}", mountpoint)) == "btrfs") {
+    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -no FSTYPE {}"), mountpoint)) == "btrfs") {
         utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
     }
 
