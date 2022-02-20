@@ -374,7 +374,7 @@ void set_root_password() noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
     utils::exec(fmt::format(FMT_COMPILE("echo -e \"{}\n{}\" > /tmp/.passwd"), pass, confirm));
-    utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"passwd root\" < /tmp/.passwd >/dev/null"), mountpoint));
+    utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"passwd root\" < /tmp/.passwd &>/dev/null"), mountpoint));
     utils::exec("rm /tmp/.passwd");
 #endif
 }
@@ -487,7 +487,7 @@ void create_new_user() noexcept {
     }
 
     utils::exec(fmt::format(FMT_COMPILE("echo -e \"{}\\n{}\" > /tmp/.passwd"), pass, confirm));
-    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"passwd {}\" < /tmp/.passwd >/dev/null"), mountpoint, user), true);
+    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"passwd {}\" < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
     spdlog::info("create user pwd: {}", ret_status);
     fs::remove("/tmp/.passwd");
 
@@ -1140,7 +1140,7 @@ grub-install --target=i386-pc --recheck)";
 }
 
 void enable_autologin() {
-    // detect displaymanager
+    // Detect display manager
     const auto& dm      = utils::exec("file /mnt/etc/systemd/system/display-manager.service 2>/dev/null | awk -F'/' '{print $NF}' | cut -d. -f1");
     const auto& content = fmt::format(FMT_COMPILE("\nThis option enables autologin using {}.\n\nProceed?\n"), dm);
     /* clang-format off */
@@ -1152,7 +1152,35 @@ void enable_autologin() {
     utils::enable_autologin(dm, autologin_user);
 }
 
-void performance_menu() { }
+void performance_menu() {
+    const std::vector<std::string> menu_entries = {
+        "I/O Schedulers",
+        "Swap Configuration",
+        "Back",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+        switch (selected) {
+        case 0:
+            screen.Suspend();
+            utils::set_schedulers();
+            screen.Resume();
+            break;
+        case 1:
+            screen.Suspend();
+            utils::set_swappiness();
+            screen.Resume();
+            break;
+        default:
+            screen.ExitLoopClosure()();
+            break;
+        }
+    };
+    static constexpr auto tweaks_body = "Various configuration options";
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, tweaks_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+}
 void security_menu() { }
 
 void tweaks_menu() noexcept {
@@ -1212,7 +1240,7 @@ void auto_partition() noexcept {
     const auto& del_parts = utils::make_multiline(parts);
     for (const auto& del_part : del_parts) {
 #ifdef NDEVENV
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} >/dev/null"), device_info, del_part));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} &>/dev/null"), device_info, del_part));
 #else
         spdlog::debug("{}", del_part);
 #endif
@@ -1224,18 +1252,18 @@ void auto_partition() noexcept {
 
     // Create partition table if one does not already exist
     if ((system_info == "BIOS") && (part_table != "msdos"))
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos >/dev/null"), device_info));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos &>/dev/null"), device_info));
     if ((system_info == "UEFI") && (part_table != "gpt"))
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt >/dev/null"), device_info));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt &>/dev/null"), device_info));
 
     // Create partitions (same basic partitioning scheme for BIOS and UEFI)
     if (system_info == "BIOS")
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB >/dev/null"), device_info));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB &>/dev/null"), device_info));
     else
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB >/dev/null"), device_info));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB &>/dev/null"), device_info));
 
-    utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on >/dev/null"), device_info));
-    utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% >/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on &>/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% &>/dev/null"), device_info));
 #endif
 
     // Show created partitions
@@ -1600,10 +1628,10 @@ void make_swap() noexcept {
 
 #ifdef NDEVENV
         const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint_info);
-        utils::exec(fmt::format(FMT_COMPILE("fallocate -l {} {} >/dev/null"), value, swapfile_path));
+        utils::exec(fmt::format(FMT_COMPILE("fallocate -l {} {} &>/dev/null"), value, swapfile_path));
         utils::exec(fmt::format(FMT_COMPILE("chmod 600 {}"), swapfile_path));
-        utils::exec(fmt::format(FMT_COMPILE("mkswap {} >/dev/null"), swapfile_path));
-        utils::exec(fmt::format(FMT_COMPILE("swapon {} >/dev/null"), swapfile_path));
+        utils::exec(fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), swapfile_path));
+        utils::exec(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), swapfile_path));
 #endif
         return;
     }
@@ -1620,14 +1648,14 @@ void make_swap() noexcept {
         /* clang-format on */
 
 #ifdef NDEVENV
-        utils::exec(fmt::format(FMT_COMPILE("mkswap {} >/dev/null"), partition));
+        utils::exec(fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), partition));
 #endif
         spdlog::info("mkswap.{}", partition);
     }
 
 #ifdef NDEVENV
     // Whether existing to newly created, activate swap
-    utils::exec(fmt::format(FMT_COMPILE("swapon {} >/dev/null"), partition));
+    utils::exec(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), partition));
 #endif
 
     // TODO: reimplement natively
@@ -1699,7 +1727,7 @@ void make_esp() noexcept {
     }
     if (do_boot_partition) {
 #ifdef NDEVENV
-        utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} >/dev/null"), partition));
+        utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
 #endif
         spdlog::debug("Formating boot partition with fat/vfat!");
     }

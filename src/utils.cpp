@@ -14,6 +14,7 @@
 #include <cstdio>         // for feof, fgets, pclose, perror, popen
 #include <cstdlib>        // for exit, WIFEXITED, WIFSIGNALED
 #include <filesystem>     // for exists, is_directory
+#include <fstream>        // for ofstream
 #include <iostream>       // for basic_istream, cin
 #include <regex>          // for regex_search, match_results<>::_Base_type
 #include <string>         // for operator==, string, basic_string, allocator
@@ -454,7 +455,7 @@ void get_cryptboot() noexcept {
     }
     config_data["LUKS"] = 1;
 
-    // Mountpoint is directly on the LUKS device, so LUKS deivece is the same as root name
+    // Mountpoint is directly on the LUKS device, so LUKS device is the same as root name
     std::string boot_name{utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g")};
     // Get UUID of the encrypted /boot
     std::string boot_uuid{utils::exec("lsblk -lno UUID,MOUNTPOINT | awk '/\\mnt\\/boot$/ {print $1}'")};
@@ -577,7 +578,7 @@ void id_system() noexcept {
 }
 
 void try_v3() noexcept {
-    const auto& ret_status = utils::exec("/lib/ld-linux-x86-64.so.2 --help | grep \"x86-64-v3 (supported, searched)\" > /dev/null", true);
+    const auto& ret_status = utils::exec("/lib/ld-linux-x86-64.so.2 --help | grep \"x86-64-v3 (supported, searched)\" &> /dev/null", true);
     if (ret_status != "0") {
         spdlog::warn("x86-64-v3 is not supported");
         return;
@@ -589,6 +590,11 @@ void try_v3() noexcept {
     static constexpr auto pacman_conf_cachyos     = "/etc/pacman-more.conf";
     static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
     std::error_code err{};
+
+    // Check if it's already been applied
+    if (utils::exec("cat /etc/pacman.conf | grep \"\\-v3\\|_v3\" &> /dev/null", true) == "0") {
+        return;
+    }
 
     utils::exec(fmt::format(FMT_COMPILE("sed -i 's/Architecture = auto/#Architecture = auto/' {}"), pacman_conf_cachyos));
     utils::exec(fmt::format(FMT_COMPILE("sed -i 's/#<disabled_v3>//g' {}"), pacman_conf_cachyos));
@@ -686,6 +692,41 @@ void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unuse
     } else if (dm == "lxdm") {
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^# autologin=dgod/autologin={}/g' /mnt/etc/lxdm/lxdm.conf"), user));
     }
+#endif
+}
+
+void set_schedulers() noexcept {
+#ifdef NDEVENV
+    static constexpr auto rules_path = "/mnt/etc/udev/rules.d/60-ioscheduler.rules";
+    if (!fs::exists(rules_path)) {
+        static constexpr auto ioscheduler_rules = R"(# set scheduler for NVMe
+ACTION=="add|change", KERNEL=="nvme[0-9]n[0-9]", ATTR{queue/scheduler}="none"
+# set scheduler for SSD and eMMC
+ACTION=="add|change", KERNEL=="sd[a-z]|mmcblk[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+# set scheduler for rotating disks
+ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq")";
+        std::ofstream rules{rules_path};
+        rules << ioscheduler_rules;
+    }
+    utils::exec("vim /mnt/etc/udev/rules.d/60-ioscheduler.rules", true);
+#else
+    utils::exec("vim /etc/udev/rules.d/60-ioscheduler.rules", true);
+#endif
+}
+
+void set_swappiness() noexcept {
+#ifdef NDEVENV
+    static constexpr auto rules_path = "/mnt/etc/sysctl.d/99-sysctl.conf";
+    if (!fs::exists(rules_path)) {
+        static constexpr auto sysctl_rules = R"(vm.swappiness = 10
+vm.vfs_cache_pressure = 50
+#vm.dirty_ratio = 3)";
+        std::ofstream rules{rules_path};
+        rules << sysctl_rules;
+    }
+    utils::exec("vim /mnt/etc/sysctl.d/99-sysctl.conf", true);
+#else
+    utils::exec("vim /etc/sysctl.d/99-sysctl.conf", true);
 #endif
 }
 

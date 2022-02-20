@@ -42,6 +42,8 @@ void show_iwctl() noexcept;
 
 void set_keymap() noexcept;
 void enable_autologin(const std::string_view& dm, const std::string_view& user) noexcept;
+void set_schedulers() noexcept;
+void set_swappiness() noexcept;
 void parse_config() noexcept;
 void setup_luks_keyfile() noexcept;
 void grub_mkconfig() noexcept;
