@@ -31,8 +31,8 @@ static void install_ati() noexcept {
 #endif
 }
 
-static void install_all_drivers() noexcept {
 #ifdef NDEVENV
+static void install_all_drivers() noexcept {
     static constexpr auto packages = "xf86-input-libinput xf86-video-fbdev xf86-video-vesa xf86-video-amdgpu xf86-video-ati xf86-video-intel xf86-video-nouveau";
 
     auto* config_instance  = Config::instance();
@@ -45,8 +45,8 @@ static void install_all_drivers() noexcept {
         return;
     }
     detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap -c {} {}"), mountpoint, packages)});
-#endif
 }
+#endif
 
 static void setup_graphics_card() noexcept {
     std::string_view driver{};
