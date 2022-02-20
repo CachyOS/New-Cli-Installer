@@ -102,15 +102,9 @@ Main Menu
 │   ├── Install Custom Packages
 │   ├── System Tweaks
 |   │   ├── Enable Automatic Login
-|   │   ├── Performance (TODO)
-|   |   │   ├── I/O schedulers
-|   |   │   ├── Swap configuration
-|   |   │   └── zram
-|   |   │
-|   │   └── Security and systemd Tweaks (TODO)
-|   |       ├── Amend journald Logging
-|   |       ├── Disable Coredump Logging
-|   |       └── Restrict Access to Kernel Logs
+|   │   └── Performance
+|   |       ├── I/O schedulers
+|   |       └── Swap configuration
 |   │
 │   ├── Review Configuration Files
 │   └── Chroot into Installation

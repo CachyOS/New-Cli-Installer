@@ -1181,13 +1181,11 @@ void performance_menu() {
     static constexpr auto tweaks_body = "Various configuration options";
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, tweaks_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
 }
-void security_menu() { }
 
 void tweaks_menu() noexcept {
     const std::vector<std::string> menu_entries = {
         "Enable Automatic Login",
         "Performance",
-        "Security and systemd Tweaks",
         "Back",
     };
 
@@ -1200,9 +1198,6 @@ void tweaks_menu() noexcept {
             break;
         case 1:
             tui::performance_menu();
-            break;
-        case 2:
-            tui::security_menu();
             break;
         default:
             screen.ExitLoopClosure()();
