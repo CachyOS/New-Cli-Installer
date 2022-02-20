@@ -111,7 +111,7 @@ Main Menu
 |
 └── System Rescue
     ├── Install Hardware Drivers
-    │   ├── Install Display Drivers (WIP)
+    │   ├── Install Display Drivers
     │   └── Install Network Drivers (TODO)
     |
     ├── Install Bootloader
