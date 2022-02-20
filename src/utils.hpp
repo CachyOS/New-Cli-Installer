@@ -34,7 +34,7 @@ void boot_encrypted_setting() noexcept;
 void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
 void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept;
 void exec(const std::vector<std::string>& vec) noexcept;
-auto exec(const std::string_view& command, const bool& interactive = false) noexcept(false) -> std::string;
+auto exec(const std::string_view& command, const bool& interactive = false) noexcept -> std::string;
 [[nodiscard]] bool check_root() noexcept;
 void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;

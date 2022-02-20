@@ -4,8 +4,6 @@
 #include "widgets.hpp"
 
 /* clang-format off */
-#include <ftxui/component/component.hpp>           // for Renderer, Button
-#include <ftxui/component/component_options.hpp>   // for ButtonOption
 #include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
 #include <ftxui/dom/elements.hpp>                  // for operator|, size
 /* clang-format on */

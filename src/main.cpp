@@ -35,6 +35,7 @@ int main() {
     spdlog::set_default_logger(logger);
     spdlog::set_pattern("[%r][%^---%L---%$] %v");
     spdlog::set_level(spdlog::level::debug);
+    spdlog::flush_every(std::chrono::seconds(5));
 
     if (!utils::handle_connection()) {
         error_inter("An active network connection could not be detected, please connect and restart the installer.");

@@ -102,7 +102,7 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {}"), mountpoint, command);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>/tmp/cachyos-install.log"), mountpoint, command);
     if (follow) {
         tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         return;
@@ -174,7 +174,7 @@ void exec(const std::vector<std::string>& vec) noexcept {
 // https://github.com/arun11299/cpp-subprocess/blob/master/subprocess.hpp#L1218
 // https://stackoverflow.com/questions/11342868/c-interface-for-interactive-bash
 // https://github.com/hniksic/rust-subprocess
-std::string exec(const std::string_view& command, const bool& interactive) noexcept(false) {
+std::string exec(const std::string_view& command, const bool& interactive) noexcept {
     if (interactive) {
         const auto& ret_code = system(command.data());
         return std::to_string(ret_code);
@@ -182,8 +182,10 @@ std::string exec(const std::string_view& command, const bool& interactive) noexc
 
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.data(), "r"), pclose);
 
-    if (!pipe)
-        throw fmt::system_error(errno, "popen failed! '{}'", command);
+    if (!pipe) {
+        spdlog::error("popen failed! '{}'", command);
+        return "1";
+    }
 
     std::string result{};
     std::array<char, 128> buffer{};
@@ -205,13 +207,7 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
 
     std::string tmp{};
     if (std::getline(std::cin, tmp)) {
-        char read_char{};
-        if (tmp.length() == 1) {
-            read_char = tmp[0];
-        } else {
-            read_char = '\0';
-        }
-
+        const auto& read_char = (tmp.length() == 1) ? tmp[0] : '\0';
         if (read != nullptr)
             *read = read_char;
 
@@ -408,7 +404,7 @@ void get_cryptroot() noexcept {
     auto temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"lvm\" | grep \"/mnt$\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/mapper/\"$1}'");
     if (!temp_out.empty()) {
         const auto& cryptparts    = utils::make_multiline(temp_out);
-        const auto& check_functor = [&](const auto cryptpart) {
+        const auto& check_functor = [&](const auto& cryptpart) {
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice={}:{}"), cryptpart, luks_name);
             config_data["LVM"]      = 1;
         };

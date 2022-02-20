@@ -373,9 +373,10 @@ void set_root_password() noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
+    std::error_code err{};
     utils::exec(fmt::format(FMT_COMPILE("echo -e \"{}\n{}\" > /tmp/.passwd"), pass, confirm));
     utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"passwd root\" < /tmp/.passwd &>/dev/null"), mountpoint));
-    utils::exec("rm /tmp/.passwd");
+    fs::remove("/tmp/.passwd", err);
 #endif
 }
 
@@ -485,11 +486,11 @@ void create_new_user() noexcept {
     if (user_check.empty()) {
         spdlog::error("User has not been created!");
     }
-
+    std::error_code err{};
     utils::exec(fmt::format(FMT_COMPILE("echo -e \"{}\\n{}\" > /tmp/.passwd"), pass, confirm));
     const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"passwd {}\" < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
     spdlog::info("create user pwd: {}", ret_status);
-    fs::remove("/tmp/.passwd");
+    fs::remove("/tmp/.passwd", err);
 
     // Set up basic configuration files and permissions for user
     // arch_chroot "cp /etc/skel/.bashrc /home/${USER}"
@@ -640,13 +641,15 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
         utils::exec(fmt::format(FMT_COMPILE("sed '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' -i {}"), grub_installer_path));
     }
 
+    std::error_code err{};
+
     // install grub
     utils::arch_chroot("grub_installer.sh");
     umount("/mnt/hostlvm");
-    fs::remove("/mnt/hostlvm");
+    fs::remove("/mnt/hostlvm", err);
 
     // the grub_installer is no longer needed
-    fs::remove(grub_installer_path);
+    fs::remove(grub_installer_path, err);
 #endif
     // Ask if user wishes to set Grub as the default bootloader and act accordingly
     static constexpr auto set_boot_default_body  = "Some UEFI firmware may not detect the bootloader unless it is set\nas default by copying its efi stub to";
@@ -659,6 +662,7 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
 
 #ifdef NDEVENV
     utils::arch_chroot(fmt::format(FMT_COMPILE("mkdir {}/EFI/boot"), uefi_mount));
+    spdlog::info("Grub efi binary status:(EFI/cachyos/grubx64.efi): {}", fs::exists(fmt::format(FMT_COMPILE("{0}/EFI/cachyos/grubx64.efi"), uefi_mount)));
     utils::arch_chroot(fmt::format(FMT_COMPILE("cp -r {0}/EFI/cachyos/grubx64.efi {0}/EFI/boot/bootx64.efi"), uefi_mount));
 #endif
 
@@ -750,7 +754,8 @@ void install_base() noexcept {
         /* clang-format off */
         if (!do_reinstall) { return; }
         /* clang-format on */
-        fs::remove(base_installed);
+        std::error_code err{};
+        fs::remove(base_installed, err);
     }
     // Prep variables
     auto* config_instance  = Config::instance();
@@ -1119,23 +1124,25 @@ grub-install --target=i386-pc --recheck)";
         utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ os-prober//g' -i {}"), grub_installer_path));
     }
 
+    std::error_code err{};
+
     fs::permissions(grub_installer_path,
         fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
         fs::perm_options::add);
 
     detail::infobox_widget("\nPlease wait...\n");
     utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of={} seek=1 count=2047"), device_info));
-    fs::create_directory("/mnt/hostlvm");
+    fs::create_directory("/mnt/hostlvm", err);
     utils::exec("mount --bind /run/lvm /mnt/hostlvm");
 
     // install grub
     utils::arch_chroot("grub_installer.sh");
 
     // the grub_installer is no longer needed - there still needs to be a better way to do this
-    fs::remove(grub_installer_path);
+    fs::remove(grub_installer_path, err);
 
     umount("/mnt/hostlvm");
-    fs::remove("/mnt/hostlvm");
+    fs::remove("/mnt/hostlvm", err);
 #endif
 }
 
@@ -1459,9 +1466,10 @@ bool mount_current_partition() noexcept {
     const auto& mount_dev  = std::get<std::string>(config_data["MOUNT"]);
 
 #ifdef NDEVENV
+    std::error_code err{};
     // Make the mount directory
     fs::path mount_dir(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev));
-    fs::create_directories(mount_dir);
+    fs::create_directories(mount_dir, err);
 #endif
 
     config_data["MOUNT_OPTS"] = "";

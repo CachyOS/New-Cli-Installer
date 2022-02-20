@@ -4,7 +4,6 @@
 #include "widgets.hpp"
 
 #include <chrono>  // for operator""s, chrono_literals
-#include <csignal>
 #include <string>  // for string, operator<<, to_string
 #include <thread>
 
