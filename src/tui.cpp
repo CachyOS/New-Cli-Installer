@@ -2216,8 +2216,14 @@ void prep_menu() noexcept {
         case 4:
         case 6:
         case 8:
-        case 9:
             SPDLOG_ERROR("Implement me!");
+            break;
+        case 9:
+#ifdef NDEVENV
+            utils::arch_chroot("pacman-key --init;pacman-key --populate archlinux cachyos;pacman-key --refresh-keys;");
+#else
+            SPDLOG_DEBUG("({}) Function is doing nothing in dev environment!", __PRETTY_FUNCTION__);
+#endif
             break;
         case 10:
             tui::set_cache();

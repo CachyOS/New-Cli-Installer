@@ -85,7 +85,7 @@ Main Menu
 |   |   ├── Edit Pacman Mirror Configuration
 |   |   └── Rank Mirrors by Speed
 |   |
-│   └── Refresh Pacman Keys (TODO)
+│   └── Refresh Pacman Keys
 |
 ├── Install System
 │   ├── Install Base Packages
