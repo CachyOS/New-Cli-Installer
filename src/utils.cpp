@@ -184,7 +184,7 @@ std::string exec(const std::string_view& command, const bool& interactive) noexc
 
     if (!pipe) {
         spdlog::error("popen failed! '{}'", command);
-        return "1";
+        return "-1";
     }
 
     std::string result{};
