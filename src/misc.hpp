@@ -8,6 +8,7 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user);
 void set_fsck_hook() noexcept;
 void set_cache() noexcept;
 void edit_configs() noexcept;
+void edit_pacman_conf() noexcept;
 void logs_menu() noexcept;
 }  // namespace tui
 

@@ -201,6 +201,16 @@ void edit_configs() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, seeconf_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
 }
 
+void edit_pacman_conf() noexcept {
+    utils::exec("vim /etc/pacman.conf", true);
+
+#ifdef NDEVENV
+    // NOTE: don't care now, Will change in future..
+    detail::infobox_widget("\nUpdating database ...\n");
+    utils::exec("pacman -Syy", true);
+#endif
+}
+
 void logs_menu() noexcept {
 #ifdef NDEVENV
     auto* config_instance  = Config::instance();

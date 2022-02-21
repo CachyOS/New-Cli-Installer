@@ -80,10 +80,9 @@ Main Menu
 |   ├── LUKS Encryption
 |   ├── Logical Volume Management (WIP)
 |   ├── Mount Partitions
-|   ├── Configure Installer Mirrorlist (TODO)
+|   ├── Configure Installer Mirrorlist
 |   |   ├── Edit Pacman Configuration
-|   |   ├── Edit Pacman Mirror Configuration
-|   |   └── Rank Mirrors by Speed
+|   |   └── Rank Mirrors by Speed (TODO)
 |   |
 │   └── Refresh Pacman Keys
 |

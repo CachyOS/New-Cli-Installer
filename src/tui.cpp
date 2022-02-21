@@ -1974,6 +1974,35 @@ void mount_partitions() noexcept {
     }
 }
 
+void configure_mirrorlist() noexcept {
+    const std::vector<std::string> menu_entries = {
+        "Edit Pacman Configuration",
+        "Rank mirrors by speed",
+        "Back",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+        switch (selected) {
+        case 0:
+            screen.Suspend();
+            tui::edit_pacman_conf();
+            screen.Resume();
+            break;
+        case 1:
+            SPDLOG_ERROR("Implement me!");
+            break;
+        default:
+            screen.ExitLoopClosure()();
+            break;
+        }
+    };
+    static constexpr auto mirrorlist_body = "\nThe pacman configuration file can be edited\nto enable multilib and other repositories.\n";
+    const auto& content_size              = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, mirrorlist_body, {size(HEIGHT, LESS_THAN, 3), content_size});
+}
+
 void create_partitions() noexcept {
     static constexpr std::string_view optwipe = "Securely Wipe Device (optional)";
     static constexpr std::string_view optauto = "Automatic Partitioning";
@@ -2215,8 +2244,10 @@ void prep_menu() noexcept {
         case 3:
         case 4:
         case 6:
-        case 8:
             SPDLOG_ERROR("Implement me!");
+            break;
+        case 8:
+            tui::configure_mirrorlist();
             break;
         case 9:
 #ifdef NDEVENV
