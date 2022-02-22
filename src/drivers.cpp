@@ -72,9 +72,10 @@ static void setup_graphics_card() noexcept {
     auto& graphics_card   = std::get<std::string>(config_data["GRAPHIC_CARD"]);
 
 #ifdef NDEVENV
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& cachepath  = std::get<std::string>(config_data["cachepath"]);
-    utils::arch_chroot(fmt::format(FMT_COMPILE("mhwd --pmcachedir \"{}\" --pmroot {} -f -i pci {}"), cachepath, mountpoint, driver));
+    const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& cachepath     = std::get<std::string>(config_data["cachepath"]);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("mhwd --pmcachedir \"{}\" --pmroot {} -f -i pci {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
+    tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
     std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
 #endif
 

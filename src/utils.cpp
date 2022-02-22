@@ -102,7 +102,7 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log"), mountpoint, command);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
     if (follow) {
         tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         return;

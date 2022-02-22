@@ -807,7 +807,7 @@ void install_base() noexcept {
         pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser", "mhwd-cachyos"});
     packages = utils::make_multiline(pkg_list, false, " ");
 
     spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
