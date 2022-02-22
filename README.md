@@ -91,12 +91,12 @@ Main Menu
 │   ├── Install Desktop
 │   ├── Install Bootloader
 │   ├── Configure Base
-|   │   ├── Generate FSTAB (seems broken)
+|   │   ├── Generate FSTAB
 |   │   ├── Set Hostname
 |   │   ├── Set System Locale
 |   │   ├── Set Timezone and Clock
 |   │   ├── Set Root Password
-|   │   └── Add New User(s) (seems broken)
+|   │   └── Add New User(s)
 |   │
 │   ├── Install Custom Packages
 │   ├── System Tweaks
