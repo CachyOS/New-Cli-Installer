@@ -38,7 +38,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME fmt
   GITHUB_REPOSITORY fmtlib/fmt
-  GIT_TAG 70dc3de053b6814c023faebbd21525aab575d25d
+  GIT_TAG 86477f7ecc1606e15abae1ff784e6b0c55d99619
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
