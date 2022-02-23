@@ -375,7 +375,7 @@ void set_root_password() noexcept {
 
     std::error_code err{};
     utils::exec(fmt::format(FMT_COMPILE("echo -e \"{}\n{}\" > /tmp/.passwd"), pass, confirm));
-    utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"passwd root\" < /tmp/.passwd &>/dev/null"), mountpoint));
+    utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd root < /tmp/.passwd &>/dev/null"), mountpoint));
     fs::remove("/tmp/.passwd", err);
 #endif
 }
@@ -488,7 +488,7 @@ void create_new_user() noexcept {
     }
     std::error_code err{};
     utils::exec(fmt::format(FMT_COMPILE("echo -e \"{}\\n{}\" > /tmp/.passwd"), pass, confirm));
-    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"passwd {}\" < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
+    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd {} < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
     spdlog::info("create user pwd: {}", ret_status);
     fs::remove("/tmp/.passwd", err);
 
