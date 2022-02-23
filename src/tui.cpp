@@ -12,7 +12,6 @@
 #include <sys/mount.h>                             // for mount
 #include <fstream>                                 // for ofstream
 #include <filesystem>                              // for exists, is_directory
-#include <regex>                                   // for regex_search, match_results<>::_Base_type
 #include <string>                                  // for basic_string
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
@@ -26,6 +25,7 @@ namespace fs = std::filesystem;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
 
+#include <range/v3/algorithm/any_of.hpp>
 #include <range/v3/algorithm/copy.hpp>
 #include <range/v3/algorithm/search.hpp>
 
@@ -389,7 +389,7 @@ void create_new_user() noexcept {
     }
 
     // Loop while username is blank, has spaces, or has capital letters in it.
-    while (user.empty() || std::regex_match(user, std::regex{"\\s+|\\'"}) || std::regex_match(user, std::regex{".*[A-Z]"})) {
+    while (user.empty() || (user.find_first_of(" ") != std::string::npos) || ranges::any_of(user, [](char ch) { return std::isupper(ch); })) {
         user.clear();
         static constexpr auto user_err_body = "An incorrect user name was entered. Please try again.";
         if (!detail::inputbox_widget(user, user_err_body, size(HEIGHT, GREATER_THAN, 1))) {
@@ -1945,7 +1945,7 @@ void mount_partitions() noexcept {
         mount_dev       = std::move(value);
 
         // loop while the mountpoint specified is incorrect (is only '/', is blank, or has spaces).
-        while ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || std::regex_match(mount_dev, std::regex{"\\s+|\\'"})) {
+        while ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || (mount_dev.find_first_of(" ") != std::string::npos)) {
             // Warn user about naming convention
             detail::msgbox_widget("\nPartition cannot be mounted due to a problem with the mountpoint name.\nA name must be given after a forward slash.\n");
             // Ask user for mountpoint again
