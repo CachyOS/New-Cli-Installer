@@ -868,7 +868,7 @@ void install_desktop() noexcept {
 #endif
 
     // Prep variables
-    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm"};
+    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "openbox"};
 
     // Create the base list of packages
     std::vector<std::string> install_packages{};
@@ -901,6 +901,7 @@ void install_desktop() noexcept {
     constexpr std::string_view xfce{"xfce"};
     constexpr std::string_view cutefish{"cutefish"};
     constexpr std::string_view wayfire{"wayfire"};
+    constexpr std::string_view openbox{"openbox"};
 
     bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
@@ -940,6 +941,10 @@ void install_desktop() noexcept {
     found = ranges::search(desktop_env, wayfire);
     if (!found.empty()) {
         pkg_list.insert(pkg_list.cend(), {"wayfire", "wayfire-plugins-extra", "wf-config", "wf-shell", "wf-recorder", "nwg-drawer"});
+    }
+    found = ranges::search(desktop_env, openbox);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"openbox", "obconf"});
     }
 
     if (needed_xorg) {

@@ -3,6 +3,8 @@ CLI net-installer for CachyOS, inspired by manjaro-architect
 
 This installer provides online installation for CachyOS.
 
+Fast and smooth installer for Arch based operating system.
+
 Requirements
 ------------
 * C++20 feature required (tested with GCC 11.1.0 and Clang 13(clang will not compile it with libstdc++ 11.1.0 because of c++20 standard ranges library)
