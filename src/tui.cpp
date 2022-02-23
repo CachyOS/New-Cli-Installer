@@ -45,20 +45,20 @@ bool exit_done() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    static constexpr auto CloseInstBody = "Close installer?";
-    const auto& mountpoint              = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& target_mnt              = fmt::format(FMT_COMPILE("findmnt --list -o TARGET | grep {} 2>/dev/null"), mountpoint);
+    static constexpr auto close_inst_body = "\nClose installer?\n";
+    const auto& mountpoint                = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& target_mnt                = fmt::format(FMT_COMPILE("findmnt --list -o TARGET | grep {} 2>/dev/null"), mountpoint);
     if (!target_mnt.empty()) {
         utils::final_check();
         const auto& checklist = std::get<std::string>(config_data["CHECKLIST"]);
-        const auto& do_close  = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{}\n{}\n"), CloseInstBody, checklist), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
+        const auto& do_close  = detail::yesno_widget(fmt::format(FMT_COMPILE("{}{}\n"), close_inst_body, checklist), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
         /* clang-format off */
         if (!do_close) { return false; }
         /* clang-format on */
 
         spdlog::info("exit installer.");
 
-        static constexpr auto LogInfo = "Would you like to save\nthe installation-log to the installed system?\nIt will be copied to\n";
+        static constexpr auto LogInfo = "Would you like to save\nthe installation-log\nto the installed system?\nIt will be copied to\n";
         const auto& do_save_log       = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{} {}/cachyos-install.log\n"), LogInfo, mountpoint), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
         if (do_save_log) {
             std::filesystem::copy_file("/tmp/cachyos-install.log", fmt::format(FMT_COMPILE("{}/cachyos-install.log"), mountpoint), fs::copy_options::overwrite_existing);
@@ -66,20 +66,16 @@ bool exit_done() noexcept {
         utils::umount_partitions();
         utils::clear_screen();
         return true;
-    } else {
-        const auto& do_close = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{}\n"), CloseInstBody), size(HEIGHT, LESS_THAN, 10) | size(WIDTH, LESS_THAN, 40));
-        /* clang-format off */
-        if (!do_close) { return false; }
-        /* clang-format on */
-
-        utils::umount_partitions();
-        utils::clear_screen();
-        return true;
     }
-    return false;
-#else
-    return true;
+    const auto& do_close = detail::yesno_widget(close_inst_body, size(HEIGHT, LESS_THAN, 10) | size(WIDTH, LESS_THAN, 40));
+    /* clang-format off */
+    if (!do_close) { return false; }
+    /* clang-format on */
+
+    utils::umount_partitions();
+    utils::clear_screen();
 #endif
+    return true;
 }
 
 void btrfs_subvolumes() noexcept {
