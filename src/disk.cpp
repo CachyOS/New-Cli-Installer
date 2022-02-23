@@ -118,4 +118,17 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
 #endif
 }
 
+std::vector<std::string> lvm_show_vg() noexcept {
+    const auto& vg_list = utils::make_multiline(utils::exec("lvs --noheadings | awk '{print $2}' | uniq"));
+
+    std::vector<std::string> res{};
+    res.reserve(vg_list.size());
+    for (const auto& vg : vg_list) {
+        const auto& temp = utils::exec(fmt::format(FMT_COMPILE("vgdisplay {} | grep -i \"vg size\" | {}"), vg, "awk '{print $3$4}'"));
+        res.push_back(temp);
+    }
+
+    return res;
+}
+
 }  // namespace utils

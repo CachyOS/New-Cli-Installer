@@ -222,7 +222,7 @@ void set_xkbmap() noexcept {
     const auto& xkbmap_list           = utils::make_multiline(keymaps_xkb, false, " ");
 
     auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
+    std::int32_t selected{86};
     bool success{};
     std::string_view xkbmap_choice{};
     auto ok_callback = [&] {
@@ -1686,6 +1686,73 @@ void lvm_detect() noexcept {
     }
 }
 
+void lvm_del_vg() noexcept {
+    // Generate list of VGs for selection
+    const auto& vg_list = utils::lvm_show_vg();
+
+    // If no VGs, no point in continuing
+    if (vg_list.empty()) {
+        detail::msgbox_widget("\nNo Volume Groups found.\n");
+        return;
+    }
+
+    // Select VG
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    std::string sel_vg{};
+    auto ok_callback = [&] {
+        sel_vg = vg_list[static_cast<size_t>(selected)];
+        screen.ExitLoopClosure()();
+    };
+    /* clang-format off */
+    static constexpr auto del_lvmvg_body = "\nSelect Volume Group to delete.\nAll Logical Volumes within will also be deleted.\n";
+    detail::menu_widget(vg_list, ok_callback, &selected, &screen, del_lvmvg_body);
+    if (sel_vg.empty()) { return; }
+    /* clang-format on */
+
+    // Ask for confirmation
+    const auto& do_action = detail::yesno_widget("\nConfirm deletion of Volume Group(s) and Logical Volume(s).\n");
+    /* clang-format off */
+    if (!do_action) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    // if confirmation given, delete
+    utils::exec(fmt::format(FMT_COMPILE("vgremove -f {} 2>/dev/null"), sel_vg), true);
+#endif
+}
+
+void lvm_menu() noexcept {
+    const std::vector<std::string> menu_entries = {
+        "Create VG and LV(s)",
+        "Delete Volume Groups",
+        "Delete *ALL* VGs, LVs, PVs",
+        "Back",
+    };
+
+    tui::lvm_detect();
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+        switch (selected) {
+        case 1:
+            tui::lvm_del_vg();
+            break;
+        case 0:
+        case 2:
+            break;
+        default:
+            screen.ExitLoopClosure()();
+            return;
+        }
+    };
+
+    static constexpr auto lvm_menu_body = "\nLogical Volume Management (LVM) allows 'virtual' hard drives (Volume Groups)\nand partitions (Logical Volumes) to be created from existing drives\nand partitions. A Volume Group must be created first, then one or more\nLogical Volumes in it.\n \nLVM can also be used with an encrypted partition to create multiple logical\nvolumes (e.g. root and home) in it.\n";
+    const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, lvm_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+}
+
 void make_esp() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -2235,6 +2302,9 @@ void prep_menu() noexcept {
             }
             break;
         }
+        case 4:
+            tui::lvm_menu();
+            break;
         case 5:
             tui::luks_menu_advanced();
             break;
@@ -2242,7 +2312,6 @@ void prep_menu() noexcept {
             tui::mount_partitions();
             break;
         case 3:
-        case 4:
         case 6:
             SPDLOG_ERROR("Implement me!");
             break;
