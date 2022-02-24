@@ -1,3 +1,5 @@
+<img src="./demo.gif" alt="Demo image"></img>
+
 # cachyos-new-installer
 CLI net-installer for CachyOS, inspired by manjaro-architect
 
