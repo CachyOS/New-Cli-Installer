@@ -61,7 +61,7 @@ bool exit_done() noexcept {
         static constexpr auto LogInfo = "Would you like to save\nthe installation-log\nto the installed system?\nIt will be copied to\n";
         const auto& do_save_log       = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{} {}/cachyos-install.log\n"), LogInfo, mountpoint), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
         if (do_save_log) {
-            std::filesystem::copy_file("/tmp/cachyos-install.log", fmt::format(FMT_COMPILE("{}/cachyos-install.log"), mountpoint), fs::copy_options::overwrite_existing);
+            fs::copy_file("/tmp/cachyos-install.log", fmt::format(FMT_COMPILE("{}/cachyos-install.log"), mountpoint), fs::copy_options::overwrite_existing);
         }
         utils::umount_partitions();
         utils::clear_screen();
@@ -1280,6 +1280,15 @@ void show_devices() noexcept {
     detail::msgbox_widget(lsblk, size(HEIGHT, GREATER_THAN, 5));
 }
 
+// Refresh pacman keys
+void refresh_pacman_keys() noexcept {
+#ifdef NDEVENV
+    utils::arch_chroot("pacman-key --init;pacman-key --populate archlinux cachyos;pacman-key --refresh-keys;");
+#else
+    SPDLOG_DEBUG("({}) Function is doing nothing in dev environment!", __PRETTY_FUNCTION__);
+#endif
+}
+
 // This function does not assume that the formatted device is the Root installation device as
 // more than one device may be formatted. Root is set in the mount_partitions function.
 bool select_device() noexcept {
@@ -2320,11 +2329,7 @@ void prep_menu() noexcept {
             tui::configure_mirrorlist();
             break;
         case 9:
-#ifdef NDEVENV
-            utils::arch_chroot("pacman-key --init;pacman-key --populate archlinux cachyos;pacman-key --refresh-keys;");
-#else
-            SPDLOG_DEBUG("({}) Function is doing nothing in dev environment!", __PRETTY_FUNCTION__);
-#endif
+            tui::refresh_pacman_keys();
             break;
         case 10:
             tui::set_cache();
