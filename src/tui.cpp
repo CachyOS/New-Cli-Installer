@@ -870,7 +870,7 @@ void install_desktop() noexcept {
 #endif
 
     // Prep variables
-    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "openbox"};
+    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "openbox", "bspwm"};
 
     // Create the base list of packages
     std::vector<std::string> install_packages{};
@@ -904,11 +904,12 @@ void install_desktop() noexcept {
     constexpr std::string_view cutefish{"cutefish"};
     constexpr std::string_view wayfire{"wayfire"};
     constexpr std::string_view openbox{"openbox"};
+    constexpr std::string_view bspwm{"bspwm"};
 
     bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock", "i3status"});
+        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock", "i3status", "rofi", "polybar", "lightdm", "picom", "dunst"});
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, sway);
@@ -920,7 +921,7 @@ void install_desktop() noexcept {
         /* clang-format off */
         static constexpr std::array to_be_inserted{"plasma-desktop", "plasma-framework", "plasma-nm", "plasma-pa", "plasma-workspace",
             "konsole", "kate", "dolphin", "sddm", "sddm-kcm", "plasma", "plasma-wayland-protocols", "plasma-wayland-session",
-            "gamemode", "lib32-gamemode", "ksysguard", "pamac-aur", "openssh", "btop"};
+            "gamemode", "lib32-gamemode", "ksysguard", "pamac-aur"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
@@ -947,11 +948,19 @@ void install_desktop() noexcept {
     found = ranges::search(desktop_env, openbox);
     if (!found.empty()) {
         pkg_list.insert(pkg_list.cend(), {"openbox", "obconf"});
+        needed_xorg = true;
+    }
+    // NOTE: JAPAN edition
+    found = ranges::search(desktop_env, bspwm);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "picom"});
+        needed_xorg = true;
     }
 
     if (needed_xorg) {
         pkg_list.insert(pkg_list.cend(), {"libwnck3", "xf86-input-libinput", "xf86-video-fbdev", "xf86-video-vesa", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr", "xf86-video-amdgpu", "xf86-video-ati", "xf86-video-intel"});
     }
+    pkg_list.insert(pkg_list.cend(), {"alacritty", "openssh", "btop"});
 
     const std::string packages = utils::make_multiline(pkg_list, false, " ");
 
