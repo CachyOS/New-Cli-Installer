@@ -47,6 +47,7 @@ void set_swappiness() noexcept;
 void parse_config() noexcept;
 void setup_luks_keyfile() noexcept;
 void grub_mkconfig() noexcept;
+void enable_services() noexcept;
 void final_check() noexcept;
 
 template <typename T = std::int32_t,

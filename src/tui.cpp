@@ -967,6 +967,8 @@ void install_desktop() noexcept {
         return;
     }
     detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap -c {} {}"), mountpoint, packages)});
+
+    utils::enable_services();
 #endif
 }
 

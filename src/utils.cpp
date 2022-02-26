@@ -678,8 +678,8 @@ void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unuse
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^#autologin-user=/autologin-user={}/' /mnt/etc/lightdm/lightdm.conf"), user));
         utils::exec("sed -i 's/^#autologin-user-timeout=0/autologin-user-timeout=0/' /mnt/etc/lightdm/lightdm.conf");
 
-        utils::arch_chroot("groupadd -r autologin");
-        utils::arch_chroot(fmt::format(FMT_COMPILE("gpasswd -a {} autologin"), user));
+        utils::arch_chroot("groupadd -r autologin", false);
+        utils::arch_chroot(fmt::format(FMT_COMPILE("gpasswd -a {} autologin"), user), false);
     } else if (dm == "sddm") {
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' /mnt/etc/sddm.conf"), user));
     } else if (dm == "lxdm") {
@@ -773,6 +773,39 @@ void grub_mkconfig() noexcept {
     // check_for_error "grub-mkconfig" $?
 }
 
+void enable_services() noexcept {
+    spdlog::info("Enabling services...");
+
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    static constexpr std::array enable_systemd{"avahi-daemon", "bluetooth", "cronie", "ModemManager", "NetworkManager", "org.cups.cupsd", "tlp", "haveged", "ufw", "apparmor", "fstrim.timer"};
+    for (auto&& service : enable_systemd) {
+        if (!fs::exists(fmt::format(FMT_COMPILE("{}/usr/lib/systemd/system/{}.service"), mountpoint, service))) {
+            continue;
+        }
+        utils::arch_chroot(fmt::format(FMT_COMPILE("systemctl enable {}"), service), false);
+        spdlog::info("enabled service {}", service);
+    }
+
+    // enable display manager for systemd
+    const auto& temp = fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq"), mountpoint);
+    if (utils::exec(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp), true) == "0") {
+        utils::arch_chroot("systemctl enable lightdm", false);
+    } else if (utils::exec(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp), true) == "0") {
+        utils::arch_chroot("systemctl enable sddm", false);
+    } else if (utils::exec(fmt::format(FMT_COMPILE("{} gdm &> /dev/null"), temp), true) == "0") {
+        utils::arch_chroot("systemctl enable gdm", false);
+    } else if (utils::exec(fmt::format(FMT_COMPILE("{} lxdm &> /dev/null"), temp), true) == "0") {
+        utils::arch_chroot("systemctl enable lxdm", false);
+    } else if (utils::exec(fmt::format(FMT_COMPILE("{} ly &> /dev/null"), temp), true) == "0") {
+        utils::arch_chroot("systemctl enable ly", false);
+    }
+#endif
+}
+
 void final_check() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -790,7 +823,7 @@ void final_check() noexcept {
     const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
     // Check if bootloader is installed
     if (system_info == "BIOS") {
-        if (utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} \"pacman -Qq grub\" &> /dev/null"), mountpoint), true) != "0") {
+        if (utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), mountpoint), true) != "0") {
             checklist += "- Bootloader is not installed\n";
         }
     }
