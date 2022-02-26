@@ -335,7 +335,7 @@ void set_hw_clock() noexcept {
     auto ok_callback = [&] {
 #ifdef NDEVENV
         const auto& clock_type = menu_entries[static_cast<std::size_t>(selected)];
-        utils::arch_chroot(fmt::format(FMT_COMPILE("hwclock --systohc --{}"), clock_type));
+        utils::arch_chroot(fmt::format(FMT_COMPILE("hwclock --systohc --{}"), clock_type), false);
 #endif
         screen.ExitLoopClosure()();
     };
