@@ -474,7 +474,7 @@ void create_new_user() noexcept {
 #ifdef NDEVENV
     // Create the user, set password, then remove temporary password file
     utils::arch_chroot(fmt::format(FMT_COMPILE("groupadd {}"), user), false);
-    utils::arch_chroot(fmt::format(FMT_COMPILE("useradd {0} -m -g {0} -G wheel,storage,power,network,video,audio,lp,sys,input -s {1}"), user, shell), false);
+    utils::arch_chroot(fmt::format(FMT_COMPILE("useradd {0} -m -g {0} -G sudo,storage,power,network,video,audio,lp,sys,input -s {1}"), user, shell), false);
     spdlog::info("add user to groups");
 
     // check if user has been created
@@ -493,7 +493,7 @@ void create_new_user() noexcept {
     utils::arch_chroot(fmt::format(FMT_COMPILE("chown -R {0}:{0} /home/{0}"), user), false);
     const auto& sudoers_file = fmt::format(FMT_COMPILE("{}/etc/sudoers"), mountpoint);
     if (fs::exists(sudoers_file)) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i '/%wheel ALL=(ALL) ALL/s/^#//' {}"), sudoers_file));
+        utils::exec(fmt::format(FMT_COMPILE("sed -i '/NOPASSWD/!s/# %sudo/%sudo/g' {}"), sudoers_file));
     }
 #endif
 }
@@ -609,7 +609,8 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs
 findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
 lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub)";
 
-        const auto& bash_code = fmt::format(FMT_COMPILE("{}\ngrub-install --target=x86_64-efi --efi-directory={} --bootloader-id={} --recheck\n"), bash_codepart, uefi_mount, bootid);
+        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
+        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\ngrub-install --target=x86_64-efi --efi-directory={} --bootloader-id={} --recheck\n{}\n"), bash_codepart, uefi_mount, bootid, mkconfig_codepart);
         std::ofstream grub_installer{grub_installer_path};
         grub_installer << bash_code;
     }
@@ -803,7 +804,8 @@ void install_base() noexcept {
         pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser", "mhwd-cachyos"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "mhwd-cachyos", "vim"});
+    pkg_list.insert(pkg_list.cend(), {"cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
     packages = utils::make_multiline(pkg_list, false, " ");
 
     spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
@@ -817,7 +819,7 @@ void install_base() noexcept {
         detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap -c {} {} |& tee /tmp/pacstrap.log"), mountpoint, packages)});
     }
 
-    std::filesystem::copy_file("/etc/pacman.conf", fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint), fs::copy_options::overwrite_existing);
+    fs::copy_file("/etc/pacman.conf", fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint), fs::copy_options::overwrite_existing);
     std::ofstream{base_installed};
 
     // mkinitcpio handling for specific filesystems
@@ -1087,7 +1089,8 @@ void bios_bootloader() {
 ln -s /hostlvm /run/lvm
 pacman -S --noconfirm --needed grub os-prober grub-btrfs
 findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-grub-install --target=i386-pc --recheck)";
+grub-install --target=i386-pc --recheck
+grub-mkconfig -o /boot/grub/grub.cfg)";
 
         const auto& bash_code = fmt::format(FMT_COMPILE("{} {}\n"), bash_codepart, device_info);
         std::ofstream grub_installer{grub_installer_path};
