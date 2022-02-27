@@ -63,7 +63,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
    CPMAddPackage(
      NAME range-v3
      GITHUB_REPOSITORY ericniebler/range-v3
-     GIT_TAG 9aa032ccd0eb4bd77f58e5b181168f1038c222c6
+     GIT_TAG d800a032132512a54c291ce55a2a43e0460591c7
      EXCLUDE_FROM_ALL YES
    )
 endif()
