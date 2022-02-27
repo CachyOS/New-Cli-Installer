@@ -37,7 +37,7 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
         fs::current_path("/mnt");
         auto subvol_list = utils::make_multiline(subvols, false, " ");
         for (const auto& subvol : subvol_list) {
-            utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume create {}"), subvol), true);
+            utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume create {} 2>>/tmp/cachyos-install.log"), subvol), true);
         }
         fs::current_path(saved_path);
         // Mount subvolumes
@@ -70,10 +70,10 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
     // Create subvolumes automatically
     const auto& saved_path = fs::current_path();
     fs::current_path("/mnt");
-    utils::exec("btrfs subvolume create @", true);
-    utils::exec("btrfs subvolume create @home", true);
-    utils::exec("btrfs subvolume create @cache", true);
-    // utils::exec("btrfs subvolume create @snapshots", true);
+    utils::exec("btrfs subvolume create @ 2>>/tmp/cachyos-install.log", true);
+    utils::exec("btrfs subvolume create @home 2>>/tmp/cachyos-install.log", true);
+    utils::exec("btrfs subvolume create @cache 2>>/tmp/cachyos-install.log", true);
+    // utils::exec("btrfs subvolume create @snapshots 2>>/tmp/cachyos-install.log", true);
     fs::current_path(saved_path);
     // Mount subvolumes
     umount("/mnt");
