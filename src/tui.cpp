@@ -1047,6 +1047,7 @@ void bios_bootloader() {
         return;
     }
 #ifdef NDEVENV
+    spdlog::info("if root is encrypted, amend /etc/default/grub");
     // if root is encrypted, amend /etc/default/grub
     utils::boot_encrypted_setting();
 
@@ -1058,17 +1059,20 @@ void bios_bootloader() {
     const auto& mountpoint   = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& device_info  = std::get<std::string>(config_data["DEVICE"]);
 
+    spdlog::info("if /boot is LVM (whether using a seperate /boot mount or not), amend grub");
     // if /boot is LVM (whether using a seperate /boot mount or not), amend grub
     if ((lvm == 1 && lvm_sep_boot == 0) || lvm_sep_boot == 2) {
         utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/GRUB_PRELOAD_MODULES=\\\"/GRUB_PRELOAD_MODULES=\\\"lvm /g\" {}/etc/default/grub"), mountpoint));
         utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
     }
 
+    spdlog::info("If root is on btrfs volume, amend grub");
     // If root is on btrfs volume, amend grub
     if (utils::exec(fmt::format(FMT_COMPILE("findmnt -no FSTYPE {}"), mountpoint)) == "btrfs") {
         utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
     }
 
+    spdlog::info("Same setting is needed for LVM");
     // Same setting is needed for LVM
     if (lvm == 1) {
         utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
@@ -1093,6 +1097,7 @@ grub-mkconfig -o /boot/grub/grub.cfg)";
         grub_installer << bash_code;
     }
 
+    spdlog::info("If the root is on btrfs-subvolume, amend grub installation");
     // If the root is on btrfs-subvolume, amend grub installation
     auto ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
     if (ret_status != "0") {
@@ -1117,6 +1122,7 @@ grub-mkconfig -o /boot/grub/grub.cfg)";
         utils::exec(fmt::format(FMT_COMPILE("sed '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' -i {}"), grub_installer_path));
     }
 
+    spdlog::info("Remove os-prober if not selected");
     // Remove os-prober if not selected
     constexpr std::string_view needle{"os-prober"};
     const auto& found = ranges::search(selected_bootloader, needle);
@@ -1135,9 +1141,11 @@ grub-mkconfig -o /boot/grub/grub.cfg)";
     fs::create_directory("/mnt/hostlvm", err);
     utils::exec("mount --bind /run/lvm /mnt/hostlvm");
 
+    spdlog::info("install grub");
     // install grub
     utils::arch_chroot("grub_installer.sh");
 
+    spdlog::info("the grub_installer is no longer needed - there still needs to be a better way to do this");
     // the grub_installer is no longer needed - there still needs to be a better way to do this
     fs::remove(grub_installer_path, err);
 
