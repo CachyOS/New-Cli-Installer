@@ -103,7 +103,7 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
     // Mount subvolumes one by one
     for (const auto& subvol : utils::make_multiline(utils::exec("cat /tmp/.subvols"))) {
         // Ask for mountpoint
-        const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of the subvolume {}\nas it would appear in installed system\n(without prepending /mnt).\n"), subvol);
+        const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending /mnt).\n"), subvol);
         std::string mountpoint{"/"};
         if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return;
