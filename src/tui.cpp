@@ -432,8 +432,8 @@ void create_new_user() noexcept {
 #ifdef NDEVENV
         if (selected != 1) {
             const auto& packages  = fmt::format(FMT_COMPILE("cachyos-{}-config"), (selected == 0) ? "zsh" : "fish");
-            const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
             const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
+            const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
             detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
         }
 #endif
