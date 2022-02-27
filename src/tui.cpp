@@ -514,14 +514,8 @@ void install_cust_pkgs() noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
-
-    if (hostcache) {
-        // utils::exec(fmt::format(FMT_COMPILE("pacstrap {} {}"), mountpoint, packages));
-        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} {}"), mountpoint, packages)});
-        return;
-    }
-    // utils::exec(fmt::format(FMT_COMPILE("pacstrap -c {} {}"), mountpoint, packages));
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap -c {} {}"), mountpoint, packages)});
+    const auto& cmd        = (hostcache) ? "pacstrap" : "pacstrap -c";
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
 #endif
 }
 
@@ -812,11 +806,8 @@ void install_base() noexcept {
 #ifdef NDEVENV
     // filter_packages
     const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
-    if (hostcache) {
-        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} {} |& tee /tmp/pacstrap.log"), mountpoint, packages)});
-    } else {
-        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap -c {} {} |& tee /tmp/pacstrap.log"), mountpoint, packages)});
-    }
+    const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
 
     fs::copy_file("/etc/pacman.conf", fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint), fs::copy_options::overwrite_existing);
     std::ofstream{base_installed};
@@ -969,13 +960,8 @@ void install_desktop() noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
-
-    if (hostcache) {
-        detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} {}"), mountpoint, packages)});
-        return;
-    }
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap -c {} {}"), mountpoint, packages)});
-
+    const auto& cmd        = (hostcache) ? "pacstrap" : "pacstrap -c";
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
     utils::enable_services();
 #endif
 }
