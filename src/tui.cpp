@@ -472,6 +472,7 @@ void create_new_user() noexcept {
 
 #ifdef NDEVENV
     // Create the user, set password, then remove temporary password file
+    utils::arch_chroot("groupadd sudo", false);
     utils::arch_chroot(fmt::format(FMT_COMPILE("groupadd {}"), user), false);
     utils::arch_chroot(fmt::format(FMT_COMPILE("useradd {0} -m -g {0} -G sudo,storage,power,network,video,audio,lp,sys,input -s {1}"), user, shell), false);
     spdlog::info("add user to groups");
