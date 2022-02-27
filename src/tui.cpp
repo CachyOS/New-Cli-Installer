@@ -422,22 +422,24 @@ void create_new_user() noexcept {
                 break;
             case 2: {
                 shell = "/usr/bin/fish";
-
-#ifdef NDEVENV
-                std::string_view packages{"cachyos-fish-config"};
-                const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
-                if (hostcache) {
-                    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} {} |& tee /tmp/pacstrap.log"), mountpoint, packages)});
-                    break;
-                }
-                detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap -c {} {} |& tee /tmp/pacstrap.log"), mountpoint, packages)});
-#endif
                 break;
             }
             }
             screen.ExitLoopClosure()();
         };
         detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, shells_options_body, detail::WidgetBoxSize{.text_size = nothing});
+
+#ifdef NDEVENV
+        if (selected != 1) {
+            const auto& packages  = fmt::format(FMT_COMPILE("cachyos-{}-config"), (selected == 0) ? "zsh" : "fish");
+            const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
+            if (hostcache) {
+                detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} {} |& tee /tmp/pacstrap.log"), mountpoint, packages)});
+                break;
+            }
+            detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap -c {} {} |& tee /tmp/pacstrap.log"), mountpoint, packages)});
+        }
+#endif
     }
 
     spdlog::info("default shell: [{}]", shell);
