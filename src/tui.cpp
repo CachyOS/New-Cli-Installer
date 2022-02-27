@@ -1085,10 +1085,10 @@ void bios_bootloader() {
 ln -s /hostlvm /run/lvm
 pacman -S --noconfirm --needed grub os-prober grub-btrfs
 findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-grub-install --target=i386-pc --recheck
-grub-mkconfig -o /boot/grub/grub.cfg)";
+grub-install --target=i386-pc --recheck)";
 
-        const auto& bash_code = fmt::format(FMT_COMPILE("{} {}\n"), bash_codepart, device_info);
+        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
+        const auto& bash_code                   = fmt::format(FMT_COMPILE("{} {}\n{}\n"), bash_codepart, device_info, mkconfig_codepart);
         std::ofstream grub_installer{grub_installer_path};
         grub_installer << bash_code;
     }
