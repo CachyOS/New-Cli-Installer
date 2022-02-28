@@ -61,7 +61,7 @@ static void setup_graphics_card() noexcept {
             driver = radiobox_list[static_cast<size_t>(selected)];
             screen.ExitLoopClosure()();
         };
-        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, UseSpaceBar, detail::WidgetBoxSize{.text_size = nothing});
+        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = UseSpaceBar}, {.text_size = nothing});
     }
     /* clang-format off */
     if (driver.empty()) { return; }

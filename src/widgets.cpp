@@ -291,7 +291,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
     screen->Loop(renderer);
 }
 
-void radiolist_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ScreenInteractive* screen, const std::string_view& text, const WidgetBoxSize widget_sizes) noexcept {
+void radiolist_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ScreenInteractive* screen, const WidgetBoxRes widget_res, const WidgetBoxSize widget_sizes) noexcept {
     auto radiolist = Container::Vertical({
         Radiobox(&entries, selected),
     });
@@ -308,9 +308,9 @@ void radiolist_widget(const std::vector<std::string>& entries, const std::functi
     });
 
     Components children{};
-    if (!text.empty()) {
+    if (!widget_res.text.empty()) {
         children = {
-            Renderer([&] { return detail::multiline_text(utils::make_multiline(text)) | widget_sizes.text_size; }),
+            Renderer([&] { return detail::multiline_text(utils::make_multiline(widget_res.text)) | widget_sizes.text_size; }),
             Renderer([] { return separator(); }),
             content,
             Renderer([] { return separator(); }),
@@ -324,7 +324,7 @@ void radiolist_widget(const std::vector<std::string>& entries, const std::functi
     auto global{Container::Vertical(children)};
 
     auto renderer = Renderer(global, [&] {
-        return centered_interative_multi("New CLI Installer", global);
+        return centered_interative_multi(widget_res.title, global);
     });
 
     screen->Loop(renderer);

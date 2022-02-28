@@ -427,7 +427,7 @@ void create_new_user() noexcept {
             }
             screen.ExitLoopClosure()();
         };
-        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, shells_options_body, detail::WidgetBoxSize{.text_size = nothing});
+        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = shells_options_body}, {.text_size = nothing});
 
 #ifdef NDEVENV
         if (selected != 1) {
@@ -652,9 +652,9 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
     /* clang-format on */
 
 #ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("mkdir {}/EFI/boot"), uefi_mount));
+    utils::arch_chroot(fmt::format(FMT_COMPILE("mkdir {}/EFI/boot"), uefi_mount), false);
     spdlog::info("Grub efi binary status:(EFI/cachyos/grubx64.efi): {}", fs::exists(fmt::format(FMT_COMPILE("{0}/EFI/cachyos/grubx64.efi"), uefi_mount)));
-    utils::arch_chroot(fmt::format(FMT_COMPILE("cp -r {0}/EFI/cachyos/grubx64.efi {0}/EFI/boot/bootx64.efi"), uefi_mount));
+    utils::arch_chroot(fmt::format(FMT_COMPILE("cp -r {0}/EFI/cachyos/grubx64.efi {0}/EFI/boot/bootx64.efi"), uefi_mount), false);
 #endif
 
     detail::infobox_widget("\nGrub has been set as the default bootloader.\n");
@@ -861,16 +861,16 @@ void install_desktop() noexcept {
 #endif
 
     // Prep variables
-    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "openbox", "bspwm"};
+    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "openbox", "bspwm", "Kofuku edition"};
 
     // Create the base list of packages
     std::vector<std::string> install_packages{};
-    std::unique_ptr<bool[]> des_state{new bool[available_des.size()]{false}};
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string desktop_env{};
+    std::int32_t selected{};
     auto ok_callback = [&] {
-        desktop_env = detail::from_checklist_string(available_des, des_state.get());
+        desktop_env = available_des[static_cast<std::size_t>(selected)];
         spdlog::info("selected: {}", desktop_env);
         screen.ExitLoopClosure()();
     };
@@ -880,7 +880,7 @@ void install_desktop() noexcept {
     const auto& des_options_body        = fmt::format(FMT_COMPILE("\n{}{}\n"), InstManDEBody, UseSpaceBar);
 
     constexpr auto desktop_title = "New CLI Installer | Install Desktop";
-    detail::checklist_widget(available_des, ok_callback, des_state.get(), &screen, des_options_body, desktop_title, {.text_size = nothing});
+    detail::radiolist_widget(available_des, ok_callback, &selected, &screen, {des_options_body, desktop_title}, {.text_size = nothing});
 
     /* clang-format off */
     if (desktop_env.empty()) { return; }
@@ -896,6 +896,7 @@ void install_desktop() noexcept {
     constexpr std::string_view wayfire{"wayfire"};
     constexpr std::string_view openbox{"openbox"};
     constexpr std::string_view bspwm{"bspwm"};
+    // constexpr std::string_view kofuku{"Kofuku edition"};
 
     bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
@@ -941,12 +942,18 @@ void install_desktop() noexcept {
         pkg_list.insert(pkg_list.cend(), {"openbox", "obconf"});
         needed_xorg = true;
     }
-    // NOTE: JAPAN edition
     found = ranges::search(desktop_env, bspwm);
     if (!found.empty()) {
         pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "picom"});
         needed_xorg = true;
     }
+    // thanks VaughnValle for all your amazing work on Japanese/Nature Rice
+    // @see https://github.com/VaughnValle/kofuku
+    // found = ranges::search(desktop_env, kofuku);
+    // if (!found.empty()) {
+    //    pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "picom-ibhagwan-git", "rofi", "lightdm", "lightdm-webkit2-greeter", "lightdm-webkit2-theme-glorious", "deadd-notification-center", "cachyos-kofuku"});
+    //    needed_xorg = true;
+    //}
 
     if (needed_xorg) {
         pkg_list.insert(pkg_list.cend(), {"libwnck3", "xf86-input-libinput", "xf86-video-fbdev", "xf86-video-vesa", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr", "xf86-video-amdgpu", "xf86-video-ati", "xf86-video-intel"});
@@ -1828,7 +1835,7 @@ void make_esp() noexcept {
             answer = radiobox_list[static_cast<std::size_t>(selected)];
             screen.ExitLoopClosure()();
         };
-        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, MntUefiMessage, {.text_size = nothing});
+        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = MntUefiMessage}, {.text_size = nothing});
     }
 
     /* clang-format off */
