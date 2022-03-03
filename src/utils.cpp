@@ -773,6 +773,25 @@ void grub_mkconfig() noexcept {
     // check_for_error "grub-mkconfig" $?
 }
 
+void set_lightdm_greeter() {
+    auto* config_instance      = Config::instance();
+    auto& config_data          = config_instance->data();
+    const auto& mountpoint     = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& xgreeters_path = fmt::format(FMT_COMPILE("{}/usr/share/xgreeters"), mountpoint);
+    /* clang-format off */
+    if (!fs::exists(xgreeters_path)) { return; }
+    for (const auto& name : fs::directory_iterator{xgreeters_path}) {
+        const auto& temp = name.path().filename().string();
+        if (!temp.starts_with("lightdm-") && !temp.starts_with("-greeter")) { continue; }
+        /* clang-format on */
+        if (temp == "lightdm-gtk-greeter") {
+            continue;
+        }
+        utils::exec(fmt::format(FMT_COMPILE("sed -i -e \"s/^.*greeter-session=.*/greeter-session={}/\" {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
+        break;
+    }
+}
+
 void enable_services() noexcept {
     spdlog::info("Enabling services...");
 
@@ -793,6 +812,7 @@ void enable_services() noexcept {
     // enable display manager for systemd
     const auto& temp = fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq"), mountpoint);
     if (utils::exec(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp), true) == "0") {
+        utils::set_lightdm_greeter();
         utils::arch_chroot("systemctl enable lightdm", false);
     } else if (utils::exec(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp), true) == "0") {
         utils::arch_chroot("systemctl enable sddm", false);

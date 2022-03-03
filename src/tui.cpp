@@ -879,7 +879,7 @@ void install_desktop() noexcept {
     static constexpr auto UseSpaceBar   = "Use [Spacebar] to de/select options listed.";
     const auto& des_options_body        = fmt::format(FMT_COMPILE("\n{}{}\n"), InstManDEBody, UseSpaceBar);
 
-    constexpr auto desktop_title = "New CLI Installer | Install Desktop";
+    static constexpr auto desktop_title = "New CLI Installer | Install Desktop";
     detail::radiolist_widget(available_des, ok_callback, &selected, &screen, {des_options_body, desktop_title}, {.text_size = nothing});
 
     /* clang-format off */
@@ -922,7 +922,7 @@ void install_desktop() noexcept {
     found = ranges::search(desktop_env, xfce);
     if (!found.empty()) {
         /* clang-format off */
-        static constexpr std::array to_be_inserted{"file-roller", "galculator", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lightdm", "lightdm-gtk-greeter", "lightdm-gtk-greeter-settings", "network-manager-applet", "parole", "ristretto", "thunar-archive-plugin", "thunar-media-tags-plugin", "xdg-user-dirs-gtk", "xed", "xfce4", "xfce4-battery-plugin", "xfce4-datetime-plugin", "xfce4-mount-plugin", "xfce4-netload-plugin", "xfce4-notifyd", "xfce4-pulseaudio-plugin", "xfce4-screensaver", "xfce4-screenshooter", "xfce4-taskmanager", "xfce4-wavelan-plugin", "xfce4-weather-plugin", "xfce4-whiskermenu-plugin", "xfce4-xkb-plugin"};
+        static constexpr std::array to_be_inserted{"file-roller", "galculator", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lightdm", "lightdm-gtk-greeter", "lightdm-gtk-greeter-settings", "network-manager-applet", "parole", "ristretto", "thunar-archive-plugin", "thunar-media-tags-plugin", "xdg-user-dirs-gtk", "xed", "xfce4", "xfce4-battery-plugin", "xfce4-datetime-plugin", "xfce4-mount-plugin", "xfce4-netload-plugin", "xfce4-notifyd", "xfce4-pulseaudio-plugin", "xfce4-screensaver", "xfce4-screenshooter", "xfce4-taskmanager", "xfce4-wavelan-plugin", "xfce4-weather-plugin", "xfce4-whiskermenu-plugin", "xfce4-xkb-plugin", "cachyos-xfce-settings"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
@@ -966,6 +966,7 @@ void install_desktop() noexcept {
 #ifdef NDEVENV
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
+    config_data["DE"]      = desktop_env;
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
     const auto& cmd        = (hostcache) ? "pacstrap" : "pacstrap -c";
