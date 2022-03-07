@@ -896,12 +896,12 @@ void install_desktop() noexcept {
     constexpr std::string_view wayfire{"wayfire"};
     constexpr std::string_view openbox{"openbox"};
     constexpr std::string_view bspwm{"bspwm"};
-    // constexpr std::string_view kofuku{"Kofuku edition"};
+    constexpr std::string_view kofuku{"Kofuku edition"};
 
     bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock", "i3status", "rofi", "polybar", "lightdm", "picom", "dunst"});
+        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock", "i3status", "rofi", "polybar", "lightdm", "cachyos-picom-config", "dunst"});
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, sway);
@@ -944,16 +944,16 @@ void install_desktop() noexcept {
     }
     found = ranges::search(desktop_env, bspwm);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "picom"});
+        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config"});
         needed_xorg = true;
     }
     // thanks VaughnValle for all your amazing work on Japanese/Nature Rice
     // @see https://github.com/VaughnValle/kofuku
-    // found = ranges::search(desktop_env, kofuku);
-    // if (!found.empty()) {
-    //    pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "picom-ibhagwan-git", "rofi", "lightdm", "lightdm-webkit2-greeter", "lightdm-webkit2-theme-glorious", "deadd-notification-center", "cachyos-kofuku"});
-    //    needed_xorg = true;
-    //}
+    found = ranges::search(desktop_env, kofuku);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config", "rofi", "lightdm", "lightdm-webkit2-greeter", "cachyos-kofuku"});
+        needed_xorg = true;
+    }
 
     if (needed_xorg) {
         pkg_list.insert(pkg_list.cend(), {"libwnck3", "xf86-input-libinput", "xf86-video-fbdev", "xf86-video-vesa", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr", "xf86-video-amdgpu", "xf86-video-ati", "xf86-video-intel"});
