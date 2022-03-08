@@ -19,7 +19,7 @@ This is tested on Arch Linux, but *any* recent Linux with latest C++20 compiler 
 
 ```sh
 sudo pacman -Sy \
-    base-devel cmake pkg-config make glibmm libnm
+    base-devel cmake pkg-config make
 ```
 
 ### Cloning the source code
