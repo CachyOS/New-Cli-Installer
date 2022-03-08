@@ -1394,6 +1394,7 @@ bool select_filesystem() noexcept {
 
     /* clang-format off */
     if (!success) { return false; }
+    if (selected == 0) { return success; }
     /* clang-format on */
 
     // Warn about formatting!
@@ -1592,8 +1593,9 @@ bool mount_current_partition() noexcept {
 }
 
 void make_swap() noexcept {
-    static constexpr auto SelSwpNone = "None";
-    static constexpr auto SelSwpFile = "Swapfile";
+    static constexpr auto sel_swap_body = "\nSelect SWAP Partition.\nIf using a Swapfile, it will initially set the same size as your RAM.\n";
+    static constexpr auto sel_swap_none = "None";
+    static constexpr auto sel_swap_file = "Swapfile";
 
     auto* config_instance       = Config::instance();
     auto& config_data           = config_instance->data();
@@ -1621,18 +1623,18 @@ void make_swap() noexcept {
             screen.ExitLoopClosure()();
         };
         /* clang-format off */
-        detail::menu_widget(temp, ok_callback, &selected, &screen);
+        detail::menu_widget(temp, ok_callback, &selected, &screen, sel_swap_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
         if (!success) { return; }
         /* clang-format on */
     }
 
     auto& partition = std::get<std::string>(config_data["PARTITION"]);
     /* clang-format off */
-    if (answer == SelSwpNone) { return; }
+    if (answer == sel_swap_none) { return; }
     partition = answer;
     /* clang-format on */
 
-    if (partition == SelSwpFile) {
+    if (partition == sel_swap_file) {
         const auto& total_memory = utils::exec("grep MemTotal /proc/meminfo | awk \'{print $2/1024}\' | sed \'s/\\..*//\'");
         std::string value{fmt::format(FMT_COMPILE("{}M"), total_memory)};
         if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
@@ -1640,7 +1642,7 @@ void make_swap() noexcept {
         }
 
         while (utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"M\\|G\""), value)) == "") {
-            detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), SelSwpFile));
+            detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
             value = fmt::format(FMT_COMPILE("{}M"), total_memory);
             if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
                 return;
@@ -1913,7 +1915,8 @@ void mount_partitions() noexcept {
                 screen.ExitLoopClosure()();
             };
             /* clang-format off */
-            detail::menu_widget(partitions, ok_callback, &selected, &screen);
+            static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n";
+            detail::menu_widget(partitions, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
             if (!success) { return; }
             /* clang-format on */
         }
@@ -2003,7 +2006,8 @@ void mount_partitions() noexcept {
                 screen.ExitLoopClosure()();
             };
             /* clang-format off */
-            detail::menu_widget(temp, ok_callback, &selected, &screen);
+            static constexpr auto extra_part_body = "\nSelect additional partitions in any order, or 'Done' to finish.\n";
+            detail::menu_widget(temp, ok_callback, &selected, &screen, extra_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
             if (!success) { return; }
             /* clang-format on */
         }
@@ -2023,8 +2027,8 @@ void mount_partitions() noexcept {
         if (system_info == "UEFI") { mnt_examples = "/home\n/var"; }
 
         std::string value{"/"};
-        static constexpr auto ExtPartBody1 = "Specify partition mountpoint. Ensure\nthe name begins with a forward slash (/).\nExamples include:";
-        if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), ExtPartBody1, mnt_examples))) { return; }
+        static constexpr auto extra_part_body1 = "Specify partition mountpoint. Ensure\nthe name begins with a forward slash (/).\nExamples include:";
+        if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) { return; }
         /* clang-format on */
         auto& mount_dev = std::get<std::string>(config_data["MOUNT"]);
         mount_dev       = std::move(value);
@@ -2035,7 +2039,7 @@ void mount_partitions() noexcept {
             detail::msgbox_widget("\nPartition cannot be mounted due to a problem with the mountpoint name.\nA name must be given after a forward slash.\n");
             // Ask user for mountpoint again
             value = "/";
-            if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), ExtPartBody1, mnt_examples))) {
+            if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) {
                 return;
             }
             mount_dev = std::move(value);
@@ -2293,7 +2297,6 @@ void prep_menu() noexcept {
         "RAID (optional)",
         "Logical Volume Management (optional)",
         "LUKS Encryption (optional)",
-        "ZFS (optional)",
         "Mount Partitions",
         "Configure Installer Mirrorlist",
         "Refresh Pacman Keys",
@@ -2320,29 +2323,28 @@ void prep_menu() noexcept {
             }
             break;
         }
+        case 3:
+            SPDLOG_ERROR("Implement me!");
+            break;
         case 4:
             tui::lvm_menu();
             break;
         case 5:
             tui::luks_menu_advanced();
             break;
-        case 7:
+        case 6:
             tui::mount_partitions();
             break;
-        case 3:
-        case 6:
-            SPDLOG_ERROR("Implement me!");
-            break;
-        case 8:
+        case 7:
             tui::configure_mirrorlist();
             break;
-        case 9:
+        case 8:
             tui::refresh_pacman_keys();
             break;
-        case 10:
+        case 9:
             tui::set_cache();
             break;
-        case 11:
+        case 10:
             tui::set_fsck_hook();
             break;
         default:
