@@ -120,7 +120,7 @@ endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
-deps = [fmt, spdlog, ftxui, simdjson, cpr]
+deps = [fmt, spdlog, ftxui, cpr]
 if cc.get_id() == 'clang'
   ranges = dependency('range-v3', version : ['>=0.11.0'])
   deps += [ranges]

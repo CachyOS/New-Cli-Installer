@@ -47,6 +47,7 @@ namespace ranges = std::ranges;
 #include <cpr/timeout.h>
 #endif
 
+/*
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wsign-conversion"
@@ -64,6 +65,7 @@ namespace ranges = std::ranges;
 #elif defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
+*/
 
 namespace fs = std::filesystem;
 
@@ -724,6 +726,7 @@ vm.vfs_cache_pressure = 50
 }
 
 void parse_config() noexcept {
+    /*
     using namespace simdjson;
 
     ondemand::parser parser;
@@ -735,6 +738,7 @@ void parse_config() noexcept {
         entry.get(step);
         // spdlog::debug(step);
     }
+    */
 }
 
 void setup_luks_keyfile() noexcept {

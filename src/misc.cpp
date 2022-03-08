@@ -19,7 +19,7 @@ namespace fs = std::filesystem;
 
 namespace tui {
 
-// Revised to deal with partion sizes now being displayed to the user
+// Revised to deal with partition sizes now being displayed to the user
 bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
 #ifdef NDEVENV
     const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("mount | grep {}"), part_user), true);
