@@ -901,7 +901,7 @@ void install_desktop() noexcept {
     bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock", "i3status", "rofi", "polybar", "lightdm", "cachyos-picom-config", "dunst"});
+        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock-color", "i3status", "rofi", "polybar", "ly", "cachyos-picom-config", "dunst", "cachyos-i3wm-settings"});
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, sway);
@@ -912,8 +912,9 @@ void install_desktop() noexcept {
     if (!found.empty()) {
         /* clang-format off */
         static constexpr std::array to_be_inserted{"plasma-desktop", "plasma-framework", "plasma-nm", "plasma-pa", "plasma-workspace",
+            "plasma-integration", "plasma-firewall", "plasma-browser-integration", "plasma-systemmonitor", "plasma-thunderbolt",
             "konsole", "kate", "dolphin", "sddm", "sddm-kcm", "plasma", "plasma-wayland-protocols", "plasma-wayland-session",
-            "gamemode", "lib32-gamemode", "ksysguard", "pamac-aur"};
+            "gamemode", "lib32-gamemode", "ksysguard", "pamac-aur", "octopi", "cachyos-kde-settings"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
@@ -958,7 +959,7 @@ void install_desktop() noexcept {
     if (needed_xorg) {
         pkg_list.insert(pkg_list.cend(), {"libwnck3", "xf86-input-libinput", "xf86-video-fbdev", "xf86-video-vesa", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr", "xf86-video-amdgpu", "xf86-video-ati", "xf86-video-intel"});
     }
-    pkg_list.insert(pkg_list.cend(), {"alacritty", "openssh", "btop"});
+    pkg_list.insert(pkg_list.cend(), {"alacritty", "openssh", "btop", "paru"});
 
     const std::string packages = utils::make_multiline(pkg_list, false, " ");
 
@@ -2066,7 +2067,7 @@ void mount_partitions() noexcept {
 void configure_mirrorlist() noexcept {
     const std::vector<std::string> menu_entries = {
         "Edit Pacman Configuration",
-        "Rank mirrors by speed",
+        //"Rank mirrors by speed",
         "Back",
     };
 
@@ -2079,9 +2080,9 @@ void configure_mirrorlist() noexcept {
             tui::edit_pacman_conf();
             screen.Resume();
             break;
-        case 1:
+        /*case 1:
             SPDLOG_ERROR("Implement me!");
-            break;
+            break;*/
         default:
             screen.ExitLoopClosure()();
             break;
