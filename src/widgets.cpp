@@ -56,10 +56,10 @@ Element centered_widget_nocontrols(const std::string_view& title, const Element&
     });
 }
 
-Component controls_widget(const std::array<std::string_view, 2>&& titles, const std::array<std::function<void()>, 2>&& callbacks, ButtonOption* button_option) noexcept {
+Component controls_widget(const std::array<std::string_view, 2>&& titles, const std::array<std::function<void()>, 2>&& callbacks) noexcept {
     /* clang-format off */
-    auto button_ok       = Button(titles[0].data(), callbacks[0], button_option);
-    auto button_quit     = Button(titles[1].data(), callbacks[1], button_option);
+    auto button_ok       = Button(titles[0].data(), callbacks[0], ButtonOption::WithoutBorder());
+    auto button_quit     = Button(titles[1].data(), callbacks[1], ButtonOption::WithoutBorder());
     /* clang-format on */
 
     auto container = Container::Horizontal({
@@ -134,9 +134,7 @@ std::vector<std::string> from_checklist_vector(const std::vector<std::string>& o
 void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     /* clang-format off */
-    auto button_option   = ButtonOption();
-    button_option.border = false;
-    auto button_back     = Button("OK", screen.ExitLoopClosure(), &button_option);
+    auto button_back     = Button("OK", screen.ExitLoopClosure(), ButtonOption::WithoutBorder());
 
     auto container = Container::Horizontal({button_back});
     auto renderer = Renderer(container, [&] {
@@ -160,8 +158,7 @@ bool inputbox_widget(std::string& value, const std::string_view& content, Decora
         return multiline_text(utils::make_multiline(content)) | hcenter | boxsize;
     });
 
-    ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -202,8 +199,7 @@ bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
         success = true;
         screen.ExitLoopClosure()();
     };
-    ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -233,8 +229,7 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
         success = true;
         screen.ExitLoopClosure()();
     };
-    ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()}, &button_option);
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -261,8 +256,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
         return menu->Render() | center | widget_sizes.content_size;
     });
 
-    ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()}, &button_option);
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -300,8 +294,7 @@ void radiolist_widget(const std::vector<std::string>& entries, const std::functi
         return radiolist->Render() | center | widget_sizes.content_size;
     });
 
-    ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()}, &button_option);
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -336,8 +329,7 @@ void checklist_widget(const std::vector<std::string>& opts, const std::function<
         return checklist->Render() | center | widget_sizes.content_size;
     });
 
-    ButtonOption button_option{.border = false};
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()}, &button_option);
+    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);

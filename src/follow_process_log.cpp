@@ -59,9 +59,7 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
         screen.ExitLoopClosure()();
     };
 
-    auto button_option   = ButtonOption();
-    button_option.border = false;
-    auto button_back     = Button("Back", handle_exit, &button_option);
+    auto button_back     = Button("Back", handle_exit, ButtonOption::WithoutBorder());
     auto container       = Container::Horizontal({button_back});
 
     auto renderer = Renderer(container, [&] {

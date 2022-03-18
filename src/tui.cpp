@@ -931,7 +931,7 @@ void install_desktop() noexcept {
     }
     found = ranges::search(desktop_env, cutefish);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"cutefish", "fish-ui"});
+        pkg_list.insert(pkg_list.cend(), {"cutefish"});
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, wayfire);
@@ -952,7 +952,7 @@ void install_desktop() noexcept {
     // @see https://github.com/VaughnValle/kofuku
     found = ranges::search(desktop_env, kofuku);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config", "rofi", "lightdm", "lightdm-webkit2-greeter", "cachyos-kofuku"});
+        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config", "rofi", "lightdm-webkit2-greeter", "cachyos-kofuku"});
         needed_xorg = true;
     }
 
