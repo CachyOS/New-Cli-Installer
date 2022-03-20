@@ -1,7 +1,7 @@
 project('ftxui', 'cpp',
-    version: '2.0.0',
+    version: '3.0.0',
     license : 'MIT',
-    default_options: ['cpp_std=c++17']
+    default_options: ['cpp_std=c++20']
 )
 
 cpp = meson.get_compiler('cpp')
@@ -37,6 +37,7 @@ ftxui_dom_lib = static_library('ftxui_dom',
       'src/ftxui/dom/border.cpp',
       'src/ftxui/dom/box_helper.hpp',
       'src/ftxui/dom/box_helper.cpp',
+      'src/ftxui/dom/canvas.cpp',
       'src/ftxui/dom/clear_under.cpp',
       'src/ftxui/dom/color.cpp',
       'src/ftxui/dom/composite_decorator.cpp',
@@ -87,6 +88,7 @@ ftxui_component_lib = static_library('ftxui_component',
       'src/ftxui/component/button.cpp',
       'src/ftxui/component/catch_event.cpp',
       'src/ftxui/component/checkbox.cpp',
+      'src/ftxui/component/collapsible.cpp',
       'src/ftxui/component/component.cpp',
       'src/ftxui/component/component_options.cpp',
       'src/ftxui/component/container.cpp',

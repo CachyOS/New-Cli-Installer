@@ -86,7 +86,7 @@ if cc.get_id() == 'gcc'
         '-Wuseless-cast',
 
         '-Wsuggest-attribute=cold',
-        '-Wsuggest-attribute=format',
+        #'-Wsuggest-attribute=format',
         '-Wsuggest-attribute=malloc',
         '-Wsuggest-attribute=noreturn',
         '-Wsuggest-attribute=pure',

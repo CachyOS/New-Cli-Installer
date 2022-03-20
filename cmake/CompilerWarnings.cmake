@@ -60,7 +60,7 @@ function(set_project_warnings project_name)
         -Wuseless-cast # warn if you perform a cast to the same type
 
         -Wsuggest-attribute=cold
-        -Wsuggest-attribute=format
+        #-Wsuggest-attribute=format
         -Wsuggest-attribute=malloc
         -Wsuggest-attribute=noreturn
         -Wsuggest-attribute=pure

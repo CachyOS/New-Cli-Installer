@@ -2,7 +2,7 @@ project('fmt', 'cpp',
     version : '8.1.1',
     license : 'BSD',
     default_options : [
-      'cpp_std=c++14',
+      'cpp_std=c++20',
       'default_library=static',
     ]
 )

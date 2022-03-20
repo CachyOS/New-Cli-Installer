@@ -59,8 +59,8 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
         screen.ExitLoopClosure()();
     };
 
-    auto button_back     = Button("Back", handle_exit, ButtonOption::WithoutBorder());
-    auto container       = Container::Horizontal({button_back});
+    auto button_back = Button("Back", handle_exit, ButtonOption::WithoutBorder());
+    auto container   = Container::Horizontal({button_back});
 
     auto renderer = Renderer(container, [&] {
         return tui::detail::centered_widget(container, "New CLI Installer", tui::detail::multiline_text(utils::make_multiline(process_log, true)) | boxsize | vscroll_indicator | yframe | flex);
