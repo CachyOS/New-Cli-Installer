@@ -134,7 +134,7 @@ std::vector<std::string> from_checklist_vector(const std::vector<std::string>& o
 void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     /* clang-format off */
-    auto button_back     = Button("OK", screen.ExitLoopClosure(), ButtonOption::WithoutBorder());
+    auto button_back = Button("OK", screen.ExitLoopClosure(), ButtonOption::WithoutBorder());
 
     auto container = Container::Horizontal({button_back});
     auto renderer = Renderer(container, [&] {
