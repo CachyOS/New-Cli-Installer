@@ -193,7 +193,7 @@ void set_locale() noexcept {
         detail::menu_widget(locales, ok_callback, &selected, &screen, langBody, {content_size, size(HEIGHT, GREATER_THAN, 1)});
     }
     /* clang-format off */
-    if (!locale.empty()) { return; }
+    if (locale.empty()) { return; }
     /* clang-format on */
 
 #ifdef NDEVENV
@@ -203,8 +203,21 @@ void set_locale() noexcept {
     const auto& locale_config_path = fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint);
     const auto& locale_gen_path    = fmt::format(FMT_COMPILE("{}/etc/locale.gen"), mountpoint);
 
-    utils::exec(fmt::format(FMT_COMPILE("echo \"LANG=\\\"{}\\\"\" > {}"), locale, locale_config_path));
-    utils::exec(fmt::format(FMT_COMPILE("echo \"LC_MESSAGES=\\\"{}\\\"\" >> {}"), locale, locale_config_path));
+    static constexpr auto locale_config_part = R"(LANG="{0}"
+LC_NUMERIC="{0}"
+LC_TIME="{0}"
+LC_MONETARY="{0}"
+LC_PAPER="{0}"
+LC_NAME="{0}"
+LC_ADDRESS="{0}"
+LC_TELEPHONE="{0}"
+LC_MEASUREMENT="{0}"
+LC_IDENTIFICATION="{0}"
+LC_MESSAGES="{0}")";
+
+    std::ofstream locale_config_file{locale_config_path};
+    locale_config_file << fmt::format(locale_config_part, locale);
+
     utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
 
     // Generate locales
@@ -220,7 +233,7 @@ void set_xkbmap() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{86};
     bool success{};
-    std::string_view xkbmap_choice{};
+    std::string xkbmap_choice{};
     auto ok_callback = [&] {
         const auto& keymap = xkbmap_list[static_cast<std::size_t>(selected)];
         xkbmap_choice      = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/_.*//'"), keymap));
@@ -798,7 +811,7 @@ void install_base() noexcept {
         pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "mhwd-cachyos", "vim"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "mhwd-cachyos", "vim", "wget", "micro", "nano", "networkmanager"});
     pkg_list.insert(pkg_list.cend(), {"cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
     packages = utils::make_multiline(pkg_list, false, " ");
 
@@ -1093,7 +1106,7 @@ void bios_bootloader() {
     {
         constexpr auto bash_codepart = R"(#!/bin/bash
 ln -s /hostlvm /run/lvm
-pacman -S --noconfirm --needed grub os-prober grub-btrfs
+pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
 findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
 grub-install --target=i386-pc --recheck)";
 
