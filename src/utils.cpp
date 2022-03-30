@@ -271,7 +271,7 @@ void umount_partitions() noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    auto mount_info             = utils::exec(fmt::format(FMT_COMPILE("mount | grep \"{}\" | {}"), mountpoint_info, "awk \'{print $3}\' | sort -r"));
+    auto mount_info             = utils::exec(fmt::format(FMT_COMPILE("mount | grep \"{}\" | {}"), mountpoint_info, "awk '{print $3}' | sort -r"));
 #ifdef NDEVENV
     utils::exec("swapoff -a");
 #endif

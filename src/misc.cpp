@@ -40,7 +40,7 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
 
     // TODO: reimplement natively
     const auto& str      = utils::make_multiline(partitions);
-    const auto& cmd      = fmt::format(FMT_COMPILE("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed \"s~{1}$\' -\'~~\""), str, partition);
+    const auto& cmd      = fmt::format(FMT_COMPILE("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed s~{1}$' -'~~"), str, partition);
     const auto& res_text = utils::exec(cmd);
     partitions           = utils::make_multiline(res_text);
     number_partitions -= 1;

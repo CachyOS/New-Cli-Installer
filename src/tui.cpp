@@ -603,6 +603,7 @@ void install_grub_uefi() noexcept {
 
 #ifdef NDEVENV
     const auto& mountpoint          = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& luks_dev            = std::get<std::string>(config_data["LUKS_DEV"]);
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
 
     // grub config changes for non zfs root
@@ -612,7 +613,7 @@ void install_grub_uefi() noexcept {
     {
         constexpr auto bash_codepart = R"(#!/bin/bash
 ln -s /hostlvm /run/lvm
-pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs
+pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
 findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
 lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub)";
 
@@ -637,12 +638,20 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
     if (ret_status != "0") {
         utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
     }
+    // If encryption used amend grub
+    if (luks_dev != "") {
+        const auto& luks_dev_formatted = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
+        ret_status                     = utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
+        if (ret_status == "0") {
+            spdlog::info("adding kernel parameter {}", luks_dev);
+        }
+    }
 
     // If Full disk encryption is used, use a keyfile
     const auto& fde = std::get<std::int32_t>(config_data["fde"]);
     if (fde == 1) {
         spdlog::info("Full disk encryption enabled");
-        utils::exec(fmt::format(FMT_COMPILE("sed '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' -i {}"), grub_installer_path));
+        utils::exec(fmt::format(FMT_COMPILE("sed -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
     }
 
     std::error_code err{};
@@ -693,13 +702,13 @@ void install_systemd_boot() noexcept {
     utils::arch_chroot("sdboot-manage gen", false);
 
     // Check if the volume is removable. If so, dont use autodetect
-    const auto& root_name   = utils::exec("mount | awk \'/\\/mnt / {print $1}\' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r \'s/^[^[:alnum:]]+//\' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk \'/disk/ {print $1}\'"));
+    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
     const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
     if (utils::to_int(removable.data()) == 1) {
         // Remove autodetect hook
-        utils::exec("sed -i -e \'/^HOOKS=/s/\\ autodetect//g\' /mnt/etc/mkinitcpio.conf");
+        utils::exec("sed -i -e '/^HOOKS=/s/\\ autodetect//g' /mnt/etc/mkinitcpio.conf");
         spdlog::info("\"Autodetect\" hook was removed");
     }
 #endif
@@ -1124,10 +1133,8 @@ grub-install --target=i386-pc --recheck)";
 
     // If encryption used amend grub
     if (luks_dev != "") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
-
         const auto& luks_dev_formatted = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
-        ret_status                     = utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\"\"{}\\\"~g\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
+        ret_status                     = utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
         if (ret_status == "0") {
             spdlog::info("adding kernel parameter {}", luks_dev);
         }
@@ -1137,7 +1144,7 @@ grub-install --target=i386-pc --recheck)";
     const auto& fde = std::get<std::int32_t>(config_data["fde"]);
     if (fde == 1) {
         spdlog::info("Full disk encryption enabled");
-        utils::exec(fmt::format(FMT_COMPILE("sed '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' -i {}"), grub_installer_path));
+        utils::exec(fmt::format(FMT_COMPILE("sed  -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
     }
 
     // Remove os-prober if not selected
@@ -1261,11 +1268,11 @@ void auto_partition() noexcept {
     [[maybe_unused]] const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
 
     // Find existing partitions (if any) to remove
-    const auto& parts     = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk \'/^ / {print $1}\'"));
+    const auto& parts     = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk '/^ / {print $1}'"));
     const auto& del_parts = utils::make_multiline(parts);
     for (const auto& del_part : del_parts) {
 #ifdef NDEVENV
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} &>/dev/null"), device_info, del_part));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} 2>>/tmp/cachyos-install.log &>/dev/null"), device_info, del_part));
 #else
         spdlog::debug("{}", del_part);
 #endif
@@ -1273,22 +1280,22 @@ void auto_partition() noexcept {
 
 #ifdef NDEVENV
     // Identify the partition table
-    const auto& part_table = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | grep -i \'partition table\' | {}"), device_info, "awk \'{print $3}\'"));
+    const auto& part_table = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
 
     // Create partition table if one does not already exist
     if ((system_info == "BIOS") && (part_table != "msdos"))
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos &>/dev/null"), device_info));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     if ((system_info == "UEFI") && (part_table != "gpt"))
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt &>/dev/null"), device_info));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 
     // Create partitions (same basic partitioning scheme for BIOS and UEFI)
     if (system_info == "BIOS")
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB &>/dev/null"), device_info));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     else
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB &>/dev/null"), device_info));
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 
-    utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on &>/dev/null"), device_info));
-    utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% &>/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 #endif
 
     // Show created partitions
@@ -1305,7 +1312,7 @@ void show_devices() noexcept {
 // Refresh pacman keys
 void refresh_pacman_keys() noexcept {
 #ifdef NDEVENV
-    utils::arch_chroot("pacman-key --init;pacman-key --populate archlinux cachyos;pacman-key --refresh-keys;");
+    utils::arch_chroot("bash -c \"pacman-key --init;pacman-key --populate archlinux cachyos;pacman-key --refresh-keys;\"");
 #else
     SPDLOG_DEBUG("({}) Function is doing nothing in dev environment!", __PRETTY_FUNCTION__);
 #endif
@@ -1436,7 +1443,7 @@ void mount_opts() noexcept {
     const auto& fs_opts       = std::get<std::vector<std::string>>(config_data["fs_opts"]);
     const auto& partition     = std::get<std::string>(config_data["PARTITION"]);
     const auto& format_name   = utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), partition));
-    const auto& format_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk \'/disk/ {print $1}\'"));
+    const auto& format_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk '/disk/ {print $1}'"));
 
     const auto& rotational_queue = (utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1");
 
@@ -1475,8 +1482,8 @@ void mount_opts() noexcept {
     detail::checklist_widget(fs_opts, ok_callback, fs_opts_state.get(), &screen, mount_options_body, fs_title, {content_size, nothing});
 
     // Now clean up the file
-    mount_opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed \'s/ /,/g\'"), mount_opts_info));
-    mount_opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed \'$s/,$//\'"), mount_opts_info));
+    mount_opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/ /,/g'"), mount_opts_info));
+    mount_opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed '$s/,$//'"), mount_opts_info));
 
     // If mount options selected, confirm choice
     if (!mount_opts_info.empty()) {
@@ -1649,7 +1656,7 @@ void make_swap() noexcept {
     /* clang-format on */
 
     if (partition == sel_swap_file) {
-        const auto& total_memory = utils::exec("grep MemTotal /proc/meminfo | awk \'{print $2/1024}\' | sed \'s/\\..*//\'");
+        const auto& total_memory = utils::exec("grep MemTotal /proc/meminfo | awk '{print $2/1024}' | sed 's/\\..*//'");
         std::string value{fmt::format(FMT_COMPILE("{}M"), total_memory)};
         if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return;
@@ -1665,10 +1672,10 @@ void make_swap() noexcept {
 
 #ifdef NDEVENV
         const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint_info);
-        utils::exec(fmt::format(FMT_COMPILE("fallocate -l {} {} &>/dev/null"), value, swapfile_path));
-        utils::exec(fmt::format(FMT_COMPILE("chmod 600 {}"), swapfile_path));
-        utils::exec(fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), swapfile_path));
-        utils::exec(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), swapfile_path));
+        utils::exec(fmt::format(FMT_COMPILE("fallocate -l {} {} 2>>/tmp/cachyos-install.log &>/dev/null"), value, swapfile_path));
+        utils::exec(fmt::format(FMT_COMPILE("chmod 600 {} 2>>/tmp/cachyos-install.log"), swapfile_path));
+        utils::exec(fmt::format(FMT_COMPILE("mkswap {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
+        utils::exec(fmt::format(FMT_COMPILE("swapon {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
 #endif
         return;
     }
@@ -1698,7 +1705,7 @@ void make_swap() noexcept {
     // TODO: reimplement natively
     // Since a partition was used, remove that partition from the list
     const auto& str      = utils::make_multiline(partitions);
-    const auto& cmd      = fmt::format(FMT_COMPILE("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed \"s~{1}$\' -\'~~\""), str, partition);
+    const auto& cmd      = fmt::format(FMT_COMPILE("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed s~{1}$' -'~~"), str, partition);
     const auto& res_text = utils::exec(cmd);
     partitions           = utils::make_multiline(res_text);
     number_partitions -= 1;
