@@ -1374,7 +1374,7 @@ bool select_filesystem() noexcept {
         const auto& file_sys = lines[0];
         if (file_sys == "btrfs") {
             config_data["FILESYSTEM"] = "mkfs.btrfs -f";
-            config_data["fs_opts"]    = std::vector<std::string>{"autodefrag", "compress=zlib", "compress=lzo", "compress=zstd", "compress=no", "compress-force=zlib", "compress-force=lzo", "compress-force=zstd", "discard", "noacl", "noatime", "nodatasum", "nospace_cache", "recovery", "skip_balance", "space_cache", "nossd", "ssd", "ssd_spread", "commit=120"};
+            config_data["fs_opts"]    = std::vector<std::string>{"defaults", "autodefrag", "noatime", "compress=zstd", "commit=120"};
 #ifdef NDEVENV
             utils::exec("modprobe btrfs");
 #endif
@@ -1384,29 +1384,29 @@ bool select_filesystem() noexcept {
             config_data["FILESYSTEM"] = "mkfs.ext3 -q";
         } else if (file_sys == "ext4") {
             config_data["FILESYSTEM"] = "mkfs.ext4 -q";
-            config_data["fs_opts"]    = std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
+            config_data["fs_opts"]    = std::vector<std::string>{"defaults", "noatime", "commit=60"};
         } else if (file_sys == "f2fs") {
             config_data["FILESYSTEM"] = "mkfs.f2fs -q";
-            config_data["fs_opts"]    = std::vector<std::string>{"data_flush", "disable_roll_forward", "disable_ext_identify", "discard", "fastboot", "flush_merge", "inline_xattr", "inline_data", "inline_dentry", "no_heap", "noacl", "nobarrier", "noextent_cache", "noinline_data", "norecovery"};
+            config_data["fs_opts"]    = std::vector<std::string>{"defaults", "extra_attr", "inode_checksum", "sb_checksum", "compression=zstd:6", "lazytime", "gc_merge", "atgc", "whint_mode=fs-based", "lazytime"};
 #ifdef NDEVENV
             utils::exec("modprobe f2fs");
 #endif
         } else if (file_sys == "jfs") {
             config_data["FILESYSTEM"] = "mkfs.jfs -q";
-            config_data["fs_opts"]    = std::vector<std::string>{"discard", "errors=continue", "errors=panic", "nointegrity"};
+            config_data["fs_opts"]    = std::vector<std::string>{"defaults", "discard", "errors=continue", "errors=panic", "nointegrity"};
         } else if (file_sys == "nilfs2") {
             config_data["FILESYSTEM"] = "mkfs.nilfs2 -fq";
-            config_data["fs_opts"]    = std::vector<std::string>{"discard", "nobarrier", "errors=continue", "errors=panic", "order=relaxed", "order=strict", "norecovery"};
+            config_data["fs_opts"]    = std::vector<std::string>{"defaults", "discard", "nobarrier", "errors=continue", "errors=panic", "order=relaxed", "order=strict", "norecovery"};
         } else if (file_sys == "ntfs") {
             config_data["FILESYSTEM"] = "mkfs.ntfs -q";
         } else if (file_sys == "reiserfs") {
             config_data["FILESYSTEM"] = "mkfs.reiserfs -q";
-            config_data["fs_opts"]    = std::vector<std::string>{"acl", "nolog", "notail", "replayonly", "user_xattr"};
+            config_data["fs_opts"]    = std::vector<std::string>{"defaults", "acl", "nolog", "notail", "replayonly", "user_xattr"};
         } else if (file_sys == "vfat") {
             config_data["FILESYSTEM"] = "mkfs.vfat -F32";
         } else if (file_sys == "xfs") {
             config_data["FILESYSTEM"] = "mkfs.xfs -f";
-            config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
+            config_data["fs_opts"]    = std::vector<std::string>{"defaults", "rw", "lazytime", "relatime", "attr2", "inode64", "logbufs=8", "logbsize=32k", "noquota", "wsync"};
         }
         success = true;
         screen.ExitLoopClosure()();
@@ -1453,10 +1453,10 @@ void mount_opts() noexcept {
         auto& fs_opt_state = fs_opts_state[i];
         if (rotational_queue) {
             fs_opt_state = ((fs_opt == "autodefrag")
-                || (fs_opt == "compress=zlip")
+                || (fs_opt == "compress=zstd")
                 || (fs_opt == "nossd"));
         } else {
-            fs_opt_state = ((fs_opt == "compress=lzo")
+            fs_opt_state = ((fs_opt == "compress=zstd")
                 || (fs_opt == "space_cache")
                 || (fs_opt == "commit=120")
                 || (fs_opt == "ssd"));
