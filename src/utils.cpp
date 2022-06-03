@@ -803,7 +803,7 @@ void enable_services() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& zfs        = std::get<std::uint32_t>(config_data["ZFS"]);
+    const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
 
     static constexpr std::array enable_systemd{"avahi-daemon", "bluetooth", "cronie", "ModemManager", "NetworkManager", "org.cups.cupsd", "tlp", "haveged", "ufw", "apparmor", "fstrim.timer"};
     for (auto&& service : enable_systemd) {

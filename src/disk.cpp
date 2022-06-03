@@ -131,4 +131,37 @@ std::vector<std::string> lvm_show_vg() noexcept {
     return res;
 }
 
+// Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
+void zfs_create_dataset(const std::string_view& zpath, const std::string_view& zmount) noexcept {
+#ifdef NDEVENV
+    utils::exec(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log"), zmount, zpath), true);
+#else
+    spdlog::debug("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log", zmount, zpath);
+#endif
+}
+
+// returns a list of devices containing zfs members
+std::string zfs_list_devs() noexcept {
+    std::string list_of_devices{};
+    // get a list of devices with zpools on them
+    const auto& devices = utils::make_multiline("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\"");
+    for (const auto& device : devices) {
+        // add the device
+        list_of_devices += fmt::format("{}\n", device);
+        // now lets add any other forms of those devices
+        list_of_devices += utils::exec(fmt::format("find -L /dev/ -xtype l -samefile {} 2>/dev/null", device));
+    }
+    return list_of_devices;
+}
+
+std::string zfs_list_datasets(const std::string_view& type) noexcept {
+    if (type == "zvol") {
+        return utils::exec("zfs list -Ht volume -o name,volsize 2>/dev/null");
+    } else if (type == "legacy") {
+        return utils::exec("zfs list -Ht filesystem -o name,mountpoint 2>/dev/null | grep \"^.*/.*legacy$\" | awk '{print $1}'");
+    }
+
+    return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\"");
+}
+
 }  // namespace utils

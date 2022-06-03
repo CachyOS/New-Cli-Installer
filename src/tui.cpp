@@ -774,6 +774,7 @@ void install_base() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
     const std::vector<std::string> available_kernels{"linux-cachyos", "linux", "linux-zen", "linux-lts", "linux-cachyos-cacule", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-tt", "linux-cachyos-bore"};
 
     // Create the base list of packages
@@ -818,6 +819,9 @@ void install_base() noexcept {
     for (std::size_t i = 0; i < pkg_count; ++i) {
         const auto& pkg = pkg_list[i];
         pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
+    }
+    if (zfs == 1) {
+        pkg_list.insert(pkg_list.cend(), {"zfs-utils", "linux-cachyos-zfs"});
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
     pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "mhwd-cachyos", "vim", "wget", "micro", "nano", "networkmanager"});
@@ -1803,6 +1807,227 @@ void lvm_menu() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, lvm_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
 }
 
+// creates a new zpool on an existing partition
+bool zfs_create_zpool() noexcept {
+    // LVM Detection. If detected, activate.
+    tui::lvm_detect();
+
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
+    utils::umount_partitions();
+    utils::find_partitions();
+
+    // Filter out partitions that have already been mounted and partitions that just contain crypt or zfs devices
+    auto ignore_part = utils::list_mounted();
+    ignore_part += utils::zfs_list_devs();
+    ignore_part += utils::list_containing_crypt();
+
+    /* const auto& parts = utils::make_multiline(ignore_part);
+    for (const auto& part : parts) {
+        utils::delete_partition_in_list(part);
+    }*/
+
+    // Identify the partition for the zpool
+    {
+        const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            const auto& src          = partitions[static_cast<std::size_t>(selected)];
+            const auto& lines        = utils::make_multiline(src, false, " ");
+            config_data["PARTITION"] = lines[0];
+            success                  = true;
+            screen.ExitLoopClosure()();
+        };
+        /* clang-format off */
+
+        static constexpr auto zfs_zpool_partmenu_body = "\nSelect a partition to hold the ZFS zpool\n";
+        const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(partitions, ok_callback, &selected, &screen, zfs_zpool_partmenu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        if (!success) { return false; }
+        /* clang-format on */
+    }
+    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
+
+    static constexpr auto zfs_zpool_body        = "\nEnter the name for the new zpool\n";
+    static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n";
+    static constexpr auto zfs_zpoolcvalidation2 = "\nzpool names cannot start with the reserved words (log, mirror, raidz, raidz1, raidz2, raidz3, or spare)\n";
+
+    // We need to get a name for the zpool
+    std::string zfs_zpool_name{"zpcachyos"};
+    auto zfs_menu_text = zfs_zpool_body;
+
+    // Loop while zpool name is not valid.
+    while (true) {
+        if (!detail::inputbox_widget(zfs_zpool_name, zfs_menu_text, size(HEIGHT, GREATER_THAN, 1))) {
+            return false;
+        }
+        zfs_menu_text = zfs_zpool_body;
+
+        // validation
+        if (zfs_zpool_name.empty() || std::isdigit(zfs_zpool_name[0]) || (ranges::any_of(zfs_zpool_name, [](char ch) { return (!std::isalnum(ch)) && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
+            zfs_menu_text = zfs_zpoolcvalidation1;
+        }
+
+        for (auto&& invalid_keyword : {"log", "mirror", "raidz", "raidz1", "raidz2", "spare"}) {
+            if (zfs_zpool_name.find(invalid_keyword) != std::string::npos) {
+                zfs_menu_text = zfs_zpoolcvalidation2;
+                break;
+            }
+        }
+        /* clang-format off */
+        if (zfs_menu_text == zfs_zpool_body) { break; }
+        /* clang-format on */
+    }
+    config_data["ZFS_ZPOOL_NAME"] = zfs_zpool_name;
+
+    // Find the UUID of the partition
+    const auto& partuuid = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"), false);
+
+#ifdef NDEVENV
+    // See if the partition has a partuuid, if not use the device name
+    if (!partuuid.empty()) {
+        utils::exec(fmt::format(FMT_COMPILE("zpool create -m none {} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_name, partuuid), true);
+        spdlog::info("Creating zpool {} on device {} using partuuid {}", zfs_zpool_name, partition, partuuid);
+    } else {
+        utils::exec(fmt::format(FMT_COMPILE("zpool create -m none {} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_name, partition), true);
+        spdlog::info("Creating zpool {} on device {}", zfs_zpool_name, partition);
+    }
+#endif
+
+    config_data["ZFS"] = 1;
+
+#ifdef NDEVENV
+    // Since zfs manages mountpoints, we export it and then import with a root of MOUNTPOINT
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    utils::exec(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), zfs_zpool_name), true);
+    utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, zfs_zpool_name), true);
+#endif
+
+    return false;
+}
+
+// Automated configuration of zfs. Creates a new zpool and a default set of filesystems
+void zfs_auto() noexcept {
+    // first we need to create a zpool to hold the datasets/zvols
+    if (!tui::zfs_create_zpool()) {
+        detail::infobox_widget("\nOperation cancelled\n");
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return;
+    }
+
+    auto* config_instance      = Config::instance();
+    auto& config_data          = config_instance->data();
+    const auto& zfs_zpool_name = std::get<std::string>(config_data["ZFS_ZPOOL_NAME"]);
+
+    // next create the datasets including their parents
+    utils::zfs_create_dataset(fmt::format("{}/data", zfs_zpool_name), "none");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT", zfs_zpool_name), "none");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT/cachyos", zfs_zpool_name), "none");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT/cachyos/root", zfs_zpool_name), "/");
+    utils::zfs_create_dataset(fmt::format("{}/data/home", zfs_zpool_name), "/home");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT/cachyos/paccache", zfs_zpool_name), "/var/cache/pacman");
+
+#ifdef NDEVENV
+    // set the rootfs
+    utils::exec(fmt::format(FMT_COMPILE("zpool set bootfs={0}/ROOT/cachyos/root {0} 2>>/tmp/cachyos-install.log"), zfs_zpool_name), true);
+#endif
+
+    // provide confirmation to the user
+    detail::infobox_widget("\nAutomatic zfs provisioning has been completed\n");
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+}
+
+void zfs_menu_manual() noexcept {
+    const std::vector<std::string> menu_entries = {
+        "Create a new zpool",
+        "Import an existing zpool",
+        "Create and mount a ZFS filesystem",
+        "Create a legacy ZFS filesystem",
+        "Create a new ZVOL",
+        "Set a property on a zfs filesystem",
+        "Destroy a ZFS dataset",
+        "Back",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+        switch (selected) {
+        /*case 0:
+            zfs_create_zpool();
+            break;
+        case 1:
+            zfs_import_pool();
+            break;
+        case 2:
+            zfs_new_ds();
+            break;
+        case 3:
+            zfs_new_ds("legacy");
+            break;
+        case 4:
+            zfs_new_ds("zvol");
+            break;
+        case 5:
+            zfs_set_property();
+            break;
+        case 6:
+            zfs_destroy_dataset();
+            break;*/
+        default:
+            screen.ExitLoopClosure()();
+            return;
+        }
+    };
+
+    static constexpr auto zfs_menu_manual_body = "\nPlease select an option below\n";
+    const auto& content_size                   = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_manual_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+}
+
+// The main ZFS menu
+void zfs_menu() noexcept {
+#ifdef NDEVENV
+    // check for zfs support
+    if (utils::exec("modprobe zfs 2>>/tmp/cachyos-install.log &>/dev/null", true) != "0") {
+        detail::infobox_widget("\nThe kernel modules to support ZFS could not be found\n");
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return;
+    }
+#endif
+
+    const std::vector<std::string> menu_entries = {
+        "Automatically configure",
+        "Manual configuration",
+        "Back",
+    };
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+        switch (selected) {
+        case 0:
+            tui::zfs_auto();
+            break;
+        case 1:
+            tui::zfs_menu_manual();
+            break;
+        default:
+            screen.ExitLoopClosure()();
+            return;
+        }
+    };
+
+    static constexpr auto zfs_menu_body = "\nZFS is a flexible and resilient file system that combines elements of\nlogical volume management, RAID and traditional file systems.\nZFS on Linux requires special handling and is not ideal for beginners.\n \nSelect automatic to select a partition and allow\nthe system to automate the creation a new a zpool and datasets\nmounted to '/', '/home' and '/var/cache/pacman'.\nManual configuration is available but requires specific knowledge of zfs.\n";
+    const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+}
+
 void make_esp() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -1901,7 +2126,7 @@ void mount_partitions() noexcept {
     utils::umount_partitions();
 
     // We need to remount the zfs filesystems that have defined mountpoints already
-    // zfs mount -aO 2>/dev/null
+    utils::exec("zfs mount -aO &>/dev/null");
 
     // Get list of available partitions
     utils::find_partitions();
@@ -1915,7 +2140,7 @@ void mount_partitions() noexcept {
 
     // Filter out partitions that have already been mounted and partitions that just contain crypt or zfs devices
     auto ignore_part = utils::list_mounted();
-    // ignore_part += utils::zfs_list_devs();
+    ignore_part += utils::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
     /* const auto& parts = utils::make_multiline(ignore_part);
@@ -2327,6 +2552,7 @@ void prep_menu() noexcept {
         "RAID (optional)",
         "Logical Volume Management (optional)",
         "LUKS Encryption (optional)",
+        "ZFS (optional)"
         "Mount Partitions",
         "Configure Installer Mirrorlist",
         "Refresh Pacman Keys",
@@ -2363,18 +2589,21 @@ void prep_menu() noexcept {
             tui::luks_menu_advanced();
             break;
         case 6:
-            tui::mount_partitions();
+            tui::zfs_menu();
             break;
         case 7:
-            tui::configure_mirrorlist();
+            tui::mount_partitions();
             break;
         case 8:
-            tui::refresh_pacman_keys();
+            tui::configure_mirrorlist();
             break;
         case 9:
-            tui::set_cache();
+            tui::refresh_pacman_keys();
             break;
         case 10:
+            tui::set_cache();
+            break;
+        case 11:
             tui::set_fsck_hook();
             break;
         default:
