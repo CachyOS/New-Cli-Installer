@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/simdjson/simdjson.git
-revision = 5beef701e741f23de450fc120a30b87fa0a0cec8
+revision = fbe955e9a449c6bbeae69aacfa995795f2100791
 
 patch_directory = simdjson
 
