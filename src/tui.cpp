@@ -1278,6 +1278,15 @@ void auto_partition() noexcept {
 #endif
     }
 
+    // Clear disk
+#ifdef NDEVENV
+    utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of=\"{}\" bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("wipefs -af \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+#else
+    spdlog::debug("Clearing disk...");
+#endif
+
 #ifdef NDEVENV
     // Identify the partition table
     const auto& part_table = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
