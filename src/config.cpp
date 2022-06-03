@@ -24,6 +24,7 @@ bool Config::initialize() noexcept {
 
         // file systems
         s_config->m_data["BTRFS"]        = 0;
+        s_config->m_data["ZFS"]          = 0;
         s_config->m_data["LUKS"]         = 0;
         s_config->m_data["LUKS_DEV"]     = "";
         s_config->m_data["LUKS_NAME"]    = "";

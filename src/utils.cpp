@@ -803,6 +803,7 @@ void enable_services() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& zfs        = std::get<std::uint32_t>(config_data["ZFS"]);
 
     static constexpr std::array enable_systemd{"avahi-daemon", "bluetooth", "cronie", "ModemManager", "NetworkManager", "org.cups.cupsd", "tlp", "haveged", "ufw", "apparmor", "fstrim.timer"};
     for (auto&& service : enable_systemd) {
@@ -827,6 +828,20 @@ void enable_services() noexcept {
     } else if (utils::exec(fmt::format(FMT_COMPILE("{} ly &> /dev/null"), temp), true) == "0") {
         utils::arch_chroot("systemctl enable ly", false);
     }
+
+    /* clang-format off */
+    if (zfs == 0) { return; }
+    /* clang-format on */
+
+    // if we are using a zfs we should enable the zfs services
+    utils::arch_chroot("systemctl enable zfs.target", false);
+    utils::arch_chroot("systemctl enable zfs-import-cache", false);
+    utils::arch_chroot("systemctl enable zfs-mount", false);
+    utils::arch_chroot("systemctl enable zfs-import.target", false);
+
+    // we also need create the cachefile
+    utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
+    utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
 #endif
 }
 
