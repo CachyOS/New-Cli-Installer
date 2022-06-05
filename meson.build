@@ -5,7 +5,7 @@ project('cachyos-installer', 'cpp',
         default_options: ['cpp_std=c++20',
                           'buildtype=debugoptimized',
                           'warning_level=3',
-                          'werror=true',
+                          'werror=false',
                           'b_ndebug=if-release'])
 
 is_debug_build = get_option('buildtype').startswith('debug')
