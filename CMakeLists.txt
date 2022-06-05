@@ -59,14 +59,12 @@ CPMAddPackage(
   GIT_TAG 2157a3126c2ef1b76f339dedd6d7585e39651512
   EXCLUDE_FROM_ALL YES
 )
-if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-   CPMAddPackage(
-     NAME range-v3
-     GITHUB_REPOSITORY ericniebler/range-v3
-     GIT_TAG 0fa54d7de5dc00655e38a08e87cda61f7aa6d5b9
-     EXCLUDE_FROM_ALL YES
-   )
-endif()
+CPMAddPackage(
+  NAME range-v3
+  GITHUB_REPOSITORY ericniebler/range-v3
+  GIT_TAG 0fa54d7de5dc00655e38a08e87cda61f7aa6d5b9
+  EXCLUDE_FROM_ALL YES
+)
 
 ##
 ## CONFIGURATION
@@ -134,14 +132,9 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component cpr::cpr)#simdjson::simdjson)
-target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr)#simdjson::simdjson)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component cpr::cpr range-v3::range-v3)#simdjson::simdjson)
+target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr range-v3::range-v3)#simdjson::simdjson)
 target_link_libraries(test-process-tailing PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr)#simdjson::simdjson)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-   target_link_libraries(${PROJECT_NAME} PRIVATE range-v3::range-v3)
-   target_link_libraries(test-exec-interactive PRIVATE range-v3::range-v3)
-endif()
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)

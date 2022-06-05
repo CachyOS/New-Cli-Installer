@@ -59,7 +59,7 @@ function(set_project_warnings project_name)
         -Wlogical-op # warn about logical operations being used where bitwise were probably wanted
         -Wuseless-cast # warn if you perform a cast to the same type
 
-        -Wsuggest-attribute=cold
+        #-Wsuggest-attribute=cold
         #-Wsuggest-attribute=format
         -Wsuggest-attribute=malloc
         -Wsuggest-attribute=noreturn

@@ -26,6 +26,11 @@
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#endif
 
 #include <range/v3/algorithm/for_each.hpp>
 #include <range/v3/algorithm/reverse.hpp>
@@ -34,10 +39,10 @@
 #include <range/v3/view/split.hpp>
 #include <range/v3/view/transform.hpp>
 
+#if defined(__clang__)
 #pragma clang diagnostic pop
-#else
-#include <ranges>
-namespace ranges = std::ranges;
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 #ifdef NDEVENV

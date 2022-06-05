@@ -11,6 +11,7 @@
 /* clang-format off */
 #include <sys/mount.h>                             // for mount
 #include <fstream>                                 // for ofstream
+#include <algorithm>                               // for copy
 #include <filesystem>                              // for exists, is_directory
 #include <string>                                  // for basic_string
 #include <ftxui/component/component.hpp>           // for Renderer, Button
@@ -24,14 +25,19 @@ namespace fs = std::filesystem;
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#endif
 
 #include <range/v3/algorithm/any_of.hpp>
-#include <range/v3/algorithm/copy.hpp>
 #include <range/v3/algorithm/search.hpp>
 
+#if defined(__clang__)
 #pragma clang diagnostic pop
-#else
-namespace ranges = std::ranges;
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 #ifdef NDEVENV
@@ -1644,7 +1650,7 @@ void make_swap() noexcept {
         }
         const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
         temp.reserve(partitions.size());
-        ranges::copy(partitions, std::back_inserter(temp));
+        std::copy(partitions.begin(), partitions.end(), std::back_inserter(temp));
 
         auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
@@ -1851,7 +1857,6 @@ bool zfs_create_zpool() noexcept {
         if (!success) { return false; }
         /* clang-format on */
     }
-    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
 
     static constexpr auto zfs_zpool_body        = "\nEnter the name for the new zpool\n";
     static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n";
@@ -1885,10 +1890,11 @@ bool zfs_create_zpool() noexcept {
     }
     config_data["ZFS_ZPOOL_NAME"] = zfs_zpool_name;
 
-    // Find the UUID of the partition
-    const auto& partuuid = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"), false);
-
 #ifdef NDEVENV
+    // Find the UUID of the partition
+    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
+    const auto& partuuid  = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"), false);
+
     // See if the partition has a partuuid, if not use the device name
     if (!partuuid.empty()) {
         utils::exec(fmt::format(FMT_COMPILE("zpool create -m none {} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_name, partuuid), true);
@@ -1908,7 +1914,7 @@ bool zfs_create_zpool() noexcept {
     utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, zfs_zpool_name), true);
 #endif
 
-    return false;
+    return true;
 }
 
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
@@ -2248,7 +2254,7 @@ void mount_partitions() noexcept {
             const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
             std::vector<std::string> temp{"Done -"};
             temp.reserve(partitions.size());
-            ranges::copy(partitions, std::back_inserter(temp));
+            std::copy(partitions.begin(), partitions.end(), std::back_inserter(temp));
 
             auto screen = ScreenInteractive::Fullscreen();
             std::int32_t selected{};
@@ -2552,7 +2558,7 @@ void prep_menu() noexcept {
         "RAID (optional)",
         "Logical Volume Management (optional)",
         "LUKS Encryption (optional)",
-        "ZFS (optional)"
+        "ZFS (optional)",
         "Mount Partitions",
         "Configure Installer Mirrorlist",
         "Refresh Pacman Keys",

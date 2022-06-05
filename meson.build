@@ -38,6 +38,7 @@ fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 simdjson = dependency('simdjson', version : ['>=1.0.2'], fallback : ['simdjson', 'simdjson_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
+ranges = dependency('range-v3', version : ['>=0.11.0'])
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 
 src_files = files(
@@ -84,8 +85,9 @@ if cc.get_id() == 'gcc'
         '-Wduplicated-branches',
         '-Wlogical-op',
         '-Wuseless-cast',
+        '-Wno-restrict',
 
-        '-Wsuggest-attribute=cold',
+        #'-Wsuggest-attribute=cold',
         #'-Wsuggest-attribute=format',
         '-Wsuggest-attribute=malloc',
         '-Wsuggest-attribute=noreturn',
@@ -120,11 +122,7 @@ endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
-deps = [fmt, spdlog, ftxui, cpr]
-if cc.get_id() == 'clang'
-  ranges = dependency('range-v3', version : ['>=0.11.0'])
-  deps += [ranges]
-endif
+deps = [fmt, spdlog, ftxui, cpr, ranges]
 
 executable(
   'cachyos-installer',
