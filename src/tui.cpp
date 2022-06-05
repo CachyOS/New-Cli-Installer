@@ -1896,11 +1896,12 @@ bool zfs_create_zpool() noexcept {
     const auto& partuuid  = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"), false);
 
     // See if the partition has a partuuid, if not use the device name
+    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool -f create -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O relatime=on -O xattr=sa -O mountpoint=none {}"), zfs_zpool_name);
     if (!partuuid.empty()) {
-        utils::exec(fmt::format(FMT_COMPILE("zpool create -m none {} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_name, partuuid), true);
+        utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partuuid), true);
         spdlog::info("Creating zpool {} on device {} using partuuid {}", zfs_zpool_name, partition, partuuid);
     } else {
-        utils::exec(fmt::format(FMT_COMPILE("zpool create -m none {} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_name, partition), true);
+        utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partition), true);
         spdlog::info("Creating zpool {} on device {}", zfs_zpool_name, partition);
     }
 #endif
@@ -1931,12 +1932,12 @@ void zfs_auto() noexcept {
     const auto& zfs_zpool_name = std::get<std::string>(config_data["ZFS_ZPOOL_NAME"]);
 
     // next create the datasets including their parents
-    utils::zfs_create_dataset(fmt::format("{}/data", zfs_zpool_name), "none");
     utils::zfs_create_dataset(fmt::format("{}/ROOT", zfs_zpool_name), "none");
-    utils::zfs_create_dataset(fmt::format("{}/ROOT/cachyos", zfs_zpool_name), "none");
-    utils::zfs_create_dataset(fmt::format("{}/ROOT/cachyos/root", zfs_zpool_name), "/");
-    utils::zfs_create_dataset(fmt::format("{}/data/home", zfs_zpool_name), "/home");
-    utils::zfs_create_dataset(fmt::format("{}/ROOT/cachyos/paccache", zfs_zpool_name), "/var/cache/pacman");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos", zfs_zpool_name), "none");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos/root", zfs_zpool_name), "/");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos/home", zfs_zpool_name), "/home");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos/varcache", zfs_zpool_name), "/var/cache");
+    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos/varlog", zfs_zpool_name), "/var/log");
 
 #ifdef NDEVENV
     // set the rootfs
