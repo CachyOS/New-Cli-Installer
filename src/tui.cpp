@@ -2658,30 +2658,27 @@ void menu_advanced() noexcept {
 }
 
 void menu_simple() noexcept {
-    // some simple ui
-    const std::vector<std::string> menu_entries = {
-        "entry 1",
-        "entry 2",
-        "entry 3",
-    };
+    // Prepare
+    utils::umount_partitions();
+    if (tui::select_device()) {
+        tui::create_partitions();
+    }
+    tui::mount_partitions();
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    bool success{};
-    auto ok_callback = [&] {
-        success = true;
-        screen.ExitLoopClosure()();
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
-    /* clang-format off */
-    if (!success) { return; }
-    /* clang-format on */
-
-    fmt::print("Selected element = {}\n", selected);
+    // Install process
+    if (!utils::check_mount()) {
+        spdlog::error("Your partitions are not mounted");
+    }
+    tui::install_base();
+    tui::install_desktop();
+    if (!utils::check_base()) {
+        spdlog::error("Base is not installed");
+    }
+    tui::install_bootloader();
+    tui::config_base_menu();
 }
 
 void init() noexcept {
-#if 0
     const std::vector<std::string> menu_entries = {
         "Simple installation",
         "Advanced installation",
@@ -2709,7 +2706,6 @@ void init() noexcept {
     default:
         break;
     }
-#endif
     tui::menu_advanced();
 }
 
