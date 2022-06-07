@@ -1896,7 +1896,7 @@ bool zfs_create_zpool() noexcept {
     const auto& partuuid  = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"), false);
 
     // See if the partition has a partuuid, if not use the device name
-    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool -f create -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O relatime=on -O xattr=sa -O mountpoint=none {}"), zfs_zpool_name);
+    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool create -f -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O relatime=on -O xattr=sa -O mountpoint=none {}"), zfs_zpool_name);
     if (!partuuid.empty()) {
         utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partuuid), true);
         spdlog::info("Creating zpool {} on device {} using partuuid {}", zfs_zpool_name, partition, partuuid);
