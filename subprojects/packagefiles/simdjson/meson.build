@@ -2,7 +2,7 @@ project('simdjson', 'cpp',
     version : '1.0.2',
     license : 'Apache-2.0',
     default_options : [
-      'cpp_std=c++17',
+      'cpp_std=c++20',
       'default_library=static',
     ]
 )

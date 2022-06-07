@@ -6,6 +6,7 @@ project('ftxui', 'cpp',
 
 cpp = meson.get_compiler('cpp')
 thread_dep = dependency('threads')
+ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 'range_dep'])
 
 ftxui_inc = include_directories('include')
 ftxui_priv_inc = include_directories('src')
@@ -21,7 +22,8 @@ ftxui_screen_lib = static_library('ftxui_screen',
         'include/ftxui/screen/screen.hpp',
         'include/ftxui/screen/string.hpp'
     ],
-    include_directories : ftxui_inc
+    include_directories : ftxui_inc,
+    dependencies : [thread_dep, ranges]
 )
 
 ftxui_dom_lib = static_library('ftxui_dom',
@@ -70,7 +72,8 @@ ftxui_dom_lib = static_library('ftxui_dom',
       'src/ftxui/dom/vbox.cpp'
     ],
     include_directories : [ftxui_inc, ftxui_priv_inc],
-    link_with : [ftxui_screen_lib]
+    link_with : [ftxui_screen_lib],
+    dependencies : [thread_dep, ranges]
 )
 
 ftxui_component_lib = static_library('ftxui_component',
@@ -109,7 +112,7 @@ ftxui_component_lib = static_library('ftxui_component',
     ],
     include_directories : [ftxui_inc, ftxui_priv_inc],
     link_with : [ftxui_dom_lib],
-    dependencies : [thread_dep]
+    dependencies : [thread_dep, ranges]
 )
 
 ftxui_dep = declare_dependency(
