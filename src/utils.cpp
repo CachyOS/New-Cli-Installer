@@ -261,8 +261,8 @@ auto make_multiline(std::vector<std::string>& multiline, bool reverse, const std
 }
 
 // install a pkg in the live session if not installed
-void inst_needed(const std::string_view& pkg) {
-    if (utils::exec(fmt::format(FMT_COMPILE("pacman -Q {}"), pkg), true) != "0") {
+void inst_needed(const std::string_view& pkg) noexcept {
+    if (utils::exec(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg), true) != "0") {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         utils::clear_screen();
         tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg)});

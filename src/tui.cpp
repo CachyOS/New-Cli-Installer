@@ -718,6 +718,114 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
     std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
+void install_refind() noexcept {
+    static constexpr auto content = "\nThis installs refind and configures it to automatically detect your kernels.\nNo support for encrypted /boot or intel microcode.\nThese require manual boot stanzas or using a different bootloader.\n";
+    const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_install_uefi) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    const auto& luks       = std::get<std::int32_t>(config_data["LUKS"]);
+    const auto& luks_dev   = std::get<std::string>(config_data["LUKS_DEV"]);
+
+    utils::inst_needed("refind refind-drivers");
+
+    // Check if the volume is removable. If so, install all drivers
+    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
+    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
+
+    // Clean the configuration in case there is previous one because the configuration part is not idempotent
+    if (fs::exists("/mnt/boot/refind_linux.conf")) {
+        std::error_code err{};
+        fs::remove("/mnt/boot/refind_linux.conf", err);
+    }
+
+    // install refind
+    const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
+    if (utils::to_int(removable.data()) == 1) {
+        utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
+
+        // Remove autodetect hook
+        utils::exec("sed -i -e '/^HOOKS=/s/\\ autodetect//g' /mnt/etc/mkinitcpio.conf");
+        spdlog::info("\"Autodetect\" hook was removed");
+    } else if (luks == 1) {
+        utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
+    } else {
+        utils::exec("refind-install --root /mnt 2>>/tmp/cachyos-install.log &>/dev/null");
+    }
+
+    // If root is on exotic filesystem, add drivers
+    const auto& rootfs = utils::exec("mount | awk '/\\/mnt / {print $5}'");
+    if (rootfs == "nilfs2" || rootfs == "xfs" || rootfs == "jfs") {
+        const auto& file_name_to_copy = fmt::format(FMT_COMPILE("{}_x64.efi"), rootfs);
+        fs::copy_file(fmt::format(FMT_COMPILE("/usr/share/refind/drivers_x64/{}"), file_name_to_copy), fmt::format(FMT_COMPILE("{}{}/EFI/refind/drivers_x64/{}"), mountpoint, uefi_mount, file_name_to_copy), fs::copy_options::overwrite_existing);
+    }
+
+    // Mount as rw
+    // sed -i 's/ro\ /rw\ \ /g' /mnt/boot/refind_linux.conf
+
+    // Boot in graphics mode
+    utils::exec(fmt::format(FMT_COMPILE("sed -i -e '/use_graphics_for/ s/^#*//' {}{}/EFI/refind/refind.conf"), mountpoint, uefi_mount));
+    // Set appropriate rootflags if installed on btrs subvolume
+    if (utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true) == "0") {
+        const auto& rootflag = fmt::format(FMT_COMPILE("rootflags={}"), utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g'"));
+        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$|\\ {}\\\"|g\" /mnt/boot/refind_linux.conf"), rootflag));
+    }
+
+    // LUKS and lvm with LUKS
+    if (luks == 1) {
+        const auto& mapper_name = utils::exec("mount | awk '/\\/mnt / {print $1}'");
+        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |{} root={} |g\" /mnt/boot/refind_linux.conf"), luks_dev, mapper_name));
+        utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
+    }
+    // Lvm without LUKS
+    else if (utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep \"/mnt$\" | awk '{print $6}'") == "lvm") {
+        const auto& mapper_name = utils::exec("mount | awk '/\\/mnt / {print $1}'");
+        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |root={} |g\" /mnt/boot/refind_linux.conf"), mapper_name));
+        utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
+    }
+    // Figure out microcode
+    const auto& rootsubvol = utils::exec("findmnt -o TARGET,SOURCE | awk '/\\/mnt / {print $2}' | grep -o \"\\[.*\\]\" | cut -d \"[\" -f2 | cut -d \"]\" -f1 | sed 's/^\\///'");
+    const auto& ucode      = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qqs ucode 2>>/tmp/cachyos-install.log"), mountpoint));
+    if (utils::to_int(utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l)"), ucode)).data()) > 1) {
+        // set microcode
+        if (utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
+            // there is a separate boot, path to microcode is at partition root
+            utils::exec("sed -i \"s|\\\"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
+        } else if (!rootsubvol.empty()) {
+            // Initramfs is on the root partition and root is on btrfs subvolume
+            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/intel-ucode.img initrd={0}/boot/amd-ucode.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol));
+        } else {
+            // Initramfs is on the root partition
+            utils::exec("sed -i \"s|\\\"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
+        }
+    } else {
+        if (utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
+            // there is a separate boot, path to microcode is at partition root
+            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd=/{}.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
+        } else if (!rootsubvol.empty()) {
+            // Initramfs is on the root partition and root is on btrfs subvolume
+            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/{1}.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol, ucode));
+        } else {
+            // Initramfs is on the root partition
+            utils::exec(fmt::format(FMT_COMPILE(" sed -i \"s|\\\"$| initrd=/boot/{}.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
+        }
+    }
+
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} refind-theme-nord"), mountpoint)});
+#endif
+
+    spdlog::info("Refind was succesfully installed");
+    detail::infobox_widget("\nRefind was succesfully installed\n");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+}
+
 void install_systemd_boot() noexcept {
     static constexpr auto content = "\nThis installs systemd-boot and generates boot entries\nfor the currently installed kernels.\nThis bootloader requires your kernels to be on the UEFI partition.\nThis is achieved by mounting the UEFI partition to /boot.\n";
     const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
@@ -781,8 +889,7 @@ void uefi_bootloader() noexcept {
             tui::install_grub_uefi();
             break;
         case 1:
-            // tui::install_refind();
-            spdlog::debug("refind");
+            tui::install_refind();
             break;
         case 2:
             tui::install_systemd_boot();
