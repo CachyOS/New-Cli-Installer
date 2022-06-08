@@ -733,7 +733,7 @@ void install_refind() noexcept {
     const auto& luks       = std::get<std::int32_t>(config_data["LUKS"]);
     const auto& luks_dev   = std::get<std::string>(config_data["LUKS_DEV"]);
 
-    utils::inst_needed("refind refind-drivers");
+    utils::inst_needed("refind");
 
     // Check if the volume is removable. If so, install all drivers
     const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
@@ -758,13 +758,6 @@ void install_refind() noexcept {
         utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
     } else {
         utils::exec("refind-install --root /mnt 2>>/tmp/cachyos-install.log &>/dev/null");
-    }
-
-    // If root is on exotic filesystem, add drivers
-    const auto& rootfs = utils::exec("mount | awk '/\\/mnt / {print $5}'");
-    if (rootfs == "nilfs2" || rootfs == "xfs" || rootfs == "jfs") {
-        const auto& file_name_to_copy = fmt::format(FMT_COMPILE("{}_x64.efi"), rootfs);
-        fs::copy_file(fmt::format(FMT_COMPILE("/usr/share/refind/drivers_x64/{}"), file_name_to_copy), fmt::format(FMT_COMPILE("{}{}/EFI/refind/drivers_x64/{}"), mountpoint, uefi_mount, file_name_to_copy), fs::copy_options::overwrite_existing);
     }
 
     // Mount as rw
