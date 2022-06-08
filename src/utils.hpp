@@ -30,6 +30,7 @@ void find_partitions() noexcept;
 void get_cryptroot() noexcept;
 void get_cryptboot() noexcept;
 void boot_encrypted_setting() noexcept;
+void recheck_luks() noexcept;
 
 void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
 void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept;

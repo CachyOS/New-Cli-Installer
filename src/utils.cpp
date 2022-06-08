@@ -444,6 +444,26 @@ void get_cryptroot() noexcept {
     }
 }
 
+void recheck_luks() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& root_name = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+
+    // Check if there is separate encrypted /boot partition
+    if (utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0") {
+        config_data["LUKS"] = 1;
+    }
+    // Check if root is encrypted and there is no separate /boot
+    else if ((utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0") && utils::exec("lsblk | grep \"/mnt/boot$\"", false).empty()) {
+        config_data["LUKS"] = 1;
+    }
+    // Check if root is on encrypted lvm volume
+    else if ((utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0") && (utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), root_name, "awk '{print $6}'"), true) == "0")) {
+        config_data["LUKS"] = 1;
+    }
+}
+
 void get_cryptboot() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -818,6 +838,9 @@ void enable_services() noexcept {
         utils::arch_chroot(fmt::format(FMT_COMPILE("systemctl enable {}"), service), false);
         spdlog::info("enabled service {}", service);
     }
+
+    utils::arch_chroot("systemctl disable pacman-init", false);
+    spdlog::info("enabled service pacman-init");
 
     // enable display manager for systemd
     const auto& temp = fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq"), mountpoint);

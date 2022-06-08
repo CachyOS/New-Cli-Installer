@@ -9,6 +9,7 @@
 #include "widgets.hpp"
 
 /* clang-format off */
+#include <cstdlib>                                 // for setenv
 #include <sys/mount.h>                             // for mount
 #include <fstream>                                 // for ofstream
 #include <algorithm>                               // for copy
@@ -155,6 +156,13 @@ void generate_fstab() noexcept {
 #ifdef NDEVENV
     // Edit fstab in case of btrfs subvolumes
     utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
+
+    // remove any zfs datasets that are mounted by zfs
+    const auto& msource_list = utils::make_multiline(utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
+    for (const auto& msource : msource_list) {
+        if (utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0")
+            utils::exec(fmt::format(FMT_COMPILE("sed -e \"\\|^{}[[:space:]]| s/^#*/#/\" -i {}/etc/fstab"), msource, mountpoint));
+    }
 #endif
 }
 
@@ -612,11 +620,32 @@ void install_grub_uefi() noexcept {
     const auto& luks_dev            = std::get<std::string>(config_data["LUKS_DEV"]);
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
 
-    // grub config changes for non zfs root
+    // grub config changes for zfs root
     if (utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint)) == "zfs") {
-        return;
-    }
-    {
+        // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
+        utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
+        setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
+
+        constexpr auto bash_codepart1 = R"(#!/bin/bash
+ln -s /hostlvm /run/lvm
+export ZPOOL_VDEV_NAME_PATH=YES
+pacman -S --noconfirm --needed grub efibootmgr dosfstools
+# zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
+sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
+# we need to tell grub where the zfs root is)";
+
+        const auto& mountpoint_source = utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE {}"), mountpoint));
+        const auto& zroot_var         = fmt::format(FMT_COMPILE("zroot=\"zfs={} rw\""), mountpoint_source);
+
+        constexpr auto bash_codepart2 = R"(
+sed -e '/^GRUB_CMDLINE_LINUX_DEFAULT=/s@"$@ '"${zroot}"'"@g' -e '/^GRUB_CMDLINE_LINUX=/s@"$@ '"${zroot}"'"@g' -i /etc/default/grub
+sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub)";
+
+        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
+        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\n{}\n{}\ngrub-install --target=x86_64-efi --efi-directory={} --bootloader-id={} --recheck\n{}\n"), bash_codepart1, zroot_var, bash_codepart2, uefi_mount, bootid, mkconfig_codepart);
+        std::ofstream grub_installer{grub_installer_path};
+        grub_installer << bash_code;
+    } else {
         constexpr auto bash_codepart = R"(#!/bin/bash
 ln -s /hostlvm /run/lvm
 pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
@@ -680,7 +709,7 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
     /* clang-format on */
 
 #ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("mkdir {}/EFI/boot"), uefi_mount), false);
+    utils::arch_chroot(fmt::format(FMT_COMPILE("mkdir -p {}/EFI/boot"), uefi_mount), false);
     spdlog::info("Grub efi binary status:(EFI/cachyos/grubx64.efi): {}", fs::exists(fmt::format(FMT_COMPILE("{0}/EFI/cachyos/grubx64.efi"), uefi_mount)));
     utils::arch_chroot(fmt::format(FMT_COMPILE("cp -r {0}/EFI/cachyos/grubx64.efi {0}/EFI/boot/bootx64.efi"), uefi_mount), false);
 #endif
@@ -831,7 +860,7 @@ void install_base() noexcept {
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
     pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "mhwd-cachyos", "vim", "wget", "micro", "nano", "networkmanager"});
-    pkg_list.insert(pkg_list.cend(), {"cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
+    pkg_list.insert(pkg_list.cend(), {"cachyos", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
     packages = utils::make_multiline(pkg_list, false, " ");
 
     spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
@@ -858,20 +887,26 @@ void install_base() noexcept {
         utils::exec(fmt::format(FMT_COMPILE("sed -e '/^HOOKS=/s/\\ filesystems//g' -e '/^HOOKS=/s/\\ keyboard/\\ keyboard\\ zfs\\ filesystems/g' -e '/^HOOKS=/s/\\ fsck//g' -e '/^FILES=/c\\FILES=(\"/usr/lib/libgcc_s.so.1\")' -i {}/etc/mkinitcpio.conf"), mountpoint));
     }
 
+    utils::recheck_luks();
+
     // add luks and lvm hooks as needed
     const auto& lvm  = std::get<std::int32_t>(config_data["LVM"]);
     const auto& luks = std::get<std::int32_t>(config_data["LUKS"]);
 
     if (lvm == 1 && luks == 0) {
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems/block lvm2 filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
+        spdlog::info("add lvm2 hook");
     } else if (lvm == 0 && luks == 1) {
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems keyboard/block consolefont keymap keyboard encrypt filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
+        spdlog::info("add luks hook");
     } else if (lvm == 1 && luks == 1) {
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems keyboard/block consolefont keymap keyboard encrypt lvm2 filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
+        spdlog::info("add lvm/luks hooks");
     }
 
     if (lvm + luks + btrfs_root + zfs_root > 0) {
         utils::arch_chroot("mkinitcpio -P");
+        spdlog::info("re-run mkinitcpio");
     }
 
     // Generate fstab with UUID
@@ -1116,13 +1151,35 @@ void bios_bootloader() {
         utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
     }
 
-    // grub config changes for non zfs root
-    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint)) == "zfs") {
-        return;
-    }
-
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
-    {
+
+    // grub config changes for zfs root
+    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint)) == "zfs") {
+        // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
+        utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
+        setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
+
+        constexpr auto bash_codepart1 = R"(#!/bin/bash
+ln -s /hostlvm /run/lvm
+export ZPOOL_VDEV_NAME_PATH=YES
+pacman -S --noconfirm --needed grub os-prober
+# zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
+sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
+# we need to tell grub where the zfs root is)";
+
+        const auto& mountpoint_source = utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE {}"), mountpoint));
+        const auto& zroot_var         = fmt::format(FMT_COMPILE("zroot=\"zfs={} rw\""), mountpoint_source);
+
+        constexpr auto bash_codepart2 = R"(
+sed -e '/^GRUB_CMDLINE_LINUX_DEFAULT=/s@"$@ '"${zroot}"'"@g' -e '/^GRUB_CMDLINE_LINUX=/s@"$@ '"${zroot}"'"@g' -i /etc/default/grub
+sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
+grub-install --target=i386-pc --recheck)";
+
+        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
+        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\n{}\n{} {}\n{}\n"), bash_codepart1, zroot_var, bash_codepart2, device_info, mkconfig_codepart);
+        std::ofstream grub_installer{grub_installer_path};
+        grub_installer << bash_code;
+    } else {
         constexpr auto bash_codepart = R"(#!/bin/bash
 ln -s /hostlvm /run/lvm
 pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
@@ -2679,6 +2736,7 @@ void menu_simple() noexcept {
 }
 
 void init() noexcept {
+#if 0
     const std::vector<std::string> menu_entries = {
         "Simple installation",
         "Advanced installation",
@@ -2706,6 +2764,7 @@ void init() noexcept {
     default:
         break;
     }
+#endif
     tui::menu_advanced();
 }
 
