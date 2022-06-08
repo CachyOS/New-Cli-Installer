@@ -1020,6 +1020,20 @@ void install_base() noexcept {
     utils::exec(fmt::format(FMT_COMPILE("genfstab -U -p {0} > {0}/etc/fstab"), mountpoint));
     // Edit fstab in case of btrfs subvolumes
     utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
+
+    /* clang-format off */
+    if (zfs == 0) { return; }
+    /* clang-format on */
+
+    // if we are using a zfs we should enable the zfs services
+    utils::arch_chroot("systemctl enable zfs.target", false);
+    utils::arch_chroot("systemctl enable zfs-import-cache", false);
+    utils::arch_chroot("systemctl enable zfs-mount", false);
+    utils::arch_chroot("systemctl enable zfs-import.target", false);
+
+    // we also need create the cachefile
+    utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
+    utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
 #endif
 }
 
