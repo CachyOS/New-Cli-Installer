@@ -355,6 +355,8 @@ void set_hostname(const std::string_view& hostname) noexcept {
 void set_locale(const std::string_view& locale) noexcept {
     spdlog::info("Selected locale: {}", locale);
 #ifdef NDEVENV
+    auto* config_instance          = Config::instance();
+    auto& config_data              = config_instance->data();
     const auto& mountpoint         = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& locale_config_path = fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint);
     const auto& locale_gen_path    = fmt::format(FMT_COMPILE("{}/etc/locale.gen"), mountpoint);
