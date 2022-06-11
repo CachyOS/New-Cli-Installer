@@ -183,6 +183,11 @@ void menu_simple() noexcept {
         utils::install_bootloader(bootloader);
     }
 
+#ifdef NDEVENV
+    utils::arch_chroot("mhwd -a pci free 0300");
+    std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
+#endif
+
     tui::exit_done();
 
     fmt::print("┌{0:─^{4}}┐\n"
