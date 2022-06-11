@@ -12,5 +12,6 @@
     "timezone": "America/New_York",
     "kernel": "linux-cachyos",
     "desktop": "kde",
-    "bootloader": "systemd-boot"
+    "bootloader": "systemd-boot",
+    "drivers_type": "free"
 }

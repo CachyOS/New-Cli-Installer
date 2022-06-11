@@ -80,6 +80,27 @@ inline T to_int(const std::string_view& str) {
     return result;
 }
 
+template <typename T = double,
+    typename         = std::enable_if_t<std::is_floating_point<T>::value>>
+inline T to_floating(const std::string_view& str) {
+    T result = 0;
+    std::from_chars(str.data(), str.data() + str.size(), result);
+    return result;
+}
+
+// convert number, unit to bytes
+constexpr inline double convert_unit(const double number, const std::string_view& unit) {
+    if (unit == "KB" || unit == "K") {  // assuming KiB not KB
+        return number * 1024;
+    } else if (unit == "MB" || unit == "M") {
+        return number * 1024 * 1024;
+    } else if (unit == "GB" || unit == "G") {
+        return number * 1024 * 1024 * 1024;
+    }
+    // for "bytes"
+    return number;
+}
+
 }  // namespace utils
 
 #endif  // UTILS_HPP

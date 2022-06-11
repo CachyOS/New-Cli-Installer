@@ -33,15 +33,9 @@ void select_filesystem() noexcept {
     config_data["fs_opts"] = std::vector<std::string>{};
 
     const std::vector<std::string> menu_entries = {
-        "btrfs",
-        "ext3",
         "ext4",
+        "btrfs",
         "f2fs",
-        "jfs",
-        "nilfs2",
-        "ntfs",
-        "reiserfs",
-        "vfat",
         "xfs",
     };
 
@@ -64,6 +58,33 @@ void select_filesystem() noexcept {
         utils::select_filesystem("btrfs");
     }
 }
+
+void make_esp(const auto& part_name) noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
+
+    /* clang-format off */
+    if (sys_info != "UEFI") { return; }
+    /* clang-format on */
+
+    auto& partition           = std::get<std::string>(config_data["PARTITION"]);
+    partition                 = part_name;
+    config_data["UEFI_MOUNT"] = "/boot";
+    config_data["UEFI_PART"]  = partition;
+
+    spdlog::debug("Formating boot partition with fat/vfat!");
+#ifdef NDEVENV
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount      = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    const auto& path_formatted  = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
+
+    utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
+    utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), path_formatted));
+    utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, path_formatted));
+#endif
+}
+
 }  // namespace
 
 namespace tui {
@@ -89,14 +110,70 @@ void menu_simple() noexcept {
     const auto& user_shell = std::get<std::string>(config_data["USER_SHELL"]);
     const auto& root_pass  = std::get<std::string>(config_data["ROOT_PASS"]);
 
-    const auto& kernel     = std::get<std::string>(config_data["KERNEL"]);
-    const auto& desktop    = std::get<std::string>(config_data["DE"]);
-    const auto& bootloader = std::get<std::string>(config_data["BOOTLOADER"]);
+    const auto& kernel       = std::get<std::string>(config_data["KERNEL"]);
+    const auto& desktop      = std::get<std::string>(config_data["DE"]);
+    const auto& bootloader   = std::get<std::string>(config_data["BOOTLOADER"]);
+    const auto& drivers_type = std::get<std::string>(config_data["DRIVERS_TYPE"]);
 
     if (device_info.empty()) {
         tui::select_device();
     }
+
     tui::auto_partition(false);
+
+    // LVM Detection. If detected, activate.
+    tui::lvm_detect();
+
+    // Ensure partitions are unmounted (i.e. where mounted previously)
+    config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
+    utils::umount_partitions();
+
+    // We need to remount the zfs filesystems that have defined mountpoints already
+    utils::exec("zfs mount -aO &>/dev/null");
+
+    // Get list of available partitions
+    utils::find_partitions();
+
+    // Filter out partitions that have already been mounted and partitions that just contain crypt or zfs devices
+    auto ignore_part = utils::list_mounted();
+    ignore_part += utils::zfs_list_devs();
+    ignore_part += utils::list_containing_crypt();
+
+    std::vector<std::pair<std::string, double>> parts{};
+
+    const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+    for (const auto& partition : partitions) {
+        /* clang-format off */
+        if (!partition.starts_with(device_info)) { continue; }
+        /* clang-format on */
+        const auto& partition_stat = utils::make_multiline(partition, false, " ");
+        const auto& part_name      = partition_stat[0];
+        const auto& part_size      = partition_stat[1];
+
+        if (part_size == "512M") {
+            make_esp(part_name);
+            utils::get_cryptroot();
+            utils::get_cryptboot();
+            spdlog::info("boot partition: name={}", part_name);
+            continue;
+        }
+
+        const auto& size_end_pos = std::find_if(part_size.begin(), part_size.end(), [](auto&& ch) { return std::isalpha(ch); });
+        const auto& number_len   = std::distance(part_size.begin(), size_end_pos);
+        const std::string_view number_str{part_size.data(), static_cast<std::size_t>(number_len)};
+        const std::string_view unit{part_size.data() + number_len, part_size.size() - static_cast<std::size_t>(number_len)};
+
+        const double number       = utils::to_floating(number_str);
+        const auto& converted_num = utils::convert_unit(number, unit);
+        parts.push_back(std::pair<std::string, double>{part_name, converted_num});
+    }
+
+    const auto& root_part    = std::max_element(parts.begin(), parts.end(), [](auto&& lhs, auto&& rhs) { return lhs.second < rhs.second; })->first;
+    config_data["PARTITION"] = root_part;
+    config_data["ROOT_PART"] = root_part;
+
+    // Reset the mountpoint variable, in case this is the second time through this menu and old state is still around
+    config_data["MOUNT"] = "";
 
     // Target FS
     if (fs_name.empty()) {
@@ -105,7 +182,20 @@ void menu_simple() noexcept {
         utils::select_filesystem(fs_name);
     }
     tui::mount_current_partition(true);
-    /* clang-format on */
+
+    // If the root partition is btrfs, offer to create subvolumes
+    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -no FSTYPE \"{}\""), mountpoint)) == "btrfs") {
+        // Check if there are subvolumes already on the btrfs partition
+        const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\""), mountpoint);
+        const auto& subvolumes_count = utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
+        const auto& lines_count      = utils::to_int(subvolumes_count.data());
+        if (lines_count > 1) {
+            // Pre-existing subvolumes and user wants to mount them
+            utils::mount_existing_subvols({root_part, root_part});
+        } else {
+            utils::btrfs_create_subvols({.root = root_part, .mount_opts = mount_opts_info}, "automatic", true);
+        }
+    }
 
     utils::generate_fstab("genfstab -U");
 
@@ -159,12 +249,6 @@ void menu_simple() noexcept {
         fmt::format("Filesystem: {}", fs_name),
         fmt::format("Filesystem opts: {}", mount_opts_info), 80);
 
-    //    tui::mount_partitions();
-    //
-    //    if (!utils::check_mount()) {
-    //        spdlog::error("Your partitions are not mounted");
-    //    }
-
     // Install process
     if (kernel.empty()) {
         tui::install_base();
@@ -184,20 +268,22 @@ void menu_simple() noexcept {
     }
 
 #ifdef NDEVENV
-    utils::arch_chroot("mhwd -a pci free 0300");
+    utils::arch_chroot(fmt::format(FMT_COMPILE("mhwd -a pci {} 0300"), drivers_type));
     std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
 #endif
 
     tui::exit_done();
 
-    fmt::print("┌{0:─^{4}}┐\n"
-               "│{1: ^{4}}│\n"
-               "│{2: ^{4}}│\n"
-               "│{3: ^{4}}│\n"
-               "└{0:─^{4}}┘\n",
+    fmt::print("┌{0:─^{5}}┐\n"
+               "│{1: ^{5}}│\n"
+               "│{2: ^{5}}│\n"
+               "│{3: ^{5}}│\n"
+               "│{4: ^{5}}│\n"
+               "└{0:─^{5}}┘\n",
         "",
         fmt::format("Kernel: {}", kernel),
         fmt::format("Desktop: {}", desktop),
+        fmt::format("Drivers type: {}", drivers_type),
         fmt::format("Bootloader: {}", bootloader), 80);
 }
 

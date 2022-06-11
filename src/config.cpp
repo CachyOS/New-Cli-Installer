@@ -40,6 +40,7 @@ bool Config::initialize() noexcept {
 
         // Installation
         s_config->m_data["GRAPHIC_CARD"] = "";
+        s_config->m_data["DRIVERS_TYPE"] = "free";
     }
 
     return s_config.get();

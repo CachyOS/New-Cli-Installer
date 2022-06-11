@@ -13,7 +13,7 @@ struct disk_part {
     const std::string_view mount_opts{};
 };
 
-void btrfs_create_subvols(const disk_part& disk, const std::string_view& mode) noexcept;
+void btrfs_create_subvols(const disk_part& disk, const std::string_view& mode, bool ignore_note = false) noexcept;
 void mount_existing_subvols(const disk_part& disk) noexcept;
 std::vector<std::string> lvm_show_vg() noexcept;
 

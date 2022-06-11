@@ -650,7 +650,7 @@ void install_desktop() noexcept {
 #endif
 
     // Prep variables
-    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "openbox", "bspwm", "Kofuku edition"};
+    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "gnome", "openbox", "bspwm", "Kofuku edition", "lxqt"};
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string desktop_env{};
@@ -852,27 +852,19 @@ void auto_partition(bool interactive) noexcept {
     const auto& device_info                  = std::get<std::string>(config_data["DEVICE"]);
     [[maybe_unused]] const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
 
+#ifdef NDEVENV
     // Find existing partitions (if any) to remove
     const auto& parts     = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk '/^ / {print $1}'"));
     const auto& del_parts = utils::make_multiline(parts);
     for (const auto& del_part : del_parts) {
-#ifdef NDEVENV
         utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} 2>>/tmp/cachyos-install.log &>/dev/null"), device_info, del_part));
-#else
-        spdlog::debug("{}", del_part);
-#endif
     }
 
     // Clear disk
-#ifdef NDEVENV
     utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of=\"{}\" bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     utils::exec(fmt::format(FMT_COMPILE("wipefs -af \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-#else
-    spdlog::debug("Clearing disk...");
-#endif
 
-#ifdef NDEVENV
     // Identify the partition table
     const auto& part_table = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
 
@@ -1088,7 +1080,7 @@ bool mount_current_partition(bool force) noexcept {
     /* clang-format off */
     // Get mounting options for appropriate filesystems
     const auto& fs_opts = std::get<std::vector<std::string>>(config_data["fs_opts"]);
-    if (!fs_opts.empty()) { mount_opts(force); }
+    if (!fs_opts.empty()) { tui::mount_opts(force); }
     /* clang-format on */
 
     // TODO: use libmount instead.
@@ -1756,7 +1748,7 @@ void mount_partitions() noexcept {
         // Extra check if root is on LUKS or lvm
         // get_cryptroot
         // echo "$LUKS_DEV" > /tmp/.luks_dev
-        // If the root partition is btrfs, offer to create subvolumus
+        // If the root partition is btrfs, offer to create subvolumes
         if (utils::exec(fmt::format(FMT_COMPILE("findmnt -no FSTYPE \"{}\""), mountpoint_info)) == "btrfs") {
             // Check if there are subvolumes already on the btrfs partition
             const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\""), mountpoint_info);

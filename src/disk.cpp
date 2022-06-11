@@ -17,7 +17,7 @@ namespace fs = std::filesystem;
 
 namespace utils {
 
-void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::string_view& mode) noexcept {
+void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::string_view& mode, bool ignore_note) noexcept {
     /* clang-format off */
     if (mode.empty()) { return; }
     /* clang-format on */
@@ -62,11 +62,13 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
         }
         return;
     }
-    static constexpr auto content = "\nThis creates subvolumes:\n@ for /,\n@home for /home,\n@cache for /var/cache.\n";
-    const auto& do_create         = tui::detail::yesno_widget(content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 15) | size(ftxui::WIDTH, ftxui::LESS_THAN, 75));
-    /* clang-format off */
-    if (!do_create) { return; }
-    /* clang-format on */
+    if (!ignore_note) {
+        static constexpr auto content = "\nThis creates subvolumes:\n@ for /,\n@home for /home,\n@cache for /var/cache.\n";
+        const auto& do_create         = tui::detail::yesno_widget(content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 15) | size(ftxui::WIDTH, ftxui::LESS_THAN, 75));
+        /* clang-format off */
+        if (!do_create) { return; }
+        /* clang-format on */
+    }
 
     // Create subvolumes automatically
     const auto& saved_path = fs::current_path();
@@ -83,6 +85,8 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
     fs::create_directories("/mnt/var/cache");
     utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=@home \"{}\" /mnt/home"), disk.mount_opts, disk.root));
     utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=@cache \"{}\" /mnt/var/cache"), disk.mount_opts, disk.root));
+#else
+    spdlog::info("Do we ignore note? {}", ignore_note);
 #endif
 }
 
