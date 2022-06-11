@@ -1,4 +1,5 @@
 #include "disk.hpp"
+#include "config.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 
@@ -148,7 +149,7 @@ std::string zfs_list_devs() noexcept {
     for (const auto& device : devices) {
         // add the device
         list_of_devices += fmt::format("{}\n", device);
-        // now lets add any other forms of those devices
+        // now let's add any other forms of those devices
         list_of_devices += utils::exec(fmt::format("find -L /dev/ -xtype l -samefile {} 2>/dev/null", device));
     }
     return list_of_devices;
@@ -162,6 +163,51 @@ std::string zfs_list_datasets(const std::string_view& type) noexcept {
     }
 
     return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\"");
+}
+
+// Other filesystems
+void select_filesystem(const std::string_view& file_sys) noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    config_data["FILESYSTEM_NAME"] = std::string{file_sys.data()};
+
+    if (file_sys == "btrfs") {
+        config_data["FILESYSTEM"] = "mkfs.btrfs -f";
+        config_data["fs_opts"]    = std::vector<std::string>{"autodefrag", "compress=zlib", "compress=lzo", "compress=zstd", "compress=no", "compress-force=zlib", "compress-force=lzo", "compress-force=zstd", "discard", "noacl", "noatime", "nodatasum", "nospace_cache", "recovery", "skip_balance", "space_cache", "nossd", "ssd", "ssd_spread", "commit=120"};
+#ifdef NDEVENV
+        utils::exec("modprobe btrfs");
+#endif
+    } else if (file_sys == "ext2") {
+        config_data["FILESYSTEM"] = "mkfs.ext2 -q";
+    } else if (file_sys == "ext3") {
+        config_data["FILESYSTEM"] = "mkfs.ext3 -q";
+    } else if (file_sys == "ext4") {
+        config_data["FILESYSTEM"] = "mkfs.ext4 -q";
+        config_data["fs_opts"]    = std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
+    } else if (file_sys == "f2fs") {
+        config_data["FILESYSTEM"] = "mkfs.f2fs -q";
+        config_data["fs_opts"]    = std::vector<std::string>{"data_flush", "disable_roll_forward", "disable_ext_identify", "discard", "fastboot", "flush_merge", "inline_xattr", "inline_data", "inline_dentry", "no_heap", "noacl", "nobarrier", "noextent_cache", "noinline_data", "norecovery"};
+#ifdef NDEVENV
+        utils::exec("modprobe f2fs");
+#endif
+    } else if (file_sys == "jfs") {
+        config_data["FILESYSTEM"] = "mkfs.jfs -q";
+        config_data["fs_opts"]    = std::vector<std::string>{"discard", "errors=continue", "errors=panic", "nointegrity"};
+    } else if (file_sys == "nilfs2") {
+        config_data["FILESYSTEM"] = "mkfs.nilfs2 -fq";
+        config_data["fs_opts"]    = std::vector<std::string>{"discard", "nobarrier", "errors=continue", "errors=panic", "order=relaxed", "order=strict", "norecovery"};
+    } else if (file_sys == "ntfs") {
+        config_data["FILESYSTEM"] = "mkfs.ntfs -q";
+    } else if (file_sys == "reiserfs") {
+        config_data["FILESYSTEM"] = "mkfs.reiserfs -q";
+        config_data["fs_opts"]    = std::vector<std::string>{"acl", "nolog", "notail", "replayonly", "user_xattr"};
+    } else if (file_sys == "vfat") {
+        config_data["FILESYSTEM"] = "mkfs.vfat -F32";
+    } else if (file_sys == "xfs") {
+        config_data["FILESYSTEM"] = "mkfs.xfs -f";
+        config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
+    }
 }
 
 }  // namespace utils

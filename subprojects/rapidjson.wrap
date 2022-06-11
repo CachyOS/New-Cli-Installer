@@ -1,0 +1,8 @@
+[wrap-git]
+url = https://github.com/Tencent/rapidjson.git
+revision = 232389d4f1012dddec4ef84861face2d2ba85709
+
+patch_directory = rapidjson
+
+[provide]
+rapidjson = rapidjson_dep

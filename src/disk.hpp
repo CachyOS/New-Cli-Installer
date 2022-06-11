@@ -22,6 +22,9 @@ void zfs_create_dataset(const std::string_view& zpath, const std::string_view& z
 std::string zfs_list_devs() noexcept;
 std::string zfs_list_datasets(const std::string_view& type = "none") noexcept;
 
+// Other filesystems
+void select_filesystem(const std::string_view& fs) noexcept;
+
 }  // namespace utils
 
 #endif  // DISK_HPP

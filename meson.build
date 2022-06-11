@@ -36,7 +36,7 @@ endif
 spdlog = dependency('spdlog', version : ['>=1.9.2'], fallback : ['spdlog', 'spdlog_dep'])
 fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
-simdjson = dependency('simdjson', version : ['>=1.0.2'], fallback : ['simdjson', 'simdjson_dep'])
+rapidjson = dependency('rapidjson', version : ['>=1.1.0'], fallback : ['rapidjson', 'rapidjson_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
 ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 'range_dep'])
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
@@ -53,6 +53,7 @@ src_files = files(
     'src/follow_process_log.cpp', 'src/follow_process_log.hpp',
     'src/crypto.cpp', 'src/crypto.hpp',
     'src/misc.cpp', 'src/misc.hpp',
+    'src/simple_tui.cpp', 'src/simple_tui.hpp',
     'src/tui.cpp', 'src/tui.hpp',
     'src/main.cpp',
 )
@@ -122,7 +123,7 @@ endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
-deps = [fmt, spdlog, ftxui, cpr, ranges]
+deps = [fmt, spdlog, ftxui, cpr, ranges, rapidjson]
 
 executable(
   'cachyos-installer',

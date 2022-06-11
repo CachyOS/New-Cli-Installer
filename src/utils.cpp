@@ -39,6 +39,9 @@
 #include <range/v3/view/split.hpp>
 #include <range/v3/view/transform.hpp>
 
+#include <rapidjson/document.h>
+#include <rapidjson/istreamwrapper.h>
+
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -303,6 +306,160 @@ void secure_wipe() noexcept {
     // utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info));
 #else
     spdlog::debug("{}\n", device_info);
+#endif
+}
+
+void generate_fstab(const std::string_view& fstab_cmd) noexcept {
+    spdlog::info("Generating with fstab '{}'", fstab_cmd);
+
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    utils::exec(fmt::format(FMT_COMPILE("{0} {1} > {1}/etc/fstab"), fstab_cmd, mountpoint));
+    spdlog::info("Created fstab file:\n");
+    utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab >> /tmp/cachyos-install.log"), mountpoint));
+
+    const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
+    if (fs::exists(swap_file) && fs::is_regular_file(swap_file)) {
+        spdlog::info("appending swapfile to the fstab..");
+        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {0}/etc/fstab"), mountpoint));
+    }
+
+    // Edit fstab in case of btrfs subvolumes
+    utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
+
+    // remove any zfs datasets that are mounted by zfs
+    const auto& msource_list = utils::make_multiline(utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
+    for (const auto& msource : msource_list) {
+        if (utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0")
+            utils::exec(fmt::format(FMT_COMPILE("sed -e \"\\|^{}[[:space:]]| s/^#*/#/\" -i {}/etc/fstab"), msource, mountpoint));
+    }
+#endif
+}
+
+// Set system hostname
+void set_hostname(const std::string_view& hostname) noexcept {
+    spdlog::info("Setting hostname {}", hostname);
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" > {}/etc/hostname"), hostname, mountpoint));
+    const auto& cmd = fmt::format(FMT_COMPILE("echo -e \"#<ip-address>\\t<hostname.domain.org>\\t<hostname>\\n127.0.0.1\\tlocalhost.localdomain\\tlocalhost\\t{0}\\n::1\\tlocalhost.localdomain\\tlocalhost\\t{0}\">{1}/etc/hosts"), hostname, mountpoint);
+    utils::exec(cmd);
+#endif
+}
+
+// Set system language
+void set_locale(const std::string_view& locale) noexcept {
+    spdlog::info("Selected locale: {}", locale);
+#ifdef NDEVENV
+    const auto& mountpoint         = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& locale_config_path = fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint);
+    const auto& locale_gen_path    = fmt::format(FMT_COMPILE("{}/etc/locale.gen"), mountpoint);
+
+    static constexpr auto locale_config_part = R"(LANG="{0}"
+LC_NUMERIC="{0}"
+LC_TIME="{0}"
+LC_MONETARY="{0}"
+LC_PAPER="{0}"
+LC_NAME="{0}"
+LC_ADDRESS="{0}"
+LC_TELEPHONE="{0}"
+LC_MEASUREMENT="{0}"
+LC_IDENTIFICATION="{0}"
+LC_MESSAGES="{0}")";
+
+    std::ofstream locale_config_file{locale_config_path};
+    locale_config_file << fmt::format(locale_config_part, locale);
+
+    utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
+
+    // Generate locales
+    utils::arch_chroot("locale-gen", false);
+#endif
+}
+
+void set_xkbmap(const std::string_view& xkbmap) noexcept {
+    spdlog::info("Selected xkbmap: {}", xkbmap);
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    utils::exec(fmt::format(FMT_COMPILE("echo -e \"Section \"\\\"InputClass\"\\\"\\nIdentifier \"\\\"system-keyboard\"\\\"\\nMatchIsKeyboard \"\\\"on\"\\\"\\nOption \"\\\"XkbLayout\"\\\" \"\\\"{0}\"\\\"\\nEndSection\" > {1}/etc/X11/xorg.conf.d/00-keyboard.conf"), xkbmap, mountpoint));
+#endif
+}
+
+void set_timezone(const std::string_view& timezone) noexcept {
+    spdlog::info("Timezone is set to {}", timezone);
+#ifdef NDEVENV
+    utils::arch_chroot(fmt::format(FMT_COMPILE("ln -sf /usr/share/zoneinfo/{} /etc/localtime"), timezone), false);
+#endif
+}
+
+void set_hw_clock(const std::string_view& clock_type) noexcept {
+    spdlog::info("Clock type is: {}", clock_type);
+#ifdef NDEVENV
+    utils::arch_chroot(fmt::format(FMT_COMPILE("hwclock --systohc --{}"), clock_type), false);
+#endif
+}
+
+// Create user on the system
+void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept {
+    spdlog::info("default shell: [{}]", shell);
+
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    if (shell.ends_with("zsh") || shell.ends_with("fish")) {
+        const auto& packages  = fmt::format(FMT_COMPILE("cachyos-{}-config"), (shell.ends_with("zsh")) ? "zsh" : "fish");
+        const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
+        const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+    }
+
+    // Create the user, set password, then remove temporary password file
+    utils::arch_chroot("groupadd sudo", false);
+    utils::arch_chroot(fmt::format(FMT_COMPILE("groupadd {}"), user), false);
+    utils::arch_chroot(fmt::format(FMT_COMPILE("useradd {0} -m -g {0} -G sudo,storage,power,network,video,audio,lp,sys,input -s {1}"), user, shell), false);
+    spdlog::info("add user to groups");
+
+    // check if user has been created
+    const auto& user_check = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} getent passwd {}"), mountpoint, user));
+    if (user_check.empty()) {
+        spdlog::error("User has not been created!");
+    }
+    std::error_code err{};
+    utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\\n{0}\" > /tmp/.passwd"), password));
+    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd {} < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
+    spdlog::info("create user pwd: {}", ret_status);
+    fs::remove("/tmp/.passwd", err);
+
+    // Set up basic configuration files and permissions for user
+    // arch_chroot "cp /etc/skel/.bashrc /home/${USER}"
+    utils::arch_chroot(fmt::format(FMT_COMPILE("chown -R {0}:{0} /home/{0}"), user), false);
+    const auto& sudoers_file = fmt::format(FMT_COMPILE("{}/etc/sudoers"), mountpoint);
+    if (fs::exists(sudoers_file)) {
+        utils::exec(fmt::format(FMT_COMPILE("sed -i '/NOPASSWD/!s/# %sudo/%sudo/g' {}"), sudoers_file));
+    }
+#endif
+}
+
+// Set password for root user
+void set_root_password([[maybe_unused]] const std::string_view& password) noexcept {
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    std::error_code err{};
+    utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\n{0}\" > /tmp/.passwd"), password));
+    utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd root < /tmp/.passwd &>/dev/null"), mountpoint));
+    fs::remove("/tmp/.passwd", err);
 #endif
 }
 
@@ -751,6 +908,81 @@ vm.vfs_cache_pressure = 50
 }
 
 void parse_config() noexcept {
+    using namespace rapidjson;
+
+    // 1. Open file for reading.
+    static constexpr auto file_path = "settings.json";
+    std::ifstream ifs{file_path};
+    if (!ifs.is_open()) {
+        fmt::print(stderr, "Config not found running with defaults");
+        return;
+    }
+
+    IStreamWrapper isw{ifs};
+
+    // 2. Parse a JSON.
+    Document doc;
+    doc.ParseStream(isw);
+
+    // Document is a JSON value represents the root of DOM. Root can be either an object or array.
+    assert(doc.IsObject());
+
+    assert(doc.HasMember("menus"));
+    assert(doc["menus"].IsInt());
+
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    config_data["menus"]  = doc["menus"].GetInt();
+
+    if (doc.HasMember("device")) {
+        assert(doc["device"].IsString());
+        config_data["DEVICE"] = std::string{doc["device"].GetString()};
+    }
+
+    if (doc.HasMember("fs_name")) {
+        assert(doc["fs_name"].IsString());
+        config_data["FILESYSTEM_NAME"] = std::string{doc["fs_name"].GetString()};
+    }
+
+    if (doc.HasMember("mount_opts")) {
+        assert(doc["mount_opts"].IsString());
+        config_data["MOUNT_OPTS"] = std::string{doc["mount_opts"].GetString()};
+    }
+
+    if (doc.HasMember("hostname")) {
+        assert(doc["hostname"].IsString());
+        config_data["HOSTNAME"] = std::string{doc["hostname"].GetString()};
+    }
+
+    if (doc.HasMember("locale")) {
+        assert(doc["locale"].IsString());
+        config_data["LOCALE"] = std::string{doc["locale"].GetString()};
+    }
+
+    if (doc.HasMember("xkbmap")) {
+        assert(doc["xkbmap"].IsString());
+        config_data["XKBMAP"] = std::string{doc["xkbmap"].GetString()};
+    }
+
+    if (doc.HasMember("timezone")) {
+        assert(doc["timezone"].IsString());
+        config_data["TIMEZONE"] = std::string{doc["timezone"].GetString()};
+    }
+
+    if (doc.HasMember("user_name") && doc.HasMember("user_pass") && doc.HasMember("user_shell")) {
+        assert(doc["user_name"].IsString());
+        assert(doc["user_pass"].IsString());
+        assert(doc["user_shell"].IsString());
+        config_data["USER_NAME"]  = std::string{doc["user_name"].GetString()};
+        config_data["USER_PASS"]  = std::string{doc["user_pass"].GetString()};
+        config_data["USER_SHELL"] = std::string{doc["user_shell"].GetString()};
+    }
+
+    if (doc.HasMember("root_pass")) {
+        assert(doc["root_pass"].IsString());
+        config_data["ROOT_PASS"] = std::string{doc["root_pass"].GetString()};
+    }
+
     /*
     using namespace simdjson;
 

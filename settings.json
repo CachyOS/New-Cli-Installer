@@ -1,0 +1,13 @@
+{
+    "menus": -1,
+    "fs_name": "btrfs",
+    "device": "/dev/nvme0n1",
+    "locale": "en_US",
+    "user_name": "testuser",
+    "user_pass": "test",
+    "user_shell": "/bin/bash",
+    "root_pass": "secure",
+    "hostname": "cachyos",
+    "xkbmap": "us",
+    "timezone": "America/New_York"
+}

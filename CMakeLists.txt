@@ -48,9 +48,9 @@ CPMAddPackage(
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
-  NAME simdjson
-  GITHUB_REPOSITORY simdjson/simdjson
-  GIT_TAG fbe955e9a449c6bbeae69aacfa995795f2100791
+  NAME rapidjson
+  GITHUB_REPOSITORY Tencent/rapidjson
+  GIT_TAG 232389d4f1012dddec4ef84861face2d2ba85709
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -94,6 +94,7 @@ add_executable(${PROJECT_NAME}
    src/follow_process_log.hpp src/follow_process_log.cpp
    src/crypto.cpp src/crypto.hpp
    src/misc.cpp src/misc.hpp
+   src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
    src/main.cpp
    )
@@ -105,6 +106,7 @@ add_executable(test-exec-interactive
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
    src/crypto.cpp src/crypto.hpp
+   src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
    src/main_test.cpp
    )
@@ -116,6 +118,7 @@ add_executable(test-process-tailing
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
    src/crypto.cpp src/crypto.hpp
+   src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
    src/test_proccess_tailing.cpp
    )
@@ -132,9 +135,9 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component cpr::cpr range-v3::range-v3)#simdjson::simdjson)
-target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr range-v3::range-v3)#simdjson::simdjson)
-target_link_libraries(test-process-tailing PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr)#simdjson::simdjson)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component cpr::cpr range-v3::range-v3)
+target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr range-v3::range-v3)
+target_link_libraries(test-process-tailing PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)

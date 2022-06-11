@@ -13,6 +13,7 @@ subprojects/ftxui
 subprojects/nlohmann_json-*
 subprojects/spdlog
 subprojects/simdjson
+subprojects/rapidjson
 subprojects/range-v3
 subprojects/packagecache
 

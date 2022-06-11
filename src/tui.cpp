@@ -5,6 +5,7 @@
 #include "disk.hpp"
 #include "drivers.hpp"
 #include "misc.hpp"
+#include "simple_tui.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 
@@ -127,6 +128,7 @@ void generate_fstab() noexcept {
     const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
 
     auto screen = ScreenInteractive::Fullscreen();
+    std::string fstab_cmd{};
     std::int32_t selected{};
     auto ok_callback = [&] {
         if (system_info == "BIOS" && selected == 3) {
@@ -134,36 +136,17 @@ void generate_fstab() noexcept {
             detail::msgbox_widget(FstabErr);
             return;
         }
-#ifdef NDEVENV
-        const auto& src = menu_entries[static_cast<std::size_t>(selected)];
-        utils::exec(fmt::format(FMT_COMPILE("{0} {1} > {1}/etc/fstab"), src, mountpoint));
-        spdlog::info("Created fstab file:\n");
-        utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab >> /tmp/cachyos-install.log"), mountpoint));
-#endif
-        const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
-        if (fs::exists(swap_file) && fs::is_regular_file(swap_file)) {
-            spdlog::info("appending swapfile to the fstab..");
-#ifdef NDEVENV
-            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {0}/etc/fstab"), mountpoint));
-#endif
-        }
+        fstab_cmd = menu_entries[static_cast<std::size_t>(selected)];
         screen.ExitLoopClosure()();
     };
+    /* clang-format off */
+    if (fstab_cmd.empty()) { return; }
+    /* clang-format on */
+
+    utils::generate_fstab(fstab_cmd);
 
     static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) is recommended.\n\nIf no labels were set for the partitions earlier,\ndevice names will be used for the label option.\n";
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, fstab_body);
-
-#ifdef NDEVENV
-    // Edit fstab in case of btrfs subvolumes
-    utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
-
-    // remove any zfs datasets that are mounted by zfs
-    const auto& msource_list = utils::make_multiline(utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
-    for (const auto& msource : msource_list) {
-        if (utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0")
-            utils::exec(fmt::format(FMT_COMPILE("sed -e \"\\|^{}[[:space:]]| s/^#*/#/\" -i {}/etc/fstab"), msource, mountpoint));
-    }
-#endif
 }
 
 // Set system hostname
@@ -178,14 +161,7 @@ void set_hostname() noexcept {
     if (hostname.empty()) { return; }
     /* clang-format on */
 
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" > {}/etc/hostname"), hostname, mountpoint));
-    const auto& cmd = fmt::format(FMT_COMPILE("echo -e \"#<ip-address>\\t<hostname.domain.org>\\t<hostname>\\n127.0.0.1\\tlocalhost.localdomain\\tlocalhost\\t{0}\\n::1\\tlocalhost.localdomain\\tlocalhost\\t{0}\">{1}/etc/hosts"), hostname, mountpoint);
-    utils::exec(cmd);
-#endif
+    utils::set_hostname(hostname);
 }
 
 // Set system language
@@ -210,33 +186,7 @@ void set_locale() noexcept {
     if (locale.empty()) { return; }
     /* clang-format on */
 
-#ifdef NDEVENV
-    auto* config_instance          = Config::instance();
-    auto& config_data              = config_instance->data();
-    const auto& mountpoint         = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& locale_config_path = fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint);
-    const auto& locale_gen_path    = fmt::format(FMT_COMPILE("{}/etc/locale.gen"), mountpoint);
-
-    static constexpr auto locale_config_part = R"(LANG="{0}"
-LC_NUMERIC="{0}"
-LC_TIME="{0}"
-LC_MONETARY="{0}"
-LC_PAPER="{0}"
-LC_NAME="{0}"
-LC_ADDRESS="{0}"
-LC_TELEPHONE="{0}"
-LC_MEASUREMENT="{0}"
-LC_IDENTIFICATION="{0}"
-LC_MESSAGES="{0}")";
-
-    std::ofstream locale_config_file{locale_config_path};
-    locale_config_file << fmt::format(locale_config_part, locale);
-
-    utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
-
-    // Generate locales
-    utils::arch_chroot("locale-gen", false);
-#endif
+    utils::set_locale(locale);
 }
 
 // Set keymap for X11
@@ -263,13 +213,7 @@ void set_xkbmap() noexcept {
     if (!success) { return; }
     /* clang-format on */
 
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    utils::exec(fmt::format(FMT_COMPILE("echo -e \"Section \"\\\"InputClass\"\\\"\\nIdentifier \"\\\"system-keyboard\"\\\"\\nMatchIsKeyboard \"\\\"on\"\\\"\\nOption \"\\\"XkbLayout\"\\\" \"\\\"{0}\"\\\"\\nEndSection\" > {1}/etc/X11/xorg.conf.d/00-keyboard.conf"), xkbmap_choice, mountpoint));
-#endif
+    utils::set_xkbmap(xkbmap_choice);
 }
 
 void select_keymap() noexcept {
@@ -347,10 +291,8 @@ bool set_timezone() noexcept {
     if (!do_set_timezone) { return false; }
     /* clang-format on */
 
-#ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("ln -sf /usr/share/zoneinfo/{}/{} /etc/localtime"), zone, subzone), false);
-#endif
-    spdlog::info("Timezone is set to {}/{}", zone, subzone);
+    utils::set_timezone(fmt::format(FMT_COMPILE("{}/{}"), zone, subzone));
+
     return true;
 }
 
@@ -360,10 +302,8 @@ void set_hw_clock() noexcept {
     const std::vector<std::string> menu_entries{"utc", "localtime"};
     std::int32_t selected{};
     auto ok_callback = [&] {
-#ifdef NDEVENV
         const auto& clock_type = menu_entries[static_cast<std::size_t>(selected)];
-        utils::arch_chroot(fmt::format(FMT_COMPILE("hwclock --systohc --{}"), clock_type), false);
-#endif
+        utils::set_hw_clock(clock_type);
         screen.ExitLoopClosure()();
     };
 
@@ -390,17 +330,7 @@ void set_root_password() noexcept {
         detail::msgbox_widget(PassErrBody);
         tui::set_root_password();
     }
-
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    std::error_code err{};
-    utils::exec(fmt::format(FMT_COMPILE("echo -e \"{}\n{}\" > /tmp/.passwd"), pass, confirm));
-    utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd root < /tmp/.passwd &>/dev/null"), mountpoint));
-    fs::remove("/tmp/.passwd", err);
-#endif
+    utils::set_root_password(pass);
 }
 
 // Create user on the system
@@ -419,12 +349,6 @@ void create_new_user() noexcept {
             return;
         }
     }
-
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-#endif
 
     std::string_view shell{};
     {
@@ -455,18 +379,7 @@ void create_new_user() noexcept {
             screen.ExitLoopClosure()();
         };
         detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = shells_options_body}, {.text_size = nothing});
-
-#ifdef NDEVENV
-        if (selected != 1) {
-            const auto& packages  = fmt::format(FMT_COMPILE("cachyos-{}-config"), (selected == 0) ? "zsh" : "fish");
-            const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
-            const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
-            detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
-        }
-#endif
     }
-
-    spdlog::info("default shell: [{}]", shell);
 
     // Enter password. This step will only be reached where the loop has been skipped or broken.
     std::string pass{};
@@ -497,32 +410,7 @@ void create_new_user() noexcept {
     detail::infobox_widget("\nCreating User and setting groups...\n");
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
-#ifdef NDEVENV
-    // Create the user, set password, then remove temporary password file
-    utils::arch_chroot("groupadd sudo", false);
-    utils::arch_chroot(fmt::format(FMT_COMPILE("groupadd {}"), user), false);
-    utils::arch_chroot(fmt::format(FMT_COMPILE("useradd {0} -m -g {0} -G sudo,storage,power,network,video,audio,lp,sys,input -s {1}"), user, shell), false);
-    spdlog::info("add user to groups");
-
-    // check if user has been created
-    const auto& user_check = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} getent passwd {}"), mountpoint, user));
-    if (user_check.empty()) {
-        spdlog::error("User has not been created!");
-    }
-    std::error_code err{};
-    utils::exec(fmt::format(FMT_COMPILE("echo -e \"{}\\n{}\" > /tmp/.passwd"), pass, confirm));
-    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd {} < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
-    spdlog::info("create user pwd: {}", ret_status);
-    fs::remove("/tmp/.passwd", err);
-
-    // Set up basic configuration files and permissions for user
-    // arch_chroot "cp /etc/skel/.bashrc /home/${USER}"
-    utils::arch_chroot(fmt::format(FMT_COMPILE("chown -R {0}:{0} /home/{0}"), user), false);
-    const auto& sudoers_file = fmt::format(FMT_COMPILE("{}/etc/sudoers"), mountpoint);
-    if (fs::exists(sudoers_file)) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i '/NOPASSWD/!s/# %sudo/%sudo/g' {}"), sudoers_file));
-    }
-#endif
+    utils::create_new_user(user, pass, shell);
 }
 
 // Install pkgs from user input
@@ -1441,7 +1329,7 @@ void install_bootloader() noexcept {
 }
 
 // BIOS and UEFI
-void auto_partition() noexcept {
+void auto_partition(bool interactive) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
@@ -1488,6 +1376,10 @@ void auto_partition() noexcept {
     utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 #endif
 
+    /* clang-format off */
+    if (!interactive) { return; }
+    /* clang-format on */
+
     // Show created partitions
     const auto& disk_list = utils::exec(fmt::format(FMT_COMPILE("lsblk {} -o NAME,TYPE,FSTYPE,SIZE"), device_info));
     detail::msgbox_widget(disk_list, size(HEIGHT, GREATER_THAN, 5));
@@ -1533,7 +1425,6 @@ bool select_device() noexcept {
 
 // Set static list of filesystems rather than on-the-fly. Partially as most require additional flags, and
 // partially because some don't seem to be viable.
-// Set static list of filesystems rather than on-the-fly.
 bool select_filesystem() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -1562,42 +1453,7 @@ bool select_filesystem() noexcept {
         const auto& src      = menu_entries[static_cast<std::size_t>(selected)];
         const auto& lines    = utils::make_multiline(src, false, " ");
         const auto& file_sys = lines[0];
-        if (file_sys == "btrfs") {
-            config_data["FILESYSTEM"] = "mkfs.btrfs -f";
-            config_data["fs_opts"]    = std::vector<std::string>{"autodefrag", "compress=zlib", "compress=lzo", "compress=zstd", "compress=no", "compress-force=zlib", "compress-force=lzo", "compress-force=zstd", "discard", "noacl", "noatime", "nodatasum", "nospace_cache", "recovery", "skip_balance", "space_cache", "nossd", "ssd", "ssd_spread", "commit=120"};
-#ifdef NDEVENV
-            utils::exec("modprobe btrfs");
-#endif
-        } else if (file_sys == "ext2") {
-            config_data["FILESYSTEM"] = "mkfs.ext2 -q";
-        } else if (file_sys == "ext3") {
-            config_data["FILESYSTEM"] = "mkfs.ext3 -q";
-        } else if (file_sys == "ext4") {
-            config_data["FILESYSTEM"] = "mkfs.ext4 -q";
-            config_data["fs_opts"]    = std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
-        } else if (file_sys == "f2fs") {
-            config_data["FILESYSTEM"] = "mkfs.f2fs -q";
-            config_data["fs_opts"]    = std::vector<std::string>{"data_flush", "disable_roll_forward", "disable_ext_identify", "discard", "fastboot", "flush_merge", "inline_xattr", "inline_data", "inline_dentry", "no_heap", "noacl", "nobarrier", "noextent_cache", "noinline_data", "norecovery"};
-#ifdef NDEVENV
-            utils::exec("modprobe f2fs");
-#endif
-        } else if (file_sys == "jfs") {
-            config_data["FILESYSTEM"] = "mkfs.jfs -q";
-            config_data["fs_opts"]    = std::vector<std::string>{"discard", "errors=continue", "errors=panic", "nointegrity"};
-        } else if (file_sys == "nilfs2") {
-            config_data["FILESYSTEM"] = "mkfs.nilfs2 -fq";
-            config_data["fs_opts"]    = std::vector<std::string>{"discard", "nobarrier", "errors=continue", "errors=panic", "order=relaxed", "order=strict", "norecovery"};
-        } else if (file_sys == "ntfs") {
-            config_data["FILESYSTEM"] = "mkfs.ntfs -q";
-        } else if (file_sys == "reiserfs") {
-            config_data["FILESYSTEM"] = "mkfs.reiserfs -q";
-            config_data["fs_opts"]    = std::vector<std::string>{"acl", "nolog", "notail", "replayonly", "user_xattr"};
-        } else if (file_sys == "vfat") {
-            config_data["FILESYSTEM"] = "mkfs.vfat -F32";
-        } else if (file_sys == "xfs") {
-            config_data["FILESYSTEM"] = "mkfs.xfs -f";
-            config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
-        }
+        utils::select_filesystem(file_sys.c_str());
         success = true;
         screen.ExitLoopClosure()();
     };
@@ -1625,7 +1481,7 @@ bool select_filesystem() noexcept {
 
 // This subfunction allows for special mounting options to be applied for relevant fs's.
 // Separate subfunction for neatness.
-void mount_opts() noexcept {
+void mount_opts(bool force) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
@@ -1657,9 +1513,22 @@ void mount_opts() noexcept {
         /* clang-format on */
     }
 
-    auto screen           = ScreenInteractive::Fullscreen();
     auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    auto ok_callback      = [&] {
+
+    // Now clean up the file
+    auto cleaup_mount_opts = [](auto& opts_info) {
+        opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/ /,/g'"), opts_info));
+        opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed '$s/,$//'"), opts_info));
+    };
+
+    if (force) {
+        mount_opts_info = detail::from_checklist_string(fs_opts, fs_opts_state.get());
+        cleaup_mount_opts(mount_opts_info);
+        return;
+    }
+
+    auto screen      = ScreenInteractive::Fullscreen();
+    auto ok_callback = [&] {
         mount_opts_info = detail::from_checklist_string(fs_opts, fs_opts_state.get());
         screen.ExitLoopClosure()();
     };
@@ -1670,10 +1539,7 @@ void mount_opts() noexcept {
 
     static constexpr auto mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n";
     detail::checklist_widget(fs_opts, ok_callback, fs_opts_state.get(), &screen, mount_options_body, fs_title, {content_size, nothing});
-
-    // Now clean up the file
-    mount_opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/ /,/g'"), mount_opts_info));
-    mount_opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed '$s/,$//'"), mount_opts_info));
+    cleaup_mount_opts(mount_opts_info);
 
     // If mount options selected, confirm choice
     if (!mount_opts_info.empty()) {
@@ -1688,7 +1554,7 @@ void mount_opts() noexcept {
     }
 }
 
-bool mount_current_partition() noexcept {
+bool mount_current_partition(bool force) noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
@@ -1706,7 +1572,7 @@ bool mount_current_partition() noexcept {
     /* clang-format off */
     // Get mounting options for appropriate filesystems
     const auto& fs_opts = std::get<std::vector<std::string>>(config_data["fs_opts"]);
-    if (!fs_opts.empty()) { mount_opts(); }
+    if (!fs_opts.empty()) { mount_opts(force); }
     /* clang-format on */
 
     // TODO: use libmount instead.
@@ -1723,7 +1589,10 @@ bool mount_current_partition() noexcept {
         spdlog::info("{}", mount_status);
     }
 #endif
-    confirm_mount(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev));
+
+    /* clang-format off */
+    if (!force) { confirm_mount(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev)); }
+    /* clang-format on */
 
     // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)
     if (!utils::exec(fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"crypt\""), partition)).empty()) {
@@ -2828,29 +2697,20 @@ void menu_advanced() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
 
-void menu_simple() noexcept {
-    // Prepare
-    utils::umount_partitions();
-    if (tui::select_device()) {
-        tui::create_partitions();
-    }
-    tui::mount_partitions();
-
-    // Install process
-    if (!utils::check_mount()) {
-        spdlog::error("Your partitions are not mounted");
-    }
-    tui::install_base();
-    tui::install_desktop();
-    if (!utils::check_base()) {
-        spdlog::error("Base is not installed");
-    }
-    tui::install_bootloader();
-    tui::config_base_menu();
-}
-
 void init() noexcept {
-#if 0
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& menus     = std::get<std::int32_t>(config_data["menus"]);
+    utils::parse_config();
+
+    if (menus == 1) {
+        tui::menu_simple();
+        return;
+    } else if (menus == 2) {
+        tui::menu_advanced();
+        return;
+    }
+
     const std::vector<std::string> menu_entries = {
         "Simple installation",
         "Advanced installation",
@@ -2878,8 +2738,6 @@ void init() noexcept {
     default:
         break;
     }
-#endif
-    tui::menu_advanced();
 }
 
 }  // namespace tui
