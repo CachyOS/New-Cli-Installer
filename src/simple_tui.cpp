@@ -237,18 +237,6 @@ void menu_simple() noexcept {
         utils::create_new_user(user_name, user_pass, user_shell);
     }
 
-    fmt::print("┌{0:─^{5}}┐\n"
-               "│{1: ^{5}}│\n"
-               "│{2: ^{5}}│\n"
-               "│{3: ^{5}}│\n"
-               "│{4: ^{5}}│\n"
-               "└{0:─^{5}}┘\n",
-        "",
-        fmt::format("Mountpoint: {}", mountpoint),
-        fmt::format("Your device: {}", device_info),
-        fmt::format("Filesystem: {}", fs_name),
-        fmt::format("Filesystem opts: {}", mount_opts_info), 80);
-
     // Install process
     if (kernel.empty()) {
         tui::install_base();
@@ -273,6 +261,18 @@ void menu_simple() noexcept {
 #endif
 
     tui::exit_done();
+
+    fmt::print("┌{0:─^{5}}┐\n"
+               "│{1: ^{5}}│\n"
+               "│{2: ^{5}}│\n"
+               "│{3: ^{5}}│\n"
+               "│{4: ^{5}}│\n"
+               "└{0:─^{5}}┘\n",
+        "",
+        fmt::format("Mountpoint: {}", mountpoint),
+        fmt::format("Your device: {}", device_info),
+        fmt::format("Filesystem: {}", fs_name),
+        fmt::format("Filesystem opts: {}", mount_opts_info), 80);
 
     fmt::print("┌{0:─^{5}}┐\n"
                "│{1: ^{5}}│\n"
