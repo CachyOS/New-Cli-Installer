@@ -114,6 +114,7 @@ void menu_simple() noexcept {
     const auto& desktop      = std::get<std::string>(config_data["DE"]);
     const auto& bootloader   = std::get<std::string>(config_data["BOOTLOADER"]);
     const auto& drivers_type = std::get<std::string>(config_data["DRIVERS_TYPE"]);
+    const auto& post_install = std::get<std::string>(config_data["POST_INSTALL"]);
 
     if (device_info.empty()) {
         tui::select_device();
@@ -259,6 +260,13 @@ void menu_simple() noexcept {
     utils::arch_chroot(fmt::format(FMT_COMPILE("mhwd -a pci {} 0300"), drivers_type));
     std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
 #endif
+
+    if (!post_install.empty()) {
+        spdlog::info("Running post-install script...");
+#ifdef NDEVENV
+        utils::exec(fmt::format("{} &>>/tmp/cachyos-install.log", post_install), true);
+#endif
+    }
 
     tui::exit_done();
 

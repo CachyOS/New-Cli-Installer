@@ -15,8 +15,9 @@ bool Config::initialize() noexcept {
     }
     s_config = std::make_unique<Config>();
     if (s_config) {
-        s_config->m_data["hostcache"] = static_cast<std::int32_t>(!fs::exists("/run/miso/bootmnt"));
-        s_config->m_data["menus"]     = -1;
+        s_config->m_data["hostcache"]    = static_cast<std::int32_t>(!fs::exists("/run/miso/bootmnt"));
+        s_config->m_data["menus"]        = -1;
+        s_config->m_data["POST_INSTALL"] = "";
 
         s_config->m_data["H_INIT"] = "openrc";
         s_config->m_data["SYSTEM"] = "BIOS";

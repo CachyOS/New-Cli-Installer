@@ -1635,6 +1635,11 @@ void parse_config() noexcept {
     }
 
     config_data["DRIVERS_TYPE"] = drivers_type;
+
+    if (doc.HasMember("post_install")) {
+        assert(doc["post_install"].IsString());
+        config_data["POST_INSTALL"] = std::string{doc["post_install"].GetString()};
+    }
 }
 
 void setup_luks_keyfile() noexcept {
