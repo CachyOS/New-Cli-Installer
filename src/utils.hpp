@@ -17,7 +17,7 @@ namespace utils {
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;
 [[nodiscard]] auto make_multiline(const std::string_view& str, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::vector<std::string>;
-[[nodiscard]] auto make_multiline(std::vector<std::string>& multiline, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::string;
+[[nodiscard]] auto make_multiline(const std::vector<std::string>& multiline, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::string;
 void inst_needed(const std::string_view& pkg) noexcept;
 void secure_wipe() noexcept;
 void generate_fstab(const std::string_view& fstab_cmd) noexcept;
@@ -35,6 +35,18 @@ void set_root_password(const std::string_view& password) noexcept;
 [[nodiscard]] std::string list_non_crypt() noexcept;
 void umount_partitions() noexcept;
 void find_partitions() noexcept;
+
+[[nodiscard]] auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<std::string>;
+[[nodiscard]] auto get_pkglist_desktop(const std::string_view& desktop) noexcept -> std::vector<std::string>;
+void install_from_pkglist(const std::string_view& packages) noexcept;
+void install_base(const std::string_view& kernel) noexcept;
+void install_desktop(const std::string_view& desktop) noexcept;
+void install_grub_uefi(const std::string_view& bootid, bool as_default = true) noexcept;
+void install_refind() noexcept;
+void install_systemd_boot() noexcept;
+void uefi_bootloader(const std::string_view& bootloader) noexcept;
+void bios_bootloader(const std::string_view& bootloader) noexcept;
+void install_bootloader(const std::string_view& bootloader) noexcept;
 
 void get_cryptroot() noexcept;
 void get_cryptboot() noexcept;

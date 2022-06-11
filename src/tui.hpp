@@ -2,6 +2,8 @@
 #define TUI_HPP
 
 namespace tui {
+bool exit_done() noexcept;
+
 void set_hostname() noexcept;
 void set_locale() noexcept;
 void set_xkbmap() noexcept;
@@ -13,6 +15,10 @@ bool mount_current_partition(bool force = false) noexcept;
 void auto_partition(bool interactive = true) noexcept;
 void create_partitions() noexcept;
 bool select_device() noexcept;
+void install_base() noexcept;
+void install_desktop() noexcept;
+void install_bootloader() noexcept;
+
 void init() noexcept;
 }  // namespace tui
 

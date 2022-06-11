@@ -125,7 +125,6 @@ void generate_fstab() noexcept {
     auto* config_instance   = Config::instance();
     auto& config_data       = config_instance->data();
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string fstab_cmd{};
@@ -483,110 +482,12 @@ void install_grub_uefi() noexcept {
         }
     }
 
-    utils::clear_screen();
-#ifdef NDEVENV
-    fs::create_directory("/mnt/hostlvm");
-    utils::exec("mount --bind /run/lvm /mnt/hostlvm");
-#endif
-
-    // if root is encrypted, amend /etc/default/grub
-    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
-    const auto& root_part   = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
-#ifdef NDEVENV
-    utils::boot_encrypted_setting();
-#endif
-
-    spdlog::info("root_name: {}. root_device: {}. root_part: {}", root_name, root_device, root_part);
-
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
-#ifdef NDEVENV
-    const auto& mountpoint          = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& luks_dev            = std::get<std::string>(config_data["LUKS_DEV"]);
-    const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
-
-    // grub config changes for zfs root
-    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint)) == "zfs") {
-        // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
-        setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
-
-        constexpr auto bash_codepart1 = R"(#!/bin/bash
-ln -s /hostlvm /run/lvm
-export ZPOOL_VDEV_NAME_PATH=YES
-pacman -S --noconfirm --needed grub efibootmgr dosfstools
-# zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-# we need to tell grub where the zfs root is)";
-
-        const auto& mountpoint_source = utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE {}"), mountpoint));
-        const auto& zroot_var         = fmt::format(FMT_COMPILE("zroot=\"zfs={} rw\""), mountpoint_source);
-
-        constexpr auto bash_codepart2 = R"(
-sed -e '/^GRUB_CMDLINE_LINUX_DEFAULT=/s@"$@ '"${zroot}"'"@g' -e '/^GRUB_CMDLINE_LINUX=/s@"$@ '"${zroot}"'"@g' -i /etc/default/grub
-sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub)";
-
-        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
-        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\n{}\n{}\ngrub-install --target=x86_64-efi --efi-directory={} --bootloader-id={} --recheck\n{}\n"), bash_codepart1, zroot_var, bash_codepart2, uefi_mount, bootid, mkconfig_codepart);
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    } else {
-        constexpr auto bash_codepart = R"(#!/bin/bash
-ln -s /hostlvm /run/lvm
-pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
-findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub)";
-
-        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
-        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\ngrub-install --target=x86_64-efi --efi-directory={} --bootloader-id={} --recheck\n{}\n"), bash_codepart, uefi_mount, bootid, mkconfig_codepart);
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    }
-
-    fs::permissions(grub_installer_path,
-        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
-        fs::perm_options::add);
-
-    // if the device is removable append removable to the grub-install
-    const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable.data()) == 1) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/^grub-install /s/$/ --removable/g' -i {}"), grub_installer_path));
-    }
-
-    // If the root is on btrfs-subvolume, amend grub installation
-    ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
-    if (ret_status != "0") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
-    }
-    // If encryption used amend grub
-    if (luks_dev != "") {
-        const auto& luks_dev_formatted = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
-        ret_status                     = utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
-        if (ret_status == "0") {
-            spdlog::info("adding kernel parameter {}", luks_dev);
-        }
-    }
-
-    // If Full disk encryption is used, use a keyfile
-    const auto& fde = std::get<std::int32_t>(config_data["fde"]);
-    if (fde == 1) {
-        spdlog::info("Full disk encryption enabled");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
-    }
-
-    std::error_code err{};
-
-    // install grub
-    utils::arch_chroot("grub_installer.sh");
-    umount("/mnt/hostlvm");
-    fs::remove("/mnt/hostlvm", err);
-
-    // the grub_installer is no longer needed
-    fs::remove(grub_installer_path, err);
-#endif
+    utils::clear_screen();
+    utils::install_grub_uefi(bootid, false);
     // Ask if user wishes to set Grub as the default bootloader and act accordingly
     static constexpr auto set_boot_default_body  = "Some UEFI firmware may not detect the bootloader unless it is set\nas default by copying its efi stub to";
     static constexpr auto set_boot_default_body2 = "and renaming it to bootx64.efi.\n\nIt is recommended to do so unless already using a default bootloader,\nor where intending to use multiple bootloaders.\n\nSet bootloader as default?";
@@ -613,96 +514,8 @@ void install_refind() noexcept {
     if (!do_install_uefi) { return; }
     /* clang-format on */
 
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
-    const auto& luks       = std::get<std::int32_t>(config_data["LUKS"]);
-    const auto& luks_dev   = std::get<std::string>(config_data["LUKS_DEV"]);
+    utils::install_refind();
 
-    utils::inst_needed("refind");
-
-    // Check if the volume is removable. If so, install all drivers
-    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
-    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-
-    // Clean the configuration in case there is previous one because the configuration part is not idempotent
-    if (fs::exists("/mnt/boot/refind_linux.conf")) {
-        std::error_code err{};
-        fs::remove("/mnt/boot/refind_linux.conf", err);
-    }
-
-    // install refind
-    const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable.data()) == 1) {
-        utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
-
-        // Remove autodetect hook
-        utils::exec("sed -i -e '/^HOOKS=/s/\\ autodetect//g' /mnt/etc/mkinitcpio.conf");
-        spdlog::info("\"Autodetect\" hook was removed");
-    } else if (luks == 1) {
-        utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
-    } else {
-        utils::exec("refind-install --root /mnt 2>>/tmp/cachyos-install.log &>/dev/null");
-    }
-
-    // Mount as rw
-    // sed -i 's/ro\ /rw\ \ /g' /mnt/boot/refind_linux.conf
-
-    // Boot in graphics mode
-    utils::exec(fmt::format(FMT_COMPILE("sed -i -e '/use_graphics_for/ s/^#*//' {}{}/EFI/refind/refind.conf"), mountpoint, uefi_mount));
-    // Set appropriate rootflags if installed on btrs subvolume
-    if (utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true) == "0") {
-        const auto& rootflag = fmt::format(FMT_COMPILE("rootflags={}"), utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g'"));
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$|\\ {}\\\"|g\" /mnt/boot/refind_linux.conf"), rootflag));
-    }
-
-    // LUKS and lvm with LUKS
-    if (luks == 1) {
-        const auto& mapper_name = utils::exec("mount | awk '/\\/mnt / {print $1}'");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |{} root={} |g\" /mnt/boot/refind_linux.conf"), luks_dev, mapper_name));
-        utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
-    }
-    // Lvm without LUKS
-    else if (utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep \"/mnt$\" | awk '{print $6}'") == "lvm") {
-        const auto& mapper_name = utils::exec("mount | awk '/\\/mnt / {print $1}'");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |root={} |g\" /mnt/boot/refind_linux.conf"), mapper_name));
-        utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
-    }
-    // Figure out microcode
-    const auto& rootsubvol = utils::exec("findmnt -o TARGET,SOURCE | awk '/\\/mnt / {print $2}' | grep -o \"\\[.*\\]\" | cut -d \"[\" -f2 | cut -d \"]\" -f1 | sed 's/^\\///'");
-    const auto& ucode      = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qqs ucode 2>>/tmp/cachyos-install.log"), mountpoint));
-    if (utils::to_int(utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l)"), ucode)).data()) > 1) {
-        // set microcode
-        if (utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
-            // there is a separate boot, path to microcode is at partition root
-            utils::exec("sed -i \"s|\\\"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
-        } else if (!rootsubvol.empty()) {
-            // Initramfs is on the root partition and root is on btrfs subvolume
-            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/intel-ucode.img initrd={0}/boot/amd-ucode.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol));
-        } else {
-            // Initramfs is on the root partition
-            utils::exec("sed -i \"s|\\\"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
-        }
-    } else {
-        if (utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
-            // there is a separate boot, path to microcode is at partition root
-            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd=/{}.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
-        } else if (!rootsubvol.empty()) {
-            // Initramfs is on the root partition and root is on btrfs subvolume
-            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/{1}.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol, ucode));
-        } else {
-            // Initramfs is on the root partition
-            utils::exec(fmt::format(FMT_COMPILE(" sed -i \"s|\\\"$| initrd=/boot/{}.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
-        }
-    }
-
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} refind-theme-nord"), mountpoint)});
-#endif
-
-    spdlog::info("Refind was succesfully installed");
     detail::infobox_widget("\nRefind was succesfully installed\n");
     std::this_thread::sleep_for(std::chrono::seconds(2));
 }
@@ -714,34 +527,14 @@ void install_systemd_boot() noexcept {
     if (!do_install_uefi) { return; }
     /* clang-format on */
 
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    utils::install_systemd_boot();
 
-    utils::arch_chroot(fmt::format(FMT_COMPILE("bootctl --path={} install"), uefi_mount), false);
-    // utils::exec(fmt::format(FMT_COMPILE("pacstrap {} systemd-boot-manager"), mountpoint));
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} systemd-boot-manager"), mountpoint)});
-    utils::arch_chroot("sdboot-manage gen", false);
-
-    // Check if the volume is removable. If so, dont use autodetect
-    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
-    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-    const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable.data()) == 1) {
-        // Remove autodetect hook
-        utils::exec("sed -i -e '/^HOOKS=/s/\\ autodetect//g' /mnt/etc/mkinitcpio.conf");
-        spdlog::info("\"Autodetect\" hook was removed");
-    }
-#endif
-    spdlog::info("Systemd-boot was installed");
     detail::infobox_widget("\nSystemd-boot was installed\n");
     std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
 void uefi_bootloader() noexcept {
+#ifdef NDEVENV
     // Ensure again that efivarfs is mounted
     static constexpr auto efi_path = "/sys/firmware/efi/";
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
@@ -754,6 +547,7 @@ void uefi_bootloader() noexcept {
             }
         }
     }
+#endif
 
     static constexpr auto bootloaderInfo        = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.";
     const std::vector<std::string> menu_entries = {
@@ -765,6 +559,11 @@ void uefi_bootloader() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
+        auto* config_instance           = Config::instance();
+        auto& config_data               = config_instance->data();
+        const auto& selected_bootloader = menu_entries[static_cast<std::size_t>(selected)];
+        config_data["BOOTLOADER"]       = selected_bootloader;
+
         switch (selected) {
         case 0:
             tui::install_grub_uefi();
@@ -797,7 +596,6 @@ void install_base() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
     const std::vector<std::string> available_kernels{"linux-cachyos", "linux", "linux-zen", "linux-lts", "linux-cachyos-cacule", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-tt", "linux-cachyos-bore"};
 
     // Create the base list of packages
@@ -836,86 +634,8 @@ void install_base() noexcept {
     if (packages.empty()) { return; }
     /* clang-format on */
 
-    auto pkg_list = utils::make_multiline(packages, false, " ");
-
-    const auto pkg_count = pkg_list.size();
-    for (std::size_t i = 0; i < pkg_count; ++i) {
-        const auto& pkg = pkg_list[i];
-        pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
-    }
-    if (zfs == 1) {
-        pkg_list.insert(pkg_list.cend(), {"zfs-utils", "linux-cachyos-zfs"});
-    }
-    pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "mhwd-cachyos", "vim", "wget", "micro", "nano", "networkmanager"});
-    pkg_list.insert(pkg_list.cend(), {"cachyos", "cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-rate-mirrors", "cachy-browser"});
-    packages = utils::make_multiline(pkg_list, false, " ");
-
-    spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", packages));
-
-#ifdef NDEVENV
-    // filter_packages
-    const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
-    const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
-
-    fs::copy_file("/etc/pacman.conf", fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint), fs::copy_options::overwrite_existing);
-    std::ofstream{base_installed};
-
-    // mkinitcpio handling for specific filesystems
-    std::int32_t btrfs_root = 0;
-    std::int32_t zfs_root   = 0;
-
-    const auto& filesystem_type = fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE {}"), mountpoint);
-    if (filesystem_type == "btrfs") {
-        btrfs_root = 1;
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/^HOOKS=/s/\\ fsck//g' -e '/^MODULES=/s/\"$/ btrfs\"/g' -i {}/etc/mkinitcpio.conf"), mountpoint));
-    } else if (filesystem_type == "zfs") {
-        zfs_root = 1;
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/^HOOKS=/s/\\ filesystems//g' -e '/^HOOKS=/s/\\ keyboard/\\ keyboard\\ zfs\\ filesystems/g' -e '/^HOOKS=/s/\\ fsck//g' -e '/^FILES=/c\\FILES=(\"/usr/lib/libgcc_s.so.1\")' -i {}/etc/mkinitcpio.conf"), mountpoint));
-    }
-
-    utils::recheck_luks();
-
-    // add luks and lvm hooks as needed
-    const auto& lvm  = std::get<std::int32_t>(config_data["LVM"]);
-    const auto& luks = std::get<std::int32_t>(config_data["LUKS"]);
-
-    if (lvm == 1 && luks == 0) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems/block lvm2 filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
-        spdlog::info("add lvm2 hook");
-    } else if (lvm == 0 && luks == 1) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems keyboard/block consolefont keymap keyboard encrypt filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
-        spdlog::info("add luks hook");
-    } else if (lvm == 1 && luks == 1) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems keyboard/block consolefont keymap keyboard encrypt lvm2 filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
-        spdlog::info("add lvm/luks hooks");
-    }
-
-    if (lvm + luks + btrfs_root + zfs_root > 0) {
-        utils::arch_chroot("mkinitcpio -P");
-        spdlog::info("re-run mkinitcpio");
-    }
-
-    // Generate fstab with UUID
-    utils::exec(fmt::format(FMT_COMPILE("genfstab -U -p {0} > {0}/etc/fstab"), mountpoint));
-    // Edit fstab in case of btrfs subvolumes
-    utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
-
-    /* clang-format off */
-    if (zfs == 0) { return; }
-    /* clang-format on */
-
-    // if we are using a zfs we should enable the zfs services
-    utils::arch_chroot("systemctl enable zfs.target", false);
-    utils::arch_chroot("systemctl enable zfs-import-cache", false);
-    utils::arch_chroot("systemctl enable zfs-mount", false);
-    utils::arch_chroot("systemctl enable zfs-import.target", false);
-
-    // we also need create the cachefile
-    utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
-    utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
-#endif
+    config_data["KERNEL"] = packages;
+    utils::install_base(packages);
 }
 
 void install_desktop() noexcept {
@@ -931,9 +651,6 @@ void install_desktop() noexcept {
 
     // Prep variables
     const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "openbox", "bspwm", "Kofuku edition"};
-
-    // Create the base list of packages
-    std::vector<std::string> install_packages{};
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string desktop_env{};
@@ -955,94 +672,7 @@ void install_desktop() noexcept {
     if (desktop_env.empty()) { return; }
     /* clang-format on */
 
-    std::vector<std::string> pkg_list{};
-
-    constexpr std::string_view kde{"kde"};
-    constexpr std::string_view sway{"sway"};
-    constexpr std::string_view i3wm{"i3wm"};
-    constexpr std::string_view xfce{"xfce"};
-    constexpr std::string_view cutefish{"cutefish"};
-    constexpr std::string_view wayfire{"wayfire"};
-    constexpr std::string_view openbox{"openbox"};
-    constexpr std::string_view bspwm{"bspwm"};
-    constexpr std::string_view kofuku{"Kofuku edition"};
-
-    bool needed_xorg{};
-    auto found = ranges::search(desktop_env, i3wm);
-    if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock-color", "i3status", "rofi", "polybar", "ly", "cachyos-picom-config", "dunst", "cachyos-i3wm-settings"});
-        needed_xorg = true;
-    }
-    found = ranges::search(desktop_env, sway);
-    if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"sway", "waybar"});
-    }
-    found = ranges::search(desktop_env, kde);
-    if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"plasma-desktop", "plasma-framework", "plasma-nm", "plasma-pa", "plasma-workspace",
-            "plasma-integration", "plasma-firewall", "plasma-browser-integration", "plasma-systemmonitor", "plasma-thunderbolt",
-            "konsole", "kate", "dolphin", "sddm", "sddm-kcm", "plasma", "plasma-wayland-protocols", "plasma-wayland-session",
-            "gamemode", "lib32-gamemode", "ksysguard", "pamac-aur", "octopi", "cachyos-kde-settings"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
-        needed_xorg = true;
-    }
-    found = ranges::search(desktop_env, xfce);
-    if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"file-roller", "galculator", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lightdm", "lightdm-gtk-greeter", "lightdm-gtk-greeter-settings", "network-manager-applet", "parole", "ristretto", "thunar-archive-plugin", "thunar-media-tags-plugin", "xdg-user-dirs-gtk", "xed", "xfce4", "xfce4-battery-plugin", "xfce4-datetime-plugin", "xfce4-mount-plugin", "xfce4-netload-plugin", "xfce4-notifyd", "xfce4-pulseaudio-plugin", "xfce4-screensaver", "xfce4-screenshooter", "xfce4-taskmanager", "xfce4-wavelan-plugin", "xfce4-weather-plugin", "xfce4-whiskermenu-plugin", "xfce4-xkb-plugin", "cachyos-xfce-settings"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
-        needed_xorg = true;
-    }
-    found = ranges::search(desktop_env, cutefish);
-    if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"cutefish"});
-        needed_xorg = true;
-    }
-    found = ranges::search(desktop_env, wayfire);
-    if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"wayfire", "wayfire-plugins-extra", "wf-config", "wf-shell", "wf-recorder", "nwg-drawer"});
-    }
-    found = ranges::search(desktop_env, openbox);
-    if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"openbox", "obconf"});
-        needed_xorg = true;
-    }
-    found = ranges::search(desktop_env, bspwm);
-    if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config"});
-        needed_xorg = true;
-    }
-    // thanks VaughnValle for all your amazing work on Japanese/Nature Rice
-    // @see https://github.com/VaughnValle/kofuku
-    found = ranges::search(desktop_env, kofuku);
-    if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config", "rofi", "lightdm-webkit2-greeter", "cachyos-kofuku"});
-        needed_xorg = true;
-    }
-
-    if (needed_xorg) {
-        pkg_list.insert(pkg_list.cend(), {"libwnck3", "xf86-input-libinput", "xf86-video-fbdev", "xf86-video-vesa", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr", "xf86-video-amdgpu", "xf86-video-ati", "xf86-video-intel"});
-    }
-    pkg_list.insert(pkg_list.cend(), {"alacritty", "openssh", "btop", "paru"});
-
-    const std::string packages = utils::make_multiline(pkg_list, false, " ");
-
-    spdlog::info(fmt::format("Preparing for desktop envs to install: \"{}\"", packages));
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    config_data["DE"]      = desktop_env;
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
-    const auto& cmd        = (hostcache) ? "pacstrap" : "pacstrap -c";
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
-    utils::enable_services();
-#endif
+    utils::install_desktop(desktop_env);
 }
 
 // Base Configuration
@@ -1125,124 +755,10 @@ void bios_bootloader() {
     if (!tui::select_device()) {
         return;
     }
-#ifdef NDEVENV
-    // if root is encrypted, amend /etc/default/grub
-    utils::boot_encrypted_setting();
-
-    auto* config_instance    = Config::instance();
-    auto& config_data        = config_instance->data();
-    const auto& lvm          = std::get<std::int32_t>(config_data["LVM"]);
-    const auto& lvm_sep_boot = std::get<std::int32_t>(config_data["LVM_SEP_BOOT"]);
-    const auto& luks_dev     = std::get<std::string>(config_data["LUKS_DEV"]);
-    const auto& mountpoint   = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& device_info  = std::get<std::string>(config_data["DEVICE"]);
-
-    // if /boot is LVM (whether using a seperate /boot mount or not), amend grub
-    if ((lvm == 1 && lvm_sep_boot == 0) || lvm_sep_boot == 2) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/GRUB_PRELOAD_MODULES=\\\"/GRUB_PRELOAD_MODULES=\\\"lvm /g\" {}/etc/default/grub"), mountpoint));
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
-    }
-
-    // If root is on btrfs volume, amend grub
-    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -no FSTYPE {}"), mountpoint)) == "btrfs") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
-    }
-
-    // Same setting is needed for LVM
-    if (lvm == 1) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
-    }
-
-    const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
-
-    // grub config changes for zfs root
-    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint)) == "zfs") {
-        // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
-        setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
-
-        constexpr auto bash_codepart1 = R"(#!/bin/bash
-ln -s /hostlvm /run/lvm
-export ZPOOL_VDEV_NAME_PATH=YES
-pacman -S --noconfirm --needed grub os-prober
-# zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-# we need to tell grub where the zfs root is)";
-
-        const auto& mountpoint_source = utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE {}"), mountpoint));
-        const auto& zroot_var         = fmt::format(FMT_COMPILE("zroot=\"zfs={} rw\""), mountpoint_source);
-
-        constexpr auto bash_codepart2 = R"(
-sed -e '/^GRUB_CMDLINE_LINUX_DEFAULT=/s@"$@ '"${zroot}"'"@g' -e '/^GRUB_CMDLINE_LINUX=/s@"$@ '"${zroot}"'"@g' -i /etc/default/grub
-sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-grub-install --target=i386-pc --recheck)";
-
-        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
-        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\n{}\n{} {}\n{}\n"), bash_codepart1, zroot_var, bash_codepart2, device_info, mkconfig_codepart);
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    } else {
-        constexpr auto bash_codepart = R"(#!/bin/bash
-ln -s /hostlvm /run/lvm
-pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
-findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-grub-install --target=i386-pc --recheck)";
-
-        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
-        const auto& bash_code                   = fmt::format(FMT_COMPILE("{} {}\n{}\n"), bash_codepart, device_info, mkconfig_codepart);
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    }
-
-    // If the root is on btrfs-subvolume, amend grub installation
-    auto ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
-    if (ret_status != "0") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
-    }
-
-    // If encryption used amend grub
-    if (luks_dev != "") {
-        const auto& luks_dev_formatted = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
-        ret_status                     = utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
-        if (ret_status == "0") {
-            spdlog::info("adding kernel parameter {}", luks_dev);
-        }
-    }
-
-    // If Full disk encryption is used, use a keyfile
-    const auto& fde = std::get<std::int32_t>(config_data["fde"]);
-    if (fde == 1) {
-        spdlog::info("Full disk encryption enabled");
-        utils::exec(fmt::format(FMT_COMPILE("sed  -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
-    }
-
-    // Remove os-prober if not selected
-    constexpr std::string_view needle{"os-prober"};
-    const auto& found = ranges::search(selected_bootloader, needle);
-    if (found.empty()) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ os-prober//g' -i {}"), grub_installer_path));
-    }
-
-    std::error_code err{};
-
-    fs::permissions(grub_installer_path,
-        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
-        fs::perm_options::add);
-
-    detail::infobox_widget("\nPlease wait...\n");
-    utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of={} seek=1 count=2047"), device_info));
-    fs::create_directory("/mnt/hostlvm", err);
-    utils::exec("mount --bind /run/lvm /mnt/hostlvm");
-
-    // install grub
-    utils::arch_chroot("grub_installer.sh");
-
-    // the grub_installer is no longer needed - there still needs to be a better way to do this
-    fs::remove(grub_installer_path, err);
-
-    umount("/mnt/hostlvm");
-    fs::remove("/mnt/hostlvm", err);
-#endif
+    auto* config_instance     = Config::instance();
+    auto& config_data         = config_instance->data();
+    config_data["BOOTLOADER"] = selected_bootloader;
+    utils::bios_bootloader(selected_bootloader);
 }
 
 void enable_autologin() {
@@ -1323,9 +839,9 @@ void install_bootloader() noexcept {
     auto& config_data       = config_instance->data();
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
     if (system_info == "BIOS")
-        bios_bootloader();
+        tui::bios_bootloader();
     else
-        uefi_bootloader();
+        tui::uefi_bootloader();
 }
 
 // BIOS and UEFI
@@ -2701,7 +2217,6 @@ void init() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     const auto& menus     = std::get<std::int32_t>(config_data["menus"]);
-    utils::parse_config();
 
     if (menus == 1) {
         tui::menu_simple();

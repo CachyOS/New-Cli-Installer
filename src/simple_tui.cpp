@@ -79,15 +79,19 @@ void menu_simple() noexcept {
     const auto& fs_name         = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
 
-    const auto& hostname        = std::get<std::string>(config_data["HOSTNAME"]);
-    const auto& locale          = std::get<std::string>(config_data["LOCALE"]);
-    const auto& xkbmap          = std::get<std::string>(config_data["XKBMAP"]);
-    const auto& timezone        = std::get<std::string>(config_data["TIMEZONE"]);
+    const auto& hostname = std::get<std::string>(config_data["HOSTNAME"]);
+    const auto& locale   = std::get<std::string>(config_data["LOCALE"]);
+    const auto& xkbmap   = std::get<std::string>(config_data["XKBMAP"]);
+    const auto& timezone = std::get<std::string>(config_data["TIMEZONE"]);
 
-    const auto& user_name       = std::get<std::string>(config_data["USER_NAME"]);
-    const auto& user_pass       = std::get<std::string>(config_data["USER_PASS"]);
-    const auto& user_shell      = std::get<std::string>(config_data["USER_SHELL"]);
-    const auto& root_pass       = std::get<std::string>(config_data["ROOT_PASS"]);
+    const auto& user_name  = std::get<std::string>(config_data["USER_NAME"]);
+    const auto& user_pass  = std::get<std::string>(config_data["USER_PASS"]);
+    const auto& user_shell = std::get<std::string>(config_data["USER_SHELL"]);
+    const auto& root_pass  = std::get<std::string>(config_data["ROOT_PASS"]);
+
+    const auto& kernel     = std::get<std::string>(config_data["KERNEL"]);
+    const auto& desktop    = std::get<std::string>(config_data["DE"]);
+    const auto& bootloader = std::get<std::string>(config_data["BOOTLOADER"]);
 
     if (device_info.empty()) {
         tui::select_device();
@@ -157,17 +161,39 @@ void menu_simple() noexcept {
 
     //    tui::mount_partitions();
     //
-    //    // Install process
     //    if (!utils::check_mount()) {
     //        spdlog::error("Your partitions are not mounted");
     //    }
-    //    tui::install_base();
-    //    tui::install_desktop();
-    //    if (!utils::check_base()) {
-    //        spdlog::error("Base is not installed");
-    //    }
-    //    tui::install_bootloader();
-    //    tui::config_base_menu();
+
+    // Install process
+    if (kernel.empty()) {
+        tui::install_base();
+    } else {
+        utils::install_base(kernel);
+    }
+    if (desktop.empty()) {
+        tui::install_desktop();
+    } else {
+        utils::install_desktop(desktop);
+    }
+
+    if (bootloader.empty()) {
+        tui::install_bootloader();
+    } else {
+        utils::install_bootloader(bootloader);
+    }
+
+    tui::exit_done();
+
+    fmt::print("┌{0:─^{4}}┐\n"
+               "│{1: ^{4}}│\n"
+               "│{2: ^{4}}│\n"
+               "│{3: ^{4}}│\n"
+               "└{0:─^{4}}┘\n",
+        "",
+        fmt::format("Kernel: {}", kernel),
+        fmt::format("Desktop: {}", desktop),
+        fmt::format("Bootloader: {}", bootloader), 80);
 }
 
 }  // namespace tui
