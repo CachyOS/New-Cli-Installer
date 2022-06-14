@@ -1099,7 +1099,7 @@ bool mount_current_partition(bool force) noexcept {
 #endif
 
     /* clang-format off */
-    if (!force) { confirm_mount(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev)); }
+    confirm_mount(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev), force);
     /* clang-format on */
 
     // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)

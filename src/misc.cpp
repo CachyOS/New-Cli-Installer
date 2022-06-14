@@ -20,10 +20,10 @@ namespace fs = std::filesystem;
 namespace tui {
 
 // Revised to deal with partition sizes now being displayed to the user
-bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
+bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quite) {
 #ifdef NDEVENV
     const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("mount | grep {}"), part_user), true);
-    if (ret_status != "0") {
+    if (!quite && (ret_status != "0")) {
         detail::infobox_widget("\nMount Failed!\n");
         std::this_thread::sleep_for(std::chrono::seconds(2));
         return false;
@@ -35,9 +35,10 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user) {
     auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
     auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
 
-    detail::infobox_widget("\nMount Successful!\n");
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
+    if (!quite) {
+        detail::infobox_widget("\nMount Successful!\n");
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+    }
     // TODO: reimplement natively
     const auto& str      = utils::make_multiline(partitions);
     const auto& cmd      = fmt::format(FMT_COMPILE("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed s~{1}$' -'~~"), str, partition);
