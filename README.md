@@ -9,7 +9,7 @@ Fast and smooth installer for Arch based operating system.
 
 Requirements
 ------------
-* C++20 feature required (tested with GCC 11.1.0 and Clang 13(clang will not compile it with libstdc++ 11.1.0 because of c++20 standard ranges library)
+* C++20 feature required (tested with GCC 11.1.0 and Clang 13)
 Any compiler which support C++20 standard should work.
 
 ######
@@ -19,7 +19,7 @@ This is tested on Arch Linux, but *any* recent Linux with latest C++20 compiler 
 
 ```sh
 sudo pacman -Sy \
-    base-devel cmake pkg-config make
+    base-devel cmake pkg-config ninja clang mold llvm
 ```
 
 ### Cloning the source code
@@ -62,7 +62,7 @@ pass `-DENABLE_DEVENV=OFF` to cmake or `-Ddevenv=false` to meson when configurin
 * [Fast C++ logging library](https://github.com/gabime/spdlog) used for logging process of the installer.
 * [Parsing gigabytes of JSON per second](https://github.com/simdjson/simdjson) used for config deserialization.
 * [Curl for People](https://github.com/libcpr/cpr) used for connection check and maybe in future fetching netinstall config from github.
-* [Ranges](https://github.com/ericniebler/range-v3) used for ranges support with clang.
+* [Ranges](https://github.com/ericniebler/range-v3) used for ranges support.
 
 
 **Simple menu overview:**

@@ -63,7 +63,15 @@ for i in "$@"; do
   esac
 done
 
+export AR=llvm-ar
+export CC=clang
+export CXX=clang++
+export NM=llvm-nm
+export RANLIB=llvm-ranlib
+
 cmake -S . -B ${_buildpath}/${_buildtype} \
+    -GNinja \
+    -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold" \
     -DCMAKE_BUILD_TYPE=${_buildtype} \
     -DCMAKE_INSTALL_PREFIX=${_prefix} \
     -DCMAKE_INSTALL_LIBDIR=${_libdir}
