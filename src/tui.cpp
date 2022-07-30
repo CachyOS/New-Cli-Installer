@@ -1466,6 +1466,84 @@ bool zfs_create_zpool() noexcept {
     return true;
 }
 
+void zfs_import_pool() noexcept {
+}
+
+void zfs_new_ds() noexcept {
+}
+
+void zfs_set_property() noexcept {
+    const auto& zlist = utils::make_multiline(utils::zfs_list_datasets());
+    if (zlist.empty()) {
+        // no available datasets
+        detail::infobox_widget("\nNo datasets available\"\n");
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return;
+    }
+
+    std::string zdataset{};
+    {
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            zdataset = zlist[static_cast<std::size_t>(selected)];
+            success  = true;
+            screen.ExitLoopClosure()();
+        };
+        static constexpr auto zfs_menu_body = "\nEnter the property and value you would like to\nset using the format property=mountpoint\n \nFor example, you could enter:\ncompression=lz4\nor\nacltype=posixacl\n";
+        const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        /* clang-format off */
+        if (!success) { return; }
+        /* clang-format on */
+    }
+
+    // const auto& content    = fmt::format(FMT_COMPILE("\nPlease confirm that you want to irrevocably\ndelete all the data on '{}'\nand the data contained on all of it's children\n"), zdataset);
+    // const auto& do_destroy = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    //if (!do_destroy) { return; }
+    /* clang-format on */
+
+    // utils::zfs_destroy_dataset(zdataset);
+}
+
+void zfs_destroy_dataset() noexcept {
+    const auto& zlist = utils::make_multiline(utils::zfs_list_datasets());
+    if (zlist.empty()) {
+        // no available datasets
+        detail::infobox_widget("\nNo datasets available\"\n");
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return;
+    }
+
+    std::string zdataset{};
+    {
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            zdataset = zlist[static_cast<std::size_t>(selected)];
+            success  = true;
+            screen.ExitLoopClosure()();
+        };
+        static constexpr auto zfs_destroy_menu_body = "\nSelect the dataset you would like to permanently delete.\nPlease note that this will recursively delete any child datasets with warning\n";
+        const auto& content_size                    = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_destroy_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        /* clang-format off */
+        if (!success) { return; }
+        /* clang-format on */
+    }
+
+    const auto& content    = fmt::format(FMT_COMPILE("\nPlease confirm that you want to irrevocably\ndelete all the data on '{}'\nand the data contained on all of it's children\n"), zdataset);
+    const auto& do_destroy = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_destroy) { return; }
+    /* clang-format on */
+
+    utils::zfs_destroy_dataset(zdataset);
+}
+
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
 void zfs_auto() noexcept {
     // first we need to create a zpool to hold the datasets/zvols
@@ -1513,27 +1591,27 @@ void zfs_menu_manual() noexcept {
     std::int32_t selected{};
     auto ok_callback = [&] {
         switch (selected) {
-        /*case 0:
-            zfs_create_zpool();
+        case 0:
+            tui::zfs_create_zpool();
             break;
-        case 1:
-            zfs_import_pool();
+        /*case 1:
+            tui::zfs_import_pool();
             break;
         case 2:
-            zfs_new_ds();
+            tui::zfs_new_ds();
             break;
         case 3:
-            zfs_new_ds("legacy");
+            tui::zfs_new_ds("legacy");
             break;
         case 4:
-            zfs_new_ds("zvol");
-            break;
+            tui::zfs_new_ds("zvol");
+            break;*/
         case 5:
-            zfs_set_property();
+            tui::zfs_set_property();
             break;
         case 6:
-            zfs_destroy_dataset();
-            break;*/
+            tui::zfs_destroy_dataset();
+            break;
         default:
             screen.ExitLoopClosure()();
             return;

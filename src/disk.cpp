@@ -141,7 +141,15 @@ void zfs_create_dataset(const std::string_view& zpath, const std::string_view& z
 #ifdef NDEVENV
     utils::exec(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log"), zmount, zpath), true);
 #else
-    spdlog::debug("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log", zmount, zpath);
+    spdlog::debug("zfs create -o mountpoint={} {}", zmount, zpath);
+#endif
+}
+
+void zfs_destroy_dataset(const std::string_view& zdataset) noexcept {
+#ifdef NDEVENV
+    utils::exec(fmt::format(FMT_COMPILE("zfs destroy -r {} 2>>/tmp/cachyos-install.log"), zdataset), true);
+#else
+    spdlog::debug("zfs destroy -r {}", zdataset);
 #endif
 }
 
@@ -160,6 +168,7 @@ std::string zfs_list_devs() noexcept {
 }
 
 std::string zfs_list_datasets(const std::string_view& type) noexcept {
+#ifdef NDEVENV
     if (type == "zvol") {
         return utils::exec("zfs list -Ht volume -o name,volsize 2>/dev/null");
     } else if (type == "legacy") {
@@ -167,6 +176,9 @@ std::string zfs_list_datasets(const std::string_view& type) noexcept {
     }
 
     return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\"");
+#else
+    return "zpcachyos";
+#endif
 }
 
 // Other filesystems

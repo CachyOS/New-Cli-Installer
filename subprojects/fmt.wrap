@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/fmtlib/fmt.git
-revision = 864465419079791bf61bcf51e633cab6e6be71bb
+revision = 756822ba39941e1e033f26e4c07547cc7058948c
 
 patch_directory = fmt
 

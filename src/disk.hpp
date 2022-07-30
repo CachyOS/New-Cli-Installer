@@ -19,6 +19,7 @@ std::vector<std::string> lvm_show_vg() noexcept;
 
 // ZFS filesystem
 void zfs_create_dataset(const std::string_view& zpath, const std::string_view& zmount) noexcept;
+void zfs_destroy_dataset(const std::string_view& zdataset) noexcept;
 std::string zfs_list_devs() noexcept;
 std::string zfs_list_datasets(const std::string_view& type = "none") noexcept;
 
