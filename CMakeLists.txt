@@ -103,9 +103,11 @@ add_executable(test-exec-interactive
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
    src/disk.cpp src/disk.hpp
+   src/drivers.cpp src/drivers.hpp
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
    src/crypto.cpp src/crypto.hpp
+   src/misc.cpp src/misc.hpp
    src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
    src/main_test.cpp
@@ -115,9 +117,11 @@ add_executable(test-process-tailing
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
    src/disk.cpp src/disk.hpp
+   src/drivers.cpp src/drivers.hpp
    src/widgets.cpp src/widgets.hpp
    src/follow_process_log.hpp src/follow_process_log.cpp
    src/crypto.cpp src/crypto.hpp
+   src/misc.cpp src/misc.hpp
    src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
    src/test_proccess_tailing.cpp
