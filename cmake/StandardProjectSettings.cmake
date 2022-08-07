@@ -75,4 +75,4 @@ if(NOT ENABLE_DEVENV)
 endif()
 
 # Enables tests.
-option(COS_INSTALLER_BUILD_TESTS "Enable dev environment" ON)
+option(COS_INSTALLER_BUILD_TESTS "Enable dev environment" OFF)
