@@ -99,34 +99,6 @@ add_executable(${PROJECT_NAME}
    src/main.cpp
    )
 
-add_executable(test-exec-interactive
-   src/config.cpp src/config.hpp
-   src/utils.cpp src/utils.hpp
-   src/disk.cpp src/disk.hpp
-   src/drivers.cpp src/drivers.hpp
-   src/widgets.cpp src/widgets.hpp
-   src/follow_process_log.hpp src/follow_process_log.cpp
-   src/crypto.cpp src/crypto.hpp
-   src/misc.cpp src/misc.hpp
-   src/simple_tui.cpp src/simple_tui.hpp
-   src/tui.cpp src/tui.hpp
-   src/main_test.cpp
-   )
-
-add_executable(test-process-tailing
-   src/config.cpp src/config.hpp
-   src/utils.cpp src/utils.hpp
-   src/disk.cpp src/disk.hpp
-   src/drivers.cpp src/drivers.hpp
-   src/widgets.cpp src/widgets.hpp
-   src/follow_process_log.hpp src/follow_process_log.cpp
-   src/crypto.cpp src/crypto.hpp
-   src/misc.cpp src/misc.hpp
-   src/simple_tui.cpp src/simple_tui.hpp
-   src/tui.cpp src/tui.hpp
-   src/test_proccess_tailing.cpp
-   )
-
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
 set_project_warnings(project_warnings)
@@ -139,9 +111,11 @@ enable_sanitizers(project_options)
 
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
+if(COS_INSTALLER_BUILD_TESTS)
+   add_subdirectory(tests)
+endif()
+
 target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component cpr::cpr range-v3::range-v3)
-target_link_libraries(test-exec-interactive PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr range-v3::range-v3)
-target_link_libraries(test-process-tailing PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component cpr::cpr)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)

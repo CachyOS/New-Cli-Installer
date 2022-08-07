@@ -73,3 +73,6 @@ option(ENABLE_DEVENV "Enable dev environment" ON)
 if(NOT ENABLE_DEVENV)
   add_definitions(-DNDEVENV)
 endif()
+
+# Enables tests.
+option(COS_INSTALLER_BUILD_TESTS "Enable dev environment" ON)

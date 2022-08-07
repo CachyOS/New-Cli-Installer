@@ -10,6 +10,7 @@ project('cachyos-installer', 'cpp',
 
 is_debug_build = get_option('buildtype').startswith('debug')
 is_dev_environment = get_option('devenv')
+is_tests_build = get_option('build_tests')
 cc = meson.get_compiler('cpp')
 if cc.get_id() == 'clang'
     specific_cc_flags = [
@@ -132,19 +133,9 @@ executable(
   include_directories: [include_directories('src')],
   install: true)
 
-executable(
-  'test-exec-interactive',
-  files('src/config.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/main_test.cpp'),
-  dependencies: deps,
-  include_directories: [include_directories('src')],
-  install: false)
-
-executable(
-  'test-process-tailing',
-  files('src/config.cpp', 'src/widgets.cpp', 'src/tui.cpp', 'src/utils.cpp', 'src/follow_process_log.cpp','src/test_proccess_tailing.cpp'),
-  dependencies: deps,
-  include_directories: [include_directories('src')],
-  install: false)
+if is_tests_build
+    subdir('tests')
+endif
 
 summary(
   {

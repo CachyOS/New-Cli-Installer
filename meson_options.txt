@@ -1,1 +1,2 @@
 option('devenv', type: 'boolean', value: true, description: 'enable dev environment')
+option('build_tests', type: 'boolean', value: false, description: 'enable tests')
