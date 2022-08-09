@@ -49,4 +49,5 @@ subprojects/packagecache
 *.app
 
 .vagrant
+storage.vdi
 compile_commands.json
