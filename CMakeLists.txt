@@ -115,6 +115,9 @@ configure_linker(project_options)
 # sanitizer options if supported by compiler
 enable_sanitizers(project_options)
 
+# Prepare RapidJSON (RapidJSON is a header-only library)
+set(RAPIDJSON_INCLUDE_DIR "${rapidjson_SOURCE_DIR}/include")
+
 include_directories(${CMAKE_SOURCE_DIR}/src ${RAPIDJSON_INCLUDE_DIR})
 
 if(COS_INSTALLER_BUILD_TESTS)
