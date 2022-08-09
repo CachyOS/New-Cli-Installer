@@ -11,6 +11,7 @@
 # configures the configuration version (we support older styles for
 # backwards compatibility). Please don't change it unless you know what
 # you're doing.
+disk = './storage.vdi'
 Vagrant.configure("2") do |config|
   # The most common configuration options are documented and commented below.
   # For a complete reference, please see the online documentation at
@@ -21,8 +22,6 @@ Vagrant.configure("2") do |config|
   config.vm.box = "archlinux/archlinux"
 
   #config.disksize.size = '60GB'
-
-  config.vm.disk :disk, name: "storage", size: "60GB"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -60,6 +59,15 @@ Vagrant.configure("2") do |config|
   # Example for VirtualBox:
   #
   config.vm.provider "virtualbox" do |vb|
+    unless File.exist?(disk)
+        vb.customize [
+            'createhd',
+            '--filename', disk,
+            '--format', 'VDI',
+            '--size', 30 * 1024 # 30 GB
+        ]
+    end
+
     # Display the VirtualBox GUI when booting the machine
     vb.gui = false
   
@@ -68,6 +76,8 @@ Vagrant.configure("2") do |config|
     
     # Customize the amount of memory on the VM:
     vb.memory = "6144"
+
+    vb.customize ['storageattach', :id, '--storagectl', 'IDE Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', disk]
   end
   #
   # View the documentation for the provider you are using for more
@@ -84,6 +94,13 @@ Vagrant.configure("2") do |config|
 
     # Save our current dir
     SAVED_DIR="$PWD"
+
+    # Set clang is a default compiler
+    export AR=llvm-ar
+    export CC=clang
+    export CXX=clang++
+    export NM=llvm-nm
+    export RANLIB=llvm-ranlib
 
     # Remove repo if already exists
     [ -d "new-cli-installer" ] && rm -rf "new-cli-installer"
@@ -112,7 +129,7 @@ Vagrant.configure("2") do |config|
 
     cd build
     #meson install
-    cmake --install build
+    cmake --install .
     cd "$SAVED_DIR"
 
   SHELL
