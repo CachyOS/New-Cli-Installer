@@ -118,6 +118,11 @@ enable_sanitizers(project_options)
 # Prepare RapidJSON (RapidJSON is a header-only library)
 set(RAPIDJSON_INCLUDE_DIR "${rapidjson_SOURCE_DIR}/include")
 
+# Prepare FTXUI depends
+target_link_libraries(screen PRIVATE range-v3::range-v3)
+target_link_libraries(dom PRIVATE range-v3::range-v3)
+target_link_libraries(component PRIVATE range-v3::range-v3)
+
 include_directories(${CMAKE_SOURCE_DIR}/src ${RAPIDJSON_INCLUDE_DIR})
 
 if(COS_INSTALLER_BUILD_TESTS)
