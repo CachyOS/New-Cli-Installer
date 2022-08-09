@@ -89,17 +89,27 @@ Vagrant.configure("2") do |config|
     git clone https://github.com/cachyos/new-cli-installer.git
     cd new-cli-installer
 
-    meson --prefix        /usr \
-          --libexecdir    lib \
-          --sbindir       bin \
-          --buildtype     release \
-          -D              b_pie=true \
-          -D              devenv=false \
-          build
-    meson compile -C build --jobs $(nproc)
+    #meson --prefix        /usr \
+    #      --libexecdir    lib \
+    #      --sbindir       bin \
+    #      --buildtype     release \
+    #      -D              b_pie=true \
+    #      -D              devenv=false \
+    #      build
+    #meson compile -C build --jobs $(nproc)
+    cmake -S . -B build \
+        -GNinja \
+        -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_INSTALL_LIBDIR=lib \
+        -DENABLE_DEVENV=ON
+
+    cmake --build build --parallel $(nproc)
 
     cd build
-    meson install
+    #meson install
+    cmake --install build
     cd "$SAVED_DIR"
 
   SHELL
