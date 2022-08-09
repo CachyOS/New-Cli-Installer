@@ -115,7 +115,7 @@ configure_linker(project_options)
 # sanitizer options if supported by compiler
 enable_sanitizers(project_options)
 
-include_directories(${CMAKE_SOURCE_DIR}/src)
+include_directories(${CMAKE_SOURCE_DIR}/src ${RAPIDJSON_INCLUDE_DIR})
 
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
