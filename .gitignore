@@ -48,4 +48,5 @@ subprojects/packagecache
 *.out
 *.app
 
+.vagrant
 compile_commands.json
