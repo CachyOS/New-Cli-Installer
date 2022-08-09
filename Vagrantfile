@@ -85,6 +85,9 @@ Vagrant.configure("2") do |config|
     # Save our current dir
     SAVED_DIR="$PWD"
 
+    # Remove repo if already exists
+    [ -d "new-cli-installer" ] && rm -rf "new-cli-installer"
+
     # Clone our repo
     git clone https://github.com/cachyos/new-cli-installer.git
     cd new-cli-installer
