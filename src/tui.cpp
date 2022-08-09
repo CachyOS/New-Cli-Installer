@@ -14,6 +14,7 @@
 #include <sys/mount.h>                             // for mount
 #include <fstream>                                 // for ofstream
 #include <algorithm>                               // for copy
+#include <ctre.hpp>                                // for ctre::match
 #include <filesystem>                              // for exists, is_directory
 #include <string>                                  // for basic_string
 #include <ftxui/component/component.hpp>           // for Renderer, Button
@@ -1466,10 +1467,132 @@ bool zfs_create_zpool() noexcept {
     return true;
 }
 
-void zfs_import_pool() noexcept {
+bool zfs_import_pool() noexcept {
+    const auto& zlist = utils::make_multiline(utils::exec("zpool import 2>/dev/null | grep \"^[[:space:]]*pool\" | awk -F : '{print $2}' | awk '{$1=$1};1'"));
+    if (zlist.empty()) {
+        // no available datasets
+        detail::infobox_widget("\nNo pools available\"\n");
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return false;
+    }
+    
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    
+    std::string zfs_zpool_name{};
+    {
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            zfs_zpool_name = zlist[static_cast<std::size_t>(selected)];
+            success  = true;
+            screen.ExitLoopClosure()();
+        };
+        static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n";
+        const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        /* clang-format off */
+        if (!success) { return false; }
+        /* clang-format on */
+    }
+
+#ifdef NDEVENV
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, zfs_zpool_name), true);
+#endif
+
+    config_data["ZFS"] = 1;
+
+
+    return true;
 }
 
-void zfs_new_ds() noexcept {
+bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
+    const auto& zlist = utils::make_multiline(utils::zfs_list_pools());
+    if (zlist.empty()) {
+        // no available datasets
+        detail::infobox_widget("\nNo pools available\"\n");
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return false;
+    }
+
+    std::string zfs_zpool_name{};
+    {
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            zfs_zpool_name = zlist[static_cast<std::size_t>(selected)];
+            success  = true;
+            screen.ExitLoopClosure()();
+        };
+        static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n";
+        const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        /* clang-format off */
+        if (!success) { return false; }
+        /* clang-format on */
+    }
+
+    static constexpr auto zfs_dataset_body      = "\nEnter a name and relative path for the dataset.\n \nFor example, if you want the dataset to be placed at zpool/data/zname, enter 'data/zname'\n";
+    static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n";
+
+    // We need to get a name for the dataset
+    std::string zfs_dataset_name{};
+    auto zfs_menu_text = zfs_dataset_body;
+
+    // Loop while zpool name is not valid.
+    while (true) {
+        if (!detail::inputbox_widget(zfs_dataset_name, zfs_menu_text, size(HEIGHT, GREATER_THAN, 1))) {
+            return false;
+        }
+        zfs_menu_text = zfs_dataset_body;
+
+        // validation
+        if (zfs_dataset_name.empty() || std::isdigit(zfs_dataset_name[0]) || (ranges::any_of(zfs_dataset_name, [](char ch) { return (!std::isalnum(ch)) && (ch != '/') && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
+            zfs_menu_text = zfs_zpoolcvalidation1;
+        }
+
+        /* clang-format off */
+        if (zfs_menu_text == zfs_dataset_body) { break; }
+        /* clang-format on */
+    }
+
+    if (zmount == "legacy") {
+        utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name), zmount);
+    } else if (zmount == "zvol") {
+        static constexpr auto zvol_size_menu_body        = "\nEnter the size of the zvol in megabytes(MB)\n";
+        static constexpr auto zvol_size_menu_validation  = "\nYou must enter a number greater than 0\n";
+
+        // We need to get a name for the zvol
+        std::string zvol_size{};
+        zfs_menu_text = zvol_size_menu_body;
+
+        // Loop while zvol name is not valid.
+        while (true) {
+            if (!detail::inputbox_widget(zvol_size, zfs_menu_text, size(HEIGHT, GREATER_THAN, 1))) {
+                return false;
+            }
+            zfs_menu_text = zvol_size_menu_body;
+
+            // validation
+            
+            if (zvol_size.empty() || ranges::any_of(zvol_size, [](char ch) { return !std::isdigit(ch); })) {
+                zfs_menu_text = zvol_size_menu_validation;
+            }
+
+            /* clang-format off */
+            if (zfs_menu_text == zvol_size_menu_body) { break; }
+            /* clang-format on */
+        }
+        utils::zfs_create_zvol(zvol_size, fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name));
+    } else {
+        spdlog::error("HELLO! IMPLEMENT ME!");
+        return false;
+    }
+
+    return true;
 }
 
 void zfs_set_property() noexcept {
@@ -1491,7 +1614,7 @@ void zfs_set_property() noexcept {
             success  = true;
             screen.ExitLoopClosure()();
         };
-        static constexpr auto zfs_menu_body = "\nEnter the property and value you would like to\nset using the format property=mountpoint\n \nFor example, you could enter:\ncompression=lz4\nor\nacltype=posixacl\n";
+        static constexpr auto zfs_menu_body = "\nSelect the dataset you would like to set a property on\n";
         const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
         /* clang-format off */
@@ -1499,13 +1622,32 @@ void zfs_set_property() noexcept {
         /* clang-format on */
     }
 
-    // const auto& content    = fmt::format(FMT_COMPILE("\nPlease confirm that you want to irrevocably\ndelete all the data on '{}'\nand the data contained on all of it's children\n"), zdataset);
-    // const auto& do_destroy = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 75));
-    /* clang-format off */
-    //if (!do_destroy) { return; }
-    /* clang-format on */
+    static constexpr auto zfs_mountpoint_body    = "\nEnter the property and value you would like to\nset using the format property=mountpoint\n \nFor example, you could enter:\ncompression=lz4\nor\nacltype=posixacl\n\n";
+    static constexpr auto zfs_property_invalid = "\nInput must be the format property=mountpoint\n";
 
-    // utils::zfs_destroy_dataset(zdataset);
+    // We need to get a valid property
+    std::string zfs_property_ent{};
+    auto zfs_menu_text = zfs_mountpoint_body;
+
+    // Loop while property is not valid.
+    while (true) {
+        if (!detail::inputbox_widget(zfs_property_ent, zfs_menu_text, size(HEIGHT, GREATER_THAN, 1))) {
+            return;
+        }
+        zfs_menu_text = zfs_mountpoint_body;
+
+        // validation
+        if (!ctre::match<"[a-zA-Z]*=[a-zA-Z0-9]*">(zfs_property_ent)) {
+            zfs_menu_text = zfs_property_invalid;
+        }
+
+        /* clang-format off */
+        if (zfs_menu_text == zfs_mountpoint_body) { break; }
+        /* clang-format on */
+    }
+
+    // Set the property
+    utils::zfs_set_property(zfs_property_ent, zdataset);
 }
 
 void zfs_destroy_dataset() noexcept {
@@ -1594,7 +1736,7 @@ void zfs_menu_manual() noexcept {
         case 0:
             tui::zfs_create_zpool();
             break;
-        /*case 1:
+        case 1:
             tui::zfs_import_pool();
             break;
         case 2:
@@ -1605,7 +1747,7 @@ void zfs_menu_manual() noexcept {
             break;
         case 4:
             tui::zfs_new_ds("zvol");
-            break;*/
+            break;
         case 5:
             tui::zfs_set_property();
             break;

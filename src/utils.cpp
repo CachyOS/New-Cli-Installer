@@ -448,11 +448,13 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
     if (fs::exists(sudoers_file)) {
         utils::exec(fmt::format(FMT_COMPILE("sed -i '/NOPASSWD/!s/# %sudo/%sudo/g' {}"), sudoers_file));
     }
+#else
+    spdlog::debug("user := {}, password := {}", user, password);
 #endif
 }
 
 // Set password for root user
-void set_root_password([[maybe_unused]] const std::string_view& password) noexcept {
+void set_root_password(const std::string_view& password) noexcept {
 #ifdef NDEVENV
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
@@ -462,6 +464,8 @@ void set_root_password([[maybe_unused]] const std::string_view& password) noexce
     utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\n{0}\" > /tmp/.passwd"), password));
     utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd root < /tmp/.passwd &>/dev/null"), mountpoint));
     fs::remove("/tmp/.passwd", err);
+#else
+    spdlog::debug("root password := {}", password);
 #endif
 }
 
@@ -1204,7 +1208,7 @@ void get_cryptroot() noexcept {
     temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \" crypt$\" | grep -i \"LVM2_member\" | uniq | awk '{print \"/dev/mapper/\"$1}'");
     if (!temp_out.empty()) {
         const auto& cryptparts    = utils::make_multiline(temp_out);
-        const auto& check_functor = [&]([[maybe_unused]] const auto cryptpart) {
+        const auto& check_functor = [&]([[maybe_unused]] const auto& cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec("lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt /,/part/p\" | awk '/crypto_LUKS/ {print $4}'");
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
@@ -1218,7 +1222,7 @@ void get_cryptroot() noexcept {
     temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"/mnt$\" | grep \"part\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/\"$1}'");
     if (!temp_out.empty()) {
         const auto& cryptparts    = utils::make_multiline(temp_out);
-        const auto& check_functor = [&](const auto cryptpart) {
+        const auto& check_functor = [&](const auto& cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);

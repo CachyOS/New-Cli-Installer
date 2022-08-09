@@ -47,3 +47,5 @@ subprojects/packagecache
 *.exe
 *.out
 *.app
+
+compile_commands.json

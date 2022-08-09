@@ -136,6 +136,15 @@ std::vector<std::string> lvm_show_vg() noexcept {
     return res;
 }
 
+// Creates a zfs volume
+void zfs_create_zvol(const std::string_view& zsize, const std::string_view& zpath) noexcept {
+#ifdef NDEVENV
+    utils::exec(fmt::format(FMT_COMPILE("zfs create -V {}M {} 2>>/tmp/cachyos-install.log"), zsize, zpath), true);
+#else
+    spdlog::debug("zfs create -V {}M {}", zsize, zpath);
+#endif
+}
+
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
 void zfs_create_dataset(const std::string_view& zpath, const std::string_view& zmount) noexcept {
 #ifdef NDEVENV
@@ -150,6 +159,15 @@ void zfs_destroy_dataset(const std::string_view& zdataset) noexcept {
     utils::exec(fmt::format(FMT_COMPILE("zfs destroy -r {} 2>>/tmp/cachyos-install.log"), zdataset), true);
 #else
     spdlog::debug("zfs destroy -r {}", zdataset);
+#endif
+}
+
+// returns a list of imported zpools 
+std::string zfs_list_pools() noexcept {
+#ifdef NDEVENV
+    return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\"");
+#else
+    return "vol0\nvol1\n";
 #endif
 }
 
@@ -177,7 +195,16 @@ std::string zfs_list_datasets(const std::string_view& type) noexcept {
 
     return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\"");
 #else
+    spdlog::debug("type := {}", type);
     return "zpcachyos";
+#endif
+}
+
+void zfs_set_property(const std::string_view& property, const std::string_view& dataset) noexcept {
+#ifdef NDEVENV
+    utils::exec(fmt::format(FMT_COMPILE("zfs set {} {} 2>>/tmp/cachyos-install.log"), property, dataset), true);
+#else
+    spdlog::debug("zfs set {} {}", property, dataset);
 #endif
 }
 

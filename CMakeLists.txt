@@ -65,6 +65,12 @@ CPMAddPackage(
   GIT_TAG 3d6e6f56e5e1a3ec4befcc7695504ea23e1d52ab
   EXCLUDE_FROM_ALL YES
 )
+CPMAddPackage(
+  NAME ctre
+  GITHUB_REPOSITORY hanickadot/compile-time-regular-expressions
+  GIT_TAG v3.7
+  EXCLUDE_FROM_ALL YES
+)
 
 ##
 ## CONFIGURATION
@@ -115,7 +121,7 @@ if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component cpr::cpr range-v3::range-v3)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component cpr::cpr range-v3::range-v3 ctre::ctre)
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)
