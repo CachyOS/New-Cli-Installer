@@ -10,6 +10,7 @@
 #include <array>          // for array
 #include <bit>            // for bit_cast
 #include <chrono>         // for filesystem, seconds
+#include <cerrno>         // for errno, strerror
 #include <cstdint>        // for int32_t
 #include <cstdio>         // for feof, fgets, pclose, perror, popen
 #include <cstdlib>        // for exit, WIFEXITED, WIFSIGNALED
@@ -207,6 +208,31 @@ std::string exec(const std::string_view& command, const bool& interactive) noexc
     }
 
     return result;
+}
+
+auto read_whole_file(const std::string_view& filepath) noexcept -> std::string {
+    // Use std::fopen because it's faster than std::ifstream
+    auto* file = std::fopen(filepath.data(), "rb");
+    if (file == nullptr) {
+        spdlog::error("[READWHOLEFILE] read failed: {}", std::strerror(errno));
+        return {};
+    }
+
+    std::fseek(file, 0u, SEEK_END);
+    const std::size_t size = static_cast<std::size_t>(std::ftell(file));
+    std::fseek(file, 0u, SEEK_SET);
+
+    std::string buf;
+    buf.resize(size);
+
+    const std::size_t read = std::fread(buf.data(), sizeof(char), size, file);
+    if (read != size) {
+        spdlog::error("[READWHOLEFILE] read failed: {}", std::strerror(errno));
+        return {};
+    }
+    std::fclose(file);
+
+    return buf;
 }
 
 bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
