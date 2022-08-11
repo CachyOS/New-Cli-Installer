@@ -94,6 +94,7 @@ add_executable(${PROJECT_NAME}
    src/screen_service.hpp src/screen_service.cpp
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
+   src/initcpio.cpp src/initcpio.hpp
    src/disk.cpp src/disk.hpp
    src/drivers.cpp src/drivers.hpp
    src/widgets.cpp src/widgets.hpp
