@@ -5,6 +5,7 @@
 #include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
+#include "initcpio.hpp"
 
 #include <algorithm>      // for transform
 #include <array>          // for array
@@ -706,6 +707,9 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
 
+    const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+    auto initcpio = detail::Initcpio{initcpio_filename};
+
     // filter_packages
     utils::install_from_pkglist(base_pkgs);
 
@@ -721,10 +725,13 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& filesystem_type = fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE {}"), mountpoint);
     if (filesystem_type == "btrfs") {
         btrfs_root = 1;
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/^HOOKS=/s/\\ fsck//g' -e '/^MODULES=/s/\"$/ btrfs\"/g' -i {}/etc/mkinitcpio.conf"), mountpoint));
+        initcpio.remove_hook("fsck");
+        initcpio.append_module("btrfs");
     } else if (filesystem_type == "zfs") {
         zfs_root = 1;
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/^HOOKS=/s/\\ filesystems//g' -e '/^HOOKS=/s/\\ keyboard/\\ keyboard\\ zfs\\ filesystems/g' -e '/^HOOKS=/s/\\ fsck//g' -e '/^FILES=/c\\FILES=(\"/usr/lib/libgcc_s.so.1\")' -i {}/etc/mkinitcpio.conf"), mountpoint));
+        initcpio.remove_hook("fsck");
+        initcpio.insert_hook("filesystems", "zfs");
+        initcpio.append_file("\"/usr/lib/libgcc_s.so.1\"");
     }
 
     utils::recheck_luks();
@@ -734,15 +741,21 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& luks = std::get<std::int32_t>(config_data["LUKS"]);
 
     if (lvm == 1 && luks == 0) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems/block lvm2 filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
+        initcpio.insert_hook("filesystems", "lvm2");
         spdlog::info("add lvm2 hook");
     } else if (lvm == 0 && luks == 1) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems keyboard/block consolefont keymap keyboard encrypt filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
+        initcpio.insert_hook("keyboard", {"consolefont", "keymap"});
+        initcpio.insert_hook("filesystems", "encrypt");
         spdlog::info("add luks hook");
     } else if (lvm == 1 && luks == 1) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/block filesystems keyboard/block consolefont keymap keyboard encrypt lvm2 filesystems/g' {}/etc/mkinitcpio.conf"), mountpoint));
+        initcpio.insert_hook("keyboard", {"consolefont", "keymap"});
+        initcpio.insert_hook("filesystems", {"encrypt", "lvm2"});
         spdlog::info("add lvm/luks hooks");
     }
+
+    // Just explicitly flush the data to file,
+    // if smth really happened between our calls.
+    initcpio.write();
 
     if (lvm + luks + btrfs_root + zfs_root > 0) {
         utils::arch_chroot("mkinitcpio -P");
@@ -924,8 +937,11 @@ void install_refind() noexcept {
     if (utils::to_int(removable.data()) == 1) {
         utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
 
+        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+        auto initcpio = detail::Initcpio{initcpio_filename};
+
         // Remove autodetect hook
-        utils::exec("sed -i -e '/^HOOKS=/s/\\ autodetect//g' /mnt/etc/mkinitcpio.conf");
+        initcpio.remove_hook("autodetect");
         spdlog::info("\"Autodetect\" hook was removed");
     } else if (luks == 1) {
         utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
@@ -1006,8 +1022,12 @@ void install_systemd_boot() noexcept {
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
     const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
     if (utils::to_int(removable.data()) == 1) {
+        const auto& mountpoint        = std::get<std::string>(config_data["MOUNTPOINT"]);
+        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+        auto initcpio = detail::Initcpio{initcpio_filename};
+
         // Remove autodetect hook
-        utils::exec("sed -i -e '/^HOOKS=/s/\\ autodetect//g' /mnt/etc/mkinitcpio.conf");
+        initcpio.remove_hook("autodetect");
         spdlog::info("\"Autodetect\" hook was removed");
     }
 #endif
