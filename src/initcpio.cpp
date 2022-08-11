@@ -3,7 +3,6 @@
 
 #include <fstream>  // for ofstream
 
-#include <fmt/core.h>
 #include <fmt/format.h>
 
 #if defined(__clang__)
