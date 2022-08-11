@@ -57,8 +57,16 @@ int main() {
     // Insert data.
     initcpio.append_module("radeon");
     initcpio.append_hook("btrfs");
-    initcpio.modules.insert(initcpio.modules.end(), {"crc32c-intel"});
+    initcpio.append_module("crc32c-intel");
     initcpio.hooks.insert(initcpio.hooks.end(), {"usr", "lvm2", "zfs"});
+
+    // Write data.
+    assert(initcpio.write());
+
+    // Checking insertion of equal items
+    initcpio.append_module("radeon");
+    initcpio.append_hook("btrfs");
+    initcpio.append_module("crc32c-intel");
 
     // Write data.
     assert(initcpio.write());
