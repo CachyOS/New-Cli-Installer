@@ -3,6 +3,7 @@
 
 #include <fstream>  // for ofstream
 
+#include <fmt/core.h>
 #include <fmt/format.h>
 
 #if defined(__clang__)
@@ -59,6 +60,35 @@ bool Initcpio::write() const noexcept {
     if (!mhinitcpio_file.is_open()) { return false; }
     /* clang-format on */
     mhinitcpio_file << result;
+    return true;
+}
+
+bool Initcpio::parse_file() noexcept {
+    auto&& file_content  = utils::read_whole_file(m_file_path);
+
+    const auto& parse_line = [](auto&& line) -> std::vector<std::string> {
+        auto&& open_bracket_pos = line.find('(');
+        auto&& close_bracket = ranges::find(line, ')');
+        if (open_bracket_pos != std::string::npos && close_bracket != line.end()) {
+            const auto length = ranges::distance(line.begin() + static_cast<long>(open_bracket_pos), close_bracket - 1);
+
+            auto&& input_data = line.substr(open_bracket_pos + 1, static_cast<std::size_t>(length));
+            return input_data | ranges::views::split(' ') | ranges::to<std::vector<std::string>>();
+        }
+        return {};
+    };
+
+    auto&& file_content_lines = utils::make_multiline(file_content);
+    for (auto&& line : file_content_lines) {
+        if (line.starts_with("MODULES")) {
+            modules = parse_line(line);
+        } else if (line.starts_with("FILES")) {
+            files = parse_line(line);
+        } else if (line.starts_with("HOOKS")) {
+            hooks = parse_line(line);
+        }
+    }
+
     return true;
 }
 

@@ -28,7 +28,7 @@ HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)
 
 static constexpr auto MKINITCPIO_TEST = R"(
 # MODULES
-MODULES=(crc32c-intel)
+MODULES=(radeon crc32c-intel)
 
 # BINARIES
 BINARIES=()
@@ -37,7 +37,7 @@ BINARIES=()
 FILES=()
 
 # HOOKS
-HOOKS=(base usr lvm2 zfs)
+HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs usr lvm2 zfs)
 )";
 
 
@@ -55,15 +55,17 @@ int main() {
     auto initcpio = detail::Initcpio{filename};
 
     // Insert data.
+    initcpio.append_module("radeon");
+    initcpio.append_hook("btrfs");
     initcpio.modules.insert(initcpio.modules.end(), {"crc32c-intel"});
-    initcpio.hooks.insert(initcpio.hooks.end(), {"base", "usr", "lvm2", "zfs"});
+    initcpio.hooks.insert(initcpio.hooks.end(), {"usr", "lvm2", "zfs"});
 
     // Write data.
     assert(initcpio.write());
 
     // Check if file is equal to test data.
     // "\n# MODULES\nMODULES=(crc32c-intel)\n\n# BINARIES\nBINARIES=()\n\n# FILES\nFILES=()\n\n# HOOKS\nHOOKS=(base usr lvm2 zfs)"\n
-    const auto&& file_content = utils::read_whole_file(filename);
+    const auto& file_content = utils::read_whole_file(filename);
     assert(file_content == MKINITCPIO_TEST);
 
     // Cleanup.
