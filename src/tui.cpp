@@ -1825,8 +1825,10 @@ void make_esp() noexcept {
             success           = true;
             screen.ExitLoopClosure()();
         };
+
         /* clang-format off */
-        detail::menu_widget(partitions, ok_callback, &selected, &screen);
+        static constexpr auto esp_part_body = "\nSelect BOOT partition.\n";
+        detail::menu_widget(partitions, ok_callback, &selected, &screen, esp_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
         if (!success) { return; }
         /* clang-format on */
     }
@@ -2042,7 +2044,7 @@ void mount_partitions() noexcept {
         }
 
         if (partition == "Done") {
-            make_esp();
+            tui::make_esp();
             utils::get_cryptroot();
             utils::get_cryptboot();
             return;
@@ -2428,11 +2430,13 @@ void init() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     const auto& menus     = std::get<std::int32_t>(config_data["menus"]);
+    auto& headless_mode   = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
 
     if (menus == 1) {
         tui::menu_simple();
         return;
     } else if (menus == 2) {
+        headless_mode = 0;
         tui::menu_advanced();
         return;
     }
@@ -2459,6 +2463,7 @@ void init() noexcept {
         tui::menu_simple();
         break;
     case 1:
+        headless_mode = 0;
         tui::menu_advanced();
         break;
     default:
