@@ -7,7 +7,7 @@ Also included is an example configuration for each setting. If you don't want to
 thinking about options, the config as generated sets sensible defaults for all values. Do note however that the
 config is used only for the "Simple Install".
 
-Sample config is located at `https://github.com/cachyos/new-cli-installer/settings.json`.
+Sample config is located at `https://github.com/cachyos/new-cli-installer/blob/master/settings.json`.
 
 The config file(`settings.json`) must be placed in the current directory.
 for example: if going to launch installer in `/root`, then the config must be placed at `/root/settings.json`.
@@ -106,10 +106,10 @@ Example configuration:
 This sets the mount options to mount `device` with.
 
 Default to:
-* btrfs: "compress=lzo,noatime,space_cache,ssd,commit=120"
-* ext4: "noatime"
-* xfs: no defaults for that filesystem
-* zfs: this option is invalid for ZFS
+* `btrfs`: "compress=lzo,noatime,space_cache,ssd,commit=120"
+* `ext4`: "noatime"
+* `xfs`: no defaults for that filesystem
+* `zfs`: this option is invalid for ZFS
 
 Example configuration:
 ```json
@@ -253,17 +253,17 @@ This will install desktop environment.
 Required in `HEADLESS` mode!
 
 Valid `desktop`:
-* kde
-* cutefish
-* xfce
-* sway
-* wayfire
-* i3wm
-* gnome
-* openbox
-* bspwm
-* Kofuku edition
-* lxqt
+* `kde`
+* `cutefish`
+* `xfce`
+* `sway`
+* `wayfire`
+* `i3wm`
+* `gnome`
+* `openbox`
+* `bspwm`
+* `Kofuku edition`
+* `lxqt`
 
 There is no default for this option.
 
@@ -278,13 +278,13 @@ This will specified bootloader on the system.
 Required in `HEADLESS` mode!
 
 Valid `bootloader` for UEFI system:
-* systemd-boot
-* grub
-* refind
+* `systemd-boot`
+* `grub`
+* `refind`
 
 Valid `bootloader` for BIOS system:
-* grub
-* grub + os-prober
+* `grub`
+* `grub + os-prober`
 
 There is no default for this option.
 
@@ -298,8 +298,8 @@ Example configuration:
 This will detect drivers automatically and install them.
 
 Valid types:
-* nonfree
-* free
+* `nonfree`
+* `free`
 
 Defaults to `free`.
 
