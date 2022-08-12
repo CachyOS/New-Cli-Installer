@@ -234,7 +234,7 @@ void select_filesystem(const std::string_view& file_sys) noexcept {
         config_data["FILESYSTEM"] = "mkfs.xfs -f";
         config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
     } else if (file_sys != "zfs") {
-        spdlog::error("Invalid filesystem ('{}')!", fs_sys);
+        spdlog::error("Invalid filesystem ('{}')!", file_sys);
     }
 }
 
