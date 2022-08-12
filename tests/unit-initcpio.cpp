@@ -64,9 +64,10 @@ int main() {
     assert(initcpio.write());
 
     // Checking insertion of equal items
-    initcpio.append_module("radeon");
-    initcpio.append_hook("btrfs");
-    initcpio.append_module("crc32c-intel");
+    assert(!initcpio.append_module("radeon"));
+    assert(!initcpio.append_hook("btrfs"));
+    assert(!initcpio.append_module("crc32c-intel"));
+    assert(!initcpio.insert_hook("btrfs", {"usr", "lvm2", "zfs"}));
 
     // Write data.
     assert(initcpio.write());
