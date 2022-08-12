@@ -2,16 +2,16 @@
 #include "config.hpp"
 #include "definitions.hpp"
 #include "follow_process_log.hpp"
+#include "initcpio.hpp"
 #include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
-#include "initcpio.hpp"
 
 #include <algorithm>      // for transform
 #include <array>          // for array
 #include <bit>            // for bit_cast
-#include <chrono>         // for filesystem, seconds
 #include <cerrno>         // for errno, strerror
+#include <chrono>         // for filesystem, seconds
 #include <cstdint>        // for int32_t
 #include <cstdio>         // for feof, fgets, pclose, perror, popen
 #include <cstdlib>        // for exit, WIFEXITED, WIFSIGNALED
@@ -111,9 +111,14 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
     if (follow) {
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+        if (headless_mode) {
+            utils::exec(cmd_formatted, true);
+        } else {
+            tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+        }
         return;
     }
     utils::exec(cmd_formatted);
@@ -295,7 +300,16 @@ void inst_needed(const std::string_view& pkg) noexcept {
     if (utils::exec(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg), true) != "0") {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         utils::clear_screen();
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg)});
+
+        auto* config_instance = Config::instance();
+        auto& config_data     = config_instance->data();
+
+        const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+        if (headless_mode) {
+            utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg), true);
+        } else {
+            tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg)});
+        }
         // utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg));
     }
 }
@@ -329,7 +343,13 @@ void secure_wipe() noexcept {
 
 #ifdef NDEVENV
     utils::inst_needed("wipe");
-    tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info)});
+
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    if (headless_mode) {
+        utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info), true);
+    } else {
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info)});
+    }
     // utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info));
 #else
     spdlog::debug("{}\n", device_info);
@@ -448,7 +468,13 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
         const auto& packages  = fmt::format(FMT_COMPILE("cachyos-{}-config"), (shell.ends_with("zsh")) ? "zsh" : "fish");
         const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
         const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+
+        const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+        if (headless_mode) {
+            utils::exec(fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages), true);
+        } else {
+            tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+        }
     }
 
     // Create the user, set password, then remove temporary password file
@@ -713,7 +739,7 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
 
     const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-    auto initcpio = detail::Initcpio{initcpio_filename};
+    auto initcpio                 = detail::Initcpio{initcpio_filename};
 
     // filter_packages
     utils::install_from_pkglist(base_pkgs);
@@ -943,7 +969,7 @@ void install_refind() noexcept {
         utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
 
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-        auto initcpio = detail::Initcpio{initcpio_filename};
+        auto initcpio                 = detail::Initcpio{initcpio_filename};
 
         // Remove autodetect hook
         initcpio.remove_hook("autodetect");
@@ -1029,7 +1055,7 @@ void install_systemd_boot() noexcept {
     if (utils::to_int(removable.data()) == 1) {
         const auto& mountpoint        = std::get<std::string>(config_data["MOUNTPOINT"]);
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-        auto initcpio = detail::Initcpio{initcpio_filename};
+        auto initcpio                 = detail::Initcpio{initcpio_filename};
 
         // Remove autodetect hook
         initcpio.remove_hook("autodetect");

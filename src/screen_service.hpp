@@ -32,7 +32,7 @@ class screen_service final {
 
     /* clang-format on */
 
-    screen_service(const screen_service&) noexcept = delete;
+    screen_service(const screen_service&) noexcept            = delete;
     screen_service& operator=(const screen_service&) noexcept = delete;
 
  private:

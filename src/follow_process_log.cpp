@@ -17,7 +17,7 @@ using namespace ftxui;
 
 namespace tui::detail {
 
-void follow_process_log_widget(const std::vector<std::string>& vec, Decorator boxsize) noexcept {
+void follow_process_log_widget(const std::vector<std::string>& vec, Decorator box_size) noexcept {
     using namespace std::chrono_literals;
 
     bool running{true};
@@ -63,7 +63,7 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
     auto container   = Container::Horizontal({button_back});
 
     auto renderer = Renderer(container, [&] {
-        return tui::detail::centered_widget(container, "New CLI Installer", tui::detail::multiline_text(utils::make_multiline(process_log, true)) | boxsize | vscroll_indicator | yframe | flex);
+        return tui::detail::centered_widget(container, "New CLI Installer", tui::detail::multiline_text(utils::make_multiline(process_log, true)) | box_size | vscroll_indicator | yframe | flex);
     });
 
     screen.Loop(renderer);

@@ -8,7 +8,7 @@
 
 namespace tui {
 namespace detail {
-    void follow_process_log_widget(const std::vector<std::string>& vec, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
+    void follow_process_log_widget(const std::vector<std::string>& vec, ftxui::Decorator box_size = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
 }  // namespace detail
 }  // namespace tui
 

@@ -162,7 +162,7 @@ void zfs_destroy_dataset(const std::string_view& zdataset) noexcept {
 #endif
 }
 
-// returns a list of imported zpools 
+// returns a list of imported zpools
 std::string zfs_list_pools() noexcept {
 #ifdef NDEVENV
     return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\"");

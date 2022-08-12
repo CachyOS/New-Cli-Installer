@@ -1053,8 +1053,8 @@ void mount_opts(bool force) noexcept {
     // If mount options selected, confirm choice
     if (!mount_opts_info.empty()) {
         auto confirm_text    = Container::Vertical({
-            Renderer([] { return paragraphAlignLeft("Confirm the following mount options:"); }),
-            Renderer([&] { return text(mount_opts_info) | dim; }),
+               Renderer([] { return paragraphAlignLeft("Confirm the following mount options:"); }),
+               Renderer([&] { return text(mount_opts_info) | dim; }),
         });
         const auto& do_mount = detail::yesno_widget(confirm_text, size(HEIGHT, LESS_THAN, 10) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
@@ -1475,10 +1475,10 @@ bool zfs_import_pool() noexcept {
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return false;
     }
-    
+
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
-    
+
     std::string zfs_zpool_name{};
     {
         auto screen = ScreenInteractive::Fullscreen();
@@ -1486,7 +1486,7 @@ bool zfs_import_pool() noexcept {
         bool success{};
         auto ok_callback = [&] {
             zfs_zpool_name = zlist[static_cast<std::size_t>(selected)];
-            success  = true;
+            success        = true;
             screen.ExitLoopClosure()();
         };
         static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n";
@@ -1523,7 +1523,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
         bool success{};
         auto ok_callback = [&] {
             zfs_zpool_name = zlist[static_cast<std::size_t>(selected)];
-            success  = true;
+            success        = true;
             screen.ExitLoopClosure()();
         };
         static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n";
@@ -1561,8 +1561,8 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
     if (zmount == "legacy") {
         utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name), zmount);
     } else if (zmount == "zvol") {
-        static constexpr auto zvol_size_menu_body        = "\nEnter the size of the zvol in megabytes(MB)\n";
-        static constexpr auto zvol_size_menu_validation  = "\nYou must enter a number greater than 0\n";
+        static constexpr auto zvol_size_menu_body       = "\nEnter the size of the zvol in megabytes(MB)\n";
+        static constexpr auto zvol_size_menu_validation = "\nYou must enter a number greater than 0\n";
 
         // We need to get a name for the zvol
         std::string zvol_size{};
@@ -1576,7 +1576,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
             zfs_menu_text = zvol_size_menu_body;
 
             // validation
-            
+
             if (zvol_size.empty() || ranges::any_of(zvol_size, [](char ch) { return !std::isdigit(ch); })) {
                 zfs_menu_text = zvol_size_menu_validation;
             }
@@ -1621,7 +1621,7 @@ void zfs_set_property() noexcept {
         /* clang-format on */
     }
 
-    static constexpr auto zfs_mountpoint_body    = "\nEnter the property and value you would like to\nset using the format property=mountpoint\n \nFor example, you could enter:\ncompression=lz4\nor\nacltype=posixacl\n\n";
+    static constexpr auto zfs_mountpoint_body  = "\nEnter the property and value you would like to\nset using the format property=mountpoint\n \nFor example, you could enter:\ncompression=lz4\nor\nacltype=posixacl\n\n";
     static constexpr auto zfs_property_invalid = "\nInput must be the format property=mountpoint\n";
 
     // We need to get a valid property
