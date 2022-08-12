@@ -1739,7 +1739,7 @@ void set_lightdm_greeter() {
     if (!fs::exists(xgreeters_path)) { return; }
     for (const auto& name : fs::directory_iterator{xgreeters_path}) {
         const auto& temp = name.path().filename().string();
-        if (!temp.starts_with("lightdm-") && !temp.starts_with("-greeter")) { continue; }
+        if (!temp.starts_with("lightdm-") && !temp.ends_with("-greeter")) { continue; }
         /* clang-format on */
         if (temp == "lightdm-gtk-greeter") {
             continue;
