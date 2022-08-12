@@ -1,6 +1,6 @@
 {
-    "menus": 2,
-    "headless_mode": true,
+    "menus": 1,
+    "headless_mode": false,
     "device": "/dev/nvme0n1",
     "fs_name": "btrfs",
     "hostname": "cachyos",

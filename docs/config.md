@@ -7,8 +7,10 @@ Also included is an example configuration for each setting. If you don't want to
 thinking about options, the config as generated sets sensible defaults for all values. Do note however that the
 config is used only for the "Simple Install".
 
+Sample config is located at `https://github.com/cachyos/new-cli-installer/settings.json`.
+
 The config file(`settings.json`) must be placed in the current directory.
-for example: if going to launch installer in `/root`, then the config must be placed at `/root/settings.json`
+for example: if going to launch installer in `/root`, then the config must be placed at `/root/settings.json`.
 
 
 ### JSON
@@ -206,12 +208,16 @@ Required in `HEADLESS` mode!
 
 Must be provided with `user_name`, `user_pass`, `user_shell`,
 overwise has no effect.
+Also `user_shell` must be valid shell for the system:
+* `/usr/bin/zsh`
+* `/bin/bash`
+* `/usr/bin/fish`
 
 There is no default for this option.
 
 Example configuration:
 ```json
-"user_shell": ""
+"user_shell": "/bin/bash"
 ```
 ---
 ### `root_pass`
