@@ -20,15 +20,22 @@ namespace tui::detail {
 void follow_process_log_widget(const std::vector<std::string>& vec, Decorator box_size) noexcept {
     using namespace std::chrono_literals;
 
+    std::vector<std::string> cmd_args(vec.begin(), vec.end());
+    const auto cmd_args_size = cmd_args.size();
+    if (cmd_args_size > 2) {
+        const auto& second_arg = cmd_args[1];
+        if (second_arg == "-c") {
+            auto& end_arg = cmd_args.back();
+            end_arg += " ; echo -e \"\n----------DONE----------\n\"";
+        }
+    }
+
     bool running{true};
     std::string process_log{};
     subprocess_s child{};
     auto execute_thread = [&]() {
         while (running) {
-            utils::exec_follow(vec, process_log, running, child);
-            /*if (child.child == 0) {
-                process_log += "\n----------DONE----------";
-            }*/
+            utils::exec_follow(cmd_args, process_log, running, child);
             std::this_thread::sleep_for(0.05s);
         }
     };
