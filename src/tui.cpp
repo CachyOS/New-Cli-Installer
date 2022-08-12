@@ -1504,7 +1504,6 @@ bool zfs_import_pool() noexcept {
 
     config_data["ZFS"] = 1;
 
-
     return true;
 }
 

@@ -16,8 +16,6 @@
 #endif
 
 #include <range/v3/algorithm/find.hpp>
-#include <range/v3/range/conversion.hpp>
-#include <range/v3/view/getlines.hpp>
 #include <range/v3/view/join.hpp>
 #include <range/v3/view/split.hpp>
 #include <range/v3/view/transform.hpp>
@@ -38,15 +36,15 @@ bool Initcpio::write() const noexcept {
               if (line.starts_with("MODULES")) {
                   auto&& formatted_modules = modules | ranges::views::join(' ')
                                                      | ranges::to<std::string>();
-                  return fmt::format("MODULES=({})", formatted_modules);
+                  return fmt::format("MODULES=({})", std::move(formatted_modules));
               } else if (line.starts_with("FILES")) {
                   auto&& formatted_files = files | ranges::views::join(' ')
                                                  | ranges::to<std::string>();
-                  return fmt::format("FILES=({})", formatted_files);
+                  return fmt::format("FILES=({})", std::move(formatted_files));
               } else if (line.starts_with("HOOKS")) {
                   auto&& formatted_hooks = hooks | ranges::views::join(' ')
                                                  | ranges::to<std::string>();
-                  return fmt::format("HOOKS=({})", formatted_hooks);
+                  return fmt::format("HOOKS=({})", std::move(formatted_hooks));
               }
               return std::string{line.data(), line.size()};
           })
@@ -63,11 +61,11 @@ bool Initcpio::write() const noexcept {
 }
 
 bool Initcpio::parse_file() noexcept {
-    auto&& file_content  = utils::read_whole_file(m_file_path);
+    auto&& file_content = utils::read_whole_file(m_file_path);
 
     const auto& parse_line = [](auto&& line) -> std::vector<std::string> {
         auto&& open_bracket_pos = line.find('(');
-        auto&& close_bracket = ranges::find(line, ')');
+        auto&& close_bracket    = ranges::find(line, ')');
         if (open_bracket_pos != std::string::npos && close_bracket != line.end()) {
             const auto length = ranges::distance(line.begin() + static_cast<long>(open_bracket_pos), close_bracket - 1);
 
