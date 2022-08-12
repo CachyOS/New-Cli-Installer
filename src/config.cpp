@@ -40,8 +40,9 @@ bool Config::initialize() noexcept {
         s_config->m_data["MOUNTPOINT"] = "/mnt";
 
         // Installation
-        s_config->m_data["GRAPHIC_CARD"] = "";
-        s_config->m_data["DRIVERS_TYPE"] = "free";
+        s_config->m_data["HEADLESS_MODE"] = 0;
+        s_config->m_data["GRAPHIC_CARD"]  = "";
+        s_config->m_data["DRIVERS_TYPE"]  = "free";
     }
 
     return s_config.get();

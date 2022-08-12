@@ -688,7 +688,12 @@ void install_from_pkglist(const std::string_view& packages) noexcept {
     const auto& cmd        = (hostcache) ? "pacstrap" : "pacstrap -c";
 
 #ifdef NDEVENV
-    tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    if (headless_mode) {
+        utils::exec(fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages), true);
+    } else {
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+    }
 #else
     spdlog::info("Installing from pkglist: '{} {} {} |& tee /tmp/pacstrap.log'", cmd, mountpoint, packages);
 #endif
@@ -1584,15 +1589,15 @@ vm.vfs_cache_pressure = 50
 #endif
 }
 
-void parse_config() noexcept {
+bool parse_config() noexcept {
     using namespace rapidjson;
 
     // 1. Open file for reading.
     static constexpr auto file_path = "settings.json";
     std::ifstream ifs{file_path};
     if (!ifs.is_open()) {
-        fmt::print(stderr, "Config not found running with defaults");
-        return;
+        fmt::print(stderr, "Config not found running with defaults\n");
+        return true;
     }
 
     IStreamWrapper isw{ifs};
@@ -1611,14 +1616,32 @@ void parse_config() noexcept {
     auto& config_data     = config_instance->data();
     config_data["menus"]  = doc["menus"].GetInt();
 
+    auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    if (doc.HasMember("headless_mode")) {
+        assert(doc["headless_mode"].IsBool());
+        headless_mode = static_cast<std::int32_t>(doc["headless_mode"].GetBool());
+    }
+
+    if (headless_mode) {
+        spdlog::info("Running in HEADLESS mode!");
+    } else {
+        spdlog::info("Running in NORMAL mode!");
+    }
+
     if (doc.HasMember("device")) {
         assert(doc["device"].IsString());
         config_data["DEVICE"] = std::string{doc["device"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"device\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("fs_name")) {
         assert(doc["fs_name"].IsString());
         config_data["FILESYSTEM_NAME"] = std::string{doc["fs_name"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"fs_name\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("mount_opts")) {
@@ -1629,21 +1652,33 @@ void parse_config() noexcept {
     if (doc.HasMember("hostname")) {
         assert(doc["hostname"].IsString());
         config_data["HOSTNAME"] = std::string{doc["hostname"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"hostname\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("locale")) {
         assert(doc["locale"].IsString());
         config_data["LOCALE"] = std::string{doc["locale"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"locale\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("xkbmap")) {
         assert(doc["xkbmap"].IsString());
         config_data["XKBMAP"] = std::string{doc["xkbmap"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"xkbmap\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("timezone")) {
         assert(doc["timezone"].IsString());
         config_data["TIMEZONE"] = std::string{doc["timezone"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"timezone\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("user_name") && doc.HasMember("user_pass") && doc.HasMember("user_shell")) {
@@ -1653,26 +1688,41 @@ void parse_config() noexcept {
         config_data["USER_NAME"]  = std::string{doc["user_name"].GetString()};
         config_data["USER_PASS"]  = std::string{doc["user_pass"].GetString()};
         config_data["USER_SHELL"] = std::string{doc["user_shell"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"user_name\", \"user_pass\", \"user_shell\" fields are required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("root_pass")) {
         assert(doc["root_pass"].IsString());
         config_data["ROOT_PASS"] = std::string{doc["root_pass"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"root_pass\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("kernel")) {
         assert(doc["kernel"].IsString());
         config_data["KERNEL"] = std::string{doc["kernel"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"kernel\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("desktop")) {
         assert(doc["desktop"].IsString());
         config_data["DE"] = std::string{doc["desktop"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"desktop\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     if (doc.HasMember("bootloader")) {
         assert(doc["bootloader"].IsString());
         config_data["BOOTLOADER"] = std::string{doc["bootloader"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"bootloader\" field is required in HEADLESS mode!\n");
+        return false;
     }
 
     std::string drivers_type{"free"};
@@ -1692,6 +1742,7 @@ void parse_config() noexcept {
         assert(doc["post_install"].IsString());
         config_data["POST_INSTALL"] = std::string{doc["post_install"].GetString()};
     }
+    return true;
 }
 
 void setup_luks_keyfile() noexcept {
