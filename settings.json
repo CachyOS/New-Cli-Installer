@@ -1,5 +1,5 @@
 {
-    "menus": 1,
+    "menus": 2,
     "headless_mode": false,
     "device": "/dev/nvme0n1",
     "fs_name": "btrfs",
