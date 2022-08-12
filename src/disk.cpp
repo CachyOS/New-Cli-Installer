@@ -221,10 +221,6 @@ void select_filesystem(const std::string_view& file_sys) noexcept {
 #ifdef NDEVENV
         utils::exec("modprobe btrfs");
 #endif
-    } else if (file_sys == "ext2") {
-        config_data["FILESYSTEM"] = "mkfs.ext2 -q";
-    } else if (file_sys == "ext3") {
-        config_data["FILESYSTEM"] = "mkfs.ext3 -q";
     } else if (file_sys == "ext4") {
         config_data["FILESYSTEM"] = "mkfs.ext4 -q";
         config_data["fs_opts"]    = std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
@@ -234,22 +230,11 @@ void select_filesystem(const std::string_view& file_sys) noexcept {
 #ifdef NDEVENV
         utils::exec("modprobe f2fs");
 #endif
-    } else if (file_sys == "jfs") {
-        config_data["FILESYSTEM"] = "mkfs.jfs -q";
-        config_data["fs_opts"]    = std::vector<std::string>{"discard", "errors=continue", "errors=panic", "nointegrity"};
-    } else if (file_sys == "nilfs2") {
-        config_data["FILESYSTEM"] = "mkfs.nilfs2 -fq";
-        config_data["fs_opts"]    = std::vector<std::string>{"discard", "nobarrier", "errors=continue", "errors=panic", "order=relaxed", "order=strict", "norecovery"};
-    } else if (file_sys == "ntfs") {
-        config_data["FILESYSTEM"] = "mkfs.ntfs -q";
-    } else if (file_sys == "reiserfs") {
-        config_data["FILESYSTEM"] = "mkfs.reiserfs -q";
-        config_data["fs_opts"]    = std::vector<std::string>{"acl", "nolog", "notail", "replayonly", "user_xattr"};
-    } else if (file_sys == "vfat") {
-        config_data["FILESYSTEM"] = "mkfs.vfat -F32";
     } else if (file_sys == "xfs") {
         config_data["FILESYSTEM"] = "mkfs.xfs -f";
         config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
+    } else if (file_sys != "zfs") {
+        spdlog::error("Invalid filesystem ('{}')!", fs_sys);
     }
 }
 

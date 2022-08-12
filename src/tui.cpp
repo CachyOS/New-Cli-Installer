@@ -943,15 +943,8 @@ bool select_filesystem() noexcept {
     const std::vector<std::string> menu_entries = {
         "Do not format -",
         "btrfs mkfs.btrfs -f",
-        "ext2 mkfs.ext2 -q",
-        "ext3 mkfs.ext3 -q",
         "ext4 mkfs.ext4 -q",
         "f2fs mkfs.f2fs -q",
-        "jfs mkfs.jfs -q",
-        "nilfs2 mkfs.nilfs2 -fq",
-        "ntfs mkfs.ntfs -q",
-        "reiserfs mkfs.reiserfs -q",
-        "vfat mkfs.vfat -F32",
         "xfs mkfs.xfs -f",
     };
 

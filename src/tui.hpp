@@ -19,6 +19,10 @@ void install_base() noexcept;
 void install_desktop() noexcept;
 void install_bootloader() noexcept;
 
+// TODO(vnepogodin): make it HEADLESS.
+// Also we should move zfs creation related code to disk.cpp
+void zfs_auto() noexcept;
+
 void init() noexcept;
 }  // namespace tui
 

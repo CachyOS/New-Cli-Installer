@@ -35,7 +35,6 @@ void select_filesystem() noexcept {
     const std::vector<std::string> menu_entries = {
         "ext4",
         "btrfs",
-        "f2fs",
         "xfs",
     };
 
@@ -46,6 +45,11 @@ void select_filesystem() noexcept {
         const auto& src      = menu_entries[static_cast<std::size_t>(selected)];
         const auto& lines    = utils::make_multiline(src, false, " ");
         const auto& file_sys = lines[0];
+        /*if (file_sys == "zfs") {
+            // NOTE: We don't have automatic zfs partitioning,
+            // in HEADLESS mode.
+            tui::zfs_auto();
+        }*/
         utils::select_filesystem(file_sys.c_str());
         success = true;
         screen.ExitLoopClosure()();
