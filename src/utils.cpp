@@ -595,8 +595,8 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
         pkg_list.insert(pkg_list.cend(), {"zfs-utils", "linux-cachyos-zfs"});
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "zsh", "mhwd-cachyos", "mhwd-nvidia-390xx", "nerd-fonts-meslo", "vim", "wget", "micro", "nano", "networkmanager", "alacritty", "btop"});
-    pkg_list.insert(pkg_list.cend(), {"cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-kernel-manager", "cachyos-rate-mirrors", "cachy-browser"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "cachyos-zsh-config", "cachyos-fish-config", "mhwd-cachyos", "mhwd-nvidia-390xx", "nerd-fonts-meslo", "vim", "wget", "micro", "nano", "networkmanager", "alacritty", "btop", "nerd-fonts-meslo"});
+    pkg_list.insert(pkg_list.cend(), {"cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-kernel-manager", "cachyos-packageinstaller", "cachyos-rate-mirrors", "cachy-browser"});
 
     return pkg_list;
 }
@@ -631,7 +631,9 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
         /* clang-format off */
         static constexpr std::array to_be_inserted{"ark", "audiocd-kio", "egl-wayland", "plasma-desktop", "plasma-framework", "plasma-nm", "plasma-pa", "plasma-workspace",
             "plasma-integration", "plasma-firewall", "plasma-browser-integration", "plasma-systemmonitor", "plasma-thunderbolt",
+            "kdeconnect", "khotkeys", "kinfocenter", "kinit", "spectacle",
             "konsole", "kate", "dolphin", "kscreen", "kde-gtk-config", "sddm", "sddm-kcm", "plasma", "plasma-wayland-protocols", "plasma-wayland-session",
+            "breeze-gtk", "cachyos-nord-kde-theme-git", "cachyos-lavender-kde-theme-git", "cachyos-iridescent-kde",
             "ksysguard", "pamac-aur", "octopi", "cachyos-kde-settings", "xsettingsd"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
@@ -666,12 +668,12 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     }
     found = ranges::search(desktop_env, wayfire);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"wayfire", "wayfire-plugins-extra", "wf-config", "wf-shell", "wf-recorder", "nwg-drawer"});
+        pkg_list.insert(pkg_list.cend(), {"cachyos-wayfire-settings", "wayfire-desktop-git", "egl-wayland", "wayland-protocols", "ly", "wayfire", "wayfire-plugins-extra", "xorg-xwayland", "xorg-xhost"});
     }
     found = ranges::search(desktop_env, openbox);
     if (!found.empty()) {
         /* clang-format off */
-        static constexpr std::array to_be_inserted{"openbox", "obconf", "acpi", "arandr", "archlinux-xdg-menu", "dex", "dmenu", "dunst", "feh", "gtk-engine-murrine",
+        static constexpr std::array to_be_inserted{"cachyos-openbox-settings", "openbox", "obconf", "acpi", "arandr", "archlinux-xdg-menu", "dex", "dmenu", "dunst", "feh", "gtk-engine-murrine",
             "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "jgmenu", "jq", "lightdm", "lightdm-slick-greeter", "lxappearance-gtk3", "mpv", "network-manager-applet",
             "nitrogen", "pasystray", "cachyos-picom-config", "polkit-gnome", "rofi", "scrot", "slock", "sysstat", "thunar", "thunar-archive-plugin", "thunar-media-tags-plugin", "thunar-volman",
             "tint2", "ttf-nerd-fonts-symbols", "tumbler", "xbindkeys", "xcursor-neutral", "xdg-user-dirs-gtk", "xed", "xfce4-terminal"};
@@ -701,7 +703,7 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     if (needed_xorg) {
         pkg_list.insert(pkg_list.cend(), {"libwnck3", "xf86-input-libinput", "xf86-video-fbdev", "xf86-video-vesa", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr", "xf86-video-amdgpu", "xf86-video-ati", "xf86-video-intel"});
     }
-    pkg_list.insert(pkg_list.cend(), {"alacritty", "openssh", "btop", "paru"});
+    pkg_list.insert(pkg_list.cend(), {"alacritty", "openssh", "btop", "paru", "cachyos"});
 
     return pkg_list;
 }
