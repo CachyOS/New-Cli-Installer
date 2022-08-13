@@ -40,6 +40,7 @@ ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::co
 rapidjson = dependency('rapidjson', version : ['>=1.1.0'], fallback : ['rapidjson', 'rapidjson_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
 ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 'range_dep'])
+ctre = dependency('ctre', version : ['>=3.7.0'], fallback : ['ctre', 'ctre_dep'])
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 
 src_files = files(
@@ -124,7 +125,7 @@ endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
-deps = [fmt, spdlog, ftxui, cpr, ranges, rapidjson]
+deps = [fmt, spdlog, ftxui, cpr, ranges, rapidjson, ctre]
 
 executable(
   'cachyos-installer',

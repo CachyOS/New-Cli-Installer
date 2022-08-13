@@ -15,6 +15,7 @@ subprojects/spdlog
 subprojects/simdjson
 subprojects/rapidjson
 subprojects/range-v3
+subprojects/ctre
 subprojects/packagecache
 
 # Prerequisites
