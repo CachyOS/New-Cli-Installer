@@ -24,6 +24,7 @@
 #include <thread>         // for sleep_for
 #include <unistd.h>       // for execvp, fork
 #include <unordered_map>  // for unordered_map
+#include <mutex>          // for mutex
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -136,6 +137,7 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
     args.push_back(nullptr);
 
     static std::array<char, 1048576 + 1> data{};
+    static std::mutex s_mutex{};
     std::memset(data.data(), 0, data.size());
 
     int32_t ret{-1};
@@ -152,6 +154,8 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
     uint32_t index{};
     uint32_t bytes_read;
     do {
+        std::lock_guard<std::mutex> lock(s_mutex);
+
         bytes_read = subprocess_read_stdout(&process, data.data() + index,
             static_cast<uint32_t>(data.size()) - 1 - index);
 
