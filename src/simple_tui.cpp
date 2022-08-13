@@ -267,9 +267,11 @@ void menu_simple() noexcept {
 
     if (!post_install.empty()) {
         spdlog::info("Running post-install script...");
-#ifdef NDEVENV
+        // Flush before executing post-install script,
+        // so that output will be synchronized.
+        auto logger = spdlog::get("cachyos_logger");
+        logger->flush();
         utils::exec(fmt::format("{} &>>/tmp/cachyos-install.log", post_install), true);
-#endif
     }
 
     tui::exit_done();
