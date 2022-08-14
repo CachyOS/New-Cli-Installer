@@ -1469,8 +1469,8 @@ void id_system() noexcept {
 }
 
 void try_v3() noexcept {
-    const auto& ret_status = utils::exec("/lib/ld-linux-x86-64.so.2 --help | grep \"x86-64-v3 (supported, searched)\" &> /dev/null", true);
-    if (ret_status != "0") {
+    const auto& ret_status = utils::exec("/lib/ld-linux-x86-64.so.2 --help|grep 'x86-64-v3 ('|awk '{print $1}' 2> /dev/null");
+    if (ret_status != "x86-64-v3") {
         spdlog::warn("x86-64-v3 is not supported");
         return;
     }
@@ -1478,7 +1478,7 @@ void try_v3() noexcept {
 
 #ifdef NDEVENV
     static constexpr auto pacman_conf             = "/etc/pacman.conf";
-    static constexpr auto pacman_conf_cachyos     = "/tmp/pacman.conf";
+    static constexpr auto pacman_conf_cachyos     = "/etc/pacman-more.conf";
     static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
     std::error_code err{};
 
@@ -1490,10 +1490,10 @@ void try_v3() noexcept {
     utils::exec("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com", true);
     utils::exec("pacman-key --lsign-key F3B607488DB35A47", true);
 
-    fs::copy(pacman_conf, pacman_conf_cachyos, err);
-    utils::exec(fmt::format(FMT_COMPILE("gawk -i inplace -f /usr/share/cachyos-installer/install-repo.awk {}"), pacman_conf_cachyos), true);
+    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/Architecture = auto/#Architecture = auto/' {}"), pacman_conf_cachyos));
+    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/#<disabled_v3>//g' {}"), pacman_conf_cachyos));
 
-    spdlog::info("Backup old config");
+    spdlog::info("backup old config");
     fs::rename(pacman_conf, pacman_conf_path_backup, err);
 
     spdlog::info("CachyOS -v3 Repo changed");
