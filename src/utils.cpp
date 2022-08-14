@@ -781,12 +781,12 @@ void install_base(const std::string_view& packages) noexcept {
         initcpio.insert_hook("filesystems", "lvm2");
         spdlog::info("add lvm2 hook");
     } else if (lvm == 0 && luks == 1) {
-        initcpio.insert_hook("keyboard", {"consolefont", "keymap"});
+        initcpio.insert_hook("keyboard", std::vector<std::string>{"consolefont", "keymap"});
         initcpio.insert_hook("filesystems", "encrypt");
         spdlog::info("add luks hook");
     } else if (lvm == 1 && luks == 1) {
-        initcpio.insert_hook("keyboard", {"consolefont", "keymap"});
-        initcpio.insert_hook("filesystems", {"encrypt", "lvm2"});
+        initcpio.insert_hook("keyboard", std::vector<std::string>{"consolefont", "keymap"});
+        initcpio.insert_hook("filesystems", std::vector<std::string>{"encrypt", "lvm2"});
         spdlog::info("add lvm/luks hooks");
     }
 
