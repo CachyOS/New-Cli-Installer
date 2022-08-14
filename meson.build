@@ -135,6 +135,11 @@ executable(
   include_directories: [include_directories('src')],
   install: true)
 
+install_data(
+  'src/install-repo.awk',
+  install_dir: '/usr/share/cachyos-installer'
+)
+
 if is_tests_build
     subdir('tests')
 endif

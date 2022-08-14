@@ -1478,7 +1478,7 @@ void try_v3() noexcept {
 
 #ifdef NDEVENV
     static constexpr auto pacman_conf             = "/etc/pacman.conf";
-    static constexpr auto pacman_conf_cachyos     = "/etc/pacman-more.conf";
+    static constexpr auto pacman_conf_cachyos     = "/tmp/pacman.conf";
     static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
     std::error_code err{};
 
@@ -1487,10 +1487,13 @@ void try_v3() noexcept {
         return;
     }
 
-    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/Architecture = auto/#Architecture = auto/' {}"), pacman_conf_cachyos));
-    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/#<disabled_v3>//g' {}"), pacman_conf_cachyos));
+    utils::exec("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com", true);
+    utils::exec("pacman-key --lsign-key F3B607488DB35A47", true);
 
-    spdlog::info("backup old config");
+    fs::copy(pacman_conf, pacman_conf_cachyos, err);
+    utils::exec(fmt::format(FMT_COMPILE("gawk -i inplace -f /usr/share/cachyos-installer/install-repo.awk {}"), pacman_conf_cachyos), true);
+
+    spdlog::info("Backup old config");
     fs::rename(pacman_conf, pacman_conf_path_backup, err);
 
     spdlog::info("CachyOS -v3 Repo changed");
