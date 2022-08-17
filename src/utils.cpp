@@ -747,6 +747,10 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
     auto initcpio                 = detail::Initcpio{initcpio_filename};
 
+    // NOTE: make sure that we have valid initcpio config,
+    // overwise we will end up here with unbootable system.
+    initcpio.append_hooks({"base", "udev", "autodetect", "modconf", "block", "filesystems", "keyboard", "fsck"});
+
     // filter_packages
     utils::install_from_pkglist(base_pkgs);
 
@@ -760,6 +764,7 @@ void install_base(const std::string_view& packages) noexcept {
     std::int32_t zfs_root   = 0;
 
     const auto& filesystem_type = fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE {}"), mountpoint);
+    spdlog::info("filesystem type on '{}' := '{}'", mountpoint, filesystem_type);
     if (filesystem_type == "btrfs") {
         btrfs_root = 1;
         initcpio.remove_hook("fsck");
@@ -776,6 +781,7 @@ void install_base(const std::string_view& packages) noexcept {
     // add luks and lvm hooks as needed
     const auto& lvm  = std::get<std::int32_t>(config_data["LVM"]);
     const auto& luks = std::get<std::int32_t>(config_data["LUKS"]);
+    spdlog::info("LVM := {}, LUKS := {}", lvm, luks);
 
     if (lvm == 1 && luks == 0) {
         initcpio.insert_hook("filesystems", "lvm2");
@@ -792,7 +798,9 @@ void install_base(const std::string_view& packages) noexcept {
 
     // Just explicitly flush the data to file,
     // if smth really happened between our calls.
-    initcpio.write();
+    if (initcpio.parse_file()) {
+        initcpio.write();
+    }
 
     if (lvm + luks + btrfs_root + zfs_root > 0) {
         utils::arch_chroot("mkinitcpio -P");

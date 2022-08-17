@@ -61,6 +61,17 @@ class Initcpio {
         hooks.emplace_back(std::move(hook));
         return this->write();
     }
+    inline bool append_hooks(std::vector<std::string>&& hook) noexcept {
+        /* clang-format off */
+        if (!this->parse_file()) { return false; }
+        auto&& filtered_input = hook | ranges::views::filter([&](auto&& el) {
+            return !ranges::contains(hooks, el);
+        }) | ranges::to<std::vector<std::string>>();
+        if (filtered_input.empty()) { return false; }
+
+        hooks.insert(hooks.end(), filtered_input.begin(), filtered_input.end());
+        return this->write();
+    }
     inline bool insert_hook(std::string&& needle, std::string&& hook) noexcept {
         /* clang-format off */
         if (!this->parse_file()) { return false; }

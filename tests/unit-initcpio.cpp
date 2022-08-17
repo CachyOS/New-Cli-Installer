@@ -58,7 +58,7 @@ int main() {
     initcpio.append_module("radeon");
     initcpio.append_hook("btrfs");
     initcpio.append_module("crc32c-intel");
-    initcpio.hooks.insert(initcpio.hooks.end(), {"usr", "lvm2", "zfs"});
+    initcpio.append_hooks({"usr", "lvm2", "zfs"});
 
     // Write data.
     assert(initcpio.write());
