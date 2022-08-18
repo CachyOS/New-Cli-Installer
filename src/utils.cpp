@@ -599,7 +599,7 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
         pkg_list.insert(pkg_list.cend(), {"zfs-utils", "linux-cachyos-zfs"});
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "cachyos-zsh-config", "cachyos-fish-config", "mhwd-cachyos", "mhwd-nvidia-390xx", "nerd-fonts-meslo", "vim", "wget", "micro", "nano", "networkmanager", "alacritty", "btop", "nerd-fonts-meslo"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "mkinitcpio", "cachyos-zsh-config", "cachyos-fish-config", "mhwd-cachyos", "mhwd-nvidia-390xx", "nerd-fonts-meslo", "vim", "wget", "micro", "nano", "networkmanager", "alacritty", "btop", "nerd-fonts-meslo"});
     pkg_list.insert(pkg_list.cend(), {"cachyos-keyring", "cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-hello", "cachyos-hooks", "cachyos-settings", "cachyos-kernel-manager", "cachyos-packageinstaller", "cachyos-rate-mirrors", "cachy-browser"});
 
     return pkg_list;
