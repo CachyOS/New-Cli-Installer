@@ -90,7 +90,7 @@ Vagrant.configure("2") do |config|
     # Update system
     pacman -Syu --needed --noconfirm
     # Install depends
-    pacman -S --needed --noconfirm base-devel git clang cmake meson mold
+    pacman -S --needed --noconfirm base-devel git wget clang cmake meson mold
 
     # Save our current dir
     SAVED_DIR="$PWD"
@@ -101,6 +101,30 @@ Vagrant.configure("2") do |config|
     export CXX=clang++
     export NM=llvm-nm
     export RANLIB=llvm-ranlib
+
+    wget https://raw.githubusercontent.com/CachyOS/CachyOS-CLI-ISO/master/archiso/airootfs/etc/pacman-more.conf
+    mv pacman-more.conf /etc/
+ 
+    cat << EOF > settings.json
+    {
+      "menus": 1,
+      "headless_mode": true,
+      "device": "/dev/sdb",
+      "fs_name": "btrfs",
+      "hostname": "cachyos",
+      "locale": "en_US",
+      "xkbmap": "us",
+      "timezone": "America/New_York",
+      "user_name": "testuser",
+      "user_pass": "test",
+      "user_shell": "/bin/bash",
+      "root_pass": "secure",
+      "kernel": "linux-cachyos",
+      "desktop": "kde",
+      "bootloader": "systemd-boot",
+      "drivers_type": "free"
+    }
+    EOF
 
     # Remove repo if already exists
     [ -d "new-cli-installer" ] && rm -rf "new-cli-installer"
@@ -123,7 +147,7 @@ Vagrant.configure("2") do |config|
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DCMAKE_INSTALL_LIBDIR=lib \
-        -DENABLE_DEVENV=ON
+        -DENABLE_DEVENV=OFF
 
     cmake --build build --parallel $(nproc)
 
