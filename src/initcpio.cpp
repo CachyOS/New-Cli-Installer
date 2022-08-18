@@ -4,6 +4,7 @@
 #include <fstream>  // for ofstream
 
 #include <fmt/format.h>
+#include <spdlog/spdlog.h>
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -30,6 +31,10 @@ namespace detail {
 
 bool Initcpio::write() const noexcept {
     auto&& file_content  = utils::read_whole_file(m_file_path);
+    if (file_content.empty()) {
+        spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
+        return false;
+    }
     std::string&& result = file_content | ranges::views::split('\n')
         | ranges::views::transform([&](auto&& rng) {
               auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
@@ -52,16 +57,21 @@ bool Initcpio::write() const noexcept {
         | ranges::to<std::string>();
     result += '\n';
 
-    /* clang-format off */
     std::ofstream mhinitcpio_file{m_file_path.data()};
-    if (!mhinitcpio_file.is_open()) { return false; }
-    /* clang-format on */
+    if (!mhinitcpio_file.is_open()) {
+        spdlog::error("[INITCPIO] '{}' open failed: {}", m_file_path, std::strerror(errno));
+        return false;
+    }
     mhinitcpio_file << result;
     return true;
 }
 
 bool Initcpio::parse_file() noexcept {
     auto&& file_content = utils::read_whole_file(m_file_path);
+    if (file_content.empty()) {
+        spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
+        return false;
+    }
 
     const auto& parse_line = [](auto&& line) -> std::vector<std::string> {
         auto&& open_bracket_pos = line.find('(');

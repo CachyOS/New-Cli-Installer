@@ -224,7 +224,7 @@ auto read_whole_file(const std::string_view& filepath) noexcept -> std::string {
     // Use std::fopen because it's faster than std::ifstream
     auto* file = std::fopen(filepath.data(), "rb");
     if (file == nullptr) {
-        spdlog::error("[READWHOLEFILE] read failed: {}", std::strerror(errno));
+        spdlog::error("[READWHOLEFILE] '{}' read failed: {}", filepath, std::strerror(errno));
         return {};
     }
 
@@ -237,7 +237,7 @@ auto read_whole_file(const std::string_view& filepath) noexcept -> std::string {
 
     const std::size_t read = std::fread(buf.data(), sizeof(char), size, file);
     if (read != size) {
-        spdlog::error("[READWHOLEFILE] read failed: {}", std::strerror(errno));
+        spdlog::error("[READWHOLEFILE] '{}' read failed: {}", filepath, std::strerror(errno));
         return {};
     }
     std::fclose(file);
