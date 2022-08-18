@@ -1942,12 +1942,12 @@ void final_check() noexcept {
     //[[ ! -e /mnt/.video_installed ]] && echo "- $_GCCheck" >> ${CHECKLIST}
 
     // Check if locales have been generated
-    if (to_int(utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} 'locale -a' | wc -l"), mountpoint), true)) < 3) {
+    if (to_int(utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} locale -a | wc -l"), mountpoint), true)) < 3) {
         checklist += "- Locales have not been generated\n";
     }
 
     // Check if root password has been set
-    if (utils::exec("arch-chroot /mnt 'passwd --status root' | cut -d' ' -f2 | grep -q 'NP'", true) == "0") {
+    if (utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd --status root | cut -d' ' -f2 | grep -q 'NP'"), mountpoint), true) == "0") {
         checklist += "- Root password is not set\n";
     }
 
