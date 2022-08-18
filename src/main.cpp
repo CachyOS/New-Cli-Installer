@@ -20,8 +20,7 @@ int main() {
     }
 
     if (!utils::check_root()) {
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-        utils::clear_screen();
+        error_inter("Installer must be launched with root privileges!\n");
         return 1;
     }
 
