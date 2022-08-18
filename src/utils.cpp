@@ -245,6 +245,20 @@ auto read_whole_file(const std::string_view& filepath) noexcept -> std::string {
     return buf;
 }
 
+bool write_to_file(const std::string_view& data, const std::string_view& filepath) noexcept {
+    std::ofstream file{filepath.data()};
+    if (!file.is_open()) {
+        spdlog::error("[WRITE_TO_FILE] '{}' open failed: {}", filepath, std::strerror(errno));
+        return false;
+    }
+    file << data;
+    return true;
+}
+
+void dump_to_log(const std::string& data) noexcept {
+    spdlog::info("[DUMP_TO_LOG] :=\n{}", data);
+}
+
 bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     fmt::print("{}{}{}\n", color, prompt, RESET);
 
@@ -368,8 +382,10 @@ void generate_fstab(const std::string_view& fstab_cmd) noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     utils::exec(fmt::format(FMT_COMPILE("{0} {1} > {1}/etc/fstab"), fstab_cmd, mountpoint));
-    spdlog::info("Created fstab file:\n");
-    utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab >> /tmp/cachyos-install.log"), mountpoint));
+    spdlog::info("Created fstab file:");
+
+    const auto& fstab_content = utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/fstab"), mountpoint));
+    utils::dump_to_log(fstab_content);
 
     const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
     if (fs::exists(swap_file) && fs::is_regular_file(swap_file)) {
