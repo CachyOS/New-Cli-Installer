@@ -763,7 +763,7 @@ void install_base(const std::string_view& packages) noexcept {
     std::int32_t btrfs_root = 0;
     std::int32_t zfs_root   = 0;
 
-    const auto& filesystem_type = fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE {}"), mountpoint);
+    const auto& filesystem_type = utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint));
     spdlog::info("filesystem type on '{}' := '{}'", mountpoint, filesystem_type);
     if (filesystem_type == "btrfs") {
         btrfs_root = 1;
