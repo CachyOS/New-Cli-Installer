@@ -8,6 +8,7 @@ test_libreq = shared_library('test_libreq',
         source_path + 'drivers.cpp',
         source_path + 'widgets.cpp',
         source_path + 'follow_process_log.cpp',
+        source_path + 'initcpio.cpp',
         source_path + 'crypto.cpp',
         source_path + 'misc.cpp',
         source_path + 'simple_tui.cpp',
@@ -28,6 +29,14 @@ executable(
 executable(
   'test-process-tailing',
   files('unit-proccess-tailing.cpp'),
+  dependencies: deps,
+  link_with: [test_libreq],
+  include_directories: [include_directories(source_path)],
+  install: false)
+
+executable(
+  'test-initcpio',
+  files('unit-initcpio.cpp'),
   dependencies: deps,
   link_with: [test_libreq],
   include_directories: [include_directories(source_path)],
