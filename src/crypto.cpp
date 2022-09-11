@@ -30,7 +30,7 @@ bool select_crypt_partition(const std::string_view& text) noexcept {
     bool success{};
     auto ok_callback = [&] {
         const auto& src          = partitions[static_cast<std::size_t>(selected)];
-        const auto& lines        = utils::make_multiline(src, false, " ");
+        const auto& lines        = utils::make_multiline(src, false, ' ');
         config_data["PARTITION"] = lines[0];
         success                  = true;
         screen.ExitLoopClosure()();

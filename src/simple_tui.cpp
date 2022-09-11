@@ -43,7 +43,7 @@ void select_filesystem() noexcept {
     bool success{};
     auto ok_callback = [&] {
         const auto& src      = menu_entries[static_cast<std::size_t>(selected)];
-        const auto& lines    = utils::make_multiline(src, false, " ");
+        const auto& lines    = utils::make_multiline(src, false, ' ');
         const auto& file_sys = lines[0];
         /*if (file_sys == "zfs") {
             // NOTE: We don't have automatic zfs partitioning,
@@ -151,7 +151,7 @@ void menu_simple() noexcept {
         /* clang-format off */
         if (!partition.starts_with(device_info)) { continue; }
         /* clang-format on */
-        const auto& partition_stat = utils::make_multiline(partition, false, " ");
+        const auto& partition_stat = utils::make_multiline(partition, false, ' ');
         const auto& part_name      = partition_stat[0];
         const auto& part_size      = partition_stat[1];
 

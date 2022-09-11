@@ -16,7 +16,7 @@ namespace utils {
 [[nodiscard]] bool is_connected() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;
-[[nodiscard]] auto make_multiline(const std::string_view& str, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::vector<std::string>;
+[[nodiscard]] auto make_multiline(const std::string_view& str, bool reverse = false, char delim = '\n') noexcept -> std::vector<std::string>;
 [[nodiscard]] auto make_multiline(const std::vector<std::string>& multiline, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::string;
 void inst_needed(const std::string_view& pkg) noexcept;
 void secure_wipe() noexcept;

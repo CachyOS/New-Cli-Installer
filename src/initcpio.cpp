@@ -30,7 +30,7 @@
 namespace detail {
 
 bool Initcpio::write() const noexcept {
-    auto&& file_content  = utils::read_whole_file(m_file_path);
+    auto&& file_content = utils::read_whole_file(m_file_path);
     if (file_content.empty()) {
         spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
         return false;

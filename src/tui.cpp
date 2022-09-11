@@ -192,7 +192,7 @@ void set_locale() noexcept {
 // Set keymap for X11
 void set_xkbmap() noexcept {
     static constexpr auto keymaps_xkb = "af al am at az ba bd be bg br bt bw by ca cd ch cm cn cz de dk ee es et eu fi fo fr gb ge gh gn gr hr hu ie il in iq ir is it jp ke kg kh kr kz la lk lt lv ma md me mk ml mm mn mt mv ng nl no np pc ph pk pl pt ro rs ru se si sk sn sy tg th tj tm tr tw tz ua us uz vn za";
-    const auto& xkbmap_list           = utils::make_multiline(keymaps_xkb, false, " ");
+    const auto& xkbmap_list           = utils::make_multiline(keymaps_xkb, false, ' ');
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{86};
@@ -922,7 +922,7 @@ bool select_device() noexcept {
     bool success{};
     auto ok_callback = [&] {
         const auto& src       = devices_list[static_cast<std::size_t>(selected)];
-        const auto& lines     = utils::make_multiline(src, false, " ");
+        const auto& lines     = utils::make_multiline(src, false, ' ');
         config_data["DEVICE"] = lines[0];
         success               = true;
         screen.ExitLoopClosure()();
@@ -953,7 +953,7 @@ bool select_filesystem() noexcept {
     bool success{};
     auto ok_callback = [&] {
         const auto& src      = menu_entries[static_cast<std::size_t>(selected)];
-        const auto& lines    = utils::make_multiline(src, false, " ");
+        const auto& lines    = utils::make_multiline(src, false, ' ');
         const auto& file_sys = lines[0];
         utils::select_filesystem(file_sys.c_str());
         success = true;
@@ -1199,7 +1199,7 @@ void make_swap() noexcept {
         bool success{};
         auto ok_callback = [&] {
             const auto& src   = temp[static_cast<std::size_t>(selected)];
-            const auto& lines = utils::make_multiline(src, false, " ");
+            const auto& lines = utils::make_multiline(src, false, ' ');
             answer            = lines[0];
             success           = true;
             screen.ExitLoopClosure()();
@@ -1386,7 +1386,7 @@ bool zfs_create_zpool() noexcept {
         bool success{};
         auto ok_callback = [&] {
             const auto& src          = partitions[static_cast<std::size_t>(selected)];
-            const auto& lines        = utils::make_multiline(src, false, " ");
+            const auto& lines        = utils::make_multiline(src, false, ' ');
             config_data["PARTITION"] = lines[0];
             success                  = true;
             screen.ExitLoopClosure()();
@@ -1813,7 +1813,7 @@ void make_esp() noexcept {
         bool success{};
         auto ok_callback = [&] {
             const auto& src   = partitions[static_cast<std::size_t>(selected)];
-            const auto& lines = utils::make_multiline(src, false, " ");
+            const auto& lines = utils::make_multiline(src, false, ' ');
             answer            = lines[0];
             success           = true;
             screen.ExitLoopClosure()();
@@ -1932,7 +1932,7 @@ void mount_partitions() noexcept {
 
             auto ok_callback = [&] {
                 const auto& src          = partitions[static_cast<std::size_t>(selected)];
-                const auto& lines        = utils::make_multiline(src, false, " ");
+                const auto& lines        = utils::make_multiline(src, false, ' ');
                 config_data["PARTITION"] = lines[0];
                 config_data["ROOT_PART"] = lines[0];
                 success                  = true;
@@ -2024,7 +2024,7 @@ void mount_partitions() noexcept {
             bool success{};
             auto ok_callback = [&] {
                 const auto& src          = temp[static_cast<std::size_t>(selected)];
-                const auto& lines        = utils::make_multiline(src, false, " ");
+                const auto& lines        = utils::make_multiline(src, false, ' ');
                 config_data["PARTITION"] = lines[0];
                 success                  = true;
                 screen.ExitLoopClosure()();

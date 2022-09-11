@@ -274,22 +274,15 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     return false;
 }
 
-auto make_multiline(const std::string_view& str, bool reverse, const std::string_view&& delim) noexcept -> std::vector<std::string> {
+auto make_multiline(const std::string_view& str, bool reverse, char delim) noexcept -> std::vector<std::string> {
     static constexpr auto functor = [](auto&& rng) {
         return std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
     };
     static constexpr auto second = [](auto&& rng) { return rng != ""; };
 
-#if defined(__clang__)
-    const auto& splitted_view = str
-        | ranges::views::split(delim);
-    const auto& view_res = splitted_view
-        | ranges::views::transform(functor);
-#else
-    const auto& view_res = str
+    auto&& view_res = str
         | ranges::views::split(delim)
         | ranges::views::transform(functor);
-#endif
 
     std::vector<std::string> lines{};
     ranges::for_each(view_res | ranges::views::filter(second), [&](auto&& rng) { lines.emplace_back(rng); });
@@ -604,7 +597,7 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     auto& config_data     = config_instance->data();
     const auto& zfs       = std::get<std::int32_t>(config_data["ZFS"]);
 
-    auto pkg_list = utils::make_multiline(packages, false, " ");
+    auto pkg_list = utils::make_multiline(packages, false, ' ');
 
     const auto pkg_count = pkg_list.size();
     for (std::size_t i = 0; i < pkg_count; ++i) {
