@@ -35,7 +35,7 @@ endif
 
 # Common dependencies
 spdlog = dependency('spdlog', version : ['>=1.9.2'], fallback : ['spdlog', 'spdlog_dep'])
-fmt = dependency('fmt', version : ['>=8.0.0'], fallback : ['fmt', 'fmt_dep'])
+fmt = dependency('fmt', version : ['>=9.1.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 rapidjson = dependency('rapidjson', version : ['>=1.1.0'], fallback : ['rapidjson', 'rapidjson_dep'])
 cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
