@@ -36,7 +36,7 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
         }
         const auto& saved_path = fs::current_path();
         fs::current_path("/mnt");
-        auto subvol_list = utils::make_multiline(subvols, false, " ");
+        auto subvol_list = utils::make_multiline(subvols, false, ' ');
         for (const auto& subvol : subvol_list) {
             utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume create {} 2>>/tmp/cachyos-install.log"), subvol), true);
         }
