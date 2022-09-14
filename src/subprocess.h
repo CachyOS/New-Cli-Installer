@@ -37,7 +37,7 @@
 #pragma warning(push, 1)
 #endif
 
-#include <stdio.h>
+#include <cstdio>
 
 #if defined(_MSC_VER)
 #pragma warning(pop)
@@ -208,8 +208,8 @@ subprocess_weak int subprocess_alive(struct subprocess_s *const process);
 #endif
 
 #if !defined(_MSC_VER)
-#include <signal.h>
-#include <stdlib.h>
+#include <csignal>
+#include <cstdlib>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>

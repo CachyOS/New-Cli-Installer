@@ -30,7 +30,7 @@ namespace detail {
 
 class Initcpio {
  public:
-    Initcpio(const std::string_view& file_path) noexcept : m_file_path(file_path) { }
+    explicit Initcpio(const std::string_view& file_path) noexcept : m_file_path(file_path) { }
 
     bool parse_file() noexcept;
 
