@@ -689,7 +689,7 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
         static constexpr std::array to_be_inserted{"cachyos-openbox-settings", "openbox", "obconf", "acpi", "arandr", "archlinux-xdg-menu", "dex", "dmenu", "dunst", "feh", "gtk-engine-murrine",
             "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "jgmenu", "jq", "lightdm", "lightdm-slick-greeter", "lxappearance-gtk3", "mpv", "network-manager-applet",
             "nitrogen", "pasystray", "cachyos-picom-config", "polkit-gnome", "rofi", "scrot", "slock", "sysstat", "thunar", "thunar-archive-plugin", "thunar-media-tags-plugin", "thunar-volman",
-            "tint2", "ttf-nerd-fonts-symbols", "tumbler", "xbindkeys", "xcursor-neutral", "xdg-user-dirs-gtk", "xed", "xfce4-terminal"};
+            "tint2", "ttf-nerd-fonts-symbols-1000-em", "tumbler", "xbindkeys", "xcursor-neutral", "xdg-user-dirs-gtk", "xed", "xfce4-terminal"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
