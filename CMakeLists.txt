@@ -44,7 +44,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME spdlog
   GITHUB_REPOSITORY gabime/spdlog
-  GIT_TAG 81de01c02c2b49aa723806b0c1d557dd05721635
+  GIT_TAG d7de159455d0d9bafc999f78139eafddb3935c36
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -56,19 +56,19 @@ CPMAddPackage(
 CPMAddPackage(
   NAME cpr
   GITHUB_REPOSITORY libcpr/cpr
-  GIT_TAG 7938bc7702130f989b76822909b57b829dcd806a
+  GIT_TAG 142a496e49bc71dc1be85a3ce47bb25573670000
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME range-v3
   GITHUB_REPOSITORY ericniebler/range-v3
-  GIT_TAG 689b4f3da769fb21dd7acf62550a038242d832e5
+  GIT_TAG cc445f55b5785736e26da573b7e6c2e199553ac6
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME ctre
   GITHUB_REPOSITORY hanickadot/compile-time-regular-expressions
-  GIT_TAG v3.7
+  GIT_TAG v3.7.1
   EXCLUDE_FROM_ALL YES
 )
 
