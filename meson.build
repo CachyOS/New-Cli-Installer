@@ -103,6 +103,15 @@ if cc.get_id() == 'gcc'
         '-Wanalyzer-double-free',
         '-Wanalyzer-malloc-leak',
         '-Wanalyzer-use-after-free',
+
+        ## some more analyzer flags
+        '-Wanalyzer-tainted-allocation-size',
+        '-Wanalyzer-use-of-uninitialized-value',
+        '-Wanalyzer-use-of-pointer-in-stale-stack-frame',
+        '-Wanalyzer-free-of-non-heap',
+        '-Wanalyzer-mismatching-deallocation',
+        '-Wanalyzer-null-dereference',
+        '-Wanalyzer-possible-null-dereference',
     ]
 endif
 

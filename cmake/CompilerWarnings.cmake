@@ -1,5 +1,6 @@
 function(set_project_warnings project_name)
-    option(WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+    option(WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+    option(ENABLE_HARD_WARNINGS "Enable HARD warnings for static ananlyzer" OFF)
 
     set(MSVC_WARNINGS
         /W4 # Baseline reasonable warnings
@@ -46,7 +47,7 @@ function(set_project_warnings project_name)
         -Wimplicit-fallthrough # warn on statements that fallthrough without an explicit annotation
     )
 
-    if(WARNINGS_AS_ERRORS)
+    if(WARNINGS_AS_ERRORS AND NOT ENABLE_HARD_WARNINGS)
         set(CLANG_WARNINGS ${CLANG_WARNINGS} -Werror)
         set(MSVC_WARNINGS ${MSVC_WARNINGS} /WX)
     endif()
@@ -72,7 +73,37 @@ function(set_project_warnings project_name)
         -Wanalyzer-double-free
         -Wanalyzer-malloc-leak
         -Wanalyzer-use-after-free
+
+        ## some more analyzer flags
+        -Wanalyzer-tainted-allocation-size
+        -Wanalyzer-use-of-uninitialized-value
+        -Wanalyzer-use-of-pointer-in-stale-stack-frame
+        -Wanalyzer-free-of-non-heap
+        -Wanalyzer-mismatching-deallocation
+        -Wanalyzer-null-dereference
+        -Wanalyzer-possible-null-dereference
     )
+
+    if(ENABLE_HARD_WARNINGS)
+        set(GCC_WARNINGS
+            ${GCC_WARNINGS}
+            -fanalyzer
+            -Wanalyzer-too-complex
+
+
+            ## just for testing
+            -Wanalyzer-exposure-through-output-file
+            -Wanalyzer-file-leak
+            -Wanalyzer-null-argument
+            -Wanalyzer-possible-null-argument
+            -Wanalyzer-shift-count-negative
+            -Wanalyzer-shift-count-overflow
+            -Wanalyzer-stale-setjmp-buffer
+            -Wanalyzer-unsafe-call-within-signal-handler
+            -Wanalyzer-write-to-const
+            -Wanalyzer-write-to-string-literal
+        )
+    endif()
 
     if(MSVC)
         set(PROJECT_WARNINGS ${MSVC_WARNINGS})
