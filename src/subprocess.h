@@ -50,7 +50,8 @@
 #define subprocess_pure __attribute__((pure))
 #define subprocess_weak __attribute__((weak))
 #else
-#error Non clang, non gcc, non MSVC compiler found!
+#define subprocess_pure
+#define subprocess_weak inline
 #endif
 
 struct subprocess_s;

@@ -1,5 +1,5 @@
 function(set_project_warnings project_name)
-    option(WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
+    option(WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
     option(ENABLE_HARD_WARNINGS "Enable HARD warnings for static ananlyzer" OFF)
 
     set(MSVC_WARNINGS
@@ -68,6 +68,7 @@ function(set_project_warnings project_name)
         -Wsuggest-attribute=pure
         #-Wsuggest-final-methods
         #-Wsuggest-final-types
+        -Wsuggest-override
         -Wdiv-by-zero
         -Wanalyzer-double-fclose
         -Wanalyzer-double-free
@@ -75,6 +76,15 @@ function(set_project_warnings project_name)
         -Wanalyzer-use-after-free
 
         ## some more analyzer flags
+        -Wnonnull
+        -Wnonnull-compare
+        -Wnormalized=nfkc
+        -Wnull-dereference
+        -Wopenacc-parallelism
+        -Wopenmp-simd
+        -Wpmf-conversions
+
+        -Waggressive-loop-optimizations
         -Wanalyzer-tainted-allocation-size
         -Wanalyzer-use-of-uninitialized-value
         -Wanalyzer-use-of-pointer-in-stale-stack-frame
@@ -85,6 +95,16 @@ function(set_project_warnings project_name)
     )
 
     if(ENABLE_HARD_WARNINGS)
+        set(CLANG_WARNINGS ${CLANG_WARNINGS}
+            -Weverything
+            -Wno-c++98-compat
+            -Wno-c++98-compat-pedantic
+            -Wno-c++11-compat
+            -Wno-c++14-compat
+            -Wno-documentation-unknown-command
+            -Wno-reserved-identifier
+        )
+
         set(GCC_WARNINGS
             ${GCC_WARNINGS}
             -fanalyzer
@@ -92,6 +112,93 @@ function(set_project_warnings project_name)
 
 
             ## just for testing
+            -Weffc++
+            -Walloca
+            -Walloc-zero
+            -Wcannot-profile
+            -Wcast-align
+            -Wcast-align=strict
+            -Wcast-function-type
+            -Wcast-qual
+            -Wcatch-value=3
+            -Wchar-subscripts
+            -Wclass-conversion
+            -Wclass-memaccess
+            -Wclobbered
+            -Wcomma-subscript
+            -Wcomment
+            -Wcomments
+            -Wconditionally-supported
+            -Wconversion
+            -Wconversion-null
+            -Wcoverage-invalid-line-number
+            -Wcoverage-mismatch
+            -Wcpp
+            -Wctad-maybe-unsupported
+            -Wctor-dtor-privacy
+            -Wdangling-else
+            -Wdangling-pointer=2
+            -Wdate-time
+            -Wdelete-incomplete
+            -Wdelete-non-virtual-dtor
+            -Wframe-address
+            -Wfree-nonheap-object
+            -Whsa
+            -Wlto-type-mismatch
+            -Wno-namespaces
+            -Wnarrowing
+            -Wnoexcept
+            -Wnoexcept-type
+            -Wnon-template-friend
+            -Wnon-virtual-dtor
+            -Wodr
+            -Wold-style-cast
+            -Woverflow
+            -Woverlength-strings
+            -Woverloaded-virtual
+            -Wpacked
+            -Wpacked-bitfield-compat
+            -Wpacked-not-aligned
+            -Wno-padded
+            -Wparentheses
+            -Wpessimizing-move
+            -Wplacement-new=2
+            -Wpragmas
+            -Wprio-ctor-dtor
+            -Wpsabi
+            -Wrange-loop-construct
+            -Wredundant-decls
+            -Wredundant-move
+            -Wredundant-tags
+            -Wregister
+            -Wscalar-storage-order
+            -Wsequence-point
+            -Wshadow=compatible-local
+            -Wshadow=global
+            -Wshadow=local
+            -Wstack-protector
+            -Wsync-nand
+            -Wsynth
+            -Wtsan
+            -Wtype-limits
+            -Wundef
+            -Wuninitialized
+            -Wunknown-pragmas
+            -Wunreachable-code
+            -Wunsafe-loop-optimizations
+            -Wuse-after-free=3
+            -Wvector-operation-performance
+            -Wvexing-parse
+            -Wvirtual-inheritance
+            -Wvirtual-move-assign
+            -Wvla
+            -Wvla-parameter
+            -Wvolatile
+            -Wvolatile-register-var
+            -Wwrite-strings
+            -Wzero-as-null-pointer-constant
+            -Wzero-length-bounds
+
             -Wanalyzer-exposure-through-output-file
             -Wanalyzer-file-leak
             -Wanalyzer-null-argument

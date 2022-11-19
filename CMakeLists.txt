@@ -53,12 +53,14 @@ CPMAddPackage(
   GIT_TAG 22a62fcc2c2fa2418f5d358cdf65c1df73b418ae
   EXCLUDE_FROM_ALL YES
 )
+if(NOT ENABLE_DEVENV)
 CPMAddPackage(
   NAME cpr
   GITHUB_REPOSITORY libcpr/cpr
   GIT_TAG 142a496e49bc71dc1be85a3ce47bb25573670000
   EXCLUDE_FROM_ALL YES
 )
+endif()
 CPMAddPackage(
   NAME range-v3
   GITHUB_REPOSITORY ericniebler/range-v3
@@ -130,7 +132,10 @@ if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component cpr::cpr range-v3::range-v3 ctre::ctre)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component range-v3::range-v3 ctre::ctre)
+if(NOT ENABLE_DEVENV)
+  target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
+endif()
 
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)
