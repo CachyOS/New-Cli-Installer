@@ -49,4 +49,5 @@ jobs:
       with:
         clang-format-version: '14'
         check-path: 'src'
+        exclude-regex: 'src/subprocess.h'
 

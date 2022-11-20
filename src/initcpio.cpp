@@ -37,6 +37,7 @@ bool Initcpio::write() const noexcept {
     }
     std::string&& result = file_content | ranges::views::split('\n')
         | ranges::views::transform([&](auto&& rng) {
+              /* clang-format off */
               auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
               if (line.starts_with("MODULES")) {
                   auto&& formatted_modules = modules | ranges::views::join(' ')
@@ -51,6 +52,7 @@ bool Initcpio::write() const noexcept {
                                                  | ranges::to<std::string>();
                   return fmt::format("HOOKS=({})", std::move(formatted_hooks));
               }
+              /* clang-format on */
               return std::string{line.data(), line.size()};
           })
         | ranges::views::join('\n')
