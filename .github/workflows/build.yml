@@ -24,7 +24,8 @@ jobs:
 
       - name: install deps
         run: |
-          sudo pacman -Syu --noconfirm
+          pacman -Syu --noconfirm base-devel sudo
+          useradd user -G wheel && echo "user ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
         shell: bash
 
       - name: Configure CMake
