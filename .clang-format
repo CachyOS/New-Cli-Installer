@@ -13,6 +13,6 @@ PointerAlignment: Left
 FixNamespaceComments: true
 SpaceBeforeCpp11BracedList: false
 SpacesBeforeTrailingComments: 2
-Standard: c++17
+Standard: c++20
 TabWidth: 4
 UseTab: Never

@@ -1,0 +1,41 @@
+name: Build
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_TYPE: Debug
+  CTEST_OUTPUT_ON_FAILURE: 1
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    container: archlinux
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: install deps
+        run: |
+          sudo pacman -Syu --noconfirm
+        shell: bash
+
+      - name: Configure CMake
+        # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCOS_INSTALLER_BUILD_TESTS=ON
+
+      - name: Build
+        # Build your program with the given configuration
+        run: cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+      - name: Test
+        working-directory: ${{github.workspace}}/build
+        # Execute tests defined by the CMake configuration.
+        run: ./tests/test-initcpio
