@@ -24,7 +24,7 @@ jobs:
 
       - name: install deps
         run: |
-          pacman -Syu --noconfirm cmake pkg-config ninja clang mold llvm
+          pacman -Syu --noconfirm cmake pkg-config ninja clang mold llvm git
         shell: bash
 
       - name: Configure CMake
