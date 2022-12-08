@@ -19,17 +19,22 @@ int main() {
         utils::exec("setterm -blank 0 -powersave off");
     }
 
+    // Check if installer has enough permissions.
     if (!utils::check_root()) {
         error_inter("Installer must be launched with root privileges!\n");
         return 1;
     }
 
+    // Initialize default config.
     if (!Config::initialize()) {
         return 1;
     }
 
+    // Detect system information.
+    // e.g UEFI/BIOS, APPLE, INIT
     utils::id_system();
 
+    // Initialize logger.
     auto logger = spdlog::create_async<spdlog::sinks::basic_file_sink_mt>("cachyos_logger", "/tmp/cachyos-install.log");
     spdlog::set_default_logger(logger);
     spdlog::set_pattern("[%r][%^---%L---%$] %v");
