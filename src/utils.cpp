@@ -550,6 +550,8 @@ void find_partitions() noexcept {
     static constexpr auto other_piece = "sed 's/part$/\\/dev\\//g' | sed 's/lvm$\\|crypt$/\\/dev\\/mapper\\//g' | awk '{print $3$1 \" \" $2}' | awk '!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk '{printf \"/dev/zvol/%s %s\\n\", $1, $2}'";
     const auto& partitions_tmp        = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME,SIZE,TYPE | grep '{}' | {}"), include_part, other_piece));
 
+    spdlog::info("found partitions:\n{}", partitions_tmp);
+
     // create a raid partition list
     // old_ifs="$IFS"
     // IFS=$'\n'
@@ -1644,6 +1646,13 @@ vm.vfs_cache_pressure = 50
 bool parse_config() noexcept {
     using namespace rapidjson;
 
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    spdlog::info("CachyOS installer version '{}'", INSTALLER_VERSION);
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    spdlog::info("SYSTEM: '{}'", system_info);
+
     // 1. Open file for reading.
     static constexpr auto file_path = "settings.json";
     std::ifstream ifs{file_path};
@@ -1664,8 +1673,6 @@ bool parse_config() noexcept {
     assert(doc.HasMember("menus"));
     assert(doc["menus"].IsInt());
 
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
     config_data["menus"]  = doc["menus"].GetInt();
 
     auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
