@@ -1673,7 +1673,7 @@ bool parse_config() noexcept {
     assert(doc.HasMember("menus"));
     assert(doc["menus"].IsInt());
 
-    config_data["menus"]  = doc["menus"].GetInt();
+    config_data["menus"] = doc["menus"].GetInt();
 
     auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     if (doc.HasMember("headless_mode")) {
