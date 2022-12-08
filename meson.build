@@ -33,6 +33,17 @@ if not is_dev_environment
     add_global_arguments('-DNDEVENV', language : 'cpp')
 endif
 
+version_commit_hash = run_command('git', 'rev-parse', '--short', 'HEAD', check: false).stdout().strip()
+build_timestamp = run_command('date', '+%Y%m%d', check: true).stdout().strip()
+
+git_version = ''
+if version_commit_hash == ''
+    git_version = meson.project_version() + '-' + build_timestamp
+else
+    git_version = meson.project_version() + '-' + version_commit_hash + '-' + build_timestamp
+endif
+add_global_arguments('-DINSTALLER_VERSION="' + git_version + '"', language : 'cpp')
+
 # Common dependencies
 spdlog = dependency('spdlog', version : ['>=1.9.2'], fallback : ['spdlog', 'spdlog_dep'])
 fmt = dependency('fmt', version : ['>=9.1.0'], fallback : ['fmt', 'fmt_dep'])

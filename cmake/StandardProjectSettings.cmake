@@ -76,3 +76,7 @@ endif()
 
 # Enables tests.
 option(COS_INSTALLER_BUILD_TESTS "Enable dev environment" OFF)
+
+# Get the Git revision
+include(GitVersion)
+add_definitions(-DINSTALLER_VERSION="${GIT_VERSION}")
