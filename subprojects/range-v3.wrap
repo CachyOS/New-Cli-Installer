@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/ericniebler/range-v3.git
-revision = cc445f55b5785736e26da573b7e6c2e199553ac6
+revision = 4624c63972c6f2c2871c7b87813c42048ddb80ad
 
 patch_directory = range-v3
 

@@ -44,7 +44,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME spdlog
   GITHUB_REPOSITORY gabime/spdlog
-  GIT_TAG d7de159455d0d9bafc999f78139eafddb3935c36
+  GIT_TAG edc51df1bdad8667b628999394a1e7c4dc6f3658
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -64,7 +64,7 @@ endif()
 CPMAddPackage(
   NAME range-v3
   GITHUB_REPOSITORY ericniebler/range-v3
-  GIT_TAG cc445f55b5785736e26da573b7e6c2e199553ac6
+  GIT_TAG 4624c63972c6f2c2871c7b87813c42048ddb80ad
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
