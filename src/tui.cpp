@@ -1046,8 +1046,8 @@ void mount_opts(bool force) noexcept {
     // If mount options selected, confirm choice
     if (!mount_opts_info.empty()) {
         auto confirm_text    = Container::Vertical({
-            Renderer([] { return paragraphAlignLeft("Confirm the following mount options:"); }),
-            Renderer([&] { return text(mount_opts_info) | dim; }),
+               Renderer([] { return paragraphAlignLeft("Confirm the following mount options:"); }),
+               Renderer([&] { return text(mount_opts_info) | dim; }),
         });
         const auto& do_mount = detail::yesno_widget(confirm_text, size(HEIGHT, LESS_THAN, 10) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
