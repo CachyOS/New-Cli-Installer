@@ -63,6 +63,7 @@ src_files = files(
     'src/screen_service.hpp', 'src/screen_service.cpp',
     'src/config.cpp', 'src/config.hpp',
     'src/utils.cpp', 'src/utils.hpp',
+    'src/cpu.cpp', 'src/cpu.hpp',
     'src/initcpio.cpp', 'src/initcpio.hpp',
     'src/disk.cpp', 'src/disk.hpp',
     'src/drivers.cpp', 'src/drivers.hpp',

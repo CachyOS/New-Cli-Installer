@@ -1,5 +1,6 @@
 #include "utils.hpp"
 #include "config.hpp"
+#include "cpu.hpp"
 #include "definitions.hpp"
 #include "follow_process_log.hpp"
 #include "initcpio.hpp"
@@ -35,6 +36,7 @@
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #endif
 
+#include <range/v3/algorithm/contains.hpp>
 #include <range/v3/algorithm/for_each.hpp>
 #include <range/v3/algorithm/reverse.hpp>
 #include <range/v3/algorithm/search.hpp>
@@ -1488,8 +1490,8 @@ void id_system() noexcept {
 }
 
 void try_v3() noexcept {
-    const auto& ret_status = utils::exec("/lib/ld-linux-x86-64.so.2 --help|grep 'x86-64-v3 ('|awk '{print $1}' 2> /dev/null");
-    if (ret_status != "x86-64-v3") {
+    const auto& isa_levels = utils::get_isa_levels();
+    if (ranges::contains(isa_levels, "x86-64-v3")) {
         spdlog::warn("x86-64-v3 is not supported");
         return;
     }
