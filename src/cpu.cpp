@@ -8,6 +8,7 @@
 
 namespace utils {
 
+/* clang-format off */
 namespace {
 
 static uint64_t xgetbv(void) noexcept {
@@ -107,6 +108,7 @@ static int32_t get_cpu_features() noexcept {
 }
 
 }  // namespace
+/* clang-format on */
 
 auto get_isa_levels() noexcept -> std::vector<std::string> {
     std::vector<std::string> supported_isa_levels;
