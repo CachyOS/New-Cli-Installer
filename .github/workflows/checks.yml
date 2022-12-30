@@ -23,7 +23,7 @@ jobs:
       - name: Configure CMake
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug
 
-      - uses: cpp-linter/cpp-linter-action@v2.2.4
+      - uses: cpp-linter/cpp-linter-action@v2.3.0
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,9 +45,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Run clang-format style check for C/C++/Protobuf programs.
-      uses: jidicula/clang-format-action@v4.9.0
+      uses: jidicula/clang-format-action@v4.10.1
       with:
-        clang-format-version: '14'
+        clang-format-version: '15'
         check-path: 'src'
         exclude-regex: 'src/subprocess.h'
 

@@ -11,7 +11,7 @@ namespace utils {
 /* clang-format off */
 namespace {
 
-static uint64_t xgetbv(void) noexcept {
+static uint64_t xgetbv() noexcept {
     uint32_t eax{};
     uint32_t edx{};
     __asm__ __volatile__("xgetbv\n"
