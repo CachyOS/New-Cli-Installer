@@ -60,7 +60,6 @@ endif
 src_files = files(
     'src/view.hpp',
     'src/definitions.hpp',
-    'src/screen_service.hpp', 'src/screen_service.cpp',
     'src/config.cpp', 'src/config.hpp',
     'src/utils.cpp', 'src/utils.hpp',
     'src/cpu.cpp', 'src/cpu.hpp',

@@ -93,7 +93,6 @@ target_compile_features(project_options INTERFACE cxx_std_20)
 add_executable(${PROJECT_NAME}
    src/view.hpp
    src/definitions.hpp
-   src/screen_service.hpp src/screen_service.cpp
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
    src/cpu.cpp src/cpu.hpp
