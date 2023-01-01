@@ -1511,7 +1511,6 @@ void try_v3() noexcept {
     utils::exec("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com", true);
     utils::exec("pacman-key --lsign-key F3B607488DB35A47", true);
 
-    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/Architecture = auto/#Architecture = auto/' {}"), pacman_conf_cachyos));
     utils::exec(fmt::format(FMT_COMPILE("sed -i 's/#<disabled_v3>//g' {}"), pacman_conf_cachyos));
 
     spdlog::info("backup old config");
@@ -1559,6 +1558,8 @@ bool handle_connection() noexcept {
         utils::try_v3();
         utils::exec("yes | pacman -Sy --noconfirm", true);
     }
+#else
+    utils::try_v3();
 #endif
 
     return connected;
