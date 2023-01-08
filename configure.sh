@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (C) 2022 Vladislav Nepogodin
+# Copyright (C) 2022-2023 Vladislav Nepogodin
 #
 # This file is part of CachyOS CLI.
 #
@@ -114,7 +114,7 @@ cmake -S . -B ${_buildpath}/${_buildtype} \
 
 cat > build.sh <<EOF
 #!/bin/bash
-# Copyright (C) 2022 Vladislav Nepogodin
+# Copyright (C) 2022-2023 Vladislav Nepogodin
 #
 # This file is part of CachyOS CLI.
 #
