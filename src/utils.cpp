@@ -1511,36 +1511,48 @@ void id_system() noexcept {
         config_data["NW_CMD"] = "nmtui";
 }
 
-void try_v3() noexcept {
-    const auto& isa_levels = utils::get_isa_levels();
-    if (ranges::contains(isa_levels, "x86-64-v3")) {
-        spdlog::warn("x86-64-v3 is not supported");
-        return;
-    }
-    spdlog::info("x86-64-v3 is supported");
+void install_cachyos_repo() noexcept {
+    const auto& add_arch_specific_repo = [](auto&& isa_level, [[maybe_unused]] auto&& repo_name, const auto& isa_levels, [[maybe_unused]] const auto& functor) {
+        if (ranges::contains(isa_levels, isa_level)) {
+            spdlog::warn("{} is not supported", isa_level);
+            return;
+        }
+        spdlog::info("{} is supported", isa_level);
 
 #ifdef NDEVENV
-    static constexpr auto pacman_conf             = "/etc/pacman.conf";
-    static constexpr auto pacman_conf_cachyos     = "/etc/pacman-more.conf";
-    static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
-    std::error_code err{};
+        static constexpr auto pacman_conf             = "/etc/pacman.conf";
+        static constexpr auto pacman_conf_cachyos     = "/etc/pacman-more.conf";
+        static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
+        std::error_code err{};
+
+        functor(pacman_conf_cachyos);
+
+        spdlog::info("backup old config");
+        fs::rename(pacman_conf, pacman_conf_path_backup, err);
+
+        spdlog::info("CachyOS {} Repo changed", repo_name);
+        fs::rename(pacman_conf_cachyos, pacman_conf, err);
+#endif
+    };
+
+    const auto& is_repo_added = utils::exec("cat /etc/pacman.conf | grep \"(cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4)\" &> /dev/null", true) == "0";
+    const auto& is_repo_commented = utils::exec("cat /etc/pacman.conf | grep \"cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4\" | grep -v \"#\\[\" | grep \"\\[\" &> /dev/null", true) == "0";
 
     // Check if it's already been applied
-    if (utils::exec("cat /etc/pacman.conf | grep \"\\-v3\\|_v3\" &> /dev/null", true) == "0") {
+    if (!(!is_repo_added || !is_repo_commented)) {
+        spdlog::info("Repo is already added!");
         return;
     }
 
+#ifdef NDEVENV
     utils::exec("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com", true);
     utils::exec("pacman-key --lsign-key F3B607488DB35A47", true);
-
-    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/#<disabled_v3>//g' {}"), pacman_conf_cachyos));
-
-    spdlog::info("backup old config");
-    fs::rename(pacman_conf, pacman_conf_path_backup, err);
-
-    spdlog::info("CachyOS -v3 Repo changed");
-    fs::rename(pacman_conf_cachyos, pacman_conf, err);
 #endif
+
+    const auto& isa_levels = utils::get_isa_levels();
+    add_arch_specific_repo("x86-64-v3", "cachyos-v3", isa_levels, [](auto&& target_config) {
+        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/#<disabled_v3>//g' {}"), target_config));
+    });
 }
 
 bool handle_connection() noexcept {
@@ -1577,11 +1589,11 @@ bool handle_connection() noexcept {
     }
 
     if (connected) {
-        utils::try_v3();
+        utils::install_cachyos_repo();
         utils::exec("yes | pacman -Sy --noconfirm", true);
     }
 #else
-    utils::try_v3();
+    utils::install_cachyos_repo();
 #endif
 
     return connected;
