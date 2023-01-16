@@ -1535,7 +1535,7 @@ void install_cachyos_repo() noexcept {
 #endif
     };
 
-    const auto& is_repo_added = utils::exec("cat /etc/pacman.conf | grep \"(cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4)\" &> /dev/null", true) == "0";
+    const auto& is_repo_added     = utils::exec("cat /etc/pacman.conf | grep \"(cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4)\" &> /dev/null", true) == "0";
     const auto& is_repo_commented = utils::exec("cat /etc/pacman.conf | grep \"cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4\" | grep -v \"#\\[\" | grep \"\\[\" &> /dev/null", true) == "0";
 
     // Check if it's already been applied
