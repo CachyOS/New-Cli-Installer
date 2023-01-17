@@ -4,6 +4,7 @@
 #include "definitions.hpp"
 #include "follow_process_log.hpp"
 #include "initcpio.hpp"
+#include "pacmanconf_repo.hpp"
 #include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
@@ -1512,7 +1513,7 @@ void id_system() noexcept {
 }
 
 void install_cachyos_repo() noexcept {
-    const auto& add_arch_specific_repo = [](auto&& isa_level, [[maybe_unused]] auto&& repo_name, const auto& isa_levels, [[maybe_unused]] const auto& functor) {
+    const auto& add_arch_specific_repo = [](auto&& isa_level, [[maybe_unused]] auto&& repo_name, const auto& isa_levels, [[maybe_unused]] auto&& repos_data) {
         if (ranges::contains(isa_levels, isa_level)) {
             spdlog::warn("{} is not supported", isa_level);
             return;
@@ -1521,11 +1522,16 @@ void install_cachyos_repo() noexcept {
 
 #ifdef NDEVENV
         static constexpr auto pacman_conf             = "/etc/pacman.conf";
-        static constexpr auto pacman_conf_cachyos     = "/etc/pacman-more.conf";
+        static constexpr auto pacman_conf_cachyos     = "./pacman.conf";
         static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
         std::error_code err{};
 
-        functor(pacman_conf_cachyos);
+        if (!fs::copy_file(pacman_conf, pacman_conf_cachyos, err)) {
+            spdlog::error("Failed to copy pacman config [{}]", err.message());
+            return;
+        }
+
+        detail::pacmanconf::push_repos_front(pacman_conf_cachyos, repos_data);
 
         spdlog::info("backup old config");
         fs::rename(pacman_conf, pacman_conf_path_backup, err);
@@ -1550,9 +1556,16 @@ void install_cachyos_repo() noexcept {
 #endif
 
     const auto& isa_levels = utils::get_isa_levels();
-    add_arch_specific_repo("x86-64-v3", "cachyos-v3", isa_levels, [](auto&& target_config) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/#<disabled_v3>//g' {}"), target_config));
-    });
+
+static constexpr auto CACHYOS_V3_REPO_STR = R"(
+[cachyos-v3]
+Include = /etc/pacman.d/cachyos-v3-mirrorlist
+
+[cachyos]
+Include = /etc/pacman.d/cachyos-mirrorlist
+)";
+
+    add_arch_specific_repo("x86-64-v3", "cachyos-v3", isa_levels, CACHYOS_V3_REPO_STR);
 }
 
 bool handle_connection() noexcept {
