@@ -1564,8 +1564,13 @@ Include = /etc/pacman.d/cachyos-v3-mirrorlist
 [cachyos]
 Include = /etc/pacman.d/cachyos-mirrorlist
 )";
+static constexpr auto CACHYOS_V4_REPO_STR = R"(
+[cachyos-v4]
+Include = /etc/pacman.d/cachyos-v4-mirrorlist
+)";
 
     add_arch_specific_repo("x86-64-v3", "cachyos-v3", isa_levels, CACHYOS_V3_REPO_STR);
+    add_arch_specific_repo("x86-64-v4", "cachyos-v4", isa_levels, CACHYOS_V4_REPO_STR);
 }
 
 bool handle_connection() noexcept {
