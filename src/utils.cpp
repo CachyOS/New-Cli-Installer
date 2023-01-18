@@ -1557,14 +1557,14 @@ void install_cachyos_repo() noexcept {
 
     const auto& isa_levels = utils::get_isa_levels();
 
-static constexpr auto CACHYOS_V3_REPO_STR = R"(
+    static constexpr auto CACHYOS_V3_REPO_STR = R"(
 [cachyos-v3]
 Include = /etc/pacman.d/cachyos-v3-mirrorlist
 
 [cachyos]
 Include = /etc/pacman.d/cachyos-mirrorlist
 )";
-static constexpr auto CACHYOS_V4_REPO_STR = R"(
+    static constexpr auto CACHYOS_V4_REPO_STR = R"(
 [cachyos-v4]
 Include = /etc/pacman.d/cachyos-v4-mirrorlist
 )";
