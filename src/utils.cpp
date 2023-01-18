@@ -1541,8 +1541,8 @@ void install_cachyos_repo() noexcept {
 #endif
     };
 
-    const auto& is_repo_added     = utils::exec("cat /etc/pacman.conf | grep \"(cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4)\" &> /dev/null", true) == "0";
-    const auto& is_repo_commented = utils::exec("cat /etc/pacman.conf | grep \"cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4\" | grep -v \"#\\[\" | grep \"\\[\" &> /dev/null", true) == "0";
+    const auto& is_repo_added     = utils::exec("cat /etc/pacman.conf | grep -q \"(cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4)\" &> /dev/null", true) == "0";
+    const auto& is_repo_commented = utils::exec("cat /etc/pacman.conf | grep \"cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4\" | grep -v \"#\\[\" | grep -q \"\\[\" &> /dev/null", true) == "0";
 
     // Check if it's already been applied
     if (!(!is_repo_added || !is_repo_commented)) {
@@ -1557,17 +1557,26 @@ void install_cachyos_repo() noexcept {
 
     const auto& isa_levels = utils::get_isa_levels();
 
+    static constexpr auto CACHYOS_V1_REPO_STR = R"(
+[cachyos]
+Include = /etc/pacman.d/cachyos-mirrorlist
+)";
     static constexpr auto CACHYOS_V3_REPO_STR = R"(
 [cachyos-v3]
 Include = /etc/pacman.d/cachyos-v3-mirrorlist
-
-[cachyos]
-Include = /etc/pacman.d/cachyos-mirrorlist
 )";
     static constexpr auto CACHYOS_V4_REPO_STR = R"(
 [cachyos-v4]
 Include = /etc/pacman.d/cachyos-v4-mirrorlist
 )";
+
+    const auto& is_cachyos_repo_added     = utils::exec("cat /etc/pacman.conf | grep -q \"\\[cachyos\\]\" &> /dev/null", true) == "0";
+    const auto& is_cachyos_repo_commented = utils::exec("cat /etc/pacman.conf | grep \"\\[cachyos\\]\" | grep -v \"#\\[\" | grep -q \"\\[\" &> /dev/null", true) == "0";
+
+    // Check if it's already been applied
+    if (!is_cachyos_repo_added || !is_cachyos_repo_commented) {
+        add_arch_specific_repo("x86-64", "cachyos", isa_levels, CACHYOS_V1_REPO_STR);
+    }
 
     add_arch_specific_repo("x86-64-v3", "cachyos-v3", isa_levels, CACHYOS_V3_REPO_STR);
     add_arch_specific_repo("x86-64-v4", "cachyos-v4", isa_levels, CACHYOS_V4_REPO_STR);
