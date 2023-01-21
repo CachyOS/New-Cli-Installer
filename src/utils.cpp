@@ -28,6 +28,8 @@
 #include <unistd.h>       // for execvp, fork
 #include <unordered_map>  // for unordered_map
 
+#include <fmt/ranges.h>
+
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wold-style-cast"
@@ -1513,12 +1515,21 @@ void id_system() noexcept {
 }
 
 void install_cachyos_repo() noexcept {
-    const auto& add_arch_specific_repo = [](auto&& isa_level, [[maybe_unused]] auto&& repo_name, const auto& isa_levels, [[maybe_unused]] auto&& repos_data) {
-        if (ranges::contains(isa_levels, isa_level)) {
+    const auto& add_arch_specific_repo = [](auto&& isa_level, auto&& repo_name, const auto& isa_levels, [[maybe_unused]] auto&& repos_data) {
+        if (!ranges::contains(isa_levels, isa_level)) {
             spdlog::warn("{} is not supported", isa_level);
             return;
         }
         spdlog::info("{} is supported", isa_level);
+
+        const auto& is_repo_added     = utils::exec(fmt::format("cat /etc/pacman.conf | grep -q \"\\[{}\\]\" &> /dev/null", repo_name), true) == "0";
+        const auto& is_repo_commented = utils::exec(fmt::format("cat /etc/pacman.conf | grep \"\\[{}\\]\" | grep -v \"#\\[\" | grep -q \"\\[\" &> /dev/null", repo_name), true) == "0";
+
+        // Check if it's already been applied
+        if (!(!is_repo_added || !is_repo_commented)) {
+            spdlog::info("'{}' is already added!", repo_name);
+            return;
+        }
 
 #ifdef NDEVENV
         static constexpr auto pacman_conf             = "/etc/pacman.conf";
@@ -1570,16 +1581,9 @@ Include = /etc/pacman.d/cachyos-v3-mirrorlist
 Include = /etc/pacman.d/cachyos-v4-mirrorlist
 )";
 
-    const auto& is_cachyos_repo_added     = utils::exec("cat /etc/pacman.conf | grep -q \"\\[cachyos\\]\" &> /dev/null", true) == "0";
-    const auto& is_cachyos_repo_commented = utils::exec("cat /etc/pacman.conf | grep \"\\[cachyos\\]\" | grep -v \"#\\[\" | grep -q \"\\[\" &> /dev/null", true) == "0";
-
-    // Check if it's already been applied
-    if (!is_cachyos_repo_added || !is_cachyos_repo_commented) {
-        add_arch_specific_repo("x86-64", "cachyos", isa_levels, CACHYOS_V1_REPO_STR);
-    }
-
-    add_arch_specific_repo("x86-64-v3", "cachyos-v3", isa_levels, CACHYOS_V3_REPO_STR);
-    add_arch_specific_repo("x86-64-v4", "cachyos-v4", isa_levels, CACHYOS_V4_REPO_STR);
+    add_arch_specific_repo("x86_64", "cachyos", isa_levels, CACHYOS_V1_REPO_STR);
+    add_arch_specific_repo("x86_64_v3", "cachyos-v3", isa_levels, CACHYOS_V3_REPO_STR);
+    add_arch_specific_repo("x86_64_v4", "cachyos-v4", isa_levels, CACHYOS_V4_REPO_STR);
 }
 
 bool handle_connection() noexcept {
