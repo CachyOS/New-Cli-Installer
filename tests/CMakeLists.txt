@@ -2,6 +2,7 @@ list(APPEND test_SOURCES
         ${CMAKE_SOURCE_DIR}/src/config.cpp
         ${CMAKE_SOURCE_DIR}/src/utils.cpp
         ${CMAKE_SOURCE_DIR}/src/cpu.cpp
+        ${CMAKE_SOURCE_DIR}/src/pacmanconf_repo.cpp
         ${CMAKE_SOURCE_DIR}/src/initcpio.cpp
         ${CMAKE_SOURCE_DIR}/src/disk.cpp
         ${CMAKE_SOURCE_DIR}/src/drivers.cpp

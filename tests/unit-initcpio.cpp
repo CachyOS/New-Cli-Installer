@@ -8,8 +8,6 @@
 #include <vector>
 #include <filesystem>
 
-#include <fmt/core.h>
-
 namespace fs = std::filesystem;
 
 static constexpr auto MKINITCPIO_STR = R"(

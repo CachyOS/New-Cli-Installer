@@ -20,6 +20,7 @@
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/join.hpp>
 #include <range/v3/view/split.hpp>
+#include <range/v3/view/filter.hpp>
 
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -59,6 +60,21 @@ bool push_repos_front(const std::string_view& file_path, const std::string_view&
     }
     pacmanconf_file << result;
     return true;
+}
+
+auto get_repo_list(const std::string_view& file_path) noexcept -> std::vector<std::string> {
+    auto&& file_content = utils::read_whole_file(file_path);
+    if (file_content.empty()) {
+        spdlog::error("[PACMANCONFREPO] '{}' error occurred!", file_path);
+        return {};
+    }
+    auto&& result = file_content | ranges::views::split('\n')
+        | ranges::views::filter([](auto&& rng) {
+              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
+              return !(line.empty() || line.starts_with("#") || !line.starts_with("[") || line.starts_with("[options]"));
+          })
+        | ranges::to<std::vector<std::string>>();
+    return result;
 }
 
 }  // namespace detail::pacmanconf
