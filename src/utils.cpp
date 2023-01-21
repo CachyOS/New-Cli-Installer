@@ -43,6 +43,7 @@
 #include <range/v3/algorithm/for_each.hpp>
 #include <range/v3/algorithm/reverse.hpp>
 #include <range/v3/algorithm/search.hpp>
+#include <range/v3/algorithm/none_of.hpp>
 #include <range/v3/view/filter.hpp>
 #include <range/v3/view/split.hpp>
 #include <range/v3/view/transform.hpp>
@@ -1522,11 +1523,8 @@ void install_cachyos_repo() noexcept {
         }
         spdlog::info("{} is supported", isa_level);
 
-        const auto& is_repo_added     = utils::exec(fmt::format("cat /etc/pacman.conf | grep -q \"\\[{}\\]\" &> /dev/null", repo_name), true) == "0";
-        const auto& is_repo_commented = utils::exec(fmt::format("cat /etc/pacman.conf | grep \"\\[{}\\]\" | grep -v \"#\\[\" | grep -q \"\\[\" &> /dev/null", repo_name), true) == "0";
-
-        // Check if it's already been applied
-        if (!(!is_repo_added || !is_repo_commented)) {
+        const auto& repo_list = detail::pacmanconf::get_repo_list("/etc/pacman.conf");
+        if (ranges::contains(repo_list, fmt::format("[{}]", repo_name))) {
             spdlog::info("'{}' is already added!", repo_name);
             return;
         }
@@ -1552,11 +1550,12 @@ void install_cachyos_repo() noexcept {
 #endif
     };
 
-    const auto& is_repo_added     = utils::exec("cat /etc/pacman.conf | grep -q \"(cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4)\" &> /dev/null", true) == "0";
-    const auto& is_repo_commented = utils::exec("cat /etc/pacman.conf | grep \"cachyos\\|cachyos-v3\\|cachyos-testing-v3\\|cachyos-v4\" | grep -v \"#\\[\" | grep -q \"\\[\" &> /dev/null", true) == "0";
-
     // Check if it's already been applied
-    if (!(!is_repo_added || !is_repo_commented)) {
+    const auto& repo_list = detail::pacmanconf::get_repo_list("/etc/pacman.conf");
+    if (!ranges::none_of(repo_list, [](auto&& repo_name) {
+            static constexpr std::array cachyos_repos{"[cachyos]", "[cachyos-v3]", "[cachyos-v4]"};
+            return ranges::contains(cachyos_repos, repo_name);
+        })) {
         spdlog::info("Repo is already added!");
         return;
     }
