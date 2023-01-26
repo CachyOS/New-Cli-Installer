@@ -18,9 +18,9 @@
 #endif
 
 #include <range/v3/range/conversion.hpp>
+#include <range/v3/view/filter.hpp>
 #include <range/v3/view/join.hpp>
 #include <range/v3/view/split.hpp>
-#include <range/v3/view/filter.hpp>
 
 #if defined(__clang__)
 #pragma clang diagnostic pop
