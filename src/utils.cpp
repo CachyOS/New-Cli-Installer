@@ -636,6 +636,8 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     constexpr std::string_view openbox{"openbox"};
     constexpr std::string_view bspwm{"bspwm"};
     constexpr std::string_view lxqt{"lxqt"};
+    constexpr std::string_view cinnamon{"cinnamon"};
+    constexpr std::string_view ukui{"ukui"};
 
     bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
@@ -739,6 +741,17 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     found = ranges::search(desktop_env, bspwm);
     if (!found.empty()) {
         pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config"});
+        needed_xorg = true;
+    }
+    found = ranges::search(desktop_env, cinnamon);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"cinnamon", "system-config-printer", "gnome-keyring", "gnome-terminal", "blueberry", "metacity", "lightdm", "lightdm-gtk-greeter"});
+        needed_xorg = true;
+    }
+    found = ranges::search(desktop_env, ukui);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"sddm", "thunar", "thunar-archive-plugin", "thunar-volman", "peony", "xfce4-terminal", "ukui", "mate-terminal"});
+        pkg_list.insert(pkg_list.cend(), {"mate-system-monitor", "mate-control-center", "redshift", "gnome-screenshot", "accountsservice", "gvfs", "qt5-quickcontrols"});
         needed_xorg = true;
     }
 
