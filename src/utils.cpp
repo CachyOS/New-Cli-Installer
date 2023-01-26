@@ -41,9 +41,9 @@
 
 #include <range/v3/algorithm/contains.hpp>
 #include <range/v3/algorithm/for_each.hpp>
+#include <range/v3/algorithm/none_of.hpp>
 #include <range/v3/algorithm/reverse.hpp>
 #include <range/v3/algorithm/search.hpp>
-#include <range/v3/algorithm/none_of.hpp>
 #include <range/v3/view/filter.hpp>
 #include <range/v3/view/split.hpp>
 #include <range/v3/view/transform.hpp>
