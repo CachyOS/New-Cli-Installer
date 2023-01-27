@@ -1537,7 +1537,7 @@ void install_cachyos_repo() noexcept {
         spdlog::info("{} is supported", isa_level);
 
         const auto& repo_list = detail::pacmanconf::get_repo_list("/etc/pacman.conf");
-        if (ranges::contains(repo_list, fmt::format("[{}]", repo_name))) {
+        if (ranges::contains(repo_list, fmt::format(FMT_COMPILE("[{}]"), repo_name))) {
             spdlog::info("'{}' is already added!", repo_name);
             return;
         }
@@ -1772,6 +1772,40 @@ bool parse_config() noexcept {
         config_data["DEVICE"] = std::string{doc["device"].GetString()};
     } else if (headless_mode) {
         fmt::print(stderr, "\"device\" field is required in HEADLESS mode!\n");
+        return false;
+    }
+
+    if (doc.HasMember("partitions")) {
+        assert(doc["partitions"].IsArray());
+
+        std::vector<std::string> ready_parts{};
+        for (const auto& partition_map : doc["partitions"].GetArray()) {
+            assert(partition_map.IsObject());
+
+            const auto& part_obj = partition_map.GetObject();
+            assert(partition_map["name"].IsString());
+            assert(partition_map["mountpoint"].IsString());
+            assert(partition_map["size"].IsString());
+            assert(partition_map["type"].IsString());
+
+            // Validate partition type.
+            const auto& part_type = std::string{partition_map["type"].GetString()};
+
+            using namespace std::literals;
+            static constexpr std::array valid_types{"root"sv, "boot"sv, "additional"sv};
+            if (!ranges::contains(valid_types, part_type)) {
+                fmt::print(stderr, "partition type '{}' is invalid! Valid types: {}.\n", part_type, valid_types);
+                return false;
+            }
+
+            // Just to save some space push as single string instead of a new type.
+            auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}"), partition_map["name"].GetString(),
+                partition_map["mountpoint"].GetString(), partition_map["size"].GetString(), part_type);
+            ready_parts.push_back(std::move(part_data));
+        }
+        config_data["READY_PARTITIONS"] = std::move(ready_parts);
+    } else if (headless_mode) {
+        fmt::print(stderr, "\"partitions\" field is required in HEADLESS mode!\n");
         return false;
     }
 

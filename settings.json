@@ -3,6 +3,20 @@
     "headless_mode": false,
     "device": "/dev/nvme0n1",
     "fs_name": "btrfs",
+    "partitions": [
+        {
+            "name": "/dev/nvme0n1p3",
+            "mountpoint": "/",
+            "size": "450G",
+            "type": "root"
+        },
+        {
+            "name": "/dev/nvme0n1p1",
+            "mountpoint": "/boot",
+            "size": "512M",
+            "type": "boot"
+        }
+    ],
     "hostname": "cachyos",
     "locale": "en_US",
     "xkbmap": "us",

@@ -86,6 +86,34 @@ Example configuration:
 "device": "/dev/nvme0n1"
 ```
 ---
+### `partitions`
+
+This declares partitions map.
+Required in `HEADLESS` mode!
+
+The `partitions` provide information, which will be used
+during the partition and mount steps.
+
+There is no default for this option.
+
+Example configuration:
+```json
+"partitions": [
+    {
+        "name": "/dev/nvme0n1p3",
+        "mountpoint": "/",
+        "size": "450G",
+        "type": "root"
+    },
+    {
+        "name": "/dev/nvme0n1p1",
+        "mountpoint": "/boot",
+        "size": "512M",
+        "type": "boot"
+    }
+]
+```
+---
 ### `fs_name`
 
 This sets the target device filesystem.

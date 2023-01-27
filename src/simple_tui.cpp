@@ -103,6 +103,7 @@ void menu_simple() noexcept {
     const auto& device_info     = std::get<std::string>(config_data["DEVICE"]);
     const auto& fs_name         = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+    const auto& ready_parts     = std::get<std::vector<std::string>>(config_data["READY_PARTITIONS"]);
 
     const auto& hostname = std::get<std::string>(config_data["HOSTNAME"]);
     const auto& locale   = std::get<std::string>(config_data["LOCALE"]);
