@@ -110,7 +110,7 @@ bool check_root() noexcept {
 
 void clear_screen() noexcept {
     static constexpr auto CLEAR_SCREEN_ANSI = "\033[1;1H\033[2J";
-    output_inter("{}", CLEAR_SCREEN_ANSI);
+    output_inter(FMT_COMPILE("{}"), CLEAR_SCREEN_ANSI);
 }
 
 void arch_chroot(const std::string_view& command, bool follow) noexcept {
@@ -787,7 +787,7 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& pkg_list  = utils::get_pkglist_base(packages);
     const auto& base_pkgs = utils::make_multiline(pkg_list, false, " ");
 
-    spdlog::info(fmt::format("Preparing for pkgs to install: \"{}\"", base_pkgs));
+    spdlog::info(fmt::format(FMT_COMPILE("Preparing for pkgs to install: \"{}\""), base_pkgs));
 
 #ifdef NDEVENV
     // Prep variables
@@ -882,7 +882,7 @@ void install_desktop(const std::string_view& desktop) noexcept {
     const auto& pkg_list        = utils::get_pkglist_desktop(desktop);
     const std::string& packages = utils::make_multiline(pkg_list, false, " ");
 
-    spdlog::info(fmt::format("Preparing for desktop envs to install: \"{}\"", packages));
+    spdlog::info(fmt::format(FMT_COMPILE("Preparing for desktop envs to install: \"{}\""), packages));
     utils::install_from_pkglist(packages);
 
     auto* config_instance = Config::instance();

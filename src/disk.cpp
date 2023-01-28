@@ -178,9 +178,9 @@ std::string zfs_list_devs() noexcept {
     const auto& devices = utils::make_multiline("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\"");
     for (const auto& device : devices) {
         // add the device
-        list_of_devices += fmt::format("{}\n", device);
+        list_of_devices += fmt::format(FMT_COMPILE("{}\n"), device);
         // now let's add any other forms of those devices
-        list_of_devices += utils::exec(fmt::format("find -L /dev/ -xtype l -samefile {} 2>/dev/null", device));
+        list_of_devices += utils::exec(fmt::format(FMT_COMPILE("find -L /dev/ -xtype l -samefile {} 2>/dev/null"), device));
     }
     return list_of_devices;
 }

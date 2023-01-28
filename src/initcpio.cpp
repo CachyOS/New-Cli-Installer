@@ -42,15 +42,15 @@ bool Initcpio::write() const noexcept {
               if (line.starts_with("MODULES")) {
                   auto&& formatted_modules = modules | ranges::views::join(' ')
                                                      | ranges::to<std::string>();
-                  return fmt::format("MODULES=({})", std::move(formatted_modules));
+                  return fmt::format(FMT_COMPILE("MODULES=({})"), std::move(formatted_modules));
               } else if (line.starts_with("FILES")) {
                   auto&& formatted_files = files | ranges::views::join(' ')
                                                  | ranges::to<std::string>();
-                  return fmt::format("FILES=({})", std::move(formatted_files));
+                  return fmt::format(FMT_COMPILE("FILES=({})"), std::move(formatted_files));
               } else if (line.starts_with("HOOKS")) {
                   auto&& formatted_hooks = hooks | ranges::views::join(' ')
                                                  | ranges::to<std::string>();
-                  return fmt::format("HOOKS=({})", std::move(formatted_hooks));
+                  return fmt::format(FMT_COMPILE("HOOKS=({})"), std::move(formatted_hooks));
               }
               /* clang-format on */
               return std::string{line.data(), line.size()};

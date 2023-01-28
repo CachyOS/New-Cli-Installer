@@ -1692,12 +1692,12 @@ void zfs_auto() noexcept {
     const auto& zfs_zpool_name = std::get<std::string>(config_data["ZFS_ZPOOL_NAME"]);
 
     // next create the datasets including their parents
-    utils::zfs_create_dataset(fmt::format("{}/ROOT", zfs_zpool_name), "none");
-    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos", zfs_zpool_name), "none");
-    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos/root", zfs_zpool_name), "/");
-    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos/home", zfs_zpool_name), "/home");
-    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos/varcache", zfs_zpool_name), "/var/cache");
-    utils::zfs_create_dataset(fmt::format("{}/ROOT/cos/varlog", zfs_zpool_name), "/var/log");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), "none");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), "none");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), "/");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), "/home");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), "/var/cache");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), "/var/log");
 
 #ifdef NDEVENV
     // set the rootfs

@@ -272,7 +272,7 @@ void menu_simple() noexcept {
         // so that output will be synchronized.
         auto logger = spdlog::get("cachyos_logger");
         logger->flush();
-        utils::exec(fmt::format("{} &>>/tmp/cachyos-install.log", post_install), true);
+        utils::exec(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), post_install), true);
     }
 
     tui::exit_done();
@@ -284,10 +284,10 @@ void menu_simple() noexcept {
                "│{4: ^{5}}│\n"
                "└{0:─^{5}}┘\n",
         "",
-        fmt::format("Mountpoint: {}", mountpoint),
-        fmt::format("Your device: {}", device_info),
-        fmt::format("Filesystem: {}", fs_name),
-        fmt::format("Filesystem opts: {}", mount_opts_info), 80);
+        fmt::format(FMT_COMPILE("Mountpoint: {}"), mountpoint),
+        fmt::format(FMT_COMPILE("Your device: {}"), device_info),
+        fmt::format(FMT_COMPILE("Filesystem: {}"), fs_name),
+        fmt::format(FMT_COMPILE("Filesystem opts: {}"), mount_opts_info), 80);
 
     fmt::print("┌{0:─^{5}}┐\n"
                "│{1: ^{5}}│\n"
@@ -296,10 +296,10 @@ void menu_simple() noexcept {
                "│{4: ^{5}}│\n"
                "└{0:─^{5}}┘\n",
         "",
-        fmt::format("Kernel: {}", kernel),
-        fmt::format("Desktop: {}", desktop),
-        fmt::format("Drivers type: {}", drivers_type),
-        fmt::format("Bootloader: {}", bootloader), 80);
+        fmt::format(FMT_COMPILE("Kernel: {}"), kernel),
+        fmt::format(FMT_COMPILE("Desktop: {}"), desktop),
+        fmt::format(FMT_COMPILE("Drivers type: {}"), drivers_type),
+        fmt::format(FMT_COMPILE("Bootloader: {}"), bootloader), 80);
 }
 
 }  // namespace tui
