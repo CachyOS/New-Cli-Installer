@@ -12,7 +12,7 @@ void set_root_password() noexcept;
 void mount_opts(bool force = false) noexcept;
 void lvm_detect() noexcept;
 bool mount_current_partition(bool force = false) noexcept;
-void auto_partition(bool interactive = true) noexcept;
+void auto_partition() noexcept;
 void create_partitions() noexcept;
 bool select_device() noexcept;
 void install_base() noexcept;

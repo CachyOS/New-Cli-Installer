@@ -217,14 +217,14 @@ void set_xkbmap() noexcept {
 }
 
 void select_keymap() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    auto& keymap          = std::get<std::string>(config_data["KEYMAP"]);
+    auto* config_instance      = Config::instance();
+    auto& config_data          = config_instance->data();
+    const auto& current_keymap = std::get<std::string>(config_data["KEYMAP"]);
 
     // does user want to change the default settings?
-    static constexpr auto default_keymap = "Currently configured keymap setting is:";
-    const auto& content                  = fmt::format(FMT_COMPILE("\n {}\n \n[ {} ]\n"), default_keymap, keymap);
-    const auto& keep_default             = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    static constexpr auto default_keymap_msg = "Currently configured keymap setting is:";
+    const auto& content                      = fmt::format(FMT_COMPILE("\n {}\n \n[ {} ]\n"), default_keymap_msg, current_keymap);
+    const auto& keep_default                 = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     /* clang-format off */
     if (!keep_default) { return; }
     /* clang-format on */
@@ -234,7 +234,8 @@ void select_keymap() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{226};
     auto ok_callback = [&] {
-        keymap = keymaps[static_cast<std::size_t>(selected)];
+        const auto& selected_keymap = keymaps[static_cast<std::size_t>(selected)];
+        utils::set_keymap(selected_keymap);
         screen.ExitLoopClosure()();
     };
     static constexpr auto vc_keymap_body = "\nA virtual console is a shell prompt in a non-graphical environment.\nIts keymap is independent of a desktop environment / terminal.\n";
@@ -846,48 +847,14 @@ void install_bootloader() noexcept {
 }
 
 // BIOS and UEFI
-void auto_partition(bool interactive) noexcept {
+void auto_partition() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
     const auto& device_info                  = std::get<std::string>(config_data["DEVICE"]);
     [[maybe_unused]] const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
 
-#ifdef NDEVENV
-    // Find existing partitions (if any) to remove
-    const auto& parts     = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk '/^ / {print $1}'"));
-    const auto& del_parts = utils::make_multiline(parts);
-    for (const auto& del_part : del_parts) {
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} 2>>/tmp/cachyos-install.log &>/dev/null"), device_info, del_part));
-    }
-
-    // Clear disk
-    utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of=\"{}\" bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    utils::exec(fmt::format(FMT_COMPILE("wipefs -af \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-
-    // Identify the partition table
-    const auto& part_table = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
-
-    // Create partition table if one does not already exist
-    if ((system_info == "BIOS") && (part_table != "msdos"))
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    if ((system_info == "UEFI") && (part_table != "gpt"))
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-
-    // Create partitions (same basic partitioning scheme for BIOS and UEFI)
-    if (system_info == "BIOS")
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    else
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-
-    utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-#endif
-
-    /* clang-format off */
-    if (!interactive) { return; }
-    /* clang-format on */
+    utils::auto_partition();
 
     // Show created partitions
     const auto& disk_list = utils::exec(fmt::format(FMT_COMPILE("lsblk {} -o NAME,TYPE,FSTYPE,SIZE"), device_info));
@@ -1273,19 +1240,10 @@ void make_swap() noexcept {
 }
 
 void lvm_detect() noexcept {
-    const auto& lvm_pv = utils::exec("pvs -o pv_name --noheading 2>/dev/null");
-    const auto& lvm_vg = utils::exec("vgs -o vg_name --noheading 2>/dev/null");
-    const auto& lvm_lv = utils::exec("lvs -o vg_name,lv_name --noheading --separator - 2>/dev/null");
-
-    if ((lvm_lv != "") && (lvm_vg != "") && (lvm_pv != "")) {
+    utils::lvm_detect([] {
         detail::infobox_widget("\nExisting Logical Volume Management (LVM) detected.\nActivating. Please Wait...\n");
         std::this_thread::sleep_for(std::chrono::seconds(2));
-#ifdef NDEVENV
-        utils::exec("modprobe dm-mod");
-        utils::exec("vgscan >/dev/null 2>&1");
-        utils::exec("vgchange -ay >/dev/null 2>&1");
-#endif
-    }
+    });
 }
 
 void lvm_del_vg() noexcept {

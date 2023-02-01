@@ -5,6 +5,8 @@
 #include "subprocess.h"
 
 #include <charconv>     // for from_chars
+#include <functional>   // for function
+#include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -20,10 +22,12 @@ void clear_screen() noexcept;
 [[nodiscard]] auto make_multiline(const std::vector<std::string>& multiline, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::string;
 void inst_needed(const std::string_view& pkg) noexcept;
 void secure_wipe() noexcept;
+void auto_partition() noexcept;
 void generate_fstab(const std::string_view& fstab_cmd) noexcept;
 void set_hostname(const std::string_view& hostname) noexcept;
 void set_locale(const std::string_view& locale) noexcept;
 void set_xkbmap(const std::string_view& xkbmap) noexcept;
+void set_keymap(const std::string_view& keymap) noexcept;
 void set_timezone(const std::string_view& timezone) noexcept;
 void set_hw_clock(const std::string_view& clock_type) noexcept;
 void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept;
@@ -33,6 +37,7 @@ void set_root_password(const std::string_view& password) noexcept;
 [[nodiscard]] std::string list_mounted() noexcept;
 [[nodiscard]] std::string list_containing_crypt() noexcept;
 [[nodiscard]] std::string list_non_crypt() noexcept;
+void lvm_detect(std::optional<std::function<void()>> func_callback = std::nullopt) noexcept;
 void umount_partitions() noexcept;
 void find_partitions() noexcept;
 

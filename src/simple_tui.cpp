@@ -125,10 +125,10 @@ void menu_simple() noexcept {
         tui::select_device();
     }
 
-    tui::auto_partition(false);
+    utils::auto_partition();
 
     // LVM Detection. If detected, activate.
-    tui::lvm_detect();
+    utils::lvm_detect();
 
     // Ensure partitions are unmounted (i.e. where mounted previously)
     config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";

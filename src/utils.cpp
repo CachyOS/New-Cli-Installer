@@ -352,6 +352,49 @@ void umount_partitions() noexcept {
     }
 }
 
+// BIOS and UEFI
+void auto_partition() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& device_info                  = std::get<std::string>(config_data["DEVICE"]);
+    [[maybe_unused]] const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+
+#ifdef NDEVENV
+    // Find existing partitions (if any) to remove
+    const auto& parts     = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk '/^ / {print $1}'"));
+    const auto& del_parts = utils::make_multiline(parts);
+    for (const auto& del_part : del_parts) {
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} 2>>/tmp/cachyos-install.log &>/dev/null"), device_info, del_part));
+    }
+
+    // Clear disk
+    utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of=\"{}\" bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("wipefs -af \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+
+    // Identify the partition table
+    const auto& part_table = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
+
+    // Create partition table if one does not already exist
+    if ((system_info == "BIOS") && (part_table != "msdos"))
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    if ((system_info == "UEFI") && (part_table != "gpt"))
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+
+    // Create partitions (same basic partitioning scheme for BIOS and UEFI)
+    if (system_info == "BIOS")
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    else
+        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+
+    utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+#else
+    spdlog::info("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info);
+#endif
+}
+
 // Securely destroy all data on a given device.
 void secure_wipe() noexcept {
     auto* config_instance   = Config::instance();
@@ -458,6 +501,14 @@ void set_xkbmap(const std::string_view& xkbmap) noexcept {
 
     utils::exec(fmt::format(FMT_COMPILE("echo -e \"Section \"\\\"InputClass\"\\\"\\nIdentifier \"\\\"system-keyboard\"\\\"\\nMatchIsKeyboard \"\\\"on\"\\\"\\nOption \"\\\"XkbLayout\"\\\" \"\\\"{0}\"\\\"\\nEndSection\" > {1}/etc/X11/xorg.conf.d/00-keyboard.conf"), xkbmap, mountpoint));
 #endif
+}
+
+void set_keymap(const std::string_view& selected_keymap) noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    config_data["KEYMAP"] = std::string{selected_keymap};
+
+    spdlog::info("Selected keymap: {}", selected_keymap);
 }
 
 void set_timezone(const std::string_view& timezone) noexcept {
@@ -598,6 +649,26 @@ void find_partitions() noexcept {
         tui::create_partitions();
         return;
     }
+}
+
+void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
+    const auto& lvm_pv = utils::exec("pvs -o pv_name --noheading 2>/dev/null");
+    const auto& lvm_vg = utils::exec("vgs -o vg_name --noheading 2>/dev/null");
+    const auto& lvm_lv = utils::exec("lvs -o vg_name,lv_name --noheading --separator - 2>/dev/null");
+
+    if (!((lvm_lv != "") && (lvm_vg != "") && (lvm_pv != ""))) {
+        return;
+    }
+
+    if (func_callback.has_value()) {
+        func_callback.value()();
+    }
+
+#ifdef NDEVENV
+    utils::exec("modprobe dm-mod");
+    utils::exec("vgscan >/dev/null 2>&1");
+    utils::exec("vgchange -ay >/dev/null 2>&1");
+#endif
 }
 
 auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<std::string> {
