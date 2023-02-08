@@ -962,6 +962,16 @@ void install_desktop(const std::string_view& desktop) noexcept {
     utils::enable_services();
 }
 
+void remove_pkgs(const std::string_view& packages) noexcept {
+    /* clang-format off */
+    if (packages.empty()) { return; }
+    /* clang-format on */
+
+#ifdef NDEVENV
+    utils::arch_chroot(fmt::format(FMT_COMPILE("pacman -Rsn {}"), packages));
+#endif
+}
+
 void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept {
 #ifdef NDEVENV
     fs::create_directory("/mnt/hostlvm");

@@ -436,19 +436,13 @@ void install_cust_pkgs() noexcept {
 #endif
 }
 
-void rm_pgs() noexcept {
+void remove_pkgs() noexcept {
     std::string packages{};
     static constexpr auto content = "\nType any packages you would like to remove, separated by spaces.\n \nFor example, to remove Firefox, MPV, FZF:\nfirefox mpv fzf\n";
     if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
-    /* clang-format off */
-    if (packages.empty()) { return; }
-    /* clang-format on */
-
-#ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("pacman -Rsn {}"), packages));
-#endif
+    utils::remove_pkgs(packages);
 }
 
 void chroot_interactive() noexcept {
@@ -754,9 +748,9 @@ void bios_bootloader() {
 
     selected_bootloader = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/+ \\|\"//g'"), selected_bootloader));
 
-    if (!tui::select_device()) {
-        return;
-    }
+    /* clang-format off */
+    if (!tui::select_device()) { return; }
+    /* clang-format on */
     auto* config_instance     = Config::instance();
     auto& config_data         = config_instance->data();
     config_data["BOOTLOADER"] = selected_bootloader;
@@ -1314,7 +1308,7 @@ void lvm_menu() noexcept {
 }
 
 // creates a new zpool on an existing partition
-bool zfs_create_zpool() noexcept {
+bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
     // LVM Detection. If detected, activate.
     tui::lvm_detect();
 
@@ -1352,7 +1346,7 @@ bool zfs_create_zpool() noexcept {
         /* clang-format off */
 
         static constexpr auto zfs_zpool_partmenu_body = "\nSelect a partition to hold the ZFS zpool\n";
-        const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        const auto& content_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         detail::menu_widget(partitions, ok_callback, &selected, &screen, zfs_zpool_partmenu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
         if (!success) { return false; }
         /* clang-format on */
@@ -1390,32 +1384,12 @@ bool zfs_create_zpool() noexcept {
     }
     config_data["ZFS_ZPOOL_NAME"] = zfs_zpool_name;
 
-#ifdef NDEVENV
-    // Find the UUID of the partition
+    /* clang-format off */
+    if (!do_create_zpool) { return true; }
+    /* clang-format on */
+
     const auto& partition = std::get<std::string>(config_data["PARTITION"]);
-    const auto& partuuid  = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"), false);
-
-    // See if the partition has a partuuid, if not use the device name
-    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool create -f -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O atime=off -O relatime=off -O normalization=formD -O xattr=sa -O mountpoint=none {}"), zfs_zpool_name);
-    if (!partuuid.empty()) {
-        utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partuuid), true);
-        spdlog::info("Creating zpool {} on device {} using partuuid {}", zfs_zpool_name, partition, partuuid);
-    } else {
-        utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partition), true);
-        spdlog::info("Creating zpool {} on device {}", zfs_zpool_name, partition);
-    }
-#endif
-
-    config_data["ZFS"] = 1;
-
-#ifdef NDEVENV
-    // Since zfs manages mountpoints, we export it and then import with a root of MOUNTPOINT
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    utils::exec(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), zfs_zpool_name), true);
-    utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, zfs_zpool_name), true);
-#endif
-
-    return true;
+    return utils::zfs_create_zpool(partition, zfs_zpool_name);
 }
 
 bool zfs_import_pool() noexcept {
@@ -1639,7 +1613,7 @@ void zfs_destroy_dataset() noexcept {
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
 void zfs_auto() noexcept {
     // first we need to create a zpool to hold the datasets/zvols
-    if (!tui::zfs_create_zpool()) {
+    if (!tui::zfs_create_zpool(false)) {
         detail::infobox_widget("\nOperation cancelled\n");
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
@@ -1647,20 +1621,14 @@ void zfs_auto() noexcept {
 
     auto* config_instance      = Config::instance();
     auto& config_data          = config_instance->data();
+    const auto& partition      = std::get<std::string>(config_data["PARTITION"]);
     const auto& zfs_zpool_name = std::get<std::string>(config_data["ZFS_ZPOOL_NAME"]);
 
-    // next create the datasets including their parents
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), "none");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), "none");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), "/");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), "/home");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), "/var/cache");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), "/var/log");
-
-#ifdef NDEVENV
-    // set the rootfs
-    utils::exec(fmt::format(FMT_COMPILE("zpool set bootfs={0}/ROOT/cachyos/root {0} 2>>/tmp/cachyos-install.log"), zfs_zpool_name), true);
-#endif
+    if (!utils::zfs_auto_pres(partition, zfs_zpool_name)) {
+        detail::infobox_widget("\nOperation failed\n");
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return;
+    }
 
     // provide confirmation to the user
     detail::infobox_widget("\nAutomatic zfs provisioning has been completed\n");
@@ -2240,7 +2208,7 @@ void system_rescue_menu() noexcept {
                 screen.ExitLoopClosure()();
                 break;
             }
-            tui::rm_pgs();
+            tui::remove_pkgs();
             break;
         case 4:
             if (!utils::check_base()) {

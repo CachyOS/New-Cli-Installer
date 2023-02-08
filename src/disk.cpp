@@ -136,6 +136,73 @@ std::vector<std::string> lvm_show_vg() noexcept {
     return res;
 }
 
+// Automated configuration of zfs. Creates a new zpool and a default set of filesystems
+bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zfs_zpool_name) noexcept {
+    // first we need to create a zpool to hold the datasets/zvols
+    if (!utils::zfs_create_zpool(partition, zfs_zpool_name)) {
+        return false;
+    }
+
+    // next create the datasets including their parents
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), "none");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), "none");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), "/");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), "/home");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), "/var/cache");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), "/var/log");
+
+#ifdef NDEVENV
+    // set the rootfs
+    utils::exec(fmt::format(FMT_COMPILE("zpool set bootfs={0}/ROOT/cos/root {0} 2>>/tmp/cachyos-install.log"), zfs_zpool_name), true);
+#endif
+    return true;
+}
+
+// creates a new zpool on an existing partition
+bool zfs_create_zpool(const std::string_view& partition, const std::string_view& pool_name) noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    config_data["ZFS_ZPOOL_NAME"] = std::string{pool_name.data()};
+
+    static constexpr std::string_view zpool_options{"-f -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O atime=off -O relatime=off -O normalization=formD -O xattr=sa -O mountpoint=none"};
+
+#ifdef NDEVENV
+    std::int32_t ret_code{};
+
+    // Find the UUID of the partition
+    const auto& partuuid = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"), false);
+
+    // See if the partition has a partuuid, if not use the device name
+    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool create {} {}"), zpool_options, pool_name);
+    if (!partuuid.empty()) {
+        ret_code = utils::to_int(utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partuuid), true));
+        spdlog::info("Creating zpool {} on device {} using partuuid {}", pool_name, partition, partuuid);
+    } else {
+        ret_code = utils::to_int(utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partition), true));
+        spdlog::info("Creating zpool {} on device {}", pool_name, partition);
+    }
+
+    if (ret_code != 0) {
+        spdlog::error("Failed to create zpool!");
+        return false;
+    }
+#else
+    spdlog::info("zfs zpool options := '{}', on '{}'", zpool_options, partition);
+#endif
+
+    config_data["ZFS"] = 1;
+
+#ifdef NDEVENV
+    // Since zfs manages mountpoints, we export it and then import with a root of MOUNTPOINT
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    utils::exec(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), pool_name), true);
+    utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, pool_name), true);
+#endif
+
+    return true;
+}
+
 // Creates a zfs volume
 void zfs_create_zvol(const std::string_view& zsize, const std::string_view& zpath) noexcept {
 #ifdef NDEVENV
