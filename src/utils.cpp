@@ -693,7 +693,7 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
     pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "pacman-contrib", "paru", "btop"});
-    pkg_list.insert(pkg_list.cend(), {"cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-keyring"});
+    pkg_list.insert(pkg_list.cend(), {"cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-v4-mirrorlist", "cachyos-keyring"});
 
     return pkg_list;
 }
