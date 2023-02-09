@@ -672,9 +672,10 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
 }
 
 auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<std::string> {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& zfs       = std::get<std::int32_t>(config_data["ZFS"]);
+    auto* config_instance   = Config::instance();
+    auto& config_data       = config_instance->data();
+    const auto& zfs         = std::get<std::int32_t>(config_data["ZFS"]);
+    const auto& server_mode = std::get<std::int32_t>(config_data["SERVER_MODE"]);
 
     auto pkg_list = utils::make_multiline(packages, false, ' ');
 
@@ -686,10 +687,13 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     if (zfs == 1) {
         pkg_list.insert(pkg_list.cend(), {"zfs-utils", "linux-cachyos-zfs"});
     }
+    if (server_mode == 0) {
+        pkg_list.insert(pkg_list.cend(), {"alacritty", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager", "power-profiles-daemon"});
+        pkg_list.insert(pkg_list.cend(), {"cachyos-rate-mirrors", "cachyos-packageinstaller", "cachyos-settings", "cachyos-zsh-config", "mhwd-cachyos", "mhwd-db-cachyos"});
+    }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "power-profiles-daemon", "pacman-contrib", "paru"});
-    pkg_list.insert(pkg_list.cend(), {"alacritty", "btop", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager", "cachyos-keyring"});
-    pkg_list.insert(pkg_list.cend(), {"cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-rate-mirrors", "cachyos-packageinstaller", "cachyos-settings", "cachyos-zsh-config", "mhwd-cachyos", "mhwd-db-cachyos"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "pacman-contrib", "paru", "btop"});
+    pkg_list.insert(pkg_list.cend(), {"cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-keyring"});
 
     return pkg_list;
 }
