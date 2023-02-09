@@ -139,14 +139,15 @@ void generate_fstab() noexcept {
         fstab_cmd = menu_entries[static_cast<std::size_t>(selected)];
         screen.ExitLoopClosure()();
     };
+
+    static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) is recommended.\n\nIf no labels were set for the partitions earlier,\ndevice names will be used for the label option.\n";
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, fstab_body);
+
     /* clang-format off */
     if (fstab_cmd.empty()) { return; }
     /* clang-format on */
 
     utils::generate_fstab(fstab_cmd);
-
-    static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) is recommended.\n\nIf no labels were set for the partitions earlier,\ndevice names will be used for the label option.\n";
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, fstab_body);
 }
 
 // Set system hostname
