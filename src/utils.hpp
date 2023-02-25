@@ -34,9 +34,10 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
 void set_root_password(const std::string_view& password) noexcept;
 [[nodiscard]] bool check_mount() noexcept;
 [[nodiscard]] bool check_base() noexcept;
-[[nodiscard]] std::string list_mounted() noexcept;
-[[nodiscard]] std::string list_containing_crypt() noexcept;
-[[nodiscard]] std::string list_non_crypt() noexcept;
+[[nodiscard]] auto list_mounted() noexcept -> std::string;
+[[nodiscard]] auto get_root_fs(const std::string_view& mountpoint) noexcept -> std::string;
+[[nodiscard]] auto list_containing_crypt() noexcept -> std::string;
+[[nodiscard]] auto list_non_crypt() noexcept -> std::string;
 void lvm_detect(std::optional<std::function<void()>> func_callback = std::nullopt) noexcept;
 void umount_partitions() noexcept;
 void find_partitions() noexcept;

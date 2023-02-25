@@ -672,10 +672,14 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
 }
 
 auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<std::string> {
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& zfs         = std::get<std::int32_t>(config_data["ZFS"]);
-    const auto& server_mode = std::get<std::int32_t>(config_data["SERVER_MODE"]);
+    auto* config_instance       = Config::instance();
+    auto& config_data           = config_instance->data();
+    const auto& server_mode     = std::get<std::int32_t>(config_data["SERVER_MODE"]);
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    const auto& root_filesystem  = utils::get_root_fs(mountpoint_info);
+    const auto& is_root_on_zfs   = (root_filesystem == "zfs");
+    const auto& is_root_on_btrfs = (root_filesystem == "btrfs");
 
     auto pkg_list = utils::make_multiline(packages, false, ' ');
 
@@ -683,14 +687,17 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     for (std::size_t i = 0; i < pkg_count; ++i) {
         const auto& pkg = pkg_list[i];
         pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
-        if (zfs == 1 && pkg.starts_with("linux-cachyos")) {
+        if (is_root_on_zfs && pkg.starts_with("linux-cachyos")) {
             pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-zfs"), pkg));
         }
     }
-    if (zfs == 1) {
+    if (is_root_on_zfs) {
         pkg_list.insert(pkg_list.cend(), {"zfs-utils"});
     }
     if (server_mode == 0) {
+        if (is_root_on_btrfs) {
+            pkg_list.insert(pkg_list.cend(), {"snapper", "btrfs-assistant-git"});
+        }
         pkg_list.insert(pkg_list.cend(), {"alacritty", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager", "power-profiles-daemon"});
         pkg_list.insert(pkg_list.cend(), {"cachyos-rate-mirrors", "cachyos-packageinstaller", "cachyos-settings", "cachyos-zsh-config", "mhwd-cachyos", "mhwd-db-cachyos"});
     }
@@ -1388,6 +1395,10 @@ std::string list_mounted() noexcept {
     return utils::exec("echo /dev/* /dev/mapper/* | xargs -n1 2>/dev/null | grep -f /tmp/.mounted");
 }
 
+std::string get_root_fs(const std::string_view& mountpoint) noexcept {
+    return utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint));
+}
+
 std::string list_containing_crypt() noexcept {
     return utils::exec("blkid | awk '/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
 }
@@ -1853,6 +1864,16 @@ bool parse_config() noexcept {
         spdlog::info("Running in HEADLESS mode!");
     } else {
         spdlog::info("Running in NORMAL mode!");
+    }
+
+    auto& server_mode = std::get<std::int32_t>(config_data["SERVER_MODE"]);
+    if (doc.HasMember("server_mode")) {
+        assert(doc["server_mode"].IsBool());
+        server_mode = static_cast<std::int32_t>(doc["server_mode"].GetBool());
+    }
+
+    if (server_mode) {
+        spdlog::info("Server profile enabled!");
     }
 
     if (doc.HasMember("device")) {
