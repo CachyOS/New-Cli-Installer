@@ -191,7 +191,7 @@ void menu_simple() noexcept {
     tui::mount_current_partition(true);
 
     // If the root partition is btrfs, offer to create subvolumes
-    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -no FSTYPE \"{}\""), mountpoint)) == "btrfs") {
+    if (utils::get_root_fs(mountpoint) == "btrfs") {
         // Check if there are subvolumes already on the btrfs partition
         const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\""), mountpoint);
         const auto& subvolumes_count = utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
