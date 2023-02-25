@@ -677,7 +677,7 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     const auto& server_mode     = std::get<std::int32_t>(config_data["SERVER_MODE"]);
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    const auto& root_filesystem  = utils::get_root_fs(mountpoint_info);
+    const auto& root_filesystem  = utils::get_mountpoint_fs(mountpoint_info);
     const auto& is_root_on_zfs   = (root_filesystem == "zfs");
     const auto& is_root_on_btrfs = (root_filesystem == "btrfs");
 
@@ -900,7 +900,7 @@ void install_base(const std::string_view& packages) noexcept {
     std::int32_t btrfs_root = 0;
     std::int32_t zfs_root   = 0;
 
-    const auto& filesystem_type = utils::get_root_fs(mountpoint);
+    const auto& filesystem_type = utils::get_mountpoint_fs(mountpoint);
     spdlog::info("filesystem type on '{}' := '{}'", mountpoint, filesystem_type);
     if (filesystem_type == "btrfs") {
         btrfs_root = 1;
@@ -1013,7 +1013,7 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
 
     // grub config changes for zfs root
-    if (utils::get_root_fs(mountpoint) == "zfs") {
+    if (utils::get_mountpoint_fs(mountpoint) == "zfs") {
         // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
         utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
         setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
@@ -1274,7 +1274,7 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
     }
 
     // If root is on btrfs volume, amend grub
-    if (utils::get_root_fs(mountpoint) == "btrfs") {
+    if (utils::get_mountpoint_fs(mountpoint) == "btrfs") {
         utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
     }
 
@@ -1286,7 +1286,7 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
 
     // grub config changes for zfs root
-    if (utils::get_root_fs(mountpoint) == "zfs") {
+    if (utils::get_mountpoint_fs(mountpoint) == "zfs") {
         // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
         utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
         setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
@@ -1395,7 +1395,7 @@ std::string list_mounted() noexcept {
     return utils::exec("echo /dev/* /dev/mapper/* | xargs -n1 2>/dev/null | grep -f /tmp/.mounted");
 }
 
-std::string get_root_fs(const std::string_view& mountpoint) noexcept {
+std::string get_mountpoint_fs(const std::string_view& mountpoint) noexcept {
     return utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint));
 }
 
