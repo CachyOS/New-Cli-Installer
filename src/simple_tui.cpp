@@ -120,6 +120,7 @@ void menu_simple() noexcept {
     const auto& bootloader   = std::get<std::string>(config_data["BOOTLOADER"]);
     const auto& drivers_type = std::get<std::string>(config_data["DRIVERS_TYPE"]);
     const auto& post_install = std::get<std::string>(config_data["POST_INSTALL"]);
+    const auto& server_mode  = std::get<std::int32_t>(config_data["SERVER_MODE"]);
 
     if (device_info.empty()) {
         tui::select_device();
@@ -249,10 +250,13 @@ void menu_simple() noexcept {
     } else {
         utils::install_base(kernel);
     }
-    if (desktop.empty()) {
-        tui::install_desktop();
-    } else {
-        utils::install_desktop(desktop);
+
+    if (server_mode == 0) {
+        if (desktop.empty()) {
+            tui::install_desktop();
+        } else {
+            utils::install_desktop(desktop);
+        }
     }
 
     if (bootloader.empty()) {
@@ -262,8 +266,10 @@ void menu_simple() noexcept {
     }
 
 #ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("mhwd -a pci {} 0300"), drivers_type));
-    std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
+    if (server_mode == 0) {
+        utils::arch_chroot(fmt::format(FMT_COMPILE("mhwd -a pci {} 0300"), drivers_type));
+        std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
+    }
 #endif
 
     if (!post_install.empty()) {
@@ -297,7 +303,7 @@ void menu_simple() noexcept {
                "└{0:─^{5}}┘\n",
         "",
         fmt::format(FMT_COMPILE("Kernel: {}"), kernel),
-        fmt::format(FMT_COMPILE("Desktop: {}"), desktop),
+        fmt::format(FMT_COMPILE("Desktop: {}"), (server_mode == 0) ? desktop : "---"),
         fmt::format(FMT_COMPILE("Drivers type: {}"), drivers_type),
         fmt::format(FMT_COMPILE("Bootloader: {}"), bootloader), 80);
 }
