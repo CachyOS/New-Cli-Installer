@@ -683,9 +683,12 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     for (std::size_t i = 0; i < pkg_count; ++i) {
         const auto& pkg = pkg_list[i];
         pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
+        if (zfs == 1 && pkg.starts_with("linux-cachyos")) {
+            pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-zfs"), pkg));
+        }
     }
     if (zfs == 1) {
-        pkg_list.insert(pkg_list.cend(), {"zfs-utils", "linux-cachyos-zfs"});
+        pkg_list.insert(pkg_list.cend(), {"zfs-utils"});
     }
     if (server_mode == 0) {
         pkg_list.insert(pkg_list.cend(), {"alacritty", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager", "power-profiles-daemon"});
