@@ -1026,7 +1026,7 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools
 sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
 # we need to tell grub where the zfs root is)";
 
-        const auto& mountpoint_source = utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE {}"), mountpoint));
+        const auto& mountpoint_source = utils::get_mountpoint_source(mountpoint);
         const auto& zroot_var         = fmt::format(FMT_COMPILE("zroot=\"zfs={} rw\""), mountpoint_source);
 
         constexpr auto bash_codepart2 = R"(
@@ -1299,7 +1299,7 @@ pacman -S --noconfirm --needed grub os-prober
 sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
 # we need to tell grub where the zfs root is)";
 
-        const auto& mountpoint_source = utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE {}"), mountpoint));
+        const auto& mountpoint_source = utils::get_mountpoint_source(mountpoint);
         const auto& zroot_var         = fmt::format(FMT_COMPILE("zroot=\"zfs={} rw\""), mountpoint_source);
 
         constexpr auto bash_codepart2 = R"(
@@ -1397,6 +1397,10 @@ std::string list_mounted() noexcept {
 
 std::string get_mountpoint_fs(const std::string_view& mountpoint) noexcept {
     return utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint));
+}
+
+std::string get_mountpoint_source(const std::string_view& mountpoint) noexcept {
+    return utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE \"{}\""), mountpoint));
 }
 
 std::string list_containing_crypt() noexcept {
