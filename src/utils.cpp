@@ -1190,6 +1190,10 @@ void install_refind() noexcept {
         }
     }
 
+    spdlog::info("Created rEFInd config:");
+    const auto& refind_conf_content = utils::read_whole_file(fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), mountpoint));
+    utils::dump_to_log(refind_conf_content);
+
     utils::install_from_pkglist("refind-theme-nord");
 #endif
     spdlog::info("Refind was succesfully installed");
