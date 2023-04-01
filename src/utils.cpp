@@ -1668,13 +1668,7 @@ void install_cachyos_repo() noexcept {
 
     // Check if it's already been applied
     const auto& repo_list = detail::pacmanconf::get_repo_list("/etc/pacman.conf");
-    if (!ranges::none_of(repo_list, [](auto&& repo_name) {
-            static constexpr std::array cachyos_repos{"[cachyos]", "[cachyos-v3]", "[cachyos-v4]"};
-            return ranges::contains(cachyos_repos, repo_name);
-        })) {
-        spdlog::info("Repo is already added!");
-        return;
-    }
+    spdlog::info("install_cachyos_repo: repo_list := '{}'", repo_list);
 
 #ifdef NDEVENV
     utils::exec("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com", true);
