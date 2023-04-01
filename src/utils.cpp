@@ -541,9 +541,9 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
 
         const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
         if (headless_mode) {
-            utils::exec(fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages), true);
+            utils::exec(fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages), true);
         } else {
-            tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+            tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages)});
         }
     }
 
@@ -859,12 +859,12 @@ void install_from_pkglist(const std::string_view& packages) noexcept {
 #ifdef NDEVENV
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     if (headless_mode) {
-        utils::exec(fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages), true);
+        utils::exec(fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages), true);
     } else {
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages)});
     }
 #else
-    spdlog::info("Installing from pkglist: '{} {} {} |& tee /tmp/pacstrap.log'", cmd, mountpoint, packages);
+    spdlog::info("Installing from pkglist: '{} {} {} |& tee -a /tmp/pacstrap.log'", cmd, mountpoint, packages);
 #endif
 }
 

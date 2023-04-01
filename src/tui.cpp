@@ -433,7 +433,7 @@ void install_cust_pkgs() noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
     const auto& cmd        = (hostcache) ? "pacstrap" : "pacstrap -c";
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages)});
 #endif
 }
 
