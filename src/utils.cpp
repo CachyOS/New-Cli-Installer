@@ -2169,7 +2169,7 @@ void final_check() noexcept {
     //[[ ! -e /mnt/.video_installed ]] && echo "- $_GCCheck" >> ${CHECKLIST}
 
     // Check if locales have been generated
-    if (utils::to_int(utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} locale -a | wc -l"), mountpoint), true)) < 3) {
+    if (utils::to_int(utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} locale -a | wc -l"), mountpoint), false)) < 3) {
         checklist += "- Locales have not been generated\n";
     }
 
