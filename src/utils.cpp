@@ -1144,8 +1144,6 @@ void install_refind() noexcept {
     // Mount as rw
     // sed -i 's/ro\ /rw\ \ /g' /mnt/boot/refind_linux.conf
 
-    // Boot in graphics mode
-    utils::exec(fmt::format(FMT_COMPILE("sed -i -e '/use_graphics_for/ s/^#*//' {}{}/EFI/refind/refind.conf"), mountpoint, uefi_mount));
     // Set appropriate rootflags if installed on btrs subvolume
     if (utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true) == "0") {
         const auto& rootflag = fmt::format(FMT_COMPILE("rootflags={}"), utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g'"));
