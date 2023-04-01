@@ -1127,7 +1127,7 @@ void install_refind() noexcept {
     // install refind
     const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
     if (utils::to_int(removable.data()) == 1) {
-        utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
+        utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
 
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
         auto initcpio                 = detail::Initcpio{initcpio_filename};
@@ -1136,9 +1136,9 @@ void install_refind() noexcept {
         initcpio.remove_hook("autodetect");
         spdlog::info("\"Autodetect\" hook was removed");
     } else if (luks == 1) {
-        utils::exec("refind-install --root /mnt --alldrivers --yes 2>>/tmp/cachyos-install.log &>/dev/null");
+        utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
     } else {
-        utils::exec("refind-install --root /mnt 2>>/tmp/cachyos-install.log &>/dev/null");
+        utils::exec("refind-install --root /mnt &>>/tmp/cachyos-install.log");
     }
 
     // Mount as rw
