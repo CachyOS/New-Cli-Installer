@@ -1138,7 +1138,7 @@ void install_refind() noexcept {
     } else if (luks == 1) {
         utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
     } else {
-        utils::exec("refind-install --root /mnt &>>/tmp/cachyos-install.log");
+        utils::exec("refind-install --root /mnt --alldrivers &>>/tmp/cachyos-install.log");
     }
 
     // Mount as rw
