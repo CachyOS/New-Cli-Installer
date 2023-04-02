@@ -68,6 +68,7 @@ auto exec(const std::string_view& command, const bool& interactive = false) noex
 [[nodiscard]] auto read_whole_file(const std::string_view& filepath) noexcept -> std::string;
 bool write_to_file(const std::string_view& data, const std::string_view& filepath) noexcept;
 void dump_to_log(const std::string& data) noexcept;
+void dump_settings_to_log() noexcept;
 [[nodiscard]] bool check_root() noexcept;
 void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;

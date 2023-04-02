@@ -271,6 +271,18 @@ void dump_to_log(const std::string& data) noexcept {
     spdlog::info("[DUMP_TO_LOG] :=\n{}", data);
 }
 
+void dump_settings_to_log() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    std::string out{};
+    for(const auto& [key, value] : config_data) {
+        const auto& value_formatted = std::visit([](auto&& arg) -> std::string { return fmt::format("{}", arg); }, value);
+        out += fmt::format("Option: [{}], Value: [{}]\n", key, value_formatted);
+    }
+    spdlog::info("Settings:\n{}", out);
+}
+
 bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     fmt::print("{}{}{}\n", color, prompt, RESET);
 
