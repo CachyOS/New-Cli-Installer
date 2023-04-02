@@ -322,10 +322,11 @@ void inst_needed(const std::string_view& pkg) noexcept {
         auto& config_data     = config_instance->data();
 
         const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+        const auto& cmd_formatted = fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg);
         if (headless_mode) {
-            utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg), true);
+            utils::exec(cmd_formatted, true);
         } else {
-            tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg)});
+            tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         }
         // utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg));
     }
@@ -405,10 +406,11 @@ void secure_wipe() noexcept {
     utils::inst_needed("wipe");
 
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info);
     if (headless_mode) {
-        utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info), true);
+        utils::exec(cmd_formatted, true);
     } else {
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info)});
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
     }
     // utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info));
 #else
@@ -540,10 +542,11 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
         const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
 
         const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+        const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
         if (headless_mode) {
-            utils::exec(fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages), true);
+            utils::exec(cmd_formatted, true);
         } else {
-            tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+            tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         }
     }
 
@@ -850,21 +853,22 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
 }
 
 void install_from_pkglist(const std::string_view& packages) noexcept {
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
-    const auto& cmd        = (hostcache) ? "pacstrap" : "pacstrap -c";
+    auto* config_instance     = Config::instance();
+    auto& config_data         = config_instance->data();
+    const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& hostcache     = std::get<std::int32_t>(config_data["hostcache"]);
+    const auto& cmd           = (hostcache) ? "pacstrap" : "pacstrap -c";
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
 
 #ifdef NDEVENV
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     if (headless_mode) {
-        utils::exec(fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages), true);
+        utils::exec(cmd_formatted, true);
     } else {
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
     }
 #else
-    spdlog::info("Installing from pkglist: '{} {} {} |& tee -a /tmp/pacstrap.log'", cmd, mountpoint, packages);
+    spdlog::info("Installing from pkglist: '{}'", cmd_formatted);
 #endif
 }
 
