@@ -2,7 +2,6 @@
 #include "config.hpp"
 #include "cpu.hpp"
 #include "definitions.hpp"
-#include "follow_process_log.hpp"
 #include "initcpio.hpp"
 #include "pacmanconf_repo.hpp"
 #include "subprocess.h"
@@ -58,6 +57,8 @@
 #endif
 
 #ifdef NDEVENV
+#include "follow_process_log.hpp"
+
 #include <cpr/api.h>
 #include <cpr/response.h>
 #include <cpr/status_codes.h>
