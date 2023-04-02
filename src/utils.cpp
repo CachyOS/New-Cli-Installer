@@ -323,17 +323,21 @@ void inst_needed(const std::string_view& pkg) noexcept {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         utils::clear_screen();
 
-        auto* config_instance = Config::instance();
-        auto& config_data     = config_instance->data();
-
-        const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
         const auto& cmd_formatted = fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg);
+
+#ifdef NDEVENV
+        auto* config_instance     = Config::instance();
+        auto& config_data         = config_instance->data();
+        const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
         if (headless_mode) {
             utils::exec(cmd_formatted, true);
         } else {
             tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         }
         // utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg));
+#else
+        spdlog::info("Installing needed: '{}'", cmd_formatted);
+#endif
     }
 }
 
