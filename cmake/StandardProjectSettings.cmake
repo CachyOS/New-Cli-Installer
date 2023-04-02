@@ -29,16 +29,32 @@ set(SIMDJSON_DISABLE_DEPRECATED_API ON CACHE INTERNAL "" FORCE)
 # Generate compile_commands.json to make it easier to work with clang based tools
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -flto")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
-
-if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-   set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -fwhole-program -fuse-linker-plugin")
+if(CMAKE_C_COMPILER_ID MATCHES ".*Clang")
+   set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -flto=thin -fwhole-program-vtables")
+   set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto=thin -fwhole-program-vtables")
+elseif(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+   set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -flto -fwhole-program -fuse-linker-plugin")
 endif()
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fwhole-program -fuse-linker-plugin")
+if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto=thin -fwhole-program-vtables")
+   set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto=thin -fwhole-program-vtables")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto -fwhole-program -fuse-linker-plugin")
 endif()
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")# -static")
+
+if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+  #add_compile_options(-nostdlib++ -stdlib=libc++ -nodefaultlibs -fexperimental-library)
+  #add_link_options(-stdlib=libc++)
+
+  add_compile_options(-fstrict-vtable-pointers)
+
+  if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 16)
+    # Set new experimental pass manager, it's a performance, build time and binary size win.
+    # Can be removed after https://reviews.llvm.org/D66490 merged and released to at least two versions of clang.
+    add_compile_options(-fexperimental-new-pass-manager)
+  endif()
+endif()
 
 option(ENABLE_IPO "Enable Interprocedural Optimization, aka Link Time Optimization (LTO)" OFF)
 
@@ -66,6 +82,8 @@ endif()
 # Enables STL container checker if not building a release.
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_definitions(-D_GLIBCXX_ASSERTIONS)
+  add_definitions(-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS=1)
+  add_definitions(-D_LIBCPP_ENABLE_ASSERTIONS=1)
 endif()
 
 # Enables dev environment.

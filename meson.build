@@ -16,17 +16,22 @@ if cc.get_id() == 'clang'
     specific_cc_flags = [
         '-nostdlib++',
         #'-stdlib=libc++',
-        '-nodefaultlibs',
+        #'-nodefaultlibs',
+        #'-fexperimental-library',
+        '-fstrict-vtable-pointers',
+        '-fexperimental-new-pass-manager',
     ]
-    specific_link_flags = [
-        '-fuse-ld=lld',
-    ]
+    #specific_link_flags = [
+    #   '-stdlib=libc++',
+    #]
     add_global_arguments(cc.get_supported_arguments(specific_cc_flags), language : 'cpp')
     add_global_link_arguments(cc.get_supported_link_arguments(specific_link_flags), language : 'cpp')
 endif
 
 if is_debug_build
     add_global_arguments('-D_GLIBCXX_ASSERTIONS', language : 'cpp')
+    add_global_arguments('-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS=1', language : 'cpp')
+    add_global_arguments('-D_LIBCPP_ENABLE_ASSERTIONS=1', language : 'cpp')
 endif
 
 if not is_dev_environment
@@ -140,6 +145,7 @@ if not is_debug_build
    else
       possible_cc_flags += [
          '-flto=thin',
+         '-fwhole-program-vtables',
       ]
    endif
 
