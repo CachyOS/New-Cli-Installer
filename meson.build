@@ -51,7 +51,7 @@ add_global_arguments('-DINSTALLER_VERSION="' + git_version + '"', language : 'cp
 
 # Common dependencies
 spdlog = dependency('spdlog', version : ['>=1.9.2'], fallback : ['spdlog', 'spdlog_dep'])
-fmt = dependency('fmt', version : ['>=9.1.0'], fallback : ['fmt', 'fmt_dep'])
+fmt = dependency('fmt', version : ['>=10.0.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 rapidjson = dependency('rapidjson', version : ['>=1.1.0'], fallback : ['rapidjson', 'rapidjson_dep'])
 ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 'range_dep'])

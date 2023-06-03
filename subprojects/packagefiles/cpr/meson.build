@@ -1,5 +1,5 @@
 project('cpr', 'cpp',
-    version: '1.9.2',
+    version: '1.10.4',
     license : 'MIT',
     default_options: ['cpp_std=c++20']
 )
@@ -14,6 +14,7 @@ cpr_lib = static_library('cpr',
       'cpr/async.cpp',
       'cpr/auth.cpp',
       'cpr/bearer.cpp',
+      'cpr/callback.cpp',
       'cpr/cert_info.cpp',
       'cpr/cookies.cpp',
       'cpr/cprtypes.cpp',
