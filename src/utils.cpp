@@ -723,8 +723,15 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
         if (is_root_on_btrfs) {
             pkg_list.insert(pkg_list.cend(), {"snapper", "btrfs-assistant-git"});
         }
-        pkg_list.insert(pkg_list.cend(), {"alacritty", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager", "power-profiles-daemon"});
+        pkg_list.insert(pkg_list.cend(), {"alacritty", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager"});
         pkg_list.insert(pkg_list.cend(), {"cachyos-rate-mirrors", "cachyos-packageinstaller", "cachyos-settings", "cachyos-zsh-config", "chwd", "chwd-db"});
+        pkg_list.insert(pkg_list.cend(), {"bluez", "bluez-hid2hci", "bluez-libs", "bluez-utils"});
+        pkg_list.insert(pkg_list.cend(), {"firewalld"});
+        pkg_list.insert(pkg_list.cend(), {"adobe-source-han-sans-cn-fonts", "adobe-source-han-sans-jp-fonts", "adobe-source-han-sans-kr-fonts", "awesome-terminal-fonts", "noto-fonts-emoji"});
+        pkg_list.insert(pkg_list.cend(), {"noto-color-emoji-fontconfig", "cantarell-fonts", "noto-fonts", "ttf-bitstream-vera", "ttf-dejavu", "ttf-opensans", "ttf-meslo-nerd", "noto-fonts-cjk"});
+        pkg_list.insert(pkg_list.cend(), {"alsa-firmware", "alsa-plugins", "alsa-utils", "pavucontrol", "pipewire-pulse", "wireplumber", "pipewire-alsa", "pipewire-jack", "rtkit"});
+        pkg_list.insert(pkg_list.cend(), {"cpupower", "power-profiles-daemon", "upower"});
+        pkg_list.insert(pkg_list.cend(), {"duf", "fsarchiver", "hwinfo", "inxi", "fastfetch"});
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
     pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "pacman-contrib", "paru", "btop"});
@@ -747,6 +754,11 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     constexpr std::string_view lxqt{"lxqt"};
     constexpr std::string_view cinnamon{"cinnamon"};
     constexpr std::string_view ukui{"ukui"};
+    constexpr std::string_view qtile{"qtile"};
+    constexpr std::string_view mate{"mate"};
+    constexpr std::string_view lxde{"lxde"};
+    constexpr std::string_view hyprland{"hyprland"};
+    constexpr std::string_view budgie{"budgie"};
 
     bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
@@ -756,19 +768,19 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     }
     found = ranges::search(desktop_env, sway);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"sway", "waybar", "wl-clipboard", "egl-wayland", "wayland-protocols", "wofi", "ly", "xorg-xhost", "xorg-xwayland"});
+        pkg_list.insert(pkg_list.cend(), {"sway", "waybar", "wl-clipboard", "egl-wayland", "wayland-protocols", "wofi", "ly", "xorg-xhost", "xorg-xwayland", "xdg-desktop-portal", "xdg-desktop-portal-wlr"});
     }
     found = ranges::search(desktop_env, kde);
     if (!found.empty()) {
         /* clang-format off */
         static constexpr std::array to_be_inserted{"ark", "audiocd-kio", "bluedevil", "breeze-gtk",
-            "cachyos-lavender-kde-theme-git", "cachyos-nord-kde-theme-git", "cachyos-iridescent-kde", "cachyos-emerald-kde-theme-git",
-            "cachyos-kde-settings", "cachyos-themes-sddm", "char-white", "dolphin", "egl-wayland", "gwenview",
+            "cachyos-nord-kde-theme-git", "cachyos-iridescent-kde", "cachyos-emerald-kde-theme-git",
+            "cachyos-kde-settings", "cachyos-themes-sddm", "cachyos-wallpapers", "char-white", "dolphin", "egl-wayland", "gwenview",
             "konsole", "kate", "kdeconnect", "kscreen", "kde-gtk-config", "khotkeys", "kinfocenter",
-            "kinit", "kscreen", "kwallet-pam", "plasma-wayland-protocols", "plasma-wayland-session",
+            "kinit", "kscreen", "kwallet-pam", "kwalletmanager", "plasma-wayland-protocols", "plasma-wayland-session",
             "plasma-desktop", "plasma-framework", "plasma-nm", "plasma-pa", "plasma-workspace", "plasma-integration",
             "plasma-firewall", "plasma-browser-integration", "plasma-systemmonitor", "plasma-thunderbolt",
-            "powerdevil", "ksysguard", "spectacle", "sddm", "sddm-kcm", "xsettingsd", "xdg-desktop-portal-kde"};
+            "powerdevil", "ksysguard", "spectacle", "sddm", "sddm-kcm", "xsettingsd", "xdg-desktop-portal", "xdg-desktop-portal-kde"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
@@ -816,7 +828,7 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
             "lxappearance-gtk3", "mpv", "network-manager-applet", "nitrogen", "obconf", "openbox",
             "pasystray", "picom", "polkit-gnome", "rofi", "scrot", "slock", "sysstat", "thunar",
             "thunar-archive-plugin", "thunar-media-tags-plugin", "thunar-volman", "tint2",
-            "ttf-nerd-fonts-symbols-1000-em", "tumbler", "xbindkeys", "xcursor-neutral",
+            "ttf-nerd-fonts-symbols", "tumbler", "xbindkeys", "xcursor-neutral",
             "xdg-user-dirs-gtk", "xed", "xfce4-terminal"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
@@ -849,6 +861,59 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     if (!found.empty()) {
         pkg_list.insert(pkg_list.cend(), {"sddm", "thunar", "thunar-archive-plugin", "thunar-volman", "peony", "xfce4-terminal", "ukui", "mate-terminal"});
         pkg_list.insert(pkg_list.cend(), {"mate-system-monitor", "mate-control-center", "redshift", "gnome-screenshot", "accountsservice", "gvfs", "qt5-quickcontrols"});
+        needed_xorg = true;
+    }
+    found = ranges::search(desktop_env, qtile);
+    if (!found.empty()) {
+        /* clang-format off */
+        static constexpr std::array to_be_inserted{"ttf-nerd-fonts-symbols", "qtile", "ttf-cascadia-code", "cachyos-qtile-settings",
+            "wired", "rofi", "thunar", "polkit-gnome", "qt5ct", "noto-fonts", "flameshot",
+            "gnome-themes-extra", "ttf-jetbrains-mono", "ttf-font-awesome", "picom", "ly"};
+        /* clang-format on */
+        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
+            std::move_iterator(to_be_inserted.end()));
+        needed_xorg = true;
+    }
+    found = ranges::search(desktop_env, mate);
+    if (!found.empty()) {
+        pkg_list.insert(pkg_list.cend(), {"celluloid", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
+                "lightdm", "lightdm-gtk-greeter", "mate", "mate-extra", "network-manager-applet", "xdg-user-dirs-gtk"});
+        needed_xorg = true;
+    }
+    found = ranges::search(desktop_env, lxde);
+    if (!found.empty()) {
+        /* clang-format off */
+        static constexpr std::array to_be_inserted{"celluloid", "file-roller", "galculator", "gnome-screenshot", "gpicview",
+            "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lxappearance-gtk3",
+            "lxde-common", "lxde-icon-theme", "lxhotkey-gtk3", "lxinput-gtk3", "lxlauncher-gtk3",
+            "lxpanel-gtk3", "lxrandr-gtk3", "lxsession-gtk3", "lxtask-gtk3", "lxterminal", "ly", "notification-daemon",
+            "pcmanfm-gtk3", "lxmusic", "network-manager-applet", "xdg-user-dirs-gtk", "xed"};
+        /* clang-format on */
+        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
+            std::move_iterator(to_be_inserted.end()));
+        needed_xorg = true;
+    }
+    found = ranges::search(desktop_env, hyprland);
+    if (!found.empty()) {
+        /* clang-format off */
+        static constexpr std::array to_be_inserted{"cachyos-hyprland-settings", "hyprland-git", "kvantum-qt5", "qt5ct", "sddm",
+            "swaybg", "swaylock-effects-git", "swaylock-fancy-git", "waybar-hyprland-git", "xdg-desktop-portal-hyprland-git",
+            "grimblast", "slurp", "mako", "wob", "wl-clipboard", "polkit-kde-agent", "bemenu", "bemenu-wayland", "xorg-xwayland",
+            "capitaine-cursors", "cachyos-wallpapers", "kvantum-theme-nordic-git", "cachyos-nord-gtk-theme-git"};
+        /* clang-format on */
+        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
+            std::move_iterator(to_be_inserted.end()));
+    }
+    found = ranges::search(desktop_env, budgie);
+    if (!found.empty()) {
+        /* clang-format off */
+        static constexpr std::array to_be_inserted{"budgie-control-center", "budgie-desktop", "budgie-desktop-view", "budgie-extras",
+            "budgie-screensaver", "eog", "evince", "file-roller", "gedit", "gnome-keyring", "gnome-screenshot",
+            "gnome-terminal", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "ly",
+            "nemo", "nemo-fileroller", "nemo-preview", "network-manager-applet", "sushi", "totem", "xdg-user-dirs-gtk"};
+        /* clang-format on */
+        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
+            std::move_iterator(to_be_inserted.end()));
         needed_xorg = true;
     }
 
