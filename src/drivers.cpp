@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
+#include "chwd_profiles.hpp"
 
 /* clang-format off */
 #include <fstream>                                 // for ofstream
@@ -54,8 +55,12 @@ static void setup_graphics_card() noexcept {
     /// TODO(vnepogodin): parse toml DBs
     {
         static constexpr auto UseSpaceBar = "\nUse [Spacebar] to de/select options listed.\n";
-        const auto& cmd                   = utils::exec("mhwd -l | awk '/ video-/{print $1}' | awk '$0=$0' | sort | uniq");
-        const auto& radiobox_list         = utils::make_multiline(cmd);
+        const auto& profile_names = ::detail::chwd::get_available_profile_names("graphic_drivers");
+        if (!profile_names.has_value()) {
+            spdlog::error("failed to get profile names");
+            return;
+        }
+        const auto& radiobox_list = profile_names.value();
 
         auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};

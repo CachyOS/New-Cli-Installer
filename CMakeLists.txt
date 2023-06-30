@@ -42,6 +42,12 @@ CPMAddPackage(
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
+  NAME tomlplusplus
+  GITHUB_REPOSITORY marzer/tomlplusplus
+  GIT_TAG ad55bae8a11a6eee39e2292b01e95b529b105767
+  EXCLUDE_FROM_ALL YES
+)
+CPMAddPackage(
   NAME spdlog
   GITHUB_REPOSITORY gabime/spdlog
   GIT_TAG 31cf79a70dfa61a4b2b7509eecca6a3b269bfc4a
@@ -99,6 +105,7 @@ add_executable(${PROJECT_NAME}
    src/cpu.cpp src/cpu.hpp
    src/pacmanconf_repo.cpp src/pacmanconf_repo.hpp
    src/initcpio.cpp src/initcpio.hpp
+   src/chwd_profiles.cpp src/chwd_profiles.hpp
    src/disk.cpp src/disk.hpp
    src/drivers.cpp src/drivers.hpp
    src/widgets.cpp src/widgets.hpp
@@ -134,7 +141,7 @@ if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component range-v3::range-v3 ctre::ctre)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component range-v3::range-v3 ctre::ctre tomlplusplus::tomlplusplus)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
 endif()
