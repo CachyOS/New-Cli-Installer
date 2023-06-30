@@ -876,8 +876,7 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     }
     found = ranges::search(desktop_env, mate);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"celluloid", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
-                "lightdm", "lightdm-gtk-greeter", "mate", "mate-extra", "network-manager-applet", "xdg-user-dirs-gtk"});
+        pkg_list.insert(pkg_list.cend(), {"celluloid", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lightdm", "lightdm-gtk-greeter", "mate", "mate-extra", "network-manager-applet", "xdg-user-dirs-gtk"});
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, lxde);
