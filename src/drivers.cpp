@@ -1,8 +1,8 @@
 #include "drivers.hpp"
+#include "chwd_profiles.hpp"
 #include "config.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
-#include "chwd_profiles.hpp"
 
 /* clang-format off */
 #include <fstream>                                 // for ofstream
@@ -55,7 +55,7 @@ static void setup_graphics_card() noexcept {
     /// TODO(vnepogodin): parse toml DBs
     {
         static constexpr auto UseSpaceBar = "\nUse [Spacebar] to de/select options listed.\n";
-        const auto& profile_names = ::detail::chwd::get_available_profile_names("graphic_drivers");
+        const auto& profile_names         = ::detail::chwd::get_available_profile_names("graphic_drivers");
         if (!profile_names.has_value()) {
             spdlog::error("failed to get profile names");
             return;
