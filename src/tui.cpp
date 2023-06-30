@@ -647,7 +647,7 @@ void install_desktop() noexcept {
 #endif
 
     // Prep variables
-    const std::vector<std::string> available_des{"kde", "cutefish", "xfce", "sway", "wayfire", "i3wm", "gnome", "openbox", "bspwm", "lxqt", "cinnamon", "ukui"};
+    const std::vector<std::string> available_des{"kde", "xfce", "sway", "wayfire", "i3wm", "gnome", "openbox", "bspwm", "lxqt", "cinnamon", "ukui"};
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string desktop_env{};

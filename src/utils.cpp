@@ -737,7 +737,6 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     std::vector<std::string> pkg_list{};
 
     constexpr std::string_view kde{"kde"};
-    constexpr std::string_view cutefish{"cutefish"};
     constexpr std::string_view xfce{"xfce"};
     constexpr std::string_view sway{"sway"};
     constexpr std::string_view wayfire{"wayfire"};
@@ -799,18 +798,6 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
             "gnome-screenshot", "gnome-shell", "gnome-terminal", "gnome-themes-extra", "gnome-tweaks",
             "gnome-usage", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
             "nautilus", "nautilus-sendto", "sushi", "totem", "xdg-user-dirs-gtk"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
-        needed_xorg = true;
-    }
-    found = ranges::search(desktop_env, cutefish);
-    if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"fishui", "cutefish-calculator", "cutefish-core", "cutefish-dock",
-            "cutefish-filemanager", "cutefish-kwin-plugins", "cutefish-launcher", "cutefish-screenlocker",
-            "cutefish-settings", "cutefish-statusbar", "cutefish-terminal", "cutefish-wallpapers",
-            "cutefish-icons", "cutefish-qt-plugins", "libwnck3", "sddm"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
