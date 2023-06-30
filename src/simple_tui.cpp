@@ -267,7 +267,7 @@ void menu_simple() noexcept {
 
 #ifdef NDEVENV
     if (server_mode == 0) {
-        utils::arch_chroot(fmt::format(FMT_COMPILE("mhwd -a pci {} 0300"), drivers_type));
+        utils::arch_chroot(fmt::format(FMT_COMPILE("chwd -a pci {} 0300"), drivers_type));
         std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
     }
 #endif

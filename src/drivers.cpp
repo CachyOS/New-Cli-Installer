@@ -50,6 +50,8 @@ static void install_all_drivers() noexcept {
 
 static void setup_graphics_card() noexcept {
     std::string_view driver{};
+
+    /// TODO(vnepogodin): parse toml DBs
     {
         static constexpr auto UseSpaceBar = "\nUse [Spacebar] to de/select options listed.\n";
         const auto& cmd                   = utils::exec("mhwd -l | awk '/ video-/{print $1}' | awk '$0=$0' | sort | uniq");
@@ -74,7 +76,7 @@ static void setup_graphics_card() noexcept {
 #ifdef NDEVENV
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& cachepath     = std::get<std::string>(config_data["cachepath"]);
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("mhwd --pmcachedir \"{}\" --pmroot {} -f -i pci {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("chwd --pmcachedir \"{}\" --pmroot {} -f -i pci {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
     tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
     std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
 #endif
@@ -110,11 +112,11 @@ static void install_graphics_menu() noexcept {
         switch (selected) {
 #ifdef NDEVENV
         case 0:
-            utils::arch_chroot("mhwd -a pci free 0300");
+            utils::arch_chroot("chwd -a pci free 0300");
             std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
             break;
         case 1:
-            utils::arch_chroot("mhwd -a pci nonfree 0300");
+            utils::arch_chroot("chwd -a pci nonfree 0300");
             std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
             break;
 #endif

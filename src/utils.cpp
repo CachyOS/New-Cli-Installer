@@ -724,7 +724,7 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
             pkg_list.insert(pkg_list.cend(), {"snapper", "btrfs-assistant-git"});
         }
         pkg_list.insert(pkg_list.cend(), {"alacritty", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager", "power-profiles-daemon"});
-        pkg_list.insert(pkg_list.cend(), {"cachyos-rate-mirrors", "cachyos-packageinstaller", "cachyos-settings", "cachyos-zsh-config", "mhwd-cachyos", "mhwd-db-cachyos"});
+        pkg_list.insert(pkg_list.cend(), {"cachyos-rate-mirrors", "cachyos-packageinstaller", "cachyos-settings", "cachyos-zsh-config", "chwd", "chwd-db"});
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
     pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "pacman-contrib", "paru", "btop"});
