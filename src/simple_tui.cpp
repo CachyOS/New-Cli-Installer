@@ -146,6 +146,7 @@ void menu_simple() noexcept {
     ignore_part += utils::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
+    // TODO(vnepogodin): implement automatic partitioning via config
     std::vector<std::pair<std::string, double>> parts{};
 
     const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);

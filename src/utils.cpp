@@ -1666,6 +1666,9 @@ bool check_base() noexcept {
     if (!check_mount()) {
         return false;
     }
+
+    // TODO(vnepogodin): invalidate base install
+    // checking just for pacman is not enough
     if (!fs::exists("/mnt/usr/bin/pacman")) {
         tui::detail::msgbox_widget("\nThe CachyOS base must be installed first.\n");
         return false;
