@@ -56,6 +56,7 @@ ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::co
 rapidjson = dependency('rapidjson', version : ['>=1.1.0'], fallback : ['rapidjson', 'rapidjson_dep'])
 ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 'range_dep'])
 ctre = dependency('ctre', version : ['>=3.7.0'], fallback : ['ctre', 'ctre_dep'])
+tomlplusplus = dependency('tomlplusplus', version : ['>=3.3.0'], fallback : ['tomlplusplus', 'tomlplusplus_dep'])
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 
 if not is_dev_environment
@@ -70,6 +71,7 @@ src_files = files(
     'src/cpu.cpp', 'src/cpu.hpp',
     'src/pacmanconf_repo.cpp', 'src/pacmanconf_repo.hpp',
     'src/initcpio.cpp', 'src/initcpio.hpp',
+    'src/chwd_profiles.cpp', 'src/chwd_profiles.hpp',
     'src/disk.cpp', 'src/disk.hpp',
     'src/drivers.cpp', 'src/drivers.hpp',
     'src/widgets.cpp', 'src/widgets.hpp',
@@ -156,7 +158,7 @@ endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
-deps = [fmt, spdlog, ftxui, ranges, rapidjson, ctre]
+deps = [fmt, spdlog, ftxui, ranges, rapidjson, ctre, tomlplusplus]
 if not is_dev_environment
    deps += [cpr]
 endif
