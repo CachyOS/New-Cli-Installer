@@ -11,12 +11,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUILD_TYPE: Debug
+  BUILD_TYPE: debug
   CTEST_OUTPUT_ON_FAILURE: 1
 
 jobs:
-  build:
-    name: Build
+  build-cmake:
+    name: Build with CMake
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
@@ -39,8 +39,8 @@ jobs:
           ./tests/test-initcpio
           ./tests/test-pacmanconf
         shell: bash
-  build_withoutdev:
-    name: Build (DEVENV OFF)
+  build-cmake_withoutdev:
+    name: Build with CMake (DEVENV OFF)
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
@@ -59,4 +59,47 @@ jobs:
         # Build your program with the given configuration
         run: |
           cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+        shell: bash
+  build-meson:
+    name: Build with Meson
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: install deps
+        run: |
+          pacman -Syu --noconfirm pkg-config ninja meson clang mold llvm git
+        shell: bash
+
+      - name: Configure Meson
+        run: meson setup --buildtype=${{env.BUILD_TYPE}} -Dbuild_tests=true ${{github.workspace}}/build
+
+      - name: Build & Test
+        # Build your program with the given configuration
+        run: |
+          meson compile -C ${{github.workspace}}/build
+          cd ${{github.workspace}}/build
+          ./tests/test-initcpio
+          ./tests/test-pacmanconf
+        shell: bash
+  build-meson_withoutdev:
+    name: Build with Meson (DEVENV OFF)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: install deps
+        run: |
+          pacman -Syu --noconfirm pkg-config ninja meson clang mold llvm git
+        shell: bash
+
+      - name: Configure CMake
+        run: meson setup --buildtype=${{env.BUILD_TYPE}} -Dbuild_tests=true -Ddevenv=false ${{github.workspace}}/build
+
+      - name: Build
+        # Build your program with the given configuration
+        run: |
+          meson compile -C ${{github.workspace}}/build
         shell: bash
