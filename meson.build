@@ -56,7 +56,7 @@ ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::co
 rapidjson = dependency('rapidjson', version : ['>=1.1.0'], fallback : ['rapidjson', 'rapidjson_dep'])
 ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 'range_dep'])
 ctre = dependency('ctre', version : ['>=3.7.0'], fallback : ['ctre', 'ctre_dep'])
-tomlplusplus = dependency('tomlplusplus', version : ['>=3.3.0'], fallback : ['tomlplusplus', 'tomlplusplus_dep'])
+tomlplusplus = dependency('tomlplusplus', version : ['>=3.3.0'], fallback : ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['compile_library=false'])
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 
 if not is_dev_environment
