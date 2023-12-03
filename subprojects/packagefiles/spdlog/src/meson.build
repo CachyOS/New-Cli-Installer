@@ -7,7 +7,7 @@ src = [
     'cfg.cpp'
 ]
 
-fmt = 'fmt.cpp'
+fmt = 'bundled_fmtlib_format.cpp'
 
 
 if not(get_option('external_fmt'))

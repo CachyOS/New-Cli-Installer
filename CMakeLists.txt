@@ -38,45 +38,45 @@ CPMAddPackage(
 CPMAddPackage(
   NAME fmt
   GITHUB_REPOSITORY fmtlib/fmt
-  GIT_TAG 10.0.0
+  GIT_TAG 10.1.1
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME tomlplusplus
   GITHUB_REPOSITORY marzer/tomlplusplus
-  GIT_TAG ad55bae8a11a6eee39e2292b01e95b529b105767
+  GIT_TAG d8fa9a1fddc90254cac2366dde23f0b613bc1280
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME spdlog
   GITHUB_REPOSITORY gabime/spdlog
-  GIT_TAG 31cf79a70dfa61a4b2b7509eecca6a3b269bfc4a
+  GIT_TAG ac55e60488032b9acde8940a5de099541c4515da
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME rapidjson
   GITHUB_REPOSITORY Tencent/rapidjson
-  GIT_TAG 973dc9c06dcd3d035ebd039cfb9ea457721ec213
+  GIT_TAG f9d53419e912910fd8fa57d5705fa41425428c35
   EXCLUDE_FROM_ALL YES
 )
 if(NOT ENABLE_DEVENV)
 CPMAddPackage(
   NAME cpr
   GITHUB_REPOSITORY libcpr/cpr
-  GIT_TAG 1.10.4
+  GIT_TAG 67e2a4d2a76ed520e352f10e651a6f98e220dbd7
   EXCLUDE_FROM_ALL YES
 )
 endif()
 CPMAddPackage(
   NAME range-v3
   GITHUB_REPOSITORY ericniebler/range-v3
-  GIT_TAG 4624c63972c6f2c2871c7b87813c42048ddb80ad
+  GIT_TAG 97452bb3eb74a73fc86504421a6a27c92bce6b99
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME ctre
   GITHUB_REPOSITORY hanickadot/compile-time-regular-expressions
-  GIT_TAG v3.7.2
+  GIT_TAG v3.8.1
   EXCLUDE_FROM_ALL YES
 )
 

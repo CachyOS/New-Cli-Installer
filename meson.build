@@ -50,17 +50,17 @@ endif
 add_global_arguments('-DINSTALLER_VERSION="' + git_version + '"', language : 'cpp')
 
 # Common dependencies
-spdlog = dependency('spdlog', version : ['>=1.9.2'], fallback : ['spdlog', 'spdlog_dep'])
-fmt = dependency('fmt', version : ['>=10.0.0'], fallback : ['fmt', 'fmt_dep'])
+spdlog = dependency('spdlog', version : ['>=1.12.0'], fallback : ['spdlog', 'spdlog_dep'])
+fmt = dependency('fmt', version : ['>=10.1.0'], fallback : ['fmt', 'fmt_dep'])
 ftxui = dependency('ftxui', modules : ['ftxui::screen', 'ftxui::dom', 'ftxui::component'], fallback : ['ftxui', 'ftxui_dep'])
 rapidjson = dependency('rapidjson', version : ['>=1.1.0'], fallback : ['rapidjson', 'rapidjson_dep'])
 ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 'range_dep'])
-ctre = dependency('ctre', version : ['>=3.7.0'], fallback : ['ctre', 'ctre_dep'])
-tomlplusplus = dependency('tomlplusplus', version : ['>=3.3.0'], fallback : ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['compile_library=false'])
+ctre = dependency('ctre', version : ['>=3.8.0'], fallback : ['ctre', 'ctre_dep'])
+tomlplusplus = dependency('tomlplusplus', version : ['>=3.4.0'], fallback : ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['compile_library=false'])
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 
 if not is_dev_environment
-    cpr = dependency('cpr', version : ['>=1.7.0'], fallback : ['cpr', 'cpr_dep'])
+    cpr = dependency('cpr', version : ['>=1.10.0'], fallback : ['cpr', 'cpr_dep'])
 endif
 
 src_files = files(

@@ -1,5 +1,5 @@
 project('fmt', 'cpp',
-    version : '10.0.0',
+    version : '10.1.1',
     license : 'BSD',
     default_options : [
       'cpp_std=c++20',
