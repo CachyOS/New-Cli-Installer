@@ -113,6 +113,18 @@ constexpr inline double convert_unit(const double number, const std::string_view
     return number;
 }
 
+// Get appropriate default mountpoint for bootloader
+constexpr inline auto bootloader_default_mount(std::string_view bootloader, std::string_view bios_mode) noexcept -> std::string_view {
+    using namespace std::string_view_literals;
+
+    if (bootloader == "systemd-boot"sv || bios_mode == "BIOS"sv) {
+        return "/boot"sv;
+    } else if (bootloader == "grub"sv || bootloader == "refind"sv) {
+        return "/boot/efi"sv;
+    }
+    return "unknown bootloader"sv;
+}
+
 }  // namespace utils
 
 #endif  // UTILS_HPP
