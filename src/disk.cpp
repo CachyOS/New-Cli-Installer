@@ -102,7 +102,7 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
         fs_opts = "compress=lzo,noatime,space_cache,ssd,commit=120";
     }
 #ifdef NDEVENV
-    utils::exec("btrfs subvolume list /mnt | cut -d\" \" -f9 > /tmp/.subvols", true);
+    utils::exec("btrfs subvolume list /mnt 2>/dev/null | cut -d\" \" -f9 > /tmp/.subvols", true);
     umount("/mnt");
 
     // Mount subvolumes one by one
