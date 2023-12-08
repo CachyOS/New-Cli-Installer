@@ -101,6 +101,11 @@ bool is_connected() noexcept {
 #endif
 }
 
+std::string safe_getenv(const char* env_name) noexcept {
+    const char* const raw_val = getenv(env_name);
+    return raw_val != nullptr ? std::string(raw_val) : std::string{};
+}
+
 bool check_root() noexcept {
 #ifdef NDEVENV
     return (utils::exec("whoami") == "root");
@@ -143,6 +148,16 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
         return;
     }
 
+    const bool log_exec_cmds = safe_getenv("LOG_EXEC_CMDS") == "1";
+    const bool dirty_cmd_run = safe_getenv("DIRTY_CMD_RUN") == "1";
+
+    if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
+        spdlog::debug("[exec_follow] cmd := {}", vec);
+    }
+    if (dirty_cmd_run) {
+        return;
+    }
+
     std::vector<char*> args;
     std::transform(vec.cbegin(), vec.cend(), std::back_inserter(args),
         [=](const std::string& arg) -> char* { return std::bit_cast<char*>(arg.data()); });
@@ -182,6 +197,16 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
 }
 
 void exec(const std::vector<std::string>& vec) noexcept {
+    const bool log_exec_cmds = safe_getenv("LOG_EXEC_CMDS") == "1";
+    const bool dirty_cmd_run = safe_getenv("DIRTY_CMD_RUN") == "1";
+
+    if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
+        spdlog::debug("[exec] cmd := {}", vec);
+    }
+    if (dirty_cmd_run) {
+        return;
+    }
+
     std::int32_t status{};
     auto pid = fork();
     if (pid == 0) {
@@ -205,6 +230,12 @@ void exec(const std::vector<std::string>& vec) noexcept {
 // https://stackoverflow.com/questions/11342868/c-interface-for-interactive-bash
 // https://github.com/hniksic/rust-subprocess
 std::string exec(const std::string_view& command, const bool& interactive) noexcept {
+    const bool log_exec_cmds = safe_getenv("LOG_EXEC_CMDS") == "1";
+
+    if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
+        spdlog::debug("[exec] cmd := '{}'", command);
+    }
+
     if (interactive) {
         const auto& ret_code = system(command.data());
         return std::to_string(ret_code);
