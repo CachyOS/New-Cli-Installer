@@ -125,6 +125,16 @@ constexpr inline auto bootloader_default_mount(std::string_view bootloader, std:
     return "unknown bootloader"sv;
 }
 
+// Get available bootloaders
+constexpr inline auto available_bootloaders(std::string_view bios_mode) noexcept -> std::vector<std::string_view> {
+    using namespace std::string_view_literals;
+
+    if (bios_mode == "BIOS"sv) {
+        return {"grub"sv, "grub + os-prober"sv};
+    }
+    return {"systemd-boot"sv, "refind"sv, "grub"sv};
+}
+
 }  // namespace utils
 
 #endif  // UTILS_HPP
