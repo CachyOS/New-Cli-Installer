@@ -537,11 +537,9 @@ void uefi_bootloader() noexcept {
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
         // Mount efivarfs if it is not already mounted
         const auto& mount_out = utils::exec("mount | grep /sys/firmware/efi/efivars");
-        if (mount_out.empty()) {
-            if (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0) {
-                perror("utils::uefi_bootloader");
-                exit(1);
-            }
+        if (mount_out.empty() && (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0)) {
+            perror("utils::uefi_bootloader");
+            exit(1);
         }
     }
 #endif
@@ -1893,7 +1891,7 @@ void mount_partitions() noexcept {
         // If the root partition is btrfs, offer to create subvolumes
         if (utils::get_mountpoint_fs(mountpoint_info) == "btrfs") {
             // Check if there are subvolumes already on the btrfs partition
-            const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\""), mountpoint_info);
+            const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mountpoint_info);
             const auto& subvolumes_count = utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
             const auto& lines_count      = utils::to_int(subvolumes_count.data());
             if (lines_count > 1) {
