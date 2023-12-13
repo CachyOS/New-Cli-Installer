@@ -2021,10 +2021,20 @@ bool parse_config() noexcept {
                 fmt::print(stderr, "partition type '{}' is invalid! Valid types: {}.\n", part_type, valid_types);
                 return false;
             }
+            if (!partition_map.HasMember("fs_name") && part_type == "additional"sv) {
+                fmt::print(stderr, "required field 'fs_name' is missing for partition type '{}'!\n", part_type);
+                return false;
+            }
+
+            std::string part_fs_name{"-"};
+            if (partition_map.HasMember("fs_name")) {
+                assert(partition_map["fs_name"].IsString());
+                part_fs_name = partition_map["fs_name"].GetString();
+            }
 
             // Just to save some space push as single string instead of a new type.
-            auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}"), partition_map["name"].GetString(),
-                partition_map["mountpoint"].GetString(), partition_map["size"].GetString(), part_type);
+            auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"), partition_map["name"].GetString(),
+                partition_map["mountpoint"].GetString(), partition_map["size"].GetString(), part_fs_name, part_type);
             ready_parts.push_back(std::move(part_data));
         }
         config_data["READY_PARTITIONS"] = std::move(ready_parts);
