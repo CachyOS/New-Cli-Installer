@@ -113,6 +113,29 @@ constexpr inline double convert_unit(const double number, const std::string_view
     return number;
 }
 
+/// @brief Replace all occurrences of a substring in a string.
+/// @param inout The string to modify.
+/// @param what The substring to replace.
+/// @param with The replacement string.
+/// @return The number of replacements made.
+inline std::size_t replace_all(std::string& inout, const std::string_view& what, const std::string_view& with) noexcept {
+    std::size_t count{};
+    std::size_t pos{};
+    while (std::string::npos != (pos = inout.find(what.data(), pos, what.length()))) {
+        inout.replace(pos, what.length(), with.data(), with.length());
+        pos += with.length(), ++count;
+    }
+    return count;
+}
+
+/// @brief Remove all occurrences of a substring from a string.
+/// @param inout The string to modify.
+/// @param what The substring to remove.
+/// @return The number of removals made.
+inline std::size_t remove_all(std::string& inout, const std::string_view& what) noexcept {
+    return replace_all(inout, what, "");
+}
+
 // Get appropriate default mountpoint for bootloader
 constexpr inline auto bootloader_default_mount(std::string_view bootloader, std::string_view bios_mode) noexcept -> std::string_view {
     using namespace std::string_view_literals;
