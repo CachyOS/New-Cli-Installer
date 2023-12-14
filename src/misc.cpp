@@ -39,11 +39,9 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quit
         detail::infobox_widget("\nMount Successful!\n");
         std::this_thread::sleep_for(std::chrono::seconds(2));
     }
-    // TODO: reimplement natively
-    const auto& str      = utils::make_multiline(partitions);
-    const auto& cmd      = fmt::format(FMT_COMPILE("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed s~{1}$' -'~~"), str, partition);
-    const auto& res_text = utils::exec(cmd);
-    partitions           = utils::make_multiline(res_text);
+
+    // remove current mount from all partitions list
+    std::erase_if(partitions, [partition](std::string_view x) { return x.find(partition) != std::string_view::npos; });
     number_partitions -= 1;
     return true;
 }

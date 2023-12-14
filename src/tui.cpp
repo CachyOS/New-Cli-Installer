@@ -746,7 +746,7 @@ void bios_bootloader() {
     if (selected_bootloader.empty()) { return; }
     /* clang-format on */
 
-    selected_bootloader = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/+ \\|\"//g'"), selected_bootloader));
+    utils::remove_all(selected_bootloader, "+ ");
 
     /* clang-format off */
     if (!tui::select_device()) { return; }
@@ -1224,12 +1224,8 @@ void make_swap() noexcept {
     utils::exec(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), partition));
 #endif
 
-    // TODO: reimplement natively
     // Since a partition was used, remove that partition from the list
-    const auto& str      = utils::make_multiline(partitions);
-    const auto& cmd      = fmt::format(FMT_COMPILE("echo \"{0}\" | sed \"s~{1} [0-9]*[G-M]~~\" | sed \"s~{1} [0-9]*\\.[0-9]*[G-M]~~\" | sed s~{1}$' -'~~"), str, partition);
-    const auto& res_text = utils::exec(cmd);
-    partitions           = utils::make_multiline(res_text);
+    std::erase_if(partitions, [partition](std::string_view x) { return x.find(partition) != std::string_view::npos; });
     number_partitions -= 1;
 }
 
