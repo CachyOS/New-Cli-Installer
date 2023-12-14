@@ -15,6 +15,7 @@
 #include <fmt/core.h>
 
 using namespace ftxui;
+using namespace std::string_view_literals;
 namespace fs = std::filesystem;
 
 namespace tui {
@@ -23,8 +24,8 @@ namespace tui {
 bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quite) {
 #ifdef NDEVENV
     const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("mount | grep {}"), part_user), true);
-    if (!quite && (ret_status != "0")) {
-        detail::infobox_widget("\nMount Failed!\n");
+    if (!quite && (ret_status != "0"sv)) {
+        detail::infobox_widget("\nMount Failed!\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(2));
         return false;
     }
@@ -36,7 +37,7 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quit
     auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
 
     if (!quite) {
-        detail::infobox_widget("\nMount Successful!\n");
+        detail::infobox_widget("\nMount Successful!\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(2));
     }
 
@@ -50,7 +51,7 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quit
 void set_fsck_hook() noexcept {
     auto* config_instance    = Config::instance();
     auto& config_data        = config_instance->data();
-    const auto& do_sethook   = detail::yesno_widget("\nDo you want to use fsck hook?\n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    const auto& do_sethook   = detail::yesno_widget("\nDo you want to use fsck hook?\n"sv, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     config_data["FSCK_HOOK"] = do_sethook;
 }
 
@@ -59,7 +60,7 @@ void set_cache() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    static constexpr auto content = "\nDo you want to use the pacman cache of the running system instead\nof the installation target?\nThis can reduce the size of the required downloads in the installation.\n";
+    static constexpr auto content = "\nDo you want to use the pacman cache of the running system instead\nof the installation target?\nThis can reduce the size of the required downloads in the installation.\n"sv;
     if (!detail::yesno_widget(content, size(HEIGHT, GREATER_THAN, 3))) {
         config_data["hostcache"] = 0;
         config_data["cachepath"] = "/mnt/var/cache/pacman/pkg/";
@@ -82,10 +83,10 @@ static void edit_mkinitcpio(ScreenInteractive& screen) noexcept {
     utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint), true);
     screen.Resume();
 
-    static constexpr auto content = "\nRun mkinitcpio?\n";
+    static constexpr auto content = "\nRun mkinitcpio?\n"sv;
     const auto& do_run            = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
     if (do_run) {
-        utils::arch_chroot("mkinitcpio -P");
+        utils::arch_chroot("mkinitcpio -P"sv);
     }
     screen.Suspend();
 }
@@ -102,7 +103,7 @@ static void edit_grub(ScreenInteractive& screen) noexcept {
     utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint), true);
     screen.Resume();
 
-    static constexpr auto content = "\nUpdate GRUB?\n";
+    static constexpr auto content = "\nUpdate GRUB?\n"sv;
     const auto& do_update         = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
     if (do_update) {
         utils::grub_mkconfig();
@@ -195,18 +196,18 @@ void edit_configs() noexcept {
         functions[static_cast<std::size_t>(selected)]();
         screen.Resume();
     };
-    static constexpr auto seeconf_body = "\nSelect any file listed below to be reviewed or amended.\n";
+    static constexpr auto seeconf_body = "\nSelect any file listed below to be reviewed or amended.\n"sv;
     const auto& content_size           = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, seeconf_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
 }
 
 void edit_pacman_conf() noexcept {
-    utils::exec("vim /etc/pacman.conf", true);
+    utils::exec("vim /etc/pacman.conf"sv, true);
 
 #ifdef NDEVENV
     // NOTE: don't care now, Will change in future..
-    detail::infobox_widget("\nUpdating database ...\n");
-    utils::exec("pacman -Syy", true);
+    detail::infobox_widget("\nUpdating database ...\n"sv);
+    utils::exec("pacman -Syy"sv, true);
 #endif
 }
 
