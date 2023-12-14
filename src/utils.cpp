@@ -799,12 +799,12 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     }
     found = ranges::search(desktop_env, sway);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"sway", "waybar", "wl-clipboard", "egl-wayland", "wayland-protocols", "wofi", "ly", "xorg-xhost", "xorg-xwayland", "xdg-desktop-portal", "xdg-desktop-portal-wlr"});
+        pkg_list.insert(pkg_list.cend(), {"sway", "waybar", "wl-clipboard", "egl-wayland", "wayland-protocols", "wofi", "ly", "xorg-xwayland", "xdg-desktop-portal", "xdg-desktop-portal-wlr"});
     }
     found = ranges::search(desktop_env, kde);
     if (!found.empty()) {
         /* clang-format off */
-        static constexpr std::array to_be_inserted{"ark", "audiocd-kio", "bluedevil", "breeze-gtk",
+        static constexpr std::array to_be_inserted{"ark", "bluedevil", "breeze-gtk",
             "cachyos-nord-kde-theme-git", "cachyos-iridescent-kde", "cachyos-emerald-kde-theme-git",
             "cachyos-kde-settings", "cachyos-themes-sddm", "cachyos-wallpapers", "char-white", "dolphin", "egl-wayland", "gwenview",
             "konsole", "kate", "kdeconnect", "kscreen", "kde-gtk-config", "khotkeys", "kinfocenter",
@@ -840,7 +840,7 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
             "gnome-control-center", "gnome-disk-utility", "gnome-keyring", "gnome-nettool", "gnome-power-manager",
             "gnome-screenshot", "gnome-shell", "gnome-terminal", "gnome-themes-extra", "gnome-tweaks",
             "gnome-usage", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
-            "nautilus", "nautilus-sendto", "sushi", "totem", "xdg-user-dirs-gtk"};
+            "nautilus", "nautilus-sendto", "sushi", "totem", "qt6-wayland", "xdg-user-dirs-gtk", "xdg-desktop-portal-gnome"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
@@ -926,9 +926,10 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     found = ranges::search(desktop_env, hyprland);
     if (!found.empty()) {
         /* clang-format off */
-        static constexpr std::array to_be_inserted{"cachyos-hyprland-settings", "hyprland-git", "kvantum-qt5", "qt5ct", "sddm",
-            "swaybg", "swaylock-effects-git", "swaylock-fancy-git", "waybar-hyprland-git", "xdg-desktop-portal-hyprland-git",
-            "grimblast", "slurp", "mako", "wob", "wl-clipboard", "polkit-kde-agent", "bemenu", "bemenu-wayland", "xorg-xwayland",
+        static constexpr std::array to_be_inserted{"cachyos-hyprland-settings", "hyprland-git", "kvantum", "qt5ct", "sddm",
+            "swaybg", "swaylock-effects-git", "swaylock-fancy-git", "waybar-hyprland", "xdg-desktop-portal-hyprland",
+            "grimblast-git", "slurp", "mako", "wob", "pamixer", "rofi", "rofi-emoji", "wofi",
+            "wlogout", "swappy",  "wl-clipboard", "polkit-kde-agent", "bemenu", "bemenu-wayland", "xorg-xwayland",
             "capitaine-cursors", "cachyos-wallpapers", "kvantum-theme-nordic-git", "cachyos-nord-gtk-theme-git"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
@@ -949,7 +950,6 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
 
     if (needed_xorg) {
         pkg_list.insert(pkg_list.cend(), {"libwnck3", "mesa-utils", "xf86-input-libinput", "xorg-xdpyinfo", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr"});
-        pkg_list.insert(pkg_list.cend(), {"xf86-video-amdgpu", "xf86-video-ati", "xf86-video-intel"});
     }
     pkg_list.insert(pkg_list.cend(), {"cachyos", "octopi", "awesome-terminal-fonts", "noto-fonts-emoji"});
 
