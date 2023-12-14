@@ -21,6 +21,7 @@
 #include <fmt/ranges.h>
 
 using namespace ftxui;
+using namespace std::string_view_literals;
 
 namespace {
 // Set static list of filesystems rather than on-the-fly. Partially as most require additional flags, and
@@ -89,22 +90,20 @@ void select_bootloader() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    static constexpr auto filesystem_body = "\nSelect your bootloader\n";
+    static constexpr auto filesystem_body = "\nSelect your bootloader\n"sv;
     const auto& content_size              = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     tui::detail::menu_widget(menu_entries, ok_callback, &selected, &screen, filesystem_body, {size(HEIGHT, LESS_THAN, 18), content_size});
 
     if (!success) {
         // default bootloaders
-        selected_bootloader = (sys_info == "UEFI") ? "systemd-boot" : "grub + os-prober";
+        selected_bootloader = (sys_info == "UEFI"sv) ? "systemd-boot"sv : "grub + os-prober"sv;
     }
 
-    utils::remove_all(selected_bootloader, "+ ");
+    utils::remove_all(selected_bootloader, "+ "sv);
     config_data["BOOTLOADER"] = selected_bootloader;
 }
 
 void make_esp(const std::string& part_name, std::string_view bootloader_name, bool reformat_part = true, std::string_view boot_part_mountpoint = {"(empty)"}) noexcept {
-    using namespace std::string_view_literals;
-
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
@@ -157,7 +156,7 @@ std::string make_partitions(std::string_view device_info, std::string_view root_
             spdlog::debug("\n========\npart name := '{}'\npart mountpoint := '{}'\npart size := '{}'\npart fs := '{}'\npart type := '{}'\n========\n",
                 part_name, part_mountpoint, part_size, part_fs, part_type);
 
-            if (part_type == "boot") {
+            if (part_type == "boot"sv) {
                 config_data["UEFI_MOUNT"] = part_mountpoint;
                 config_data["UEFI_PART"]  = part_name;
                 make_esp(part_name, bootloader, true, part_mountpoint);
@@ -165,7 +164,7 @@ std::string make_partitions(std::string_view device_info, std::string_view root_
                 utils::get_cryptboot();
                 spdlog::info("boot partition: name={}", part_name);
                 continue;
-            } else if (part_type == "root") {
+            } else if (part_type == "root"sv) {
                 config_data["PARTITION"] = part_name;
                 config_data["ROOT_PART"] = part_name;
                 config_data["MOUNT"]     = part_mountpoint;
@@ -176,7 +175,7 @@ std::string make_partitions(std::string_view device_info, std::string_view root_
                 tui::mount_current_partition(true);
 
                 // If the root partition is btrfs, offer to create subvolumes
-                if (root_fs == "btrfs") {
+                if (root_fs == "btrfs"sv) {
                     // Check if there are subvolumes already on the btrfs partition
                     const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), part_mountpoint);
                     const auto& subvolumes_count = utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
@@ -185,11 +184,11 @@ std::string make_partitions(std::string_view device_info, std::string_view root_
                         // Pre-existing subvolumes and user wants to mount them
                         utils::mount_existing_subvols({root_part, root_part});
                     } else {
-                        utils::btrfs_create_subvols({.root = part_name, .mount_opts = mount_opts_info}, "automatic", true);
+                        utils::btrfs_create_subvols({.root = part_name, .mount_opts = mount_opts_info}, "automatic"sv, true);
                     }
                 }
                 continue;
-            } else if (part_type == "additional") {
+            } else if (part_type == "additional"sv) {
                 config_data["MOUNT"]     = part_mountpoint;
                 config_data["PARTITION"] = part_name;
                 spdlog::info("additional partition: {}", part_name);
@@ -201,7 +200,7 @@ std::string make_partitions(std::string_view device_info, std::string_view root_
                 // 0 = no separate boot,
                 // 1 = separate non-lvm boot,
                 // 2 = separate lvm boot. For Grub configuration
-                if (part_mountpoint == "/boot") {
+                if (part_mountpoint == "/boot"sv) {
                     const auto& cmd             = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"lvm\""), part_name);
                     const auto& cmd_out         = utils::exec(cmd);
                     config_data["LVM_SEP_BOOT"] = 1;
@@ -227,7 +226,7 @@ std::string make_partitions(std::string_view device_info, std::string_view root_
         const auto& part_name      = partition_stat[0];
         const auto& part_size      = partition_stat[1];
 
-        if (part_size == "512M") {
+        if (part_size == "512M"sv) {
             make_esp(part_name, bootloader);
             utils::get_cryptroot();
             utils::get_cryptboot();
@@ -363,7 +362,7 @@ void menu_simple() noexcept {
         utils::set_timezone(timezone);
     }
 
-    utils::set_hw_clock("utc");
+    utils::set_hw_clock("utc"sv);
 
     if (root_pass.empty()) {
         tui::set_root_password();
