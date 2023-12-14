@@ -243,7 +243,7 @@ std::string zfs_list_pools() noexcept {
 std::string zfs_list_devs() noexcept {
     std::string list_of_devices{};
     // get a list of devices with zpools on them
-    const auto& devices = utils::make_multiline("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\""sv);
+    const auto& devices = utils::make_multiline(utils::exec("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\""sv));
     for (const auto& device : devices) {
         // add the device
         list_of_devices += fmt::format(FMT_COMPILE("{}\n"), device);
