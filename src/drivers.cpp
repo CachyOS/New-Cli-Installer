@@ -15,6 +15,7 @@
 #include <fmt/core.h>
 
 using namespace ftxui;
+using namespace std::string_view_literals;
 
 #ifdef NDEVENV
 #include "follow_process_log.hpp"
@@ -34,7 +35,7 @@ static void install_ati() noexcept {
 
 #ifdef NDEVENV
 static void install_all_drivers() noexcept {
-    static constexpr auto packages = "xf86-input-libinput xf86-video-fbdev xf86-video-vesa xf86-video-amdgpu xf86-video-ati xf86-video-intel xf86-video-nouveau";
+    static constexpr auto packages = "xf86-input-libinput xf86-video-fbdev xf86-video-vesa xf86-video-amdgpu xf86-video-ati xf86-video-intel xf86-video-nouveau"sv;
 
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
@@ -54,8 +55,8 @@ static void setup_graphics_card() noexcept {
 
     /// TODO(vnepogodin): parse toml DBs
     {
-        static constexpr auto UseSpaceBar = "\nUse [Spacebar] to de/select options listed.\n";
-        const auto& profile_names         = ::detail::chwd::get_available_profile_names("graphic_drivers");
+        static constexpr auto UseSpaceBar = "\nUse [Spacebar] to de/select options listed.\n"sv;
+        const auto& profile_names         = ::detail::chwd::get_available_profile_names("graphic_drivers"sv);
         if (!profile_names.has_value()) {
             spdlog::error("failed to get profile names");
             return;
@@ -86,13 +87,13 @@ static void setup_graphics_card() noexcept {
     std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
 #endif
 
-    graphics_card = utils::exec("lspci | grep -i \"vga\" | sed 's/.*://' | sed 's/(.*//' | sed 's/^[ \\t]*//'");
+    graphics_card = utils::exec("lspci | grep -i \"vga\" | sed 's/.*://' | sed 's/(.*//' | sed 's/^[ \\t]*//'"sv);
 
     // All non-NVIDIA cards / virtualization
     if (!(utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep -i 'ati'"), graphics_card)).empty())) {
         install_ati();
 #ifdef NDEVENV
-    } else if (driver == "video-nouveau") {
+    } else if (driver == "video-nouveau"sv) {
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/MODULES=\"\"/MODULES=\"nouveau\"/' {}/etc/mkinitcpio.conf"), mountpoint));
 #endif
     }
@@ -117,11 +118,11 @@ static void install_graphics_menu() noexcept {
         switch (selected) {
 #ifdef NDEVENV
         case 0:
-            utils::arch_chroot("chwd -a pci free 0300");
+            utils::arch_chroot("chwd -a pci free 0300"sv);
             std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
             break;
         case 1:
-            utils::arch_chroot("chwd -a pci nonfree 0300");
+            utils::arch_chroot("chwd -a pci nonfree 0300"sv);
             std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
             break;
 #endif
