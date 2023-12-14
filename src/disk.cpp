@@ -13,6 +13,7 @@
 #include <fmt/compile.h>
 #include <fmt/core.h>
 
+using namespace std::string_view_literals;
 namespace fs = std::filesystem;
 
 namespace utils {
@@ -24,13 +25,13 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
 
 #ifdef NDEVENV
     // save mount options and name of the root partition
-    utils::exec("mount | grep \"on /mnt \" | grep -Po '(?<=\\().*(?=\\))' > /tmp/.root_mount_options");
-    // utils::exec("lsblk -lno MOUNTPOINT,NAME | awk '/^\\/mnt / {print $2}' > /tmp/.root_partition");
+    utils::exec("mount | grep \"on /mnt \" | grep -Po '(?<=\\().*(?=\\))' > /tmp/.root_mount_options"sv);
+    // utils::exec("lsblk -lno MOUNTPOINT,NAME | awk '/^\\/mnt / {print $2}' > /tmp/.root_partition"sv);
 
-    if (mode == "manual") {
+    if (mode == "manual"sv) {
         // Create subvolumes manually
         std::string subvols{"@ @home @cache"};
-        static constexpr auto subvols_body = "\nInput names of the subvolumes separated by spaces.\nThe first one will be used for mounting /.\n";
+        static constexpr auto subvols_body = "\nInput names of the subvolumes separated by spaces.\nThe first one will be used for mounting /.\n"sv;
         if (!tui::detail::inputbox_widget(subvols, subvols_body, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 4))) {
             return;
         }
@@ -63,7 +64,7 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
         return;
     }
     if (!ignore_note) {
-        static constexpr auto content = "\nThis creates subvolumes:\n@ for /,\n@home for /home,\n@cache for /var/cache.\n";
+        static constexpr auto content = "\nThis creates subvolumes:\n@ for /,\n@home for /home,\n@cache for /var/cache.\n"sv;
         const auto& do_create         = tui::detail::yesno_widget(content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 15) | size(ftxui::WIDTH, ftxui::LESS_THAN, 75));
         /* clang-format off */
         if (!do_create) { return; }
@@ -73,10 +74,10 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
     // Create subvolumes automatically
     const auto& saved_path = fs::current_path();
     fs::current_path("/mnt");
-    utils::exec("btrfs subvolume create @ 2>>/tmp/cachyos-install.log", true);
-    utils::exec("btrfs subvolume create @home 2>>/tmp/cachyos-install.log", true);
-    utils::exec("btrfs subvolume create @cache 2>>/tmp/cachyos-install.log", true);
-    // utils::exec("btrfs subvolume create @snapshots 2>>/tmp/cachyos-install.log", true);
+    utils::exec("btrfs subvolume create @ 2>>/tmp/cachyos-install.log"sv, true);
+    utils::exec("btrfs subvolume create @home 2>>/tmp/cachyos-install.log"sv, true);
+    utils::exec("btrfs subvolume create @cache 2>>/tmp/cachyos-install.log"sv, true);
+    // utils::exec("btrfs subvolume create @snapshots 2>>/tmp/cachyos-install.log"sv, true);
     fs::current_path(saved_path);
     // Mount subvolumes
     umount("/mnt");
@@ -93,20 +94,20 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
 void mount_existing_subvols(const disk_part& disk) noexcept {
     // Set mount options
     const auto& format_name   = utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), disk.part));
-    const auto& format_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk '/disk/ {print $1}'"));
+    const auto& format_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk '/disk/ {print $1}'"sv));
 
     std::string fs_opts{};
-    if (utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational)"), format_device), true) == "1") {
-        fs_opts = "autodefrag,compress=zlib,noatime,nossd,commit=120";
+    if (utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational)"), format_device), true) == "1"sv) {
+        fs_opts = "autodefrag,compress=zlib,noatime,nossd,commit=120"sv;
     } else {
-        fs_opts = "compress=lzo,noatime,space_cache,ssd,commit=120";
+        fs_opts = "compress=lzo,noatime,space_cache,ssd,commit=120"sv;
     }
 #ifdef NDEVENV
-    utils::exec("btrfs subvolume list /mnt 2>/dev/null | cut -d\" \" -f9 > /tmp/.subvols", true);
+    utils::exec("btrfs subvolume list /mnt 2>/dev/null | cut -d\" \" -f9 > /tmp/.subvols"sv, true);
     umount("/mnt");
 
     // Mount subvolumes one by one
-    for (const auto& subvol : utils::make_multiline(utils::exec("cat /tmp/.subvols"))) {
+    for (const auto& subvol : utils::make_multiline(utils::exec("cat /tmp/.subvols"sv))) {
         // Ask for mountpoint
         const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending /mnt).\n"), subvol);
         std::string mountpoint{"/"};
@@ -124,12 +125,12 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
 }
 
 std::vector<std::string> lvm_show_vg() noexcept {
-    const auto& vg_list = utils::make_multiline(utils::exec("lvs --noheadings | awk '{print $2}' | uniq"));
+    const auto& vg_list = utils::make_multiline(utils::exec("lvs --noheadings | awk '{print $2}' | uniq"sv));
 
     std::vector<std::string> res{};
     res.reserve(vg_list.size());
     for (const auto& vg : vg_list) {
-        const auto& temp = utils::exec(fmt::format(FMT_COMPILE("vgdisplay {} | grep -i \"vg size\" | {}"), vg, "awk '{print $3$4}'"));
+        const auto& temp = utils::exec(fmt::format(FMT_COMPILE("vgdisplay {} | grep -i \"vg size\" | {}"), vg, "awk '{print $3$4}'"sv));
         res.push_back(temp);
     }
 
@@ -144,12 +145,12 @@ bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zf
     }
 
     // next create the datasets including their parents
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), "none");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), "none");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), "/");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), "/home");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), "/var/cache");
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), "/var/log");
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), "none"sv);
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), "none"sv);
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), "/"sv);
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), "/home"sv);
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), "/var/cache"sv);
+    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), "/var/log"sv);
 
 #ifdef NDEVENV
     // set the rootfs
@@ -165,13 +166,13 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
 
     config_data["ZFS_ZPOOL_NAME"] = std::string{pool_name.data()};
 
-    static constexpr std::string_view zpool_options{"-f -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O atime=off -O relatime=off -O normalization=formD -O xattr=sa -O mountpoint=none"};
+    static constexpr auto zpool_options{"-f -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O atime=off -O relatime=off -O normalization=formD -O xattr=sa -O mountpoint=none"sv};
 
 #ifdef NDEVENV
     std::int32_t ret_code{};
 
     // Find the UUID of the partition
-    const auto& partuuid = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"), false);
+    const auto& partuuid = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"sv), false);
 
     // See if the partition has a partuuid, if not use the device name
     const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool create {} {}"), zpool_options, pool_name);
@@ -232,7 +233,7 @@ void zfs_destroy_dataset(const std::string_view& zdataset) noexcept {
 // returns a list of imported zpools
 std::string zfs_list_pools() noexcept {
 #ifdef NDEVENV
-    return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\"");
+    return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\""sv);
 #else
     return "vol0\nvol1\n";
 #endif
@@ -242,7 +243,7 @@ std::string zfs_list_pools() noexcept {
 std::string zfs_list_devs() noexcept {
     std::string list_of_devices{};
     // get a list of devices with zpools on them
-    const auto& devices = utils::make_multiline("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\"");
+    const auto& devices = utils::make_multiline("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\""sv);
     for (const auto& device : devices) {
         // add the device
         list_of_devices += fmt::format(FMT_COMPILE("{}\n"), device);
@@ -254,13 +255,13 @@ std::string zfs_list_devs() noexcept {
 
 std::string zfs_list_datasets(const std::string_view& type) noexcept {
 #ifdef NDEVENV
-    if (type == "zvol") {
-        return utils::exec("zfs list -Ht volume -o name,volsize 2>/dev/null");
-    } else if (type == "legacy") {
-        return utils::exec("zfs list -Ht filesystem -o name,mountpoint 2>/dev/null | grep \"^.*/.*legacy$\" | awk '{print $1}'");
+    if (type == "zvol"sv) {
+        return utils::exec("zfs list -Ht volume -o name,volsize 2>/dev/null"sv);
+    } else if (type == "legacy"sv) {
+        return utils::exec("zfs list -Ht filesystem -o name,mountpoint 2>/dev/null | grep \"^.*/.*legacy$\" | awk '{print $1}'"sv);
     }
 
-    return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\"");
+    return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\""sv);
 #else
     spdlog::debug("type := {}", type);
     return "zpcachyos";
@@ -282,25 +283,25 @@ void select_filesystem(const std::string_view& file_sys) noexcept {
 
     config_data["FILESYSTEM_NAME"] = std::string{file_sys.data()};
 
-    if (file_sys == "btrfs") {
+    if (file_sys == "btrfs"sv) {
         config_data["FILESYSTEM"] = "mkfs.btrfs -f";
         config_data["fs_opts"]    = std::vector<std::string>{"autodefrag", "compress=zlib", "compress=lzo", "compress=zstd", "compress=no", "compress-force=zlib", "compress-force=lzo", "compress-force=zstd", "discard", "noacl", "noatime", "nodatasum", "nospace_cache", "recovery", "skip_balance", "space_cache", "nossd", "ssd", "ssd_spread", "commit=120"};
 #ifdef NDEVENV
-        utils::exec("modprobe btrfs");
+        utils::exec("modprobe btrfs"sv);
 #endif
-    } else if (file_sys == "ext4") {
+    } else if (file_sys == "ext4"sv) {
         config_data["FILESYSTEM"] = "mkfs.ext4 -q";
         config_data["fs_opts"]    = std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
-    } else if (file_sys == "f2fs") {
+    } else if (file_sys == "f2fs"sv) {
         config_data["FILESYSTEM"] = "mkfs.f2fs -q";
         config_data["fs_opts"]    = std::vector<std::string>{"data_flush", "disable_roll_forward", "disable_ext_identify", "discard", "fastboot", "flush_merge", "inline_xattr", "inline_data", "inline_dentry", "no_heap", "noacl", "nobarrier", "noextent_cache", "noinline_data", "norecovery"};
 #ifdef NDEVENV
-        utils::exec("modprobe f2fs");
+        utils::exec("modprobe f2fs"sv);
 #endif
-    } else if (file_sys == "xfs") {
+    } else if (file_sys == "xfs"sv) {
         config_data["FILESYSTEM"] = "mkfs.xfs -f";
         config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
-    } else if (file_sys != "zfs") {
+    } else if (file_sys != "zfs"sv) {
         spdlog::error("Invalid filesystem ('{}')!", file_sys);
     }
 }
