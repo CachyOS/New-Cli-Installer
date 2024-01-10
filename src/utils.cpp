@@ -808,7 +808,7 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
             "cachyos-nord-kde-theme-git", "cachyos-iridescent-kde", "cachyos-emerald-kde-theme-git",
             "cachyos-kde-settings", "cachyos-themes-sddm", "cachyos-wallpapers", "char-white", "dolphin", "egl-wayland", "gwenview",
             "konsole", "kate", "kdeconnect", "kscreen", "kde-gtk-config", "khotkeys", "kinfocenter",
-            "kinit", "kscreen", "kwallet-pam", "kwalletmanager", "plasma-wayland-protocols", "plasma-wayland-session",
+            "kinit", "kwallet-pam", "kwalletmanager", "plasma-wayland-protocols", "plasma-wayland-session",
             "plasma-desktop", "plasma-framework5", "plasma-nm", "plasma-pa", "plasma-workspace", "plasma-integration",
             "plasma-firewall", "plasma-browser-integration", "plasma-systemmonitor", "plasma-thunderbolt",
             "powerdevil", "ksysguard", "spectacle", "sddm", "sddm-kcm", "xsettingsd", "xdg-desktop-portal", "xdg-desktop-portal-kde"};
