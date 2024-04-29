@@ -1,24 +1,60 @@
-Checks: '-android-cloexec-fopen,
-         -cppcoreguidelines-*,
-         -fuchsia-default-arguments-calls,
-         -fuchsia-default-arguments-declarations,
-         -fuchsia-overloaded-operator,
-         -google-explicit-constructor,
-         -google-readability-function-size,
-         -google-runtime-int,
-         -google-runtime-references,
-         -hicpp-*,
-         -llvm-header-guard,
-         -llvm-include-order,
-         -llvmlibc-*,
-         -misc-*,
-         -modernize-*,
-         -readability-*,
-         -performance-*'
+Checks: '-*,
+         bugprone-*,
+         cert-*,
+         clang-analyzer-*,
+         cppcoreguidelines-*,
+         fuchsia-multiple-inheritance,
+         google-*,
+         hicpp-*,
+         misc-*,
+         modernize-*,
+         performance-*,
+         readability-*,
+         -bugprone-easily-swappable-parameters,
+         -bugprone-exception-escape,
+         -bugprone-unchecked-optional-access,
+         -cert-dcl21-cpp,
+         -cert-dcl58-cpp,
+         -cert-err58-cpp,
+         -cert-env33-c,
+         -cert-err33-c,
+         -clang-analyzer-optin.cplusplus.VirtualCall,
+         -cppcoreguidelines-avoid-c-arrays,
+         -cppcoreguidelines-avoid-const-or-ref-data-members,
+         -cppcoreguidelines-owning-memory,
+         -cppcoreguidelines-avoid-magic-numbers,
+         -cppcoreguidelines-avoid-non-const-global-variables,
+         -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+         -cppcoreguidelines-pro-bounds-constant-array-index,
+         -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+         -cppcoreguidelines-pro-type-reinterpret-cast,
+         -cppcoreguidelines-pro-type-union-access,
+         -hicpp-avoid-c-arrays,
+         -hicpp-member-init,
+         -hicpp-uppercase-literal-suffix,
+         -hicpp-move-const-arg,
+         -hicpp-named-parameter,
+         -hicpp-no-array-decay,
+         -misc-include-cleaner,
+         -misc-no-recursion,
+         -modernize-avoid-c-arrays,
+         -modernize-use-trailing-return-type,
+         -performance-move-const-arg,
+         -performance-unnecessary-value-param,
+         -readability-else-after-return,
+         -readability-function-cognitive-complexity,
+         -readability-identifier-length,
+         -readability-implicit-bool-conversion,
+         -readability-magic-numbers,
+         -readability-named-parameter,
+         -readability-uppercase-literal-suffix,
+         -readability-use-anyofallof'
 FormatStyle: 'file'
 
-CheckOptions:
-  - key: hicpp-special-member-functions.AllowSoleDefaultDtor
-    value: 1
+WarningsAsErrors: '*'
 
-HeaderFilterRegex: '.*hpp$'
+CheckOptions:
+  - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
+    value: '1'
+  - key: readability-redundant-access-specifiers.CheckFirstDeclaration
+    value: '1'
