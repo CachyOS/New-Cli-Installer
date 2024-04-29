@@ -21,9 +21,9 @@ using namespace std::string_view_literals;
 #include "follow_process_log.hpp"
 #endif
 
-namespace tui {
+namespace {
 
-static void setup_graphics_card() noexcept {
+void setup_graphics_card() noexcept {
     std::string driver{};
 
     /// TODO(vnepogodin): parse toml DBs
@@ -42,7 +42,7 @@ static void setup_graphics_card() noexcept {
             driver = radiobox_list[static_cast<size_t>(selected)];
             screen.ExitLoopClosure()();
         };
-        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = use_spacebar}, {.text_size = nothing});
+        tui::detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = use_spacebar}, {.text_size = nothing});
     }
     /* clang-format off */
     if (driver.empty()) { return; }
@@ -62,7 +62,7 @@ static void setup_graphics_card() noexcept {
 #endif
 }
 
-static void install_graphics_menu() noexcept {
+void install_graphics_menu() noexcept {
     [[maybe_unused]] auto* config_instance  = Config::instance();
     [[maybe_unused]] auto& config_data      = config_instance->data();
     [[maybe_unused]] const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
@@ -96,8 +96,12 @@ static void install_graphics_menu() noexcept {
             break;
         }
     };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    tui::detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
+
+}  // namespace
+
+namespace tui {
 
 void install_drivers_menu() noexcept {
     const std::vector<std::string> menu_entries = {
