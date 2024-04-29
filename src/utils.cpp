@@ -738,9 +738,10 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     const auto& server_mode     = std::get<std::int32_t>(config_data["SERVER_MODE"]);
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    const auto& root_filesystem  = utils::get_mountpoint_fs(mountpoint_info);
-    const auto& is_root_on_zfs   = (root_filesystem == "zfs");
-    const auto& is_root_on_btrfs = (root_filesystem == "btrfs");
+    const auto& root_filesystem     = utils::get_mountpoint_fs(mountpoint_info);
+    const auto& is_root_on_zfs      = (root_filesystem == "zfs");
+    const auto& is_root_on_btrfs    = (root_filesystem == "btrfs");
+    const auto& is_root_on_bcachefs = (root_filesystem == "bcachefs");
 
     auto pkg_list = utils::make_multiline(packages, false, ' ');
 
@@ -754,6 +755,9 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     }
     if (is_root_on_zfs) {
         pkg_list.insert(pkg_list.cend(), {"zfs-utils"});
+    }
+    if (is_root_on_bcachefs) {
+        pkg_list.insert(pkg_list.cend(), {"bcachefs-tools"});
     }
     if (server_mode == 0) {
         if (is_root_on_btrfs) {
@@ -770,7 +774,8 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
         pkg_list.insert(pkg_list.cend(), {"duf", "fsarchiver", "hwinfo", "inxi", "fastfetch"});
     }
     pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "pacman-contrib", "paru", "btop"});
+    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "linux-firmware", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "pacman-contrib", "paru", "btop"});
+    pkg_list.insert(pkg_list.cend(), {"man-db", "less"});
     pkg_list.insert(pkg_list.cend(), {"cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-v4-mirrorlist", "cachyos-keyring"});
 
     return pkg_list;
@@ -813,10 +818,10 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
             "cachyos-nord-kde-theme-git", "cachyos-iridescent-kde", "cachyos-emerald-kde-theme-git",
             "cachyos-kde-settings", "cachyos-themes-sddm", "cachyos-wallpapers", "char-white", "dolphin", "egl-wayland", "gwenview",
             "konsole", "kate", "kdeconnect", "kscreen", "kde-gtk-config", "khotkeys", "kinfocenter",
-            "kinit", "kscreen", "kwallet-pam", "kwalletmanager", "plasma-wayland-protocols", "plasma-wayland-session",
+            "kinit", "kwallet-pam", "kwalletmanager", "plasma-wayland-protocols", "plasma-wayland-session",
             "plasma-desktop", "plasma-framework5", "plasma-nm", "plasma-pa", "plasma-workspace", "plasma-integration",
             "plasma-firewall", "plasma-browser-integration", "plasma-systemmonitor", "plasma-thunderbolt",
-            "powerdevil", "ksysguard", "spectacle", "sddm", "sddm-kcm", "xsettingsd", "xdg-desktop-portal", "xdg-desktop-portal-kde"};
+            "powerdevil", "ksysguard", "spectacle", "sddm", "sddm-kcm", "xsettingsd", "xdg-desktop-portal", "xdg-desktop-portal-kde", "phonon-qt5-vlc"};
         /* clang-format on */
         pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
             std::move_iterator(to_be_inserted.end()));
