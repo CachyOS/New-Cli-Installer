@@ -88,15 +88,15 @@ Element centered_interative_multi(const std::string_view& title, Component& widg
     });
 }
 
-Element multiline_text(const std::vector<std::string>& lines) noexcept {
+Element multiline_text(std::vector<std::string>&& lines) noexcept {
     Elements multiline;
 
-    std::transform(lines.cbegin(), lines.cend(), std::back_inserter(multiline),
-        [=](auto&& line) -> Element { return std::move(text(line)); });
+    std::transform(std::make_move_iterator(lines.begin()), std::make_move_iterator(lines.end()), std::back_inserter(multiline),
+        [=](auto&& line) -> Element { return std::move(text(std::forward<decltype(line)>(line))); });
     return std::move(vbox(std::move(multiline))) | frame;
 }
 
-Components from_vector_checklist(const std::vector<std::string>& opts, bool* opts_state) noexcept {
+Components from_vector_checklist(const std::vector<std::string>& opts, bool* const opts_state) noexcept {
     Components components;
 
     for (size_t i = 0; i < opts.size(); ++i) {
@@ -106,7 +106,7 @@ Components from_vector_checklist(const std::vector<std::string>& opts, bool* opt
     return components;
 }
 
-std::string from_checklist_string(const std::vector<std::string>& opts, bool* opts_state) noexcept {
+std::string from_checklist_string(const std::vector<std::string>& opts, const bool* const opts_state) noexcept {
     std::string res{};
 
     for (size_t i = 0; i < opts.size(); ++i) {
@@ -120,7 +120,7 @@ std::string from_checklist_string(const std::vector<std::string>& opts, bool* op
     return res;
 }
 
-std::vector<std::string> from_checklist_vector(const std::vector<std::string>& opts, bool* opts_state) noexcept {
+std::vector<std::string> from_checklist_vector(const std::vector<std::string>& opts, const bool* const opts_state) noexcept {
     std::vector<std::string> res{};
 
     for (size_t i = 0; i < opts.size(); ++i) {
@@ -138,7 +138,7 @@ void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept 
 
     auto container = Container::Horizontal({button_back});
     auto renderer = Renderer(container, [&] {
-        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(content)) | boxsize);
+        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(content)) | boxsize);
     });
     /* clang-format on */
 
@@ -152,13 +152,13 @@ bool inputbox_widget(std::string& value, const std::string_view& content, Decora
         success = true;
         screen.ExitLoopClosure()();
     };
-    InputOption input_option{.on_enter = ok_callback, .password = password};
+    const InputOption input_option{.on_enter = ok_callback, .password = password};
     auto input_value       = Input(&value, "", input_option);
     auto content_container = Renderer([&] {
         return multiline_text(utils::make_multiline(content)) | hcenter | boxsize;
     });
 
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -173,7 +173,7 @@ bool inputbox_widget(std::string& value, const std::string_view& content, Decora
     });
 
     auto renderer = Renderer(global, [&] {
-        return centered_interative_multi("New CLI Installer", global);
+        return detail::centered_interative_multi("New CLI Installer", global);
     });
 
     screen.Loop(renderer);
@@ -186,7 +186,7 @@ void infobox_widget(const std::string_view& content, Decorator boxsize) noexcept
         Dimension::Full()   // Height
     );
 
-    auto element = centered_widget_nocontrols("New CLI Installer", multiline_text(utils::make_multiline(content)) | vcenter | boxsize);
+    auto element = detail::centered_widget_nocontrols("New CLI Installer", detail::multiline_text(utils::make_multiline(content)) | vcenter | boxsize);
     Render(screen, element);
     screen.Print();
 }
@@ -199,7 +199,7 @@ bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
         success = true;
         screen.ExitLoopClosure()();
     };
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -210,7 +210,7 @@ bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
     });
 
     auto renderer = Renderer(container, [&] {
-        return centered_widget(container, "New CLI Installer", multiline_text(utils::make_multiline(content)) | hcenter | boxsize);
+        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(content)) | hcenter | boxsize);
     });
 
     screen.Loop(renderer);
@@ -229,7 +229,7 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
         success = true;
         screen.ExitLoopClosure()();
     };
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -242,7 +242,7 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
     });
 
     auto renderer = Renderer(global, [&] {
-        return centered_interative_multi("New CLI Installer", global);
+        return detail::centered_interative_multi("New CLI Installer", global);
     });
 
     screen.Loop(renderer);
@@ -256,7 +256,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
         return menu->Render() | center | widget_sizes.content_size;
     });
 
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -279,7 +279,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
     auto global{Container::Vertical(children)};
 
     auto renderer = Renderer(global, [&] {
-        return centered_interative_multi("New CLI Installer", global);
+        return detail::centered_interative_multi("New CLI Installer", global);
     });
 
     screen->Loop(renderer);
@@ -294,7 +294,7 @@ void radiolist_widget(const std::vector<std::string>& entries, const std::functi
         return radiolist->Render() | center | widget_sizes.content_size;
     });
 
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -317,7 +317,7 @@ void radiolist_widget(const std::vector<std::string>& entries, const std::functi
     auto global{Container::Vertical(children)};
 
     auto renderer = Renderer(global, [&] {
-        return centered_interative_multi(widget_res.title, global);
+        return detail::centered_interative_multi(widget_res.title, global);
     });
 
     screen->Loop(renderer);
@@ -329,7 +329,7 @@ void checklist_widget(const std::vector<std::string>& opts, const std::function<
         return checklist->Render() | center | widget_sizes.content_size;
     });
 
-    auto controls_container = controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
+    auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen->ExitLoopClosure()});
 
     auto controls = Renderer(controls_container, [&] {
         return controls_container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25);
@@ -352,7 +352,7 @@ void checklist_widget(const std::vector<std::string>& opts, const std::function<
     auto global{Container::Vertical(children)};
 
     auto renderer = Renderer(global, [&] {
-        return centered_interative_multi(title, global);
+        return detail::centered_interative_multi(title, global);
     });
 
     screen->Loop(renderer);
