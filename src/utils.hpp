@@ -11,6 +11,29 @@
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wsign-conversion"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#pragma GCC diagnostic ignored "-Wuseless-cast"
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#endif
+
+#include <range/v3/range/concepts.hpp>
+#include <range/v3/range/traits.hpp>
+#include <range/v3/view/filter.hpp>
+#include <range/v3/view/split.hpp>
+#include <range/v3/view/transform.hpp>
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
 #include <fmt/compile.h>
 
 namespace utils {
@@ -18,8 +41,6 @@ namespace utils {
 [[nodiscard]] bool is_connected() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;
-[[nodiscard]] auto make_multiline(const std::string_view& str, bool reverse = false, char delim = '\n') noexcept -> std::vector<std::string>;
-[[nodiscard]] auto make_multiline(const std::vector<std::string>& multiline, bool reverse = false, const std::string_view&& delim = "\n") noexcept -> std::string;
 void inst_needed(const std::string_view& pkg) noexcept;
 void secure_wipe() noexcept;
 void auto_partition() noexcept;
@@ -84,6 +105,49 @@ void grub_mkconfig() noexcept;
 void enable_services() noexcept;
 void final_check() noexcept;
 
+/// @brief Split a string into multiple lines based on a delimiter.
+/// @param str The string to split.
+/// @param reverse Flag indicating whether to reverse the order of the resulting lines.
+/// @param delim The delimiter to split the string.
+/// @return A vector of strings representing the split lines.
+auto make_multiline(std::string_view str, bool reverse = false, char delim = '\n') noexcept -> std::vector<std::string>;
+
+/// @brief Split a string into views of multiple lines based on a delimiter.
+/// @param str The string to split.
+/// @param reverse Flag indicating whether to reverse the order of the resulting lines.
+/// @param delim The delimiter to split the string.
+/// @return A vector of string views representing the split lines.
+auto make_multiline_view(std::string_view str, bool reverse = false, char delim = '\n') noexcept -> std::vector<std::string_view>;
+
+/// @brief Combine multiple lines into a single string using a delimiter.
+/// @param multiline The lines to combine.
+/// @param reverse Flag indicating whether to reverse the order of the lines before combining.
+/// @param delim The delimiter to join the lines.
+/// @return The combined lines as a single string.
+auto make_multiline(const std::vector<std::string>& multiline, bool reverse = false, std::string_view delim = "\n") noexcept -> std::string;
+
+/// @brief Join a vector of strings into a single string using a delimiter.
+/// @param lines The lines to join.
+/// @param delim The delimiter to join the lines.
+/// @return The joined lines as a single string.
+auto join(const std::vector<std::string>& lines, std::string_view delim = "\n") noexcept -> std::string;
+
+/// @brief Make a split view from a string into multiple lines based on a delimiter.
+/// @param str The string to split.
+/// @param delim The delimiter to split the string.
+/// @return A range view representing the split lines.
+constexpr auto make_split_view(std::string_view str, char delim = '\n') noexcept {
+    constexpr auto functor = [](auto&& rng) {
+        return std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
+    };
+    constexpr auto second = [](auto&& rng) { return rng != ""; };
+
+    return str
+        | ranges::views::split(delim)
+        | ranges::views::transform(functor)
+        | ranges::views::filter(second);
+}
+
 template <typename T = std::int32_t,
     typename         = std::enable_if_t<std::numeric_limits<T>::is_integer>>
 inline T to_int(const std::string_view& str) {
@@ -118,7 +182,7 @@ constexpr inline double convert_unit(const double number, const std::string_view
 /// @param what The substring to replace.
 /// @param with The replacement string.
 /// @return The number of replacements made.
-inline std::size_t replace_all(std::string& inout, const std::string_view& what, const std::string_view& with) noexcept {
+inline std::size_t replace_all(std::string& inout, std::string_view what, std::string_view with) noexcept {
     std::size_t count{};
     std::size_t pos{};
     while (std::string::npos != (pos = inout.find(what.data(), pos, what.length()))) {
@@ -132,7 +196,7 @@ inline std::size_t replace_all(std::string& inout, const std::string_view& what,
 /// @param inout The string to modify.
 /// @param what The substring to remove.
 /// @return The number of removals made.
-inline std::size_t remove_all(std::string& inout, const std::string_view& what) noexcept {
+inline std::size_t remove_all(std::string& inout, std::string_view what) noexcept {
     return replace_all(inout, what, "");
 }
 

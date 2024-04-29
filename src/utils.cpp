@@ -44,6 +44,7 @@
 #include <range/v3/algorithm/reverse.hpp>
 #include <range/v3/algorithm/search.hpp>
 #include <range/v3/view/filter.hpp>
+#include <range/v3/view/join.hpp>
 #include <range/v3/view/split.hpp>
 #include <range/v3/view/transform.hpp>
 
@@ -329,25 +330,25 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     return false;
 }
 
-auto make_multiline(const std::string_view& str, bool reverse, char delim) noexcept -> std::vector<std::string> {
-    static constexpr auto functor = [](auto&& rng) {
-        return std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
-    };
-    static constexpr auto second = [](auto&& rng) { return rng != ""; };
-
-    auto&& view_res = str
-        | ranges::views::split(delim)
-        | ranges::views::transform(functor);
-
+auto make_multiline(std::string_view str, bool reverse, char delim) noexcept -> std::vector<std::string> {
     std::vector<std::string> lines{};
-    ranges::for_each(view_res | ranges::views::filter(second), [&](auto&& rng) { lines.emplace_back(rng); });
+    ranges::for_each(utils::make_split_view(str, delim), [&](auto&& rng) { lines.emplace_back(rng); });
     if (reverse) {
         ranges::reverse(lines);
     }
     return lines;
 }
 
-auto make_multiline(const std::vector<std::string>& multiline, bool reverse, const std::string_view&& delim) noexcept -> std::string {
+auto make_multiline_view(std::string_view str, bool reverse, char delim) noexcept -> std::vector<std::string_view> {
+    std::vector<std::string_view> lines{};
+    ranges::for_each(utils::make_split_view(str, delim), [&](auto&& rng) { lines.emplace_back(rng); });
+    if (reverse) {
+        ranges::reverse(lines);
+    }
+    return lines;
+}
+
+auto make_multiline(const std::vector<std::string>& multiline, bool reverse, std::string_view delim) noexcept -> std::string {
     std::string res{};
     for (const auto& line : multiline) {
         res += line;
@@ -359,6 +360,10 @@ auto make_multiline(const std::vector<std::string>& multiline, bool reverse, con
     }
 
     return res;
+}
+
+auto join(const std::vector<std::string>& lines, std::string_view delim) noexcept -> std::string {
+    return lines | ranges::views::join(delim) | ranges::to<std::string>();
 }
 
 // install a pkg in the live session if not installed
