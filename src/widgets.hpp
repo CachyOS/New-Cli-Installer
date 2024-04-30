@@ -30,7 +30,7 @@ namespace detail {
     auto centered_widget(ftxui::Component& container, const std::string_view& title, const ftxui::Element& widget) noexcept -> ftxui::Element;
     auto controls_widget(const std::array<std::string_view, 2>&& titles, const std::array<std::function<void()>, 2>&& callbacks, ftxui::ButtonOption* button_option) noexcept -> ftxui::Component;
     auto centered_interative_multi(const std::string_view& title, ftxui::Component& widgets) noexcept -> ftxui::Element;
-    auto multiline_text(const std::vector<std::string>& lines) noexcept -> ftxui::Element;
+    auto multiline_text(std::vector<std::string>&& lines) noexcept -> ftxui::Element;
     auto from_vector_checklist(const std::vector<std::string>& opts, bool* const opts_state) noexcept -> ftxui::Components;
     auto from_checklist_string(const std::vector<std::string>& opts, const bool* const opts_state) noexcept -> std::string;
     auto from_checklist_vector(const std::vector<std::string>& opts, const bool* const opts_state) noexcept -> std::vector<std::string>;
