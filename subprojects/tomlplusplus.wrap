@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/marzer/tomlplusplus.git
-revision = d8fa9a1fddc90254cac2366dde23f0b613bc1280
+revision = 1f7884e59165e517462f922e7b6de131bd9844f3
 
 [provide]
 tomlplusplus = tomlplusplus_dep

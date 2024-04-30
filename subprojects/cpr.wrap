@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/libcpr/cpr.git
-revision = 1.10.5
+revision = 7cd69d2cc3105a3920da765e285d2a89d2247f0d
 
 patch_directory = cpr
 

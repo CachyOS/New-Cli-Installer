@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/gabime/spdlog.git
-revision = ac55e60488032b9acde8940a5de099541c4515da
+revision = 62302019babd8fdf63c1c6dc4c9faa48d441a7f0
 
 patch_directory = spdlog
 
