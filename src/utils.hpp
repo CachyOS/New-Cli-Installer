@@ -67,7 +67,7 @@ void find_partitions() noexcept;
 [[nodiscard]] auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<std::string>;
 [[nodiscard]] auto get_pkglist_desktop(const std::string_view& desktop) noexcept -> std::vector<std::string>;
 void install_from_pkglist(const std::string_view& packages) noexcept;
-void install_base(const std::string_view& kernel) noexcept;
+void install_base(const std::string_view& packages) noexcept;
 void install_desktop(const std::string_view& desktop) noexcept;
 void remove_pkgs(const std::string_view& packages) noexcept;
 void install_grub_uefi(const std::string_view& bootid, bool as_default = true) noexcept;

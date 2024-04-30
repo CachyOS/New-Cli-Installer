@@ -179,13 +179,13 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
 
     child = process;
 
-    uint32_t index{};
-    uint32_t bytes_read;
+    std::uint32_t index{};
+    std::uint32_t bytes_read{};
     do {
-        std::lock_guard<std::mutex> lock(s_mutex);
+        const std::lock_guard<std::mutex> lock(s_mutex);
 
         bytes_read = subprocess_read_stdout(&process, data.data() + index,
-            static_cast<uint32_t>(data.size()) - 1 - index);
+            static_cast<std::uint32_t>(data.size()) - 1 - index);
 
         index += bytes_read;
         process_log = data.data();
@@ -242,8 +242,7 @@ std::string exec(const std::string_view& command, const bool& interactive) noexc
         return std::to_string(ret_code);
     }
 
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.data(), "r"), pclose);
-
+    const std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.data(), "r"), pclose);
     if (!pipe) {
         spdlog::error("popen failed! '{}'", command);
         return "-1";
@@ -273,7 +272,7 @@ auto read_whole_file(const std::string_view& filepath) noexcept -> std::string {
     }
 
     std::fseek(file, 0u, SEEK_END);
-    const std::size_t size = static_cast<std::size_t>(std::ftell(file));
+    const auto size = static_cast<std::size_t>(std::ftell(file));
     std::fseek(file, 0u, SEEK_SET);
 
     std::string buf;
@@ -319,15 +318,15 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     fmt::print("{}{}{}\n", color, prompt, RESET);
 
     std::string tmp{};
-    if (std::getline(std::cin, tmp)) {
-        const auto& read_char = (tmp.length() == 1) ? tmp[0] : '\0';
-        if (read != nullptr)
-            *read = read_char;
-
-        return true;
+    if (!std::getline(std::cin, tmp)) {
+        return false;
     }
 
-    return false;
+    const auto& read_char = (tmp.length() == 1) ? tmp[0] : '\0';
+    if (read != nullptr) {
+        *read = read_char;
+    }
+    return true;
 }
 
 auto make_multiline(std::string_view str, bool reverse, char delim) noexcept -> std::vector<std::string> {
@@ -665,7 +664,7 @@ void find_partitions() noexcept {
     const auto& include_part         = std::get<std::string>(config_data["INCLUDE_PART"]);
 
     // get the list of partitions and also include the zvols since it is common to mount filesystems directly on them.  It should be safe to include them here since they present as block devices.
-    static constexpr auto other_piece = "sed 's/part$/\\/dev\\//g' | sed 's/lvm$\\|crypt$/\\/dev\\/mapper\\//g' | awk '{print $3$1 \" \" $2}' | awk '!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk '{printf \"/dev/zvol/%s %s\\n\", $1, $2}'";
+    static constexpr auto other_piece = R"(sed 's/part$/\/dev\//g' | sed 's/lvm$\|crypt$/\/dev\/mapper\//g' | awk '{print $3$1 " " $2}' | awk '!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk '{printf "/dev/zvol/%s %s\n", $1, $2}')";
     const auto& partitions_tmp        = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME,SIZE,TYPE | grep '{}' | {}"), include_part, other_piece));
 
     spdlog::info("found partitions:\n{}", partitions_tmp);
@@ -717,7 +716,7 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
     const auto& lvm_vg = utils::exec("vgs -o vg_name --noheading 2>/dev/null");
     const auto& lvm_lv = utils::exec("lvs -o vg_name,lv_name --noheading --separator - 2>/dev/null");
 
-    if (!((lvm_lv != "") && (lvm_vg != "") && (lvm_pv != ""))) {
+    if (!(!lvm_lv.empty() && !lvm_vg.empty() && !lvm_pv.empty())) {
         return;
     }
 
@@ -1503,10 +1502,11 @@ void install_bootloader(const std::string_view& bootloader) noexcept {
     auto* config_instance   = Config::instance();
     auto& config_data       = config_instance->data();
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    if (system_info == "BIOS")
+    if (system_info == "BIOS") {
         utils::bios_bootloader(bootloader);
-    else
+    } else {
         utils::uefi_bootloader(bootloader);
+    }
 }
 
 // List partitions to be hidden from the mounting menu
@@ -1537,7 +1537,7 @@ void get_cryptroot() noexcept {
 
     // Identify if /mnt or partition is type "crypt" (LUKS on LVM, or LUKS alone)
     if ((utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt", true) != "0")
-        || (utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt$/,/part/p\" | awk '{print $6}' | grep -q crypt", true) != "0")) {
+        || (utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt$/,/part/p" | awk '{print $6}' | grep -q crypt)", true) != "0")) {
         return;
     }
 
@@ -1547,7 +1547,7 @@ void get_cryptroot() noexcept {
     // Get the name of the Luks device
     if (utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
         // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-        luks_name = utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt$/,/crypt/p\" | awk '/crypt/ {print $1}'");
+        luks_name = utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt$/,/crypt/p" | awk '/crypt/ {print $1}')");
     }
 
     const auto& check_cryptparts = [&luks_name](const auto& cryptparts, auto functor) {
@@ -1559,7 +1559,7 @@ void get_cryptroot() noexcept {
     };
 
     // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-    auto temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"lvm\" | grep \"/mnt$\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/mapper/\"$1}'");
+    auto temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "lvm" | grep "/mnt$" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')");
     if (!temp_out.empty()) {
         const auto& cryptparts    = utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto& cryptpart) {
@@ -1571,12 +1571,12 @@ void get_cryptroot() noexcept {
     }
 
     // Check if LVM on LUKS
-    temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \" crypt$\" | grep -i \"LVM2_member\" | uniq | awk '{print \"/dev/mapper/\"$1}'");
+    temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')");
     if (!temp_out.empty()) {
         const auto& cryptparts    = utils::make_multiline(temp_out);
         const auto& check_functor = [&]([[maybe_unused]] const auto& cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = utils::exec("lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt /,/part/p\" | awk '/crypto_LUKS/ {print $4}'");
+            luks_uuid               = utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
             config_data["LVM"]      = 1;
         };
@@ -1585,7 +1585,7 @@ void get_cryptroot() noexcept {
     }
 
     // Check if LUKS alone (parent = part /dev/...)
-    temp_out = utils::exec("lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep \"/mnt$\" | grep \"part\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/\"$1}'");
+    temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "/mnt$" | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')");
     if (!temp_out.empty()) {
         const auto& cryptparts    = utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto& cryptpart) {
@@ -1624,7 +1624,7 @@ void get_cryptboot() noexcept {
 
     // If /boot is encrypted
     if ((utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt\\/boot$/ {print $6}' | grep -q crypt", true) != "0")
-        || (utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt\\/boot$/,/part/p\" | awk '{print $6}' | grep -q crypt", true) != "0")) {
+        || (utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot$/,/part/p" | awk '{print $6}' | grep -q crypt)", true) != "0")) {
         return;
     }
     config_data["LUKS"] = 1;
@@ -1637,8 +1637,8 @@ void get_cryptboot() noexcept {
     // Get the name of the Luks device
     if (utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
         // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-        boot_name = utils::exec("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt\\/boot$/,/crypt/p\" | awk '/crypt/ {print $1}'");
-        boot_uuid = utils::exec("lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/\\/mnt\\/boot /,/part/p\" | awk '/crypto_LUKS/ {print $4}'");
+        boot_name = utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot$/,/crypt/p" | awk '/crypt/ {print $1}')");
+        boot_uuid = utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
     }
 
     // Check if LVM on LUKS
@@ -1724,10 +1724,11 @@ void id_system() noexcept {
 
     // Apple System Detection
     const auto& sys_vendor = utils::exec("cat /sys/class/dmi/id/sys_vendor");
-    if ((sys_vendor == "Apple Inc.") || (sys_vendor == "Apple Computer, Inc."))
+    if ((sys_vendor == "Apple Inc.") || (sys_vendor == "Apple Computer, Inc.")) {
         utils::exec("modprobe -r -q efivars || true");  // if MAC
-    else
+    } else {
         utils::exec("modprobe -q efivarfs");  // all others
+    }
 
     // BIOS or UEFI Detection
     static constexpr auto efi_path = "/sys/firmware/efi/";
@@ -1746,12 +1747,14 @@ void id_system() noexcept {
     // init system
     const auto& init_sys = utils::exec("cat /proc/1/comm");
     auto& h_init         = std::get<std::string>(config_data["H_INIT"]);
-    if (init_sys == "systemd")
+    if (init_sys == "systemd") {
         h_init = "systemd";
+    }
 
-    // TODO: Test which nw-client is available, including if the service according to $H_INIT is running
-    if (h_init == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active")
+    // TODO(vnepogodin): Test which nw-client is available, including if the service according to $H_INIT is running
+    if (h_init == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active") {
         config_data["NW_CMD"] = "nmtui";
+    }
 }
 
 void install_cachyos_repo() noexcept {
