@@ -79,7 +79,7 @@ bool Initcpio::parse_file() noexcept {
         auto&& open_bracket_pos = line.find('(');
         auto&& close_bracket    = ranges::find(line, ')');
         if (open_bracket_pos != std::string::npos && close_bracket != line.end()) {
-            const auto length = ranges::distance(line.begin() + static_cast<long>(open_bracket_pos), close_bracket - 1);
+            const auto length = ranges::distance(line.begin() + static_cast<std::int64_t>(open_bracket_pos), close_bracket - 1);
 
             auto&& input_data = line.substr(open_bracket_pos + 1, static_cast<std::size_t>(length));
             return input_data | ranges::views::split(' ') | ranges::to<std::vector<std::string>>();
