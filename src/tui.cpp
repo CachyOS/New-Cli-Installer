@@ -47,6 +47,8 @@ namespace fs = std::filesystem;
 #include "follow_process_log.hpp"
 #endif
 
+using namespace std::string_view_literals;
+
 namespace tui {
 
 bool exit_done() noexcept {
@@ -54,7 +56,7 @@ bool exit_done() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    static constexpr auto close_inst_body = "\nClose installer?\n";
+    static constexpr auto close_inst_body = "\nClose installer?\n"sv;
     const auto& mountpoint                = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& target_mnt                = fmt::format(FMT_COMPILE("findmnt --list -o TARGET | grep {} 2>/dev/null"), mountpoint);
     if (!target_mnt.empty()) {
@@ -67,7 +69,7 @@ bool exit_done() noexcept {
 
         spdlog::info("exit installer.");
 
-        static constexpr auto LogInfo = "Would you like to save\nthe installation-log\nto the installed system?\nIt will be copied to\n";
+        static constexpr auto LogInfo = "Would you like to save\nthe installation-log\nto the installed system?\nIt will be copied to\n"sv;
         const auto& do_save_log       = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{} {}/cachyos-install.log\n"), LogInfo, mountpoint), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
         if (do_save_log) {
             fs::copy_file("/tmp/cachyos-install.log", fmt::format(FMT_COMPILE("{}/cachyos-install.log"), mountpoint), fs::copy_options::overwrite_existing);
@@ -99,7 +101,7 @@ void btrfs_subvolumes() noexcept {
         btrfsvols_mode = menu_entries[static_cast<std::size_t>(selected)];
         screen.ExitLoopClosure()();
     };
-    static constexpr auto btrfsvols_body = "\nAutomatic mode\nis designed to allow integration\nwith snapper, non-recursive snapshots,\nseparating system and user data and\nrestoring snapshots without losing data.\n";
+    static constexpr auto btrfsvols_body = "\nAutomatic mode\nis designed to allow integration\nwith snapper, non-recursive snapshots,\nseparating system and user data and\nrestoring snapshots without losing data.\n"sv;
     /* clang-format off */
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, btrfsvols_body);
 
@@ -131,8 +133,8 @@ void generate_fstab() noexcept {
     std::string fstab_cmd{};
     std::int32_t selected{};
     auto ok_callback = [&] {
-        if (system_info == "BIOS" && selected == 3) {
-            static constexpr auto FstabErr = "\nThe Part UUID option is only for UEFI/GPT installations.\n";
+        if (system_info == "BIOS"sv && selected == 3) {
+            static constexpr auto FstabErr = "\nThe Part UUID option is only for UEFI/GPT installations.\n"sv;
             detail::msgbox_widget(FstabErr);
             return;
         }
@@ -140,7 +142,7 @@ void generate_fstab() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) is recommended.\n\nIf no labels were set for the partitions earlier,\ndevice names will be used for the label option.\n";
+    static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) is recommended.\n\nIf no labels were set for the partitions earlier,\ndevice names will be used for the label option.\n"sv;
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, fstab_body);
 
     /* clang-format off */
@@ -153,7 +155,7 @@ void generate_fstab() noexcept {
 // Set system hostname
 void set_hostname() noexcept {
     std::string hostname{"cachyos"};
-    static constexpr auto hostname_body = "\nThe hostname is used to identify the system on a network.\n \nIt is restricted to alphanumeric characters, can contain a hyphen\n(-) - but not at the start or end - and must be no longer than 63 characters.\n";
+    static constexpr auto hostname_body = "\nThe hostname is used to identify the system on a network.\n \nIt is restricted to alphanumeric characters, can contain a hyphen\n(-) - but not at the start or end - and must be no longer than 63 characters.\n"sv;
     if (!detail::inputbox_widget(hostname, hostname_body, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
@@ -179,7 +181,7 @@ void set_locale() noexcept {
             screen.ExitLoopClosure()();
         };
 
-        static constexpr auto langBody = "\nChoose the system language.\n\nThe format is language_COUNTRY (e.g. en_US is english, United States;\nen_GB is english, Great Britain).\n";
+        static constexpr auto langBody = "\nChoose the system language.\n\nThe format is language_COUNTRY (e.g. en_US is english, United States;\nen_GB is english, Great Britain).\n"sv;
         const auto& content_size       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
         detail::menu_widget(locales, ok_callback, &selected, &screen, langBody, {content_size, size(HEIGHT, GREATER_THAN, 1)});
     }
@@ -192,7 +194,7 @@ void set_locale() noexcept {
 
 // Set keymap for X11
 void set_xkbmap() noexcept {
-    static constexpr auto keymaps_xkb = "af al am at az ba bd be bg br bt bw by ca cd ch cm cn cz de dk ee es et eu fi fo fr gb ge gh gn gr hr hu ie il in iq ir is it jp ke kg kh kr kz la lk lt lv ma md me mk ml mm mn mt mv ng nl no np pc ph pk pl pt ro rs ru se si sk sn sy tg th tj tm tr tw tz ua us uz vn za";
+    static constexpr auto keymaps_xkb = "af al am at az ba bd be bg br bt bw by ca cd ch cm cn cz de dk ee es et eu fi fo fr gb ge gh gn gr hr hu ie il in iq ir is it jp ke kg kh kr kz la lk lt lv ma md me mk ml mm mn mt mv ng nl no np pc ph pk pl pt ro rs ru se si sk sn sy tg th tj tm tr tw tz ua us uz vn za"sv;
     const auto& xkbmap_list           = utils::make_multiline(keymaps_xkb, false, ' ');
 
     auto screen = ScreenInteractive::Fullscreen();
@@ -206,7 +208,7 @@ void set_xkbmap() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    static constexpr auto xkbmap_body = "\nSelect Desktop Environment Keymap.\n";
+    static constexpr auto xkbmap_body = "\nSelect Desktop Environment Keymap.\n"sv;
     const auto& content_size          = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
     detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
 
@@ -223,14 +225,14 @@ void select_keymap() noexcept {
     const auto& current_keymap = std::get<std::string>(config_data["KEYMAP"]);
 
     // does user want to change the default settings?
-    static constexpr auto default_keymap_msg = "Currently configured keymap setting is:";
+    static constexpr auto default_keymap_msg = "Currently configured keymap setting is:"sv;
     const auto& content                      = fmt::format(FMT_COMPILE("\n {}\n \n[ {} ]\n"), default_keymap_msg, current_keymap);
     const auto& keep_default                 = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     /* clang-format off */
     if (!keep_default) { return; }
     /* clang-format on */
 
-    const auto& keymaps = utils::make_multiline(utils::exec("ls -R /usr/share/kbd/keymaps | grep \"map.gz\" | sed 's/\\.map\\.gz//g' | sort"));
+    const auto& keymaps = utils::make_multiline(utils::exec(R"(ls -R /usr/share/kbd/keymaps | grep "map.gz" | sed 's/\.map\.gz//g' | sort)"));
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{226};
@@ -239,7 +241,7 @@ void select_keymap() noexcept {
         utils::set_keymap(selected_keymap);
         screen.ExitLoopClosure()();
     };
-    static constexpr auto vc_keymap_body = "\nA virtual console is a shell prompt in a non-graphical environment.\nIts keymap is independent of a desktop environment / terminal.\n";
+    static constexpr auto vc_keymap_body = "\nA virtual console is a shell prompt in a non-graphical environment.\nIts keymap is independent of a desktop environment / terminal.\n"sv;
     const auto& content_size             = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
     detail::menu_widget(keymaps, ok_callback, &selected, &screen, vc_keymap_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
 }
@@ -249,7 +251,7 @@ bool set_timezone() noexcept {
     std::string zone{};
     {
         auto screen           = ScreenInteractive::Fullscreen();
-        const auto& cmd       = utils::exec("cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep \"/\" | sed \"s/\\/.*//g\" | sort -ud");
+        const auto& cmd       = utils::exec(R"(cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep "/" | sed "s/\/.*//g" | sort -ud)");
         const auto& zone_list = utils::make_multiline(cmd);
 
         std::int32_t selected{};
@@ -258,7 +260,7 @@ bool set_timezone() noexcept {
             screen.ExitLoopClosure()();
         };
 
-        static constexpr auto timezone_body = "The time zone is used to correctly set your system clock.";
+        static constexpr auto timezone_body = "The time zone is used to correctly set your system clock."sv;
         const auto& content_size            = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         detail::menu_widget(zone_list, ok_callback, &selected, &screen, timezone_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
     }
@@ -278,7 +280,7 @@ bool set_timezone() noexcept {
             screen.ExitLoopClosure()();
         };
 
-        static constexpr auto sub_timezone_body = "Select the city nearest to you.";
+        static constexpr auto sub_timezone_body = "Select the city nearest to you."sv;
         const auto& content_size                = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
         detail::menu_widget(city_list, ok_callback, &selected, &screen, sub_timezone_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
     }
@@ -309,7 +311,7 @@ void set_hw_clock() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    static constexpr auto hw_clock_body = "UTC is the universal time standard,\nand is recommended unless dual-booting with Windows.";
+    static constexpr auto hw_clock_body = "UTC is the universal time standard,\nand is recommended unless dual-booting with Windows."sv;
     const auto& content_size            = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, hw_clock_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
 }
@@ -317,18 +319,18 @@ void set_hw_clock() noexcept {
 // Set password for root user
 void set_root_password() noexcept {
     std::string pass{};
-    static constexpr auto root_pass_body = "Enter Root password";
+    static constexpr auto root_pass_body = "Enter Root password"sv;
     if (!detail::inputbox_widget(pass, root_pass_body, size(HEIGHT, GREATER_THAN, 1), true)) {
         return;
     }
     std::string confirm{};
-    static constexpr auto root_confirm_body = "Re-enter Root password";
+    static constexpr auto root_confirm_body = "Re-enter Root password"sv;
     if (!detail::inputbox_widget(confirm, root_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
         return;
     }
 
     if (pass != confirm) {
-        static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n";
+        static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n"sv;
         detail::msgbox_widget(PassErrBody);
         tui::set_root_password();
     }
@@ -338,15 +340,15 @@ void set_root_password() noexcept {
 // Create user on the system
 void create_new_user() noexcept {
     std::string user{};
-    static constexpr auto user_body = "Enter the user name. Letters MUST be lower case.";
+    static constexpr auto user_body = "Enter the user name. Letters MUST be lower case."sv;
     if (!detail::inputbox_widget(user, user_body, size(HEIGHT, GREATER_THAN, 1))) {
         return;
     }
 
     // Loop while username is blank, has spaces, or has capital letters in it.
-    while (user.empty() || (user.find_first_of(" ") != std::string::npos) || ranges::any_of(user, [](char ch) { return std::isupper(ch); })) {
+    while (user.empty() || (user.find_first_of(' ') != std::string::npos) || ranges::any_of(user, [](char ch) { return std::isupper(ch); })) {
         user.clear();
-        static constexpr auto user_err_body = "An incorrect user name was entered. Please try again.";
+        static constexpr auto user_err_body = "An incorrect user name was entered. Please try again."sv;
         if (!detail::inputbox_widget(user, user_err_body, size(HEIGHT, GREATER_THAN, 1))) {
             return;
         }
@@ -354,8 +356,8 @@ void create_new_user() noexcept {
 
     std::string_view shell{};
     {
-        static constexpr auto DefShell               = "\nChoose the default shell.\n";
-        static constexpr auto UseSpaceBar            = "Use [Spacebar] to de/select options listed.";
+        static constexpr auto DefShell               = "\nChoose the default shell.\n"sv;
+        static constexpr auto UseSpaceBar            = "Use [Spacebar] to de/select options listed."sv;
         const auto& shells_options_body              = fmt::format(FMT_COMPILE("\n{}{}\n"), DefShell, UseSpaceBar);
         const std::vector<std::string> radiobox_list = {
             "zsh",
@@ -368,13 +370,13 @@ void create_new_user() noexcept {
         auto ok_callback = [&] {
             switch (selected) {
             case 0:
-                shell = "/usr/bin/zsh";
+                shell = "/usr/bin/zsh"sv;
                 break;
             case 1:
-                shell = "/bin/bash";
+                shell = "/bin/bash"sv;
                 break;
             case 2: {
-                shell = "/usr/bin/fish";
+                shell = "/usr/bin/fish"sv;
                 break;
             }
             }
@@ -385,18 +387,18 @@ void create_new_user() noexcept {
 
     // Enter password. This step will only be reached where the loop has been skipped or broken.
     std::string pass{};
-    static constexpr auto user_pass_body = "Enter password for";
+    static constexpr auto user_pass_body = "Enter password for"sv;
     if (!detail::inputbox_widget(pass, fmt::format(FMT_COMPILE("{} {}"), user_pass_body, user), size(HEIGHT, GREATER_THAN, 1), true)) {
         return;
     }
     std::string confirm{};
-    static constexpr auto user_confirm_body = "Re-enter the password.";
+    static constexpr auto user_confirm_body = "Re-enter the password."sv;
     if (!detail::inputbox_widget(confirm, user_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
         return;
     }
 
     while (pass != confirm) {
-        static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n";
+        static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n"sv;
         detail::msgbox_widget(PassErrBody);
         pass.clear();
         confirm.clear();
@@ -409,7 +411,7 @@ void create_new_user() noexcept {
     }
 
     // create new user. This step will only be reached where the password loop has been skipped or broken.
-    detail::infobox_widget("\nCreating User and setting groups...\n");
+    detail::infobox_widget("\nCreating User and setting groups...\n"sv);
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     utils::create_new_user(user, pass, shell);
@@ -418,7 +420,7 @@ void create_new_user() noexcept {
 // Install pkgs from user input
 void install_cust_pkgs() noexcept {
     std::string packages{};
-    static constexpr auto content = "\nType any extra packages you would like to add, separated by spaces.\n \nFor example, to install Firefox, MPV, FZF:\nfirefox mpv fzf\n";
+    static constexpr auto content = "\nType any extra packages you would like to add, separated by spaces.\n \nFor example, to install Firefox, MPV, FZF:\nfirefox mpv fzf\n"sv;
     if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
@@ -439,7 +441,7 @@ void install_cust_pkgs() noexcept {
 
 void remove_pkgs() noexcept {
     std::string packages{};
-    static constexpr auto content = "\nType any packages you would like to remove, separated by spaces.\n \nFor example, to remove Firefox, MPV, FZF:\nfirefox mpv fzf\n";
+    static constexpr auto content = "\nType any packages you would like to remove, separated by spaces.\n \nFor example, to remove Firefox, MPV, FZF:\nfirefox mpv fzf\n"sv;
     if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
@@ -447,7 +449,7 @@ void remove_pkgs() noexcept {
 }
 
 void chroot_interactive() noexcept {
-    static constexpr auto chroot_return = "\nYou will now chroot into your installed system.\nYou can do changes almost as if you had booted into your installation.\n \nType \"exit\" to exit chroot.\n";
+    static constexpr auto chroot_return = "\nYou will now chroot into your installed system.\nYou can do changes almost as if you had booted into your installation.\n \nType \"exit\" to exit chroot.\n"sv;
     detail::infobox_widget(chroot_return);
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
@@ -464,7 +466,7 @@ void chroot_interactive() noexcept {
 }
 
 void install_grub_uefi() noexcept {
-    static constexpr auto content = "\nInstall UEFI Bootloader GRUB.\n";
+    static constexpr auto content = "\nInstall UEFI Bootloader GRUB.\n"sv;
     const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     /* clang-format off */
     if (!do_install_uefi) { return; }
@@ -472,8 +474,8 @@ void install_grub_uefi() noexcept {
 
     std::string bootid{"cachyos"};
     auto ret_status = utils::exec("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos", true);
-    if (ret_status == "0") {
-        static constexpr auto bootid_content = "\nInput the name identify your grub installation. Choosing an existing name overwrites it.\n";
+    if (ret_status == "0"sv) {
+        static constexpr auto bootid_content = "\nInput the name identify your grub installation. Choosing an existing name overwrites it.\n"sv;
         if (!detail::inputbox_widget(bootid, bootid_content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return;
         }
@@ -486,8 +488,8 @@ void install_grub_uefi() noexcept {
     utils::clear_screen();
     utils::install_grub_uefi(bootid, false);
     // Ask if user wishes to set Grub as the default bootloader and act accordingly
-    static constexpr auto set_boot_default_body  = "Some UEFI firmware may not detect the bootloader unless it is set\nas default by copying its efi stub to";
-    static constexpr auto set_boot_default_body2 = "and renaming it to bootx64.efi.\n\nIt is recommended to do so unless already using a default bootloader,\nor where intending to use multiple bootloaders.\n\nSet bootloader as default?";
+    static constexpr auto set_boot_default_body  = "Some UEFI firmware may not detect the bootloader unless it is set\nas default by copying its efi stub to"sv;
+    static constexpr auto set_boot_default_body2 = "and renaming it to bootx64.efi.\n\nIt is recommended to do so unless already using a default bootloader,\nor where intending to use multiple bootloaders.\n\nSet bootloader as default?"sv;
 
     const auto& do_set_default_bootloader = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{} {}/EFI/boot {}\n"), set_boot_default_body, uefi_mount, set_boot_default_body2), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     /* clang-format off */
@@ -500,12 +502,12 @@ void install_grub_uefi() noexcept {
     utils::arch_chroot(fmt::format(FMT_COMPILE("cp -r {0}/EFI/cachyos/grubx64.efi {0}/EFI/boot/bootx64.efi"), uefi_mount), false);
 #endif
 
-    detail::infobox_widget("\nGrub has been set as the default bootloader.\n");
+    detail::infobox_widget("\nGrub has been set as the default bootloader.\n"sv);
     std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
 void install_refind() noexcept {
-    static constexpr auto content = "\nThis installs refind and configures it to automatically detect your kernels.\nNo support for encrypted /boot or intel microcode.\nThese require manual boot stanzas or using a different bootloader.\n";
+    static constexpr auto content = "\nThis installs refind and configures it to automatically detect your kernels.\nNo support for encrypted /boot or intel microcode.\nThese require manual boot stanzas or using a different bootloader.\n"sv;
     const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     /* clang-format off */
     if (!do_install_uefi) { return; }
@@ -518,7 +520,7 @@ void install_refind() noexcept {
 }
 
 void install_systemd_boot() noexcept {
-    static constexpr auto content = "\nThis installs systemd-boot and generates boot entries\nfor the currently installed kernels.\nThis bootloader requires your kernels to be on the UEFI partition.\nThis is achieved by mounting the UEFI partition to /boot.\n";
+    static constexpr auto content = "\nThis installs systemd-boot and generates boot entries\nfor the currently installed kernels.\nThis bootloader requires your kernels to be on the UEFI partition.\nThis is achieved by mounting the UEFI partition to /boot.\n"sv;
     const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     /* clang-format off */
     if (!do_install_uefi) { return; }
@@ -526,14 +528,14 @@ void install_systemd_boot() noexcept {
 
     utils::install_systemd_boot();
 
-    detail::infobox_widget("\nSystemd-boot was installed\n");
+    detail::infobox_widget("\nSystemd-boot was installed\n"sv);
     std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
 void uefi_bootloader() noexcept {
 #ifdef NDEVENV
     // Ensure again that efivarfs is mounted
-    static constexpr auto efi_path = "/sys/firmware/efi/";
+    static constexpr auto efi_path = "/sys/firmware/efi/"sv;
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
         // Mount efivarfs if it is not already mounted
         const auto& mount_out = utils::exec("mount | grep /sys/firmware/efi/efivars");
@@ -544,7 +546,7 @@ void uefi_bootloader() noexcept {
     }
 #endif
 
-    static constexpr auto bootloaderInfo        = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.";
+    static constexpr auto bootloaderInfo        = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting."sv;
     const std::vector<std::string> menu_entries = {
         "grub",
         "refind",
@@ -577,9 +579,9 @@ void uefi_bootloader() noexcept {
 }
 
 void install_base() noexcept {
-    static constexpr auto base_installed = "/mnt/.base_installed";
+    static constexpr auto base_installed = "/mnt/.base_installed"sv;
     if (fs::exists(base_installed)) {
-        static constexpr auto content = "\nA CachyOS Base has already been installed on this partition.\nProceed anyway?\n";
+        static constexpr auto content = "\nA CachyOS Base has already been installed on this partition.\nProceed anyway?\n"sv;
         const auto& do_reinstall      = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
         if (!do_reinstall) { return; }
@@ -594,7 +596,6 @@ void install_base() noexcept {
     const std::vector<std::string> available_kernels{"linux-cachyos", "linux", "linux-zen", "linux-lts", "linux-cachyos-cacule", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-tt", "linux-cachyos-bore"};
 
     // Create the base list of packages
-    std::vector<std::string> install_packages{};
     std::unique_ptr<bool[]> kernels_state{new bool[available_kernels.size()]{false}};
 
     auto screen = ScreenInteractive::Fullscreen();
@@ -606,7 +607,7 @@ void install_base() noexcept {
             // Check if a kernel is already installed
             ret_status = utils::exec(fmt::format(FMT_COMPILE("ls {}/boot/*.img >/dev/null 2>&1"), mountpoint), true);
             if (ret_status != "0") {
-                static constexpr auto ErrNoKernel = "\nAt least one kernel must be selected.\n";
+                static constexpr auto ErrNoKernel = "\nAt least one kernel must be selected.\n"sv;
                 detail::msgbox_widget(ErrNoKernel);
                 return;
             }
@@ -618,11 +619,11 @@ void install_base() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    static constexpr auto InstStandBseBody = "\nThe base package group will be installed automatically.\nThe base-devel package group is required to use the Arch User Repository (AUR).\n";
-    static constexpr auto UseSpaceBar      = "Use [Spacebar] to de/select options listed.";
+    static constexpr auto InstStandBseBody = "\nThe base package group will be installed automatically.\nThe base-devel package group is required to use the Arch User Repository (AUR).\n"sv;
+    static constexpr auto UseSpaceBar      = "Use [Spacebar] to de/select options listed."sv;
     const auto& kernels_options_body       = fmt::format(FMT_COMPILE("\n{}{}\n"), InstStandBseBody, UseSpaceBar);
 
-    constexpr auto base_title = "New CLI Installer | Install Base";
+    static constexpr auto base_title = "New CLI Installer | Install Base"sv;
     detail::checklist_widget(available_kernels, ok_callback, kernels_state.get(), &screen, kernels_options_body, base_title, {.text_size = nothing});
 
     /* clang-format off */
@@ -635,9 +636,9 @@ void install_base() noexcept {
 
 void install_desktop() noexcept {
 #ifdef NDEVENV
-    static constexpr auto base_installed = "/mnt/.base_installed";
+    static constexpr auto base_installed = "/mnt/.base_installed"sv;
     if (!fs::exists(base_installed)) {
-        static constexpr auto content = "\nA CachyOS Base is not installed on this partition.\n";
+        static constexpr auto content = "\nA CachyOS Base is not installed on this partition.\n"sv;
         detail::infobox_widget(content);
         std::this_thread::sleep_for(std::chrono::seconds(1));
         return;
@@ -657,11 +658,11 @@ void install_desktop() noexcept {
         screen.ExitLoopClosure()();
     };
 
-    static constexpr auto InstManDEBody = "\nPlease choose a desktop environment.\n";
-    static constexpr auto UseSpaceBar   = "Use [Spacebar] to de/select options listed.";
+    static constexpr auto InstManDEBody = "\nPlease choose a desktop environment.\n"sv;
+    static constexpr auto UseSpaceBar   = "Use [Spacebar] to de/select options listed."sv;
     const auto& des_options_body        = fmt::format(FMT_COMPILE("\n{}{}\n"), InstManDEBody, UseSpaceBar);
 
-    static constexpr auto desktop_title = "New CLI Installer | Install Desktop";
+    static constexpr auto desktop_title = "New CLI Installer | Install Desktop"sv;
     detail::radiolist_widget(available_des, ok_callback, &selected, &screen, {des_options_body, desktop_title}, {.text_size = nothing});
 
     /* clang-format off */
@@ -720,14 +721,14 @@ void config_base_menu() noexcept {
         }
     };
 
-    static constexpr auto config_base_body = "Basic configuration of the base.";
+    static constexpr auto config_base_body = "Basic configuration of the base."sv;
     const auto& content_size               = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, config_base_body, {content_size, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
 }
 
 // Grub auto-detects installed kernel
 void bios_bootloader() {
-    static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step.\n \nos-prober is needed for automatic detection of already installed\nsystems on other partitions.";
+    static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step.\n \nos-prober is needed for automatic detection of already installed\nsystems on other partitions."sv;
     const std::vector<std::string> menu_entries = {
         "grub",
         "grub + os-prober",
@@ -796,7 +797,7 @@ void performance_menu() {
             break;
         }
     };
-    static constexpr auto tweaks_body = "Various configuration options";
+    static constexpr auto tweaks_body = "Various configuration options"sv;
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, tweaks_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
 }
 
@@ -822,7 +823,7 @@ void tweaks_menu() noexcept {
             break;
         }
     };
-    static constexpr auto tweaks_body = "Various configuration options";
+    static constexpr auto tweaks_body = "Various configuration options"sv;
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, tweaks_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
 }
 
@@ -834,10 +835,11 @@ void install_bootloader() noexcept {
     auto* config_instance   = Config::instance();
     auto& config_data       = config_instance->data();
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    if (system_info == "BIOS")
+    if (system_info == "BIOS"sv) {
         tui::bios_bootloader();
-    else
+    } else {
         tui::uefi_bootloader();
+    }
 }
 
 // BIOS and UEFI
@@ -857,7 +859,7 @@ void auto_partition() noexcept {
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    const auto& lsblk = utils::exec("lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep \"disk\\|part\\|lvm\\|crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\\|MOUNTPOINT\"");
+    const auto& lsblk = utils::exec(R"(lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep "disk\|part\|lvm\|crypt\|NAME\|MODEL\|TYPE\|FSTYPE\|SIZE\|MOUNTPOINT")");
     detail::msgbox_widget(lsblk, size(HEIGHT, GREATER_THAN, 5));
 }
 
@@ -875,7 +877,7 @@ void refresh_pacman_keys() noexcept {
 bool select_device() noexcept {
     auto* config_instance    = Config::instance();
     auto& config_data        = config_instance->data();
-    auto devices             = utils::exec("lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print \"/dev/\" $1 \" \" $2}' | sort -u");
+    auto devices             = utils::exec(R"(lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print "/dev/" $1 " " $2}' | sort -u)");
     const auto& devices_list = utils::make_multiline(devices);
 
     auto screen = ScreenInteractive::Fullscreen();
@@ -916,7 +918,7 @@ bool select_filesystem() noexcept {
         const auto& src      = menu_entries[static_cast<std::size_t>(selected)];
         const auto& lines    = utils::make_multiline(src, false, ' ');
         const auto& file_sys = lines[0];
-        utils::select_filesystem(file_sys.c_str());
+        utils::select_filesystem(file_sys);
         success = true;
         screen.ExitLoopClosure()();
     };
@@ -954,25 +956,25 @@ void mount_opts(bool force) noexcept {
     const auto& format_name   = utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), partition));
     const auto& format_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk '/disk/ {print $1}'"));
 
-    const auto& rotational_queue = (utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1");
+    const auto& rotational_queue = (utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1"sv);
 
     std::unique_ptr<bool[]> fs_opts_state{new bool[fs_opts.size()]{false}};
     for (size_t i = 0; i < fs_opts.size(); ++i) {
         const auto& fs_opt = fs_opts[i];
         auto& fs_opt_state = fs_opts_state[i];
         if (rotational_queue) {
-            fs_opt_state = ((fs_opt == "autodefrag")
-                || (fs_opt == "compress=zlip")
-                || (fs_opt == "nossd"));
+            fs_opt_state = ((fs_opt == "autodefrag"sv)
+                || (fs_opt == "compress=zlip"sv)
+                || (fs_opt == "nossd"sv));
         } else {
-            fs_opt_state = ((fs_opt == "compress=lzo")
-                || (fs_opt == "space_cache")
-                || (fs_opt == "commit=120")
-                || (fs_opt == "ssd"));
+            fs_opt_state = ((fs_opt == "compress=lzo"sv)
+                || (fs_opt == "space_cache"sv)
+                || (fs_opt == "commit=120"sv)
+                || (fs_opt == "ssd"sv));
         }
 
         /* clang-format off */
-        if (!fs_opt_state) { fs_opt_state = (fs_opt == "noatime"); }
+        if (!fs_opt_state) { fs_opt_state = (fs_opt == "noatime"sv); }
         /* clang-format on */
     }
 
@@ -1000,7 +1002,7 @@ void mount_opts(bool force) noexcept {
     const auto& fs_title           = fmt::format(FMT_COMPILE("New CLI Installer | {}"), file_sys_formatted);
     const auto& content_size       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
 
-    static constexpr auto mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n";
+    static constexpr auto mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n"sv;
     detail::checklist_widget(fs_opts, ok_callback, fs_opts_state.get(), &screen, mount_options_body, fs_title, {content_size, nothing});
     cleaup_mount_opts(mount_opts_info);
 
@@ -1038,7 +1040,7 @@ bool mount_current_partition(bool force) noexcept {
     if (!fs_opts.empty()) { tui::mount_opts(force); }
     /* clang-format on */
 
-    // TODO: use libmount instead.
+    // TODO(vl): use libmount instead.
     // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
 #ifdef NDEVENV
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
@@ -1075,7 +1077,7 @@ bool mount_current_partition(bool force) noexcept {
         };
 
         // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-        auto cryptparts    = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \"lvm\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/mapper/\"$1}'"));
+        auto cryptparts    = utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "lvm" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')"));
         auto check_functor = [&](const auto cryptpart) {
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("{} cryptdevice={}:{}"), luks_dev, cryptpart, luks_name);
             config_data["LVM"]      = 1;
@@ -1085,13 +1087,13 @@ bool mount_current_partition(bool force) noexcept {
         }
 
         // Check if LVM on LUKS
-        cryptparts = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \" crypt$\" | grep -i \"LVM2_member\" | uniq | awk '{print \"/dev/mapper/\"$1}'"));
+        cryptparts = utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')"));
         if (check_cryptparts(cryptparts, check_functor)) {
             return true;
         }
 
         // Check if LUKS alone (parent = part /dev/...)
-        cryptparts                 = utils::make_multiline(utils::exec("lsblk -lno NAME,FSTYPE,TYPE | grep \"part\" | grep -i \"crypto_luks\" | uniq | awk '{print \"/dev/\"$1}'"));
+        cryptparts                 = utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')"));
         const auto& check_func_dev = [&](const auto cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
@@ -1136,9 +1138,9 @@ bool mount_current_partition(bool force) noexcept {
 }
 
 void make_swap() noexcept {
-    static constexpr auto sel_swap_body = "\nSelect SWAP Partition.\nIf using a Swapfile, it will initially set the same size as your RAM.\n";
-    static constexpr auto sel_swap_none = "None";
-    static constexpr auto sel_swap_file = "Swapfile";
+    static constexpr auto sel_swap_body = "\nSelect SWAP Partition.\nIf using a Swapfile, it will initially set the same size as your RAM.\n"sv;
+    static constexpr auto sel_swap_none = "None"sv;
+    static constexpr auto sel_swap_file = "Swapfile"sv;
 
     auto* config_instance       = Config::instance();
     auto& config_data           = config_instance->data();
@@ -1149,7 +1151,7 @@ void make_swap() noexcept {
         std::vector<std::string> temp{"None -"};
         const auto& root_filesystem = utils::get_mountpoint_fs(mountpoint_info);
         if (!(root_filesystem == "zfs" || root_filesystem == "btrfs")) {
-            temp.push_back("Swapfile -");
+            temp.emplace_back("Swapfile -");
         }
         const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
         temp.reserve(partitions.size());
@@ -1184,7 +1186,7 @@ void make_swap() noexcept {
             return;
         }
 
-        while (utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"M\\|G\""), value)) == "") {
+        while (utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"M\\|G\""), value)).empty()) {
             detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
             value = fmt::format(FMT_COMPILE("{}M"), total_memory);
             if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
@@ -1231,7 +1233,7 @@ void make_swap() noexcept {
 
 void lvm_detect() noexcept {
     utils::lvm_detect([] {
-        detail::infobox_widget("\nExisting Logical Volume Management (LVM) detected.\nActivating. Please Wait...\n");
+        detail::infobox_widget("\nExisting Logical Volume Management (LVM) detected.\nActivating. Please Wait...\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(2));
     });
 }
@@ -1255,13 +1257,13 @@ void lvm_del_vg() noexcept {
         screen.ExitLoopClosure()();
     };
     /* clang-format off */
-    static constexpr auto del_lvmvg_body = "\nSelect Volume Group to delete.\nAll Logical Volumes within will also be deleted.\n";
+    static constexpr auto del_lvmvg_body = "\nSelect Volume Group to delete.\nAll Logical Volumes within will also be deleted.\n"sv;
     detail::menu_widget(vg_list, ok_callback, &selected, &screen, del_lvmvg_body);
     if (sel_vg.empty()) { return; }
     /* clang-format on */
 
     // Ask for confirmation
-    const auto& do_action = detail::yesno_widget("\nConfirm deletion of Volume Group(s) and Logical Volume(s).\n");
+    const auto& do_action = detail::yesno_widget("\nConfirm deletion of Volume Group(s) and Logical Volume(s).\n"sv);
     /* clang-format off */
     if (!do_action) { return; }
     /* clang-format on */
@@ -1298,7 +1300,7 @@ void lvm_menu() noexcept {
         }
     };
 
-    static constexpr auto lvm_menu_body = "\nLogical Volume Management (LVM) allows 'virtual' hard drives (Volume Groups)\nand partitions (Logical Volumes) to be created from existing drives\nand partitions. A Volume Group must be created first, then one or more\nLogical Volumes in it.\n \nLVM can also be used with an encrypted partition to create multiple logical\nvolumes (e.g. root and home) in it.\n";
+    static constexpr auto lvm_menu_body = "\nLogical Volume Management (LVM) allows 'virtual' hard drives (Volume Groups)\nand partitions (Logical Volumes) to be created from existing drives\nand partitions. A Volume Group must be created first, then one or more\nLogical Volumes in it.\n \nLVM can also be used with an encrypted partition to create multiple logical\nvolumes (e.g. root and home) in it.\n"sv;
     const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, lvm_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
 }
@@ -1341,16 +1343,16 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
         };
         /* clang-format off */
 
-        static constexpr auto zfs_zpool_partmenu_body = "\nSelect a partition to hold the ZFS zpool\n";
+        static constexpr auto zfs_zpool_partmenu_body = "\nSelect a partition to hold the ZFS zpool\n"sv;
         const auto& content_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         detail::menu_widget(partitions, ok_callback, &selected, &screen, zfs_zpool_partmenu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
         if (!success) { return false; }
         /* clang-format on */
     }
 
-    static constexpr auto zfs_zpool_body        = "\nEnter the name for the new zpool\n";
-    static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n";
-    static constexpr auto zfs_zpoolcvalidation2 = "\nzpool names cannot start with the reserved words (log, mirror, raidz, raidz1, raidz2, raidz3, or spare)\n";
+    static constexpr auto zfs_zpool_body        = "\nEnter the name for the new zpool\n"sv;
+    static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n"sv;
+    static constexpr auto zfs_zpoolcvalidation2 = "\nzpool names cannot start with the reserved words (log, mirror, raidz, raidz1, raidz2, raidz3, or spare)\n"sv;
 
     // We need to get a name for the zpool
     std::string zfs_zpool_name{"zpcachyos"};
@@ -1392,7 +1394,7 @@ bool zfs_import_pool() noexcept {
     const auto& zlist = utils::make_multiline(utils::exec("zpool import 2>/dev/null | grep \"^[[:space:]]*pool\" | awk -F : '{print $2}' | awk '{$1=$1};1'"));
     if (zlist.empty()) {
         // no available datasets
-        detail::infobox_widget("\nNo pools available\"\n");
+        detail::infobox_widget("\nNo pools available\"\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return false;
     }
@@ -1410,7 +1412,7 @@ bool zfs_import_pool() noexcept {
             success        = true;
             screen.ExitLoopClosure()();
         };
-        static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n";
+        static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n"sv;
         const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
         /* clang-format off */
@@ -1432,7 +1434,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
     const auto& zlist = utils::make_multiline(utils::zfs_list_pools());
     if (zlist.empty()) {
         // no available datasets
-        detail::infobox_widget("\nNo pools available\"\n");
+        detail::infobox_widget("\nNo pools available\"\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return false;
     }
@@ -1447,7 +1449,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
             success        = true;
             screen.ExitLoopClosure()();
         };
-        static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n";
+        static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n"sv;
         const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
         /* clang-format off */
@@ -1455,8 +1457,8 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
         /* clang-format on */
     }
 
-    static constexpr auto zfs_dataset_body      = "\nEnter a name and relative path for the dataset.\n \nFor example, if you want the dataset to be placed at zpool/data/zname, enter 'data/zname'\n";
-    static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n";
+    static constexpr auto zfs_dataset_body      = "\nEnter a name and relative path for the dataset.\n \nFor example, if you want the dataset to be placed at zpool/data/zname, enter 'data/zname'\n"sv;
+    static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n"sv;
 
     // We need to get a name for the dataset
     std::string zfs_dataset_name{};
@@ -1482,8 +1484,8 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
     if (zmount == "legacy") {
         utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name), zmount);
     } else if (zmount == "zvol") {
-        static constexpr auto zvol_size_menu_body       = "\nEnter the size of the zvol in megabytes(MB)\n";
-        static constexpr auto zvol_size_menu_validation = "\nYou must enter a number greater than 0\n";
+        static constexpr auto zvol_size_menu_body       = "\nEnter the size of the zvol in megabytes(MB)\n"sv;
+        static constexpr auto zvol_size_menu_validation = "\nYou must enter a number greater than 0\n"sv;
 
         // We need to get a name for the zvol
         std::string zvol_size{};
@@ -1519,7 +1521,7 @@ void zfs_set_property() noexcept {
     const auto& zlist = utils::make_multiline(utils::zfs_list_datasets());
     if (zlist.empty()) {
         // no available datasets
-        detail::infobox_widget("\nNo datasets available\"\n");
+        detail::infobox_widget("\nNo datasets available\"\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
     }
@@ -1534,7 +1536,7 @@ void zfs_set_property() noexcept {
             success  = true;
             screen.ExitLoopClosure()();
         };
-        static constexpr auto zfs_menu_body = "\nSelect the dataset you would like to set a property on\n";
+        static constexpr auto zfs_menu_body = "\nSelect the dataset you would like to set a property on\n"sv;
         const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
         /* clang-format off */
@@ -1542,8 +1544,8 @@ void zfs_set_property() noexcept {
         /* clang-format on */
     }
 
-    static constexpr auto zfs_mountpoint_body  = "\nEnter the property and value you would like to\nset using the format property=mountpoint\n \nFor example, you could enter:\ncompression=lz4\nor\nacltype=posixacl\n\n";
-    static constexpr auto zfs_property_invalid = "\nInput must be the format property=mountpoint\n";
+    static constexpr auto zfs_mountpoint_body  = "\nEnter the property and value you would like to\nset using the format property=mountpoint\n \nFor example, you could enter:\ncompression=lz4\nor\nacltype=posixacl\n\n"sv;
+    static constexpr auto zfs_property_invalid = "\nInput must be the format property=mountpoint\n"sv;
 
     // We need to get a valid property
     std::string zfs_property_ent{};
@@ -1574,7 +1576,7 @@ void zfs_destroy_dataset() noexcept {
     const auto& zlist = utils::make_multiline(utils::zfs_list_datasets());
     if (zlist.empty()) {
         // no available datasets
-        detail::infobox_widget("\nNo datasets available\"\n");
+        detail::infobox_widget("\nNo datasets available\"\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
     }
@@ -1589,7 +1591,7 @@ void zfs_destroy_dataset() noexcept {
             success  = true;
             screen.ExitLoopClosure()();
         };
-        static constexpr auto zfs_destroy_menu_body = "\nSelect the dataset you would like to permanently delete.\nPlease note that this will recursively delete any child datasets with warning\n";
+        static constexpr auto zfs_destroy_menu_body = "\nSelect the dataset you would like to permanently delete.\nPlease note that this will recursively delete any child datasets with warning\n"sv;
         const auto& content_size                    = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
         detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_destroy_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
         /* clang-format off */
@@ -1610,7 +1612,7 @@ void zfs_destroy_dataset() noexcept {
 void zfs_auto() noexcept {
     // first we need to create a zpool to hold the datasets/zvols
     if (!tui::zfs_create_zpool(false)) {
-        detail::infobox_widget("\nOperation cancelled\n");
+        detail::infobox_widget("\nOperation cancelled\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
     }
@@ -1621,13 +1623,13 @@ void zfs_auto() noexcept {
     const auto& zfs_zpool_name = std::get<std::string>(config_data["ZFS_ZPOOL_NAME"]);
 
     if (!utils::zfs_auto_pres(partition, zfs_zpool_name)) {
-        detail::infobox_widget("\nOperation failed\n");
+        detail::infobox_widget("\nOperation failed\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
     }
 
     // provide confirmation to the user
-    detail::infobox_widget("\nAutomatic zfs provisioning has been completed\n");
+    detail::infobox_widget("\nAutomatic zfs provisioning has been completed\n"sv);
     std::this_thread::sleep_for(std::chrono::seconds(3));
 }
 
@@ -1674,7 +1676,7 @@ void zfs_menu_manual() noexcept {
         }
     };
 
-    static constexpr auto zfs_menu_manual_body = "\nPlease select an option below\n";
+    static constexpr auto zfs_menu_manual_body = "\nPlease select an option below\n"sv;
     const auto& content_size                   = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_manual_body, {size(HEIGHT, LESS_THAN, 18), content_size});
 }
@@ -1683,8 +1685,8 @@ void zfs_menu_manual() noexcept {
 void zfs_menu() noexcept {
 #ifdef NDEVENV
     // check for zfs support
-    if (utils::exec("modprobe zfs 2>>/tmp/cachyos-install.log &>/dev/null", true) != "0") {
-        detail::infobox_widget("\nThe kernel modules to support ZFS could not be found\n");
+    if (utils::exec("modprobe zfs 2>>/tmp/cachyos-install.log &>/dev/null", true) != "0"sv) {
+        detail::infobox_widget("\nThe kernel modules to support ZFS could not be found\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
     }
@@ -1712,7 +1714,7 @@ void zfs_menu() noexcept {
         }
     };
 
-    static constexpr auto zfs_menu_body = "\nZFS is a flexible and resilient file system that combines elements of\nlogical volume management, RAID and traditional file systems.\nZFS on Linux requires special handling and is not ideal for beginners.\n \nSelect automatic to select a partition and allow\nthe system to automate the creation a new a zpool and datasets\nmounted to '/', '/home' and '/var/cache/pacman'.\nManual configuration is available but requires specific knowledge of zfs.\n";
+    static constexpr auto zfs_menu_body = "\nZFS is a flexible and resilient file system that combines elements of\nlogical volume management, RAID and traditional file systems.\nZFS on Linux requires special handling and is not ideal for beginners.\n \nSelect automatic to select a partition and allow\nthe system to automate the creation a new a zpool and datasets\nmounted to '/', '/home' and '/var/cache/pacman'.\nManual configuration is available but requires specific knowledge of zfs.\n"sv;
     const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
 }
@@ -1742,7 +1744,7 @@ void make_esp() noexcept {
         };
 
         /* clang-format off */
-        static constexpr auto esp_part_body = "\nSelect BOOT partition.\n";
+        static constexpr auto esp_part_body = "\nSelect BOOT partition.\n"sv;
         detail::menu_widget(partitions, ok_callback, &selected, &screen, esp_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
         if (!success) { return; }
         /* clang-format on */
@@ -1769,8 +1771,8 @@ void make_esp() noexcept {
     }
 
     {
-        static constexpr auto MntUefiBody            = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n";
-        static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption.\nEncrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n";
+        static constexpr auto MntUefiBody            = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n"sv;
+        static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption.\nEncrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n"sv;
         const auto& MntUefiMessage                   = (luks == 0) ? MntUefiBody : MntUefiCrypt;
         const std::vector<std::string> radiobox_list = {
             "/boot/efi",
@@ -1806,7 +1808,7 @@ void mount_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     // Warn users that they CAN mount partitions without formatting them!
-    static constexpr auto content = "\nIMPORTANT: Partitions can be mounted without formatting them\nby selecting the 'Do not format' option listed at the top of\nthe file system menu.\n \nEnsure the correct choices for mounting and formatting\nare made as no warnings will be provided, with the exception of\nthe UEFI boot partition.\n";
+    static constexpr auto content = "\nIMPORTANT: Partitions can be mounted without formatting them\nby selecting the 'Do not format' option listed at the top of\nthe file system menu.\n \nEnsure the correct choices for mounting and formatting\nare made as no warnings will be provided, with the exception of\nthe UEFI boot partition.\n"sv;
     detail::msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
 
     // LVM Detection. If detected, activate.
@@ -1841,8 +1843,8 @@ void mount_partitions() noexcept {
 
     // check to see if we already have a zfs root mounted
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    if (utils::get_mountpoint_fs(mountpoint_info) == "zfs") {
-        detail::infobox_widget("\nUsing ZFS root on \'/\'\n");
+    if (utils::get_mountpoint_fs(mountpoint_info) == "zfs"sv) {
+        detail::infobox_widget("\nUsing ZFS root on \'/\'\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
     } else {
         // Identify and mount root
@@ -1861,7 +1863,7 @@ void mount_partitions() noexcept {
                 screen.ExitLoopClosure()();
             };
             /* clang-format off */
-            static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n";
+            static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n"sv;
             detail::menu_widget(partitions, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
             if (!success) { return; }
             /* clang-format on */
@@ -1889,7 +1891,7 @@ void mount_partitions() noexcept {
             // Check if there are subvolumes already on the btrfs partition
             const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mountpoint_info);
             const auto& subvolumes_count = utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
-            const auto& lines_count      = utils::to_int(subvolumes_count.data());
+            const auto& lines_count      = utils::to_int(subvolumes_count);
             if (lines_count > 1) {
                 const auto& subvolumes_formated = utils::exec(fmt::format(FMT_COMPILE("{} | cut -d\" \" -f9"), subvolumes));
                 const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes_formated), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
@@ -1952,7 +1954,7 @@ void mount_partitions() noexcept {
                 screen.ExitLoopClosure()();
             };
             /* clang-format off */
-            static constexpr auto extra_part_body = "\nSelect additional partitions in any order, or 'Done' to finish.\n";
+            static constexpr auto extra_part_body = "\nSelect additional partitions in any order, or 'Done' to finish.\n"sv;
             detail::menu_widget(temp, ok_callback, &selected, &screen, extra_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
             if (!success) { return; }
             /* clang-format on */
@@ -1969,11 +1971,11 @@ void mount_partitions() noexcept {
 
         /* clang-format off */
         // Ask user for mountpoint. Don't give /boot as an example for UEFI systems!
-        std::string_view mnt_examples = "/boot\n/home\n/var";
-        if (system_info == "UEFI") { mnt_examples = "/home\n/var"; }
+        std::string_view mnt_examples = "/boot\n/home\n/var"sv;
+        if (system_info == "UEFI"sv) { mnt_examples = "/home\n/var"sv; }
 
         std::string value{"/"};
-        static constexpr auto extra_part_body1 = "Specify partition mountpoint. Ensure\nthe name begins with a forward slash (/).\nExamples include:";
+        static constexpr auto extra_part_body1 = "Specify partition mountpoint. Ensure\nthe name begins with a forward slash (/).\nExamples include:"sv;
         if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) { return; }
         /* clang-format on */
         auto& mount_dev = std::get<std::string>(config_data["MOUNT"]);
@@ -2033,7 +2035,7 @@ void configure_mirrorlist() noexcept {
             break;
         }
     };
-    static constexpr auto mirrorlist_body = "\nThe pacman configuration file can be edited\nto enable multilib and other repositories.\n";
+    static constexpr auto mirrorlist_body = "\nThe pacman configuration file can be edited\nto enable multilib and other repositories.\n"sv;
     const auto& content_size              = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, mirrorlist_body, {size(HEIGHT, LESS_THAN, 3), content_size});
 }
