@@ -14,9 +14,60 @@
 #include <fmt/compile.h>
 #include <fmt/core.h>
 
-using namespace ftxui;
+using ftxui::flex;
+using ftxui::GREATER_THAN;
+using ftxui::HEIGHT;
+using ftxui::LESS_THAN;
+using ftxui::ScreenInteractive;
+using ftxui::size;
+using ftxui::vscroll_indicator;
+using ftxui::WIDTH;
+using ftxui::yframe;
+// using namespace ftxui;
 using namespace std::string_view_literals;
 namespace fs = std::filesystem;
+
+namespace {
+void edit_mkinitcpio(ScreenInteractive& screen) noexcept {
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+#else
+    const std::string& mountpoint = "/";
+#endif
+
+    utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint), true);
+    screen.Resume();
+
+    static constexpr auto content = "\nRun mkinitcpio?\n"sv;
+    const auto& do_run            = tui::detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
+    if (do_run) {
+        utils::arch_chroot("mkinitcpio -P"sv);
+    }
+    screen.Suspend();
+}
+
+void edit_grub(ScreenInteractive& screen) noexcept {
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+#else
+    const std::string& mountpoint = "/";
+#endif
+
+    utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint), true);
+    screen.Resume();
+
+    static constexpr auto content = "\nUpdate GRUB?\n"sv;
+    const auto& do_update         = tui::detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
+    if (do_update) {
+        utils::grub_mkconfig();
+    }
+    screen.Suspend();
+}
+}  // namespace
 
 namespace tui {
 
@@ -71,46 +122,6 @@ void set_cache() noexcept {
     config_data["cachepath"] = "/var/cache/pacman/pkg/";
 }
 
-static void edit_mkinitcpio(ScreenInteractive& screen) noexcept {
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-#else
-    const std::string& mountpoint = "/";
-#endif
-
-    utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint), true);
-    screen.Resume();
-
-    static constexpr auto content = "\nRun mkinitcpio?\n"sv;
-    const auto& do_run            = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
-    if (do_run) {
-        utils::arch_chroot("mkinitcpio -P"sv);
-    }
-    screen.Suspend();
-}
-
-static void edit_grub(ScreenInteractive& screen) noexcept {
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-#else
-    const std::string& mountpoint = "/";
-#endif
-
-    utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint), true);
-    screen.Resume();
-
-    static constexpr auto content = "\nUpdate GRUB?\n"sv;
-    const auto& do_update         = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
-    if (do_update) {
-        utils::grub_mkconfig();
-    }
-    screen.Suspend();
-}
-
 void edit_configs() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
@@ -131,32 +142,34 @@ void edit_configs() noexcept {
                                     bool is_custom = false, std::function<void()>&& cust_func = []() {}) {
         const auto& append_function = [&functions](const std::string& filename) {
             /* clang-format off */
-            functions.push_back([filename]{ utils::exec(fmt::format(FMT_COMPILE("vim {}"), filename), true); });
+            functions.emplace_back([filename]{ utils::exec(fmt::format(FMT_COMPILE("vim {}"), filename), true); });
             /* clang-format on */
         };
         /* clang-format off */
         if (!fs::exists(file_path)) { return; }
         if (dir.empty()) { menu_entries.push_back(fmt::format(FMT_COMPILE("{}"), fs::path{file_path}.filename().c_str())); }
-        else menu_entries.push_back(fmt::format(FMT_COMPILE("{} {}"), fs::path{file_path}.filename().c_str(), dir.data()));
+        else { menu_entries.push_back(fmt::format(FMT_COMPILE("{} {}"), fs::path{file_path}.filename().c_str(), dir.data())); }
 
         if (!is_custom) { append_function(file_path); }
-        else functions.push_back([cust_func]{ cust_func(); });
+        else { functions.emplace_back([cust_func = std::move(cust_func)]{ cust_func(); }); }
         /* clang-format on */
     };
 
     {
         const auto& home_entry = fmt::format(FMT_COMPILE("{}/home"), mountpoint);
-        if (fs::exists(home_entry))
-            for (const auto& dir_entry : fs::directory_iterator{home_entry}) {
-                const auto& extend_xinit_conf = fmt::format(FMT_COMPILE("{}/.extend.xinitrc"), dir_entry.path().c_str());
-                const auto& extend_xres_conf  = fmt::format(FMT_COMPILE("{}/.extend.Xresources"), dir_entry.path().c_str());
-                const auto& xinit_conf        = fmt::format(FMT_COMPILE("{}/.xinitrc"), dir_entry.path().c_str());
-                const auto& xres_conf         = fmt::format(FMT_COMPILE("{}/.Xresources"), dir_entry.path().c_str());
-                check_and_add(extend_xinit_conf, dir_entry.path().filename());
-                check_and_add(xinit_conf, dir_entry.path().filename());
-                check_and_add(extend_xres_conf, dir_entry.path().filename());
-                check_and_add(xres_conf, dir_entry.path().filename());
+        if (fs::exists(home_entry)) {
+            for (auto&& dir_entry : fs::directory_iterator{home_entry}) {
+                const auto& dir_entry_path    = dir_entry.path();
+                const auto& extend_xinit_conf = fmt::format(FMT_COMPILE("{}/.extend.xinitrc"), dir_entry_path.c_str());
+                const auto& extend_xres_conf  = fmt::format(FMT_COMPILE("{}/.extend.Xresources"), dir_entry_path.c_str());
+                const auto& xinit_conf        = fmt::format(FMT_COMPILE("{}/.xinitrc"), dir_entry_path.c_str());
+                const auto& xres_conf         = fmt::format(FMT_COMPILE("{}/.Xresources"), dir_entry_path.c_str());
+                check_and_add(extend_xinit_conf, dir_entry_path.filename());
+                check_and_add(xinit_conf, dir_entry_path.filename());
+                check_and_add(extend_xres_conf, dir_entry_path.filename());
+                check_and_add(xres_conf, dir_entry_path.filename());
             }
+        }
     }
 
     const std::array local_paths{
@@ -182,7 +195,7 @@ void edit_configs() noexcept {
         fmt::format(FMT_COMPILE("{}/etc/default/grub"), mountpoint),
         fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint)};
 
-    for (size_t i = 0; i < local_paths.size() - 2; ++i) {
+    for (std::size_t i = 0; i < local_paths.size() - 2; ++i) {
         check_and_add(local_paths[i]);
     }
 
