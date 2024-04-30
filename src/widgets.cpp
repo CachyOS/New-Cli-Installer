@@ -92,7 +92,7 @@ Element multiline_text(std::vector<std::string>&& lines) noexcept {
     Elements multiline;
 
     std::transform(std::make_move_iterator(lines.begin()), std::make_move_iterator(lines.end()), std::back_inserter(multiline),
-        [=](auto&& line) -> Element { return std::move(text(std::forward<decltype(line)>(line))); });
+        [=](auto&& line) -> Element { return text(std::forward<decltype(line)>(line)); });
     return std::move(vbox(std::move(multiline))) | frame;
 }
 
