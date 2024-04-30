@@ -6,8 +6,8 @@
 #include <vector>       // for vector
 
 namespace detail::pacmanconf {
-bool push_repos_front(const std::string_view& file_path, const std::string_view& value) noexcept;
-auto get_repo_list(const std::string_view& file_path) noexcept -> std::vector<std::string>;
+bool push_repos_front(std::string_view file_path, std::string_view value) noexcept;
+auto get_repo_list(std::string_view file_path) noexcept -> std::vector<std::string>;
 }  // namespace detail::pacmanconf
 
 #endif  // PACMANCONF_REPO_HPP

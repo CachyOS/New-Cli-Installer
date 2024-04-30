@@ -30,7 +30,7 @@
 
 namespace detail::pacmanconf {
 
-bool push_repos_front(const std::string_view& file_path, const std::string_view& value) noexcept {
+bool push_repos_front(std::string_view file_path, std::string_view value) noexcept {
     using StringVec     = std::vector<std::string>;
     auto&& file_content = utils::read_whole_file(file_path);
     if (file_content.empty()) {
@@ -40,7 +40,7 @@ bool push_repos_front(const std::string_view& file_path, const std::string_view&
     auto&& content_lines = file_content | ranges::views::split('\n') | ranges::to<std::vector<std::string>>();
     for (std::size_t i = 1; i < content_lines.size(); ++i) {
         const std::string_view current_line{content_lines[i - 1]};
-        if (current_line.empty() || current_line.starts_with("#") || !current_line.starts_with("[") || current_line.starts_with("[options]")) {
+        if (current_line.empty() || current_line.starts_with('#') || !current_line.starts_with('[') || current_line.starts_with("[options]")) {
             continue;
         }
 
@@ -51,30 +51,28 @@ bool push_repos_front(const std::string_view& file_path, const std::string_view&
         break;
     }
 
-    std::string&& result = content_lines | ranges::views::join('\n') | ranges::to<std::string>();
-
     std::ofstream pacmanconf_file{file_path.data()};
     if (!pacmanconf_file.is_open()) {
         spdlog::error("[PACMANCONFREPO] '{}' open failed: {}", file_path, std::strerror(errno));
         return false;
     }
+    std::string&& result = content_lines | ranges::views::join('\n') | ranges::to<std::string>();
     pacmanconf_file << result;
     return true;
 }
 
-auto get_repo_list(const std::string_view& file_path) noexcept -> std::vector<std::string> {
+auto get_repo_list(std::string_view file_path) noexcept -> std::vector<std::string> {
     auto&& file_content = utils::read_whole_file(file_path);
     if (file_content.empty()) {
         spdlog::error("[PACMANCONFREPO] '{}' error occurred!", file_path);
         return {};
     }
-    auto&& result = file_content | ranges::views::split('\n')
+    return file_content | ranges::views::split('\n')
         | ranges::views::filter([](auto&& rng) {
               auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
-              return !(line.empty() || line.starts_with("#") || !line.starts_with("[") || line.starts_with("[options]"));
+              return !line.empty() && !line.starts_with('#') && line.starts_with('[') && !line.starts_with("[options]");
           })
         | ranges::to<std::vector<std::string>>();
-    return result;
 }
 
 }  // namespace detail::pacmanconf
