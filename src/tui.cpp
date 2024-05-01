@@ -182,8 +182,8 @@ void set_locale() noexcept {
         };
 
         static constexpr auto langBody = "\nChoose the system language.\n\nThe format is language_COUNTRY (e.g. en_US is english, United States;\nen_GB is english, Great Britain).\n"sv;
-        const auto& content_size       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-        detail::menu_widget(locales, ok_callback, &selected, &screen, langBody, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+        auto content_size              = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+        detail::menu_widget(locales, ok_callback, &selected, &screen, langBody, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
     }
     /* clang-format off */
     if (locale.empty()) { return; }
@@ -209,8 +209,8 @@ void set_xkbmap() noexcept {
     };
 
     static constexpr auto xkbmap_body = "\nSelect Desktop Environment Keymap.\n"sv;
-    const auto& content_size          = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+    auto content_size                 = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+    detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
 
     /* clang-format off */
     if (!success) { return; }
@@ -242,8 +242,8 @@ void select_keymap() noexcept {
         screen.ExitLoopClosure()();
     };
     static constexpr auto vc_keymap_body = "\nA virtual console is a shell prompt in a non-graphical environment.\nIts keymap is independent of a desktop environment / terminal.\n"sv;
-    const auto& content_size             = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    detail::menu_widget(keymaps, ok_callback, &selected, &screen, vc_keymap_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+    auto content_size                    = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+    detail::menu_widget(keymaps, ok_callback, &selected, &screen, vc_keymap_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
 }
 
 // Set Zone and Sub-Zone
@@ -261,8 +261,8 @@ bool set_timezone() noexcept {
         };
 
         static constexpr auto timezone_body = "The time zone is used to correctly set your system clock."sv;
-        const auto& content_size            = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zone_list, ok_callback, &selected, &screen, timezone_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+        auto content_size                   = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zone_list, ok_callback, &selected, &screen, timezone_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
     }
     /* clang-format off */
     if (zone.empty()) { return false; }
@@ -281,8 +281,8 @@ bool set_timezone() noexcept {
         };
 
         static constexpr auto sub_timezone_body = "Select the city nearest to you."sv;
-        const auto& content_size                = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-        detail::menu_widget(city_list, ok_callback, &selected, &screen, sub_timezone_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+        auto content_size                       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+        detail::menu_widget(city_list, ok_callback, &selected, &screen, sub_timezone_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
     }
 
     /* clang-format off */
@@ -312,8 +312,8 @@ void set_hw_clock() noexcept {
     };
 
     static constexpr auto hw_clock_body = "UTC is the universal time standard,\nand is recommended unless dual-booting with Windows."sv;
-    const auto& content_size            = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, hw_clock_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+    auto content_size                   = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, hw_clock_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
 }
 
 // Set password for root user
@@ -722,8 +722,8 @@ void config_base_menu() noexcept {
     };
 
     static constexpr auto config_base_body = "Basic configuration of the base."sv;
-    const auto& content_size               = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, config_base_body, {content_size, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    auto content_size                      = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, config_base_body, {std::move(content_size), size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
 }
 
 // Grub auto-detects installed kernel
@@ -1000,10 +1000,10 @@ void mount_opts(bool force) noexcept {
 
     const auto& file_sys_formatted = utils::exec(fmt::format(FMT_COMPILE("echo {} | sed \"s/.*\\.//g;s/-.*//g\""), file_sys));
     const auto& fs_title           = fmt::format(FMT_COMPILE("New CLI Installer | {}"), file_sys_formatted);
-    const auto& content_size       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+    auto content_size              = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
 
     static constexpr auto mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n"sv;
-    detail::checklist_widget(fs_opts, ok_callback, fs_opts_state.get(), &screen, mount_options_body, fs_title, {content_size, nothing});
+    detail::checklist_widget(fs_opts, ok_callback, fs_opts_state.get(), &screen, mount_options_body, fs_title, {std::move(content_size), nothing});
     cleaup_mount_opts(mount_opts_info);
 
     // If mount options selected, confirm choice
@@ -1301,8 +1301,8 @@ void lvm_menu() noexcept {
     };
 
     static constexpr auto lvm_menu_body = "\nLogical Volume Management (LVM) allows 'virtual' hard drives (Volume Groups)\nand partitions (Logical Volumes) to be created from existing drives\nand partitions. A Volume Group must be created first, then one or more\nLogical Volumes in it.\n \nLVM can also be used with an encrypted partition to create multiple logical\nvolumes (e.g. root and home) in it.\n"sv;
-    const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, lvm_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+    auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, lvm_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
 }
 
 // creates a new zpool on an existing partition
@@ -1341,11 +1341,11 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
             success                  = true;
             screen.ExitLoopClosure()();
         };
-        /* clang-format off */
 
         static constexpr auto zfs_zpool_partmenu_body = "\nSelect a partition to hold the ZFS zpool\n"sv;
-        const auto& content_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(partitions, ok_callback, &selected, &screen, zfs_zpool_partmenu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        auto text_size                                = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(partitions, ok_callback, &selected, &screen, zfs_zpool_partmenu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
+        /* clang-format off */
         if (!success) { return false; }
         /* clang-format on */
     }
@@ -1413,8 +1413,8 @@ bool zfs_import_pool() noexcept {
             screen.ExitLoopClosure()();
         };
         static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n"sv;
-        const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
         /* clang-format off */
         if (!success) { return false; }
         /* clang-format on */
@@ -1450,8 +1450,8 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
             screen.ExitLoopClosure()();
         };
         static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n"sv;
-        const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
         /* clang-format off */
         if (!success) { return false; }
         /* clang-format on */
@@ -1537,8 +1537,8 @@ void zfs_set_property() noexcept {
             screen.ExitLoopClosure()();
         };
         static constexpr auto zfs_menu_body = "\nSelect the dataset you would like to set a property on\n"sv;
-        const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
         /* clang-format off */
         if (!success) { return; }
         /* clang-format on */
@@ -1592,8 +1592,8 @@ void zfs_destroy_dataset() noexcept {
             screen.ExitLoopClosure()();
         };
         static constexpr auto zfs_destroy_menu_body = "\nSelect the dataset you would like to permanently delete.\nPlease note that this will recursively delete any child datasets with warning\n"sv;
-        const auto& content_size                    = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_destroy_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+        auto text_size                              = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_destroy_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
         /* clang-format off */
         if (!success) { return; }
         /* clang-format on */
@@ -1677,8 +1677,8 @@ void zfs_menu_manual() noexcept {
     };
 
     static constexpr auto zfs_menu_manual_body = "\nPlease select an option below\n"sv;
-    const auto& content_size                   = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_manual_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+    auto text_size                             = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_manual_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
 }
 
 // The main ZFS menu
@@ -1715,8 +1715,8 @@ void zfs_menu() noexcept {
     };
 
     static constexpr auto zfs_menu_body = "\nZFS is a flexible and resilient file system that combines elements of\nlogical volume management, RAID and traditional file systems.\nZFS on Linux requires special handling and is not ideal for beginners.\n \nSelect automatic to select a partition and allow\nthe system to automate the creation a new a zpool and datasets\nmounted to '/', '/home' and '/var/cache/pacman'.\nManual configuration is available but requires specific knowledge of zfs.\n"sv;
-    const auto& content_size            = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), content_size});
+    auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
 }
 
 void make_esp() noexcept {
@@ -2036,8 +2036,8 @@ void configure_mirrorlist() noexcept {
         }
     };
     static constexpr auto mirrorlist_body = "\nThe pacman configuration file can be edited\nto enable multilib and other repositories.\n"sv;
-    const auto& content_size              = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, mirrorlist_body, {size(HEIGHT, LESS_THAN, 3), content_size});
+    auto text_size                        = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, mirrorlist_body, {size(HEIGHT, LESS_THAN, 3), std::move(text_size)});
 }
 
 void create_partitions() noexcept {
