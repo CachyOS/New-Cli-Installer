@@ -716,7 +716,7 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
     const auto& lvm_vg = utils::exec("vgs -o vg_name --noheading 2>/dev/null");
     const auto& lvm_lv = utils::exec("lvs -o vg_name,lv_name --noheading --separator - 2>/dev/null");
 
-    if (!(!lvm_lv.empty() && !lvm_vg.empty() && !lvm_pv.empty())) {
+    if (lvm_lv.empty() || lvm_vg.empty() || lvm_pv.empty()) {
         return;
     }
 
