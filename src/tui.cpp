@@ -2014,7 +2014,7 @@ void mount_partitions() noexcept {
 void configure_mirrorlist() noexcept {
     const std::vector<std::string> menu_entries = {
         "Edit Pacman Configuration",
-        //"Rank mirrors by speed",
+        "Rank mirrors",
         "Back",
     };
 
@@ -2027,9 +2027,11 @@ void configure_mirrorlist() noexcept {
             tui::edit_pacman_conf();
             screen.Resume();
             break;
-        /*case 1:
-            SPDLOG_ERROR("Implement me!");
-            break;*/
+        case 1:
+            screen.Suspend();
+            utils::exec("cachyos-rate-mirrors"sv, true);
+            screen.Resume();
+            break;
         default:
             screen.ExitLoopClosure()();
             break;
