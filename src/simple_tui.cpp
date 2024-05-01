@@ -220,26 +220,12 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
     return true;
 }
 
-std::string make_partitions(std::string_view device_info, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts) noexcept {
+auto get_root_part(std::string_view device_info) noexcept -> std::string {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
-    const auto& bootloader = std::get<std::string>(config_data["BOOTLOADER"]);
-
-    if (!ready_parts.empty()) {
-        const auto root_ready_part = *std::find_if(ready_parts.begin(), ready_parts.end(), [](const std::string_view& ready_part) {
-            const auto part_type = utils::make_multiline(ready_part, false, '\t')[4];
-            return part_type == "root"sv;
-        });
-        auto root_part             = utils::make_multiline(root_ready_part, false, '\t')[0];
-        make_partitions_prepared(bootloader, root_fs, mount_opts_info, ready_parts);
-
-        return root_part;
-    }
-
-    // TODO(vnepogodin): move to separate function, which returns calculated
-    // ready_parts, then pass generated ready_parts to here.
-    std::vector<std::pair<std::string, double>> parts{};
     const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+
+    std::vector<std::pair<std::string, double>> parts{};
     for (const auto& partition : partitions) {
         /* clang-format off */
         if (!partition.starts_with(device_info)) { continue; }
@@ -248,11 +234,7 @@ std::string make_partitions(std::string_view device_info, std::string_view root_
         const auto& part_name      = partition_stat[0];
         const auto& part_size      = partition_stat[1];
 
-        if (part_size == "512M"sv) {
-            make_esp(part_name, bootloader);
-            utils::get_cryptroot();
-            utils::get_cryptboot();
-            spdlog::info("boot partition: name={}", part_name);
+        if (part_size == "512M"sv || part_size == "1G"sv || part_size == "2G"sv) {
             continue;
         }
 
@@ -263,10 +245,50 @@ std::string make_partitions(std::string_view device_info, std::string_view root_
 
         const double number       = utils::to_floating(number_str);
         const auto& converted_num = utils::convert_unit(number, unit);
-        parts.push_back(std::pair<std::string, double>{part_name, converted_num});
+        parts.emplace_back(part_name, converted_num);
     }
-
     return std::max_element(parts.begin(), parts.end(), [](auto&& lhs, auto&& rhs) { return lhs.second < rhs.second; })->first;
+}
+
+auto auto_make_partitions(std::string_view device_info, std::string_view root_fs, std::string_view mount_opts_info) noexcept -> std::vector<std::string> {
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& bootloader = std::get<std::string>(config_data["BOOTLOADER"]);
+
+    // TODO(vnepogodin): its currently implemented as "erase disk" with our predefined scheme.
+    // implement for already mounted and already partitioned
+    auto root_part = get_root_part(device_info);
+    std::vector<std::pair<std::string, double>> parts{};
+    std::vector<std::string> ready_parts{};
+
+    /*{
+        auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"), part_name,
+            "/", "", root_fs, "root");
+        ready_parts.emplace_back(std::move(part_data));
+    }
+    const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+    for (const auto& partition : partitions) {*/
+        /* clang-format off */
+        //if (!partition.starts_with(device_info)) { continue; }
+        /* clang-format on */
+        /*const auto& partition_stat = utils::make_multiline(partition, false, ' ');
+        const auto& part_name      = partition_stat[0];
+        const auto& part_size      = partition_stat[1];
+
+        auto part_type{"additional"};
+        if (part_size == "512M"sv || part_size == "1G"sv || part_size == "2G"sv) {
+            //make_esp(part_name, bootloader);
+            spdlog::info("boot partition: name={}", part_name);
+            continue;
+        }
+
+        auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"), part_name,
+            partition_map["mountpoint"].GetString(), partition_map["size"].GetString(), part_fs_name, part_type);
+        ready_parts.emplace_back(std::move(part_data));
+    }
+    auto root_part = std::max_element(parts.begin(), parts.end(), [](auto&& lhs, auto&& rhs) { return lhs.second < rhs.second; })->first;
+    ready_parts.push_back();*/
+    return ready_parts;
 }
 
 }  // namespace
@@ -283,7 +305,7 @@ void menu_simple() noexcept {
     const auto& device_info     = std::get<std::string>(config_data["DEVICE"]);
     auto& fs_name               = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    const auto& ready_parts     = std::get<std::vector<std::string>>(config_data["READY_PARTITIONS"]);
+    auto& ready_parts           = std::get<std::vector<std::string>>(config_data["READY_PARTITIONS"]);
 
     const auto& hostname = std::get<std::string>(config_data["HOSTNAME"]);
     const auto& locale   = std::get<std::string>(config_data["LOCALE"]);
@@ -342,7 +364,21 @@ void menu_simple() noexcept {
     // tui::mount_current_partition(true);
     // TODO(vnepogodin): implement automatic partitioning if there is no config partition scheme.
     // something similar to default partioning table created by calamares is fine.
-    const auto& root_part = make_partitions(device_info, fs_name, mount_opts_info, ready_parts);
+    if (ready_parts.empty()) {
+        spdlog::info("TODO: auto make layout(ready parts)!");
+        //ready_parts = auto_make_partitions(device_info, fs_name, mount_opts_info);
+        return;
+    }
+
+    const auto root_ready_part = *std::find_if(ready_parts.begin(), ready_parts.end(), [](const std::string_view& ready_part) {
+        const auto part_type = utils::make_multiline(ready_part, false, '\t')[4];
+        return part_type == "root"sv;
+    });
+    auto root_part             = utils::make_multiline(root_ready_part, false, '\t')[0];
+    if(!make_partitions_prepared(bootloader, fs_name, mount_opts_info, ready_parts)) {
+        utils::umount_partitions();
+        return;
+    }
 
     // If the root partition is btrfs, offer to create subvolumes
     /*if (utils::get_mountpoint_fs(mountpoint) == "btrfs") {
