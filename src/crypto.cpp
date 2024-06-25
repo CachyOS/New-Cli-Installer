@@ -3,6 +3,12 @@
 #include "utils.hpp"
 #include "widgets.hpp"
 
+// import gucc
+#include "string_utils.hpp"
+
+#include <fmt/compile.h>
+#include <fmt/format.h>
+
 /* clang-format off */
 #include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
 #include <ftxui/dom/elements.hpp>                  // for operator|, size
@@ -30,7 +36,7 @@ bool select_crypt_partition(const std::string_view& text) noexcept {
     bool success{};
     auto ok_callback = [&] {
         const auto& src          = partitions[static_cast<std::size_t>(selected)];
-        const auto& lines        = utils::make_multiline(src, false, ' ');
+        const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
         config_data["PARTITION"] = lines[0];
         success                  = true;
         screen.ExitLoopClosure()();
@@ -75,7 +81,7 @@ bool luks_open() noexcept {
     // Filter out partitions that don't contain crypt device
     /*const auto& ignore_part = utils::list_non_crypt();
 
-    const auto& parts = utils::make_multiline(ignore_part);
+    const auto& parts = gucc::utils::make_multiline(ignore_part);
     for (const auto& part : parts) {
         utils::delete_partition_in_list(part);
     }*/

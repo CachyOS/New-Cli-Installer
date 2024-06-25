@@ -3,6 +3,9 @@
 #include "utils.hpp"
 #include "widgets.hpp"
 
+// import gucc
+#include "string_utils.hpp"
+
 #include <filesystem>                              // for exists, is_directory
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/component_options.hpp>   // for ButtonOption
@@ -37,7 +40,7 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
         }
         const auto& saved_path = fs::current_path();
         fs::current_path("/mnt");
-        auto subvol_list = utils::make_multiline(subvols, false, ' ');
+        auto subvol_list = gucc::utils::make_multiline(subvols, false, ' ');
         for (const auto& subvol : subvol_list) {
             utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume create {} 2>>/tmp/cachyos-install.log"), subvol), true);
         }
@@ -107,7 +110,7 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
     umount("/mnt");
 
     // Mount subvolumes one by one
-    for (const auto& subvol : utils::make_multiline(utils::exec("cat /tmp/.subvols"sv))) {
+    for (const auto& subvol : gucc::utils::make_multiline(utils::exec("cat /tmp/.subvols"sv))) {
         // Ask for mountpoint
         const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending /mnt).\n"), subvol);
         std::string mountpoint{"/"};
@@ -125,7 +128,7 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
 }
 
 std::vector<std::string> lvm_show_vg() noexcept {
-    const auto& vg_list = utils::make_multiline(utils::exec("lvs --noheadings | awk '{print $2}' | uniq"sv));
+    const auto& vg_list = gucc::utils::make_multiline(utils::exec("lvs --noheadings | awk '{print $2}' | uniq"sv));
 
     std::vector<std::string> res{};
     res.reserve(vg_list.size());
@@ -243,7 +246,7 @@ std::string zfs_list_pools() noexcept {
 std::string zfs_list_devs() noexcept {
     std::string list_of_devices{};
     // get a list of devices with zpools on them
-    const auto& devices = utils::make_multiline(utils::exec("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\""sv));
+    const auto& devices = gucc::utils::make_multiline(utils::exec("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\""sv));
     for (const auto& device : devices) {
         // add the device
         list_of_devices += fmt::format(FMT_COMPILE("{}\n"), device);

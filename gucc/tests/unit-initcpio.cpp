@@ -1,4 +1,4 @@
-#include "utils.hpp"
+#include "file_utils.hpp"
 #include "initcpio.hpp"
 
 #include <cassert>
@@ -38,8 +38,9 @@ FILES=()
 HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs usr lvm2 zfs)
 )";
 
-
 int main() {
+    using namespace gucc; // NOLINT
+
     static constexpr std::string_view filename{"/tmp/mkinitcpio.conf"};
 
     // Open mkinitcpio file for writing.
@@ -72,7 +73,7 @@ int main() {
 
     // Check if file is equal to test data.
     // "\n# MODULES\nMODULES=(crc32c-intel)\n\n# BINARIES\nBINARIES=()\n\n# FILES\nFILES=()\n\n# HOOKS\nHOOKS=(base usr lvm2 zfs)"\n
-    const auto& file_content = utils::read_whole_file(filename);
+    const auto& file_content = file_utils::read_whole_file(filename);
     assert(file_content == MKINITCPIO_TEST);
 
     // Cleanup.

@@ -4,10 +4,10 @@
 #include <string>  // for string
 #include <vector>  // for vector
 
-namespace utils {
+namespace gucc::cpu {
 
 auto get_isa_levels() noexcept -> std::vector<std::string>;
 
-}  // namespace utils
+}  // namespace gucc::cpu
 
 #endif  // CPU_HPP

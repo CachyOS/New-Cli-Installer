@@ -1,5 +1,5 @@
 #include "pacmanconf_repo.hpp"
-#include "utils.hpp"
+#include "file_utils.hpp"
 
 #include <fstream>  // for ofstream
 #include <string>   // for string
@@ -28,11 +28,11 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace detail::pacmanconf {
+namespace gucc::detail::pacmanconf {
 
 bool push_repos_front(std::string_view file_path, std::string_view value) noexcept {
     using StringVec     = std::vector<std::string>;
-    auto&& file_content = utils::read_whole_file(file_path);
+    auto&& file_content = file_utils::read_whole_file(file_path);
     if (file_content.empty()) {
         spdlog::error("[PACMANCONFREPO] '{}' error occurred!", file_path);
         return false;
@@ -62,7 +62,7 @@ bool push_repos_front(std::string_view file_path, std::string_view value) noexce
 }
 
 auto get_repo_list(std::string_view file_path) noexcept -> std::vector<std::string> {
-    auto&& file_content = utils::read_whole_file(file_path);
+    auto&& file_content = file_utils::read_whole_file(file_path);
     if (file_content.empty()) {
         spdlog::error("[PACMANCONFREPO] '{}' error occurred!", file_path);
         return {};
@@ -75,4 +75,4 @@ auto get_repo_list(std::string_view file_path) noexcept -> std::vector<std::stri
         | ranges::to<std::vector<std::string>>();
 }
 
-}  // namespace detail::pacmanconf
+}  // namespace gucc::detail::pacmanconf

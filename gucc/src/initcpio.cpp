@@ -1,8 +1,10 @@
 #include "initcpio.hpp"
-#include "utils.hpp"
+#include "file_utils.hpp"
+#include "string_utils.hpp"
 
 #include <fstream>  // for ofstream
 
+#include <fmt/compile.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
@@ -27,10 +29,10 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace detail {
+namespace gucc::detail {
 
 bool Initcpio::write() const noexcept {
-    auto&& file_content = utils::read_whole_file(m_file_path);
+    auto&& file_content = file_utils::read_whole_file(m_file_path);
     if (file_content.empty()) {
         spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
         return false;
@@ -69,7 +71,7 @@ bool Initcpio::write() const noexcept {
 }
 
 bool Initcpio::parse_file() noexcept {
-    auto&& file_content = utils::read_whole_file(m_file_path);
+    auto&& file_content = file_utils::read_whole_file(m_file_path);
     if (file_content.empty()) {
         spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
         return false;
@@ -101,4 +103,4 @@ bool Initcpio::parse_file() noexcept {
     return true;
 }
 
-}  // namespace detail
+}  // namespace gucc::detail

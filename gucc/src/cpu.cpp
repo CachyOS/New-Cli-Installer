@@ -6,7 +6,7 @@
 
 #include <spdlog/spdlog.h>
 
-namespace utils {
+namespace gucc::cpu {
 
 /* clang-format off */
 namespace {
@@ -145,4 +145,4 @@ auto get_isa_levels() noexcept -> std::vector<std::string> {
     return supported_isa_levels;
 }
 
-}  // namespace utils
+}  // namespace gucc::cpu

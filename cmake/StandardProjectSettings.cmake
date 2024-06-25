@@ -18,7 +18,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "" FORCE)
 set(FTXUI_BUILD_DOCS OFF CACHE INTERNAL "" FORCE)
 set(FTXUI_BUILD_EXAMPLES OFF CACHE INTERNAL "" FORCE)
 set(FTXUI_ENABLE_INSTALL OFF CACHE INTERNAL "" FORCE)
@@ -29,6 +28,9 @@ set(CPR_USE_SYSTEM_CURL ON CACHE INTERNAL "" FORCE)
 
 # Generate compile_commands.json to make it easier to work with clang based tools
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# Build with PIC
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(CMAKE_C_COMPILER_ID MATCHES ".*Clang")
    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -flto=thin -fwhole-program-vtables")
@@ -42,7 +44,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto -fwhole-program -fuse-linker-plugin")
 endif()
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")# -static")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
   #add_compile_options(-nostdlib++ -stdlib=libc++ -nodefaultlibs -fexperimental-library)
@@ -78,6 +79,13 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   add_compile_options(-fdiagnostics-color=always)
 else()
   message(STATUS "No colored compiler diagnostic set for '${CMAKE_CXX_COMPILER_ID}' compiler.")
+endif()
+
+# Builds as statically linked
+option(COS_BUILD_STATIC "Build all static" OFF)
+if(COS_BUILD_STATIC)
+  set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "" FORCE)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")# -static")
 endif()
 
 # Enables STL container checker if not building a release.

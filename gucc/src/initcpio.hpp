@@ -26,9 +26,9 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace detail {
+namespace gucc::detail {
 
-class Initcpio {
+class Initcpio final {
  public:
     explicit Initcpio(const std::string_view& file_path) noexcept : m_file_path(file_path) { }
 
@@ -127,6 +127,6 @@ class Initcpio {
     std::string_view m_file_path{};
 };
 
-}  // namespace detail
+}  // namespace gucc::detail
 
 #endif  // INITCPIO_HPP

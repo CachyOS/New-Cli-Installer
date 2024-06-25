@@ -9,6 +9,12 @@
 #include "utils.hpp"
 #include "widgets.hpp"
 
+// import gucc
+#include "string_utils.hpp"
+
+#include <fmt/compile.h>
+#include <fmt/format.h>
+
 /* clang-format off */
 #include <cstdlib>                                 // for setenv
 #include <sys/mount.h>                             // for mount
@@ -169,7 +175,7 @@ void set_hostname() noexcept {
 
 // Set system language
 void set_locale() noexcept {
-    const auto& locales = utils::make_multiline(utils::exec("cat /etc/locale.gen | grep -v \"#  \" | sed 's/#//g' | awk '/UTF-8/ {print $1}'"));
+    const auto& locales = gucc::utils::make_multiline(utils::exec("cat /etc/locale.gen | grep -v \"#  \" | sed 's/#//g' | awk '/UTF-8/ {print $1}'"));
 
     // System language
     std::string locale{};
@@ -195,7 +201,7 @@ void set_locale() noexcept {
 // Set keymap for X11
 void set_xkbmap() noexcept {
     static constexpr auto keymaps_xkb = "af al am at az ba bd be bg br bt bw by ca cd ch cm cn cz de dk ee es et eu fi fo fr gb ge gh gn gr hr hu ie il in iq ir is it jp ke kg kh kr kz la lk lt lv ma md me mk ml mm mn mt mv ng nl no np pc ph pk pl pt ro rs ru se si sk sn sy tg th tj tm tr tw tz ua us uz vn za"sv;
-    const auto& xkbmap_list           = utils::make_multiline(keymaps_xkb, false, ' ');
+    const auto& xkbmap_list           = gucc::utils::make_multiline(keymaps_xkb, false, ' ');
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{86};
@@ -232,7 +238,7 @@ void select_keymap() noexcept {
     if (!keep_default) { return; }
     /* clang-format on */
 
-    const auto& keymaps = utils::make_multiline(utils::exec(R"(ls -R /usr/share/kbd/keymaps | grep "map.gz" | sed 's/\.map\.gz//g' | sort)"));
+    const auto& keymaps = gucc::utils::make_multiline(utils::exec(R"(ls -R /usr/share/kbd/keymaps | grep "map.gz" | sed 's/\.map\.gz//g' | sort)"));
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{226};
@@ -252,7 +258,7 @@ bool set_timezone() noexcept {
     {
         auto screen           = ScreenInteractive::Fullscreen();
         const auto& cmd       = utils::exec(R"(cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep "/" | sed "s/\/.*//g" | sort -ud)");
-        const auto& zone_list = utils::make_multiline(cmd);
+        const auto& zone_list = gucc::utils::make_multiline(cmd);
 
         std::int32_t selected{};
         auto ok_callback = [&] {
@@ -272,7 +278,7 @@ bool set_timezone() noexcept {
     {
         auto screen           = ScreenInteractive::Fullscreen();
         const auto& cmd       = utils::exec(fmt::format(FMT_COMPILE("cat /usr/share/zoneinfo/zone.tab | {1} | grep \"{0}/\" | sed \"s/{0}\\///g\" | sort -ud"), zone, "awk '{print $3}'"));
-        const auto& city_list = utils::make_multiline(cmd);
+        const auto& city_list = gucc::utils::make_multiline(cmd);
 
         std::int32_t selected{};
         auto ok_callback = [&] {
@@ -878,14 +884,14 @@ bool select_device() noexcept {
     auto* config_instance    = Config::instance();
     auto& config_data        = config_instance->data();
     auto devices             = utils::exec(R"(lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print "/dev/" $1 " " $2}' | sort -u)");
-    const auto& devices_list = utils::make_multiline(devices);
+    const auto& devices_list = gucc::utils::make_multiline(devices);
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     bool success{};
     auto ok_callback = [&] {
         const auto& src       = devices_list[static_cast<std::size_t>(selected)];
-        const auto& lines     = utils::make_multiline(src, false, ' ');
+        const auto& lines     = gucc::utils::make_multiline(src, false, ' ');
         config_data["DEVICE"] = lines[0];
         success               = true;
         screen.ExitLoopClosure()();
@@ -916,7 +922,7 @@ bool select_filesystem() noexcept {
     bool success{};
     auto ok_callback = [&] {
         const auto& src      = menu_entries[static_cast<std::size_t>(selected)];
-        const auto& lines    = utils::make_multiline(src, false, ' ');
+        const auto& lines    = gucc::utils::make_multiline(src, false, ' ');
         const auto& file_sys = lines[0];
         utils::select_filesystem(file_sys);
         success = true;
@@ -1077,7 +1083,7 @@ bool mount_current_partition(bool force) noexcept {
         };
 
         // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-        auto cryptparts    = utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "lvm" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')"));
+        auto cryptparts    = gucc::utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "lvm" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')"));
         auto check_functor = [&](const auto cryptpart) {
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("{} cryptdevice={}:{}"), luks_dev, cryptpart, luks_name);
             config_data["LVM"]      = 1;
@@ -1087,13 +1093,13 @@ bool mount_current_partition(bool force) noexcept {
         }
 
         // Check if LVM on LUKS
-        cryptparts = utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')"));
+        cryptparts = gucc::utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')"));
         if (check_cryptparts(cryptparts, check_functor)) {
             return true;
         }
 
         // Check if LUKS alone (parent = part /dev/...)
-        cryptparts                 = utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')"));
+        cryptparts                 = gucc::utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')"));
         const auto& check_func_dev = [&](const auto cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
@@ -1162,7 +1168,7 @@ void make_swap() noexcept {
         bool success{};
         auto ok_callback = [&] {
             const auto& src   = temp[static_cast<std::size_t>(selected)];
-            const auto& lines = utils::make_multiline(src, false, ' ');
+            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
             answer            = lines[0];
             success           = true;
             screen.ExitLoopClosure()();
@@ -1322,7 +1328,7 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
     ignore_part += utils::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
-    /* const auto& parts = utils::make_multiline(ignore_part);
+    /* const auto& parts = gucc::utils::make_multiline(ignore_part);
     for (const auto& part : parts) {
         utils::delete_partition_in_list(part);
     }*/
@@ -1336,7 +1342,7 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
         bool success{};
         auto ok_callback = [&] {
             const auto& src          = partitions[static_cast<std::size_t>(selected)];
-            const auto& lines        = utils::make_multiline(src, false, ' ');
+            const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
             config_data["PARTITION"] = lines[0];
             success                  = true;
             screen.ExitLoopClosure()();
@@ -1391,7 +1397,7 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
 }
 
 bool zfs_import_pool() noexcept {
-    const auto& zlist = utils::make_multiline(utils::exec("zpool import 2>/dev/null | grep \"^[[:space:]]*pool\" | awk -F : '{print $2}' | awk '{$1=$1};1'"));
+    const auto& zlist = gucc::utils::make_multiline(utils::exec("zpool import 2>/dev/null | grep \"^[[:space:]]*pool\" | awk -F : '{print $2}' | awk '{$1=$1};1'"));
     if (zlist.empty()) {
         // no available datasets
         detail::infobox_widget("\nNo pools available\"\n"sv);
@@ -1431,7 +1437,7 @@ bool zfs_import_pool() noexcept {
 }
 
 bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
-    const auto& zlist = utils::make_multiline(utils::zfs_list_pools());
+    const auto& zlist = gucc::utils::make_multiline(utils::zfs_list_pools());
     if (zlist.empty()) {
         // no available datasets
         detail::infobox_widget("\nNo pools available\"\n"sv);
@@ -1518,7 +1524,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
 }
 
 void zfs_set_property() noexcept {
-    const auto& zlist = utils::make_multiline(utils::zfs_list_datasets());
+    const auto& zlist = gucc::utils::make_multiline(utils::zfs_list_datasets());
     if (zlist.empty()) {
         // no available datasets
         detail::infobox_widget("\nNo datasets available\"\n"sv);
@@ -1573,7 +1579,7 @@ void zfs_set_property() noexcept {
 }
 
 void zfs_destroy_dataset() noexcept {
-    const auto& zlist = utils::make_multiline(utils::zfs_list_datasets());
+    const auto& zlist = gucc::utils::make_multiline(utils::zfs_list_datasets());
     if (zlist.empty()) {
         // no available datasets
         detail::infobox_widget("\nNo datasets available\"\n"sv);
@@ -1737,7 +1743,7 @@ void make_esp() noexcept {
         bool success{};
         auto ok_callback = [&] {
             const auto& src   = partitions[static_cast<std::size_t>(selected)];
-            const auto& lines = utils::make_multiline(src, false, ' ');
+            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
             answer            = lines[0];
             success           = true;
             screen.ExitLoopClosure()();
@@ -1836,7 +1842,7 @@ void mount_partitions() noexcept {
     ignore_part += utils::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
-    /* const auto& parts = utils::make_multiline(ignore_part);
+    /* const auto& parts = gucc::utils::make_multiline(ignore_part);
     for (const auto& part : parts) {
         utils::delete_partition_in_list(part);
     }*/
@@ -1856,7 +1862,7 @@ void mount_partitions() noexcept {
 
             auto ok_callback = [&] {
                 const auto& src          = partitions[static_cast<std::size_t>(selected)];
-                const auto& lines        = utils::make_multiline(src, false, ' ');
+                const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
                 config_data["PARTITION"] = lines[0];
                 config_data["ROOT_PART"] = lines[0];
                 success                  = true;
@@ -1927,7 +1933,7 @@ void mount_partitions() noexcept {
         NUMBER_PARTITIONS=$(( NUMBER_PARTITIONS + 1 ))
     done*/
 
-    /*const auto& parts_tmp = utils::make_multiline(utils::list_mounted());
+    /*const auto& parts_tmp = gucc::utils::make_multiline(utils::list_mounted());
     for (const auto& part : parts_tmp) {
         utils::delete_partition_in_list(part);
     }*/
@@ -1948,7 +1954,7 @@ void mount_partitions() noexcept {
             bool success{};
             auto ok_callback = [&] {
                 const auto& src          = temp[static_cast<std::size_t>(selected)];
-                const auto& lines        = utils::make_multiline(src, false, ' ');
+                const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
                 config_data["PARTITION"] = lines[0];
                 success                  = true;
                 screen.ExitLoopClosure()();

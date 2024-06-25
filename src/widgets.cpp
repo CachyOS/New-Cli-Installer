@@ -1,5 +1,5 @@
 #include "widgets.hpp"
-#include "utils.hpp"  // for make_multiline
+#include "string_utils.hpp"  // for make_multiline
 
 #include <algorithm>  // for transform
 #include <cstddef>    // for size_t
@@ -138,7 +138,7 @@ void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept 
 
     auto container = Container::Horizontal({button_back});
     auto renderer = Renderer(container, [&] {
-        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(content)) | boxsize);
+        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(gucc::utils::make_multiline(content)) | boxsize);
     });
     /* clang-format on */
 
@@ -155,7 +155,7 @@ bool inputbox_widget(std::string& value, const std::string_view& content, Decora
     const InputOption input_option{.on_enter = ok_callback, .password = password};
     auto input_value       = Input(&value, "", input_option);
     auto content_container = Renderer([&] {
-        return multiline_text(utils::make_multiline(content)) | hcenter | boxsize;
+        return multiline_text(gucc::utils::make_multiline(content)) | hcenter | boxsize;
     });
 
     auto controls_container = detail::controls_widget({"OK", "Cancel"}, {ok_callback, screen.ExitLoopClosure()});
@@ -186,7 +186,7 @@ void infobox_widget(const std::string_view& content, Decorator boxsize) noexcept
         Dimension::Full()   // Height
     );
 
-    auto element = detail::centered_widget_nocontrols("New CLI Installer", detail::multiline_text(utils::make_multiline(content)) | vcenter | boxsize);
+    auto element = detail::centered_widget_nocontrols("New CLI Installer", detail::multiline_text(gucc::utils::make_multiline(content)) | vcenter | boxsize);
     Render(screen, element);
     screen.Print();
 }
@@ -210,7 +210,7 @@ bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
     });
 
     auto renderer = Renderer(container, [&] {
-        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(utils::make_multiline(content)) | hcenter | boxsize);
+        return detail::centered_widget(container, "New CLI Installer", detail::multiline_text(gucc::utils::make_multiline(content)) | hcenter | boxsize);
     });
 
     screen.Loop(renderer);
@@ -265,7 +265,7 @@ void menu_widget(const std::vector<std::string>& entries, const std::function<vo
     Components children{};
     if (!text.empty()) {
         children = {
-            Renderer([&] { return detail::multiline_text(utils::make_multiline(text)) | widget_sizes.text_size; }),
+            Renderer([&] { return detail::multiline_text(gucc::utils::make_multiline(text)) | widget_sizes.text_size; }),
             Renderer([] { return separator(); }),
             content,
             Renderer([] { return separator(); }),
@@ -303,7 +303,7 @@ void radiolist_widget(const std::vector<std::string>& entries, const std::functi
     Components children{};
     if (!widget_res.text.empty()) {
         children = {
-            Renderer([&] { return detail::multiline_text(utils::make_multiline(widget_res.text)) | widget_sizes.text_size; }),
+            Renderer([&] { return detail::multiline_text(gucc::utils::make_multiline(widget_res.text)) | widget_sizes.text_size; }),
             Renderer([] { return separator(); }),
             content,
             Renderer([] { return separator(); }),
@@ -338,7 +338,7 @@ void checklist_widget(const std::vector<std::string>& opts, const std::function<
     Components children{};
     if (!text.empty()) {
         children = {
-            Renderer([&] { return std::move(detail::multiline_text(utils::make_multiline(text))) | widget_sizes.text_size; }),
+            Renderer([&] { return std::move(detail::multiline_text(gucc::utils::make_multiline(text))) | widget_sizes.text_size; }),
             Renderer([] { return separator(); }),
             content,
             Renderer([] { return separator(); }),

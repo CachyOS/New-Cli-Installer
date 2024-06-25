@@ -8,6 +8,10 @@
 #include "tui.hpp"
 #include "widgets.hpp"
 
+// import gucc
+#include "file_utils.hpp"
+#include "string_utils.hpp"
+
 #include <algorithm>      // for transform
 #include <array>          // for array
 #include <bit>            // for bit_cast
@@ -27,6 +31,7 @@
 #include <unistd.h>       // for execvp, fork
 #include <unordered_map>  // for unordered_map
 
+#include <fmt/compile.h>
 #include <fmt/ranges.h>
 
 #if defined(__clang__)
@@ -263,41 +268,6 @@ std::string exec(const std::string_view& command, const bool& interactive) noexc
     return result;
 }
 
-auto read_whole_file(const std::string_view& filepath) noexcept -> std::string {
-    // Use std::fopen because it's faster than std::ifstream
-    auto* file = std::fopen(filepath.data(), "rb");
-    if (file == nullptr) {
-        spdlog::error("[READWHOLEFILE] '{}' read failed: {}", filepath, std::strerror(errno));
-        return {};
-    }
-
-    std::fseek(file, 0u, SEEK_END);
-    const auto size = static_cast<std::size_t>(std::ftell(file));
-    std::fseek(file, 0u, SEEK_SET);
-
-    std::string buf;
-    buf.resize(size);
-
-    const std::size_t read = std::fread(buf.data(), sizeof(char), size, file);
-    if (read != size) {
-        spdlog::error("[READWHOLEFILE] '{}' read failed: {}", filepath, std::strerror(errno));
-        return {};
-    }
-    std::fclose(file);
-
-    return buf;
-}
-
-bool write_to_file(const std::string_view& data, const std::string_view& filepath) noexcept {
-    std::ofstream file{filepath.data()};
-    if (!file.is_open()) {
-        spdlog::error("[WRITE_TO_FILE] '{}' open failed: {}", filepath, std::strerror(errno));
-        return false;
-    }
-    file << data;
-    return true;
-}
-
 void dump_to_log(const std::string& data) noexcept {
     spdlog::info("[DUMP_TO_LOG] :=\n{}", data);
 }
@@ -327,42 +297,6 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
         *read = read_char;
     }
     return true;
-}
-
-auto make_multiline(std::string_view str, bool reverse, char delim) noexcept -> std::vector<std::string> {
-    std::vector<std::string> lines{};
-    ranges::for_each(utils::make_split_view(str, delim), [&](auto&& rng) { lines.emplace_back(rng); });
-    if (reverse) {
-        ranges::reverse(lines);
-    }
-    return lines;
-}
-
-auto make_multiline_view(std::string_view str, bool reverse, char delim) noexcept -> std::vector<std::string_view> {
-    std::vector<std::string_view> lines{};
-    ranges::for_each(utils::make_split_view(str, delim), [&](auto&& rng) { lines.emplace_back(rng); });
-    if (reverse) {
-        ranges::reverse(lines);
-    }
-    return lines;
-}
-
-auto make_multiline(const std::vector<std::string>& multiline, bool reverse, std::string_view delim) noexcept -> std::string {
-    std::string res{};
-    for (const auto& line : multiline) {
-        res += line;
-        res += delim.data();
-    }
-
-    if (reverse) {
-        ranges::reverse(res);
-    }
-
-    return res;
-}
-
-auto join(const std::vector<std::string>& lines, std::string_view delim) noexcept -> std::string {
-    return lines | ranges::views::join(delim) | ranges::to<std::string>();
 }
 
 // install a pkg in the live session if not installed
@@ -400,7 +334,7 @@ void umount_partitions() noexcept {
     utils::exec("swapoff -a");
 #endif
 
-    const auto& lines = utils::make_multiline(mount_info);
+    const auto& lines = gucc::utils::make_multiline(mount_info);
     for (const auto& line : lines) {
 #ifdef NDEVENV
         umount(line.c_str());
@@ -421,7 +355,7 @@ void auto_partition() noexcept {
 #ifdef NDEVENV
     // Find existing partitions (if any) to remove
     const auto& parts     = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk '/^ / {print $1}'"));
-    const auto& del_parts = utils::make_multiline(parts);
+    const auto& del_parts = gucc::utils::make_multiline(parts);
     for (const auto& del_part : del_parts) {
         utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} 2>>/tmp/cachyos-install.log &>/dev/null"), device_info, del_part));
     }
@@ -485,7 +419,7 @@ void generate_fstab(const std::string_view& fstab_cmd) noexcept {
     utils::exec(fmt::format(FMT_COMPILE("{0} {1} > {1}/etc/fstab"), fstab_cmd, mountpoint));
     spdlog::info("Created fstab file:");
 
-    const auto& fstab_content = utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/fstab"), mountpoint));
+    const auto& fstab_content = gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/fstab"), mountpoint));
     utils::dump_to_log(fstab_content);
 
     const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
@@ -498,7 +432,7 @@ void generate_fstab(const std::string_view& fstab_cmd) noexcept {
     utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
 
     // remove any zfs datasets that are mounted by zfs
-    const auto& msource_list = utils::make_multiline(utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
+    const auto& msource_list = gucc::utils::make_multiline(utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
     for (const auto& msource : msource_list) {
         if (utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0")
             utils::exec(fmt::format(FMT_COMPILE("sed -e \"\\|^{}[[:space:]]| s/^#*/#/\" -i {}/etc/fstab"), msource, mountpoint));
@@ -681,7 +615,7 @@ void find_partitions() noexcept {
     //    partition_list="${partition_list} /dev/md/${i}"
     // done
 
-    const auto& partition_list = utils::make_multiline(partitions_tmp, true);
+    const auto& partition_list = gucc::utils::make_multiline(partitions_tmp, true);
     config_data["PARTITIONS"]  = partition_list;
     number_partitions          = static_cast<std::int32_t>(partition_list.size());
 
@@ -742,7 +676,7 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     const auto& is_root_on_btrfs    = (root_filesystem == "btrfs");
     const auto& is_root_on_bcachefs = (root_filesystem == "bcachefs");
 
-    auto pkg_list = utils::make_multiline(packages, false, ' ');
+    auto pkg_list = gucc::utils::make_multiline(packages, false, ' ');
 
     const auto pkg_count = pkg_list.size();
     for (std::size_t i = 0; i < pkg_count; ++i) {
@@ -987,7 +921,7 @@ void install_from_pkglist(const std::string_view& packages) noexcept {
 
 void install_base(const std::string_view& packages) noexcept {
     const auto& pkg_list  = utils::get_pkglist_base(packages);
-    const auto& base_pkgs = utils::make_multiline(pkg_list, false, " ");
+    const auto& base_pkgs = gucc::utils::make_multiline(pkg_list, false, " ");
 
     spdlog::info(fmt::format(FMT_COMPILE("Preparing for pkgs to install: \"{}\""), base_pkgs));
 
@@ -1082,7 +1016,7 @@ void install_base(const std::string_view& packages) noexcept {
 void install_desktop(const std::string_view& desktop) noexcept {
     // Create the base list of packages
     const auto& pkg_list        = utils::get_pkglist_desktop(desktop);
-    const std::string& packages = utils::make_multiline(pkg_list, false, " ");
+    const std::string& packages = gucc::utils::make_multiline(pkg_list, false, " ");
 
     spdlog::info(fmt::format(FMT_COMPILE("Preparing for desktop envs to install: \"{}\""), packages));
     utils::install_from_pkglist(packages);
@@ -1308,7 +1242,7 @@ void install_refind() noexcept {
     }
 
     spdlog::info("Created rEFInd config:");
-    const auto& refind_conf_content = utils::read_whole_file(fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), mountpoint));
+    const auto& refind_conf_content = gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), mountpoint));
     utils::dump_to_log(refind_conf_content);
 
     utils::install_from_pkglist("refind-theme-nord");
@@ -1561,7 +1495,7 @@ void get_cryptroot() noexcept {
     // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
     auto temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "lvm" | grep "/mnt$" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')");
     if (!temp_out.empty()) {
-        const auto& cryptparts    = utils::make_multiline(temp_out);
+        const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto& cryptpart) {
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice={}:{}"), cryptpart, luks_name);
             config_data["LVM"]      = 1;
@@ -1573,7 +1507,7 @@ void get_cryptroot() noexcept {
     // Check if LVM on LUKS
     temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')");
     if (!temp_out.empty()) {
-        const auto& cryptparts    = utils::make_multiline(temp_out);
+        const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
         const auto& check_functor = [&]([[maybe_unused]] const auto& cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
@@ -1587,7 +1521,7 @@ void get_cryptroot() noexcept {
     // Check if LUKS alone (parent = part /dev/...)
     temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "/mnt$" | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')");
     if (!temp_out.empty()) {
-        const auto& cryptparts    = utils::make_multiline(temp_out);
+        const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto& cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
             luks_uuid               = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
@@ -1765,7 +1699,7 @@ void install_cachyos_repo() noexcept {
         }
         spdlog::info("{} is supported", isa_level);
 
-        const auto& repo_list = detail::pacmanconf::get_repo_list("/etc/pacman.conf");
+        const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
         if (ranges::contains(repo_list, fmt::format(FMT_COMPILE("[{}]"), repo_name))) {
             spdlog::info("'{}' is already added!", repo_name);
             return;
@@ -1793,7 +1727,7 @@ void install_cachyos_repo() noexcept {
     };
 
     // Check if it's already been applied
-    const auto& repo_list = detail::pacmanconf::get_repo_list("/etc/pacman.conf");
+    const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
     spdlog::info("install_cachyos_repo: repo_list := '{}'", repo_list);
 
 #ifdef NDEVENV
@@ -1801,7 +1735,7 @@ void install_cachyos_repo() noexcept {
     utils::exec("pacman-key --lsign-key F3B607488DB35A47", true);
 #endif
 
-    const auto& isa_levels = utils::get_isa_levels();
+    const auto& isa_levels = gucc::cpu::get_isa_levels();
 
     static constexpr auto CACHYOS_V1_REPO_STR = R"(
 [cachyos]

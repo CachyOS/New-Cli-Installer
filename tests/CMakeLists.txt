@@ -1,9 +1,6 @@
 list(APPEND test_SOURCES
         ${CMAKE_SOURCE_DIR}/src/config.cpp
         ${CMAKE_SOURCE_DIR}/src/utils.cpp
-        ${CMAKE_SOURCE_DIR}/src/cpu.cpp
-        ${CMAKE_SOURCE_DIR}/src/pacmanconf_repo.cpp
-        ${CMAKE_SOURCE_DIR}/src/initcpio.cpp
         ${CMAKE_SOURCE_DIR}/src/chwd_profiles.cpp
         ${CMAKE_SOURCE_DIR}/src/disk.cpp
         ${CMAKE_SOURCE_DIR}/src/drivers.cpp
@@ -38,7 +35,7 @@ foreach(file ${files})
         $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
     )
     target_include_directories(${testcase} PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR})
-    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component range-v3::range-v3 ctre::ctre tomlplusplus::tomlplusplus)
+    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component range-v3::range-v3 ctre::ctre tomlplusplus::tomlplusplus gucc::gucc)
     if(NOT ENABLE_DEVENV)
       target_link_libraries(${testcase} PRIVATE cpr::cpr)
     endif()

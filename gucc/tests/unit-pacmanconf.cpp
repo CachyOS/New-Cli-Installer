@@ -1,12 +1,12 @@
-#include "utils.hpp"
+#include "file_utils.hpp"
 #include "pacmanconf_repo.hpp"
 
 #include <cassert>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <filesystem>
 
 namespace fs = std::filesystem;
 
@@ -117,8 +117,9 @@ Include = /etc/pacman.d/mirrorlist
 [multilib]
 Include = /etc/pacman.d/mirrorlist)";
 
-
 int main() {
+    using namespace gucc;
+
     static constexpr std::string_view filename{"/tmp/pacman.conf"};
 
     // Open pacmanconf file for writing.
@@ -136,14 +137,14 @@ int main() {
 
     // Push repo.
     assert(detail::pacmanconf::push_repos_front(filename, "[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist"));
-    
+
     // Check repo list after pushing repo.
     repo_list = detail::pacmanconf::get_repo_list(filename);
     assert(!repo_list.empty());
     assert((repo_list == std::vector<std::string>{"[cachyos]", "[core]", "[extra]", "[community]", "[multilib]"}));
 
     // Check if file is equal to test data.
-    const auto& file_content = utils::read_whole_file(filename);
+    const auto& file_content = file_utils::read_whole_file(filename);
     assert(file_content == PACMANCONF_TEST);
 
     // Cleanup.

@@ -102,9 +102,6 @@ add_executable(${PROJECT_NAME}
    src/definitions.hpp
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
-   src/cpu.cpp src/cpu.hpp
-   src/pacmanconf_repo.cpp src/pacmanconf_repo.hpp
-   src/initcpio.cpp src/initcpio.hpp
    src/chwd_profiles.cpp src/chwd_profiles.hpp
    src/disk.cpp src/disk.hpp
    src/drivers.cpp src/drivers.hpp
@@ -135,13 +132,15 @@ target_link_libraries(screen PRIVATE range-v3::range-v3)
 target_link_libraries(dom PRIVATE range-v3::range-v3)
 target_link_libraries(component PRIVATE range-v3::range-v3)
 
-include_directories(${CMAKE_SOURCE_DIR}/src ${RAPIDJSON_INCLUDE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/gucc/src ${RAPIDJSON_INCLUDE_DIR})
+
+add_subdirectory(gucc)
 
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component range-v3::range-v3 ctre::ctre tomlplusplus::tomlplusplus)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component range-v3::range-v3 ctre::ctre tomlplusplus::tomlplusplus gucc::gucc)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
 endif()

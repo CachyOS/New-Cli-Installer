@@ -1,7 +1,10 @@
 #include "follow_process_log.hpp"
 #include "subprocess.h"
-#include "utils.hpp"  // for make_multiline
+#include "utils.hpp"  // for exec_follow
 #include "widgets.hpp"
+
+// import gucc
+#include "string_utils.hpp"
 
 #include <chrono>  // for operator""s, chrono_literals
 #include <string>  // for string, operator<<, to_string
@@ -70,7 +73,7 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
     auto container   = Container::Horizontal({button_back});
 
     auto renderer = Renderer(container, [&] {
-        return tui::detail::centered_widget(container, "New CLI Installer", tui::detail::multiline_text(utils::make_multiline(process_log, true)) | box_size | vscroll_indicator | yframe | flex);
+        return tui::detail::centered_widget(container, "New CLI Installer", tui::detail::multiline_text(gucc::utils::make_multiline(process_log, true)) | box_size | vscroll_indicator | yframe | flex);
     });
 
     screen.Loop(renderer);

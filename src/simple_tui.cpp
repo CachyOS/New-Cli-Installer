@@ -5,6 +5,9 @@
 #include "utils.hpp"
 #include "widgets.hpp"
 
+// import gucc
+#include "string_utils.hpp"
+
 /* clang-format off */
 #include <cstdlib>                                 // for setenv
 #include <sys/mount.h>                             // for mount
@@ -18,6 +21,7 @@
 #include <ftxui/dom/elements.hpp>                  // for operator|, size
 /* clang-format on */
 
+#include <fmt/compile.h>
 #include <fmt/ranges.h>
 
 using namespace ftxui;
@@ -151,7 +155,7 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
 
     std::string root_part{};
     for (auto&& ready_part : ready_parts) {
-        auto part_info = utils::make_multiline(ready_part, false, '\t');
+        auto part_info = gucc::utils::make_multiline(ready_part, false, '\t');
 
         auto part_name       = part_info[0];
         auto part_mountpoint = part_info[1];
@@ -230,7 +234,7 @@ auto get_root_part(std::string_view device_info) noexcept -> std::string {
         /* clang-format off */
         if (!partition.starts_with(device_info)) { continue; }
         /* clang-format on */
-        const auto& partition_stat = utils::make_multiline(partition, false, ' ');
+        const auto& partition_stat = gucc::utils::make_multiline(partition, false, ' ');
         const auto& part_name      = partition_stat[0];
         const auto& part_size      = partition_stat[1];
 
@@ -268,26 +272,26 @@ auto auto_make_partitions(std::string_view device_info, std::string_view root_fs
     }
     const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
     for (const auto& partition : partitions) {*/
-        /* clang-format off */
+    /* clang-format off */
         //if (!partition.starts_with(device_info)) { continue; }
-        /* clang-format on */
-        /*const auto& partition_stat = utils::make_multiline(partition, false, ' ');
-        const auto& part_name      = partition_stat[0];
-        const auto& part_size      = partition_stat[1];
+    /* clang-format on */
+    /*const auto& partition_stat = gucc::utils::make_multiline(partition, false, ' ');
+    const auto& part_name      = partition_stat[0];
+    const auto& part_size      = partition_stat[1];
 
-        auto part_type{"additional"};
-        if (part_size == "512M"sv || part_size == "1G"sv || part_size == "2G"sv) {
-            //make_esp(part_name, bootloader);
-            spdlog::info("boot partition: name={}", part_name);
-            continue;
-        }
-
-        auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"), part_name,
-            partition_map["mountpoint"].GetString(), partition_map["size"].GetString(), part_fs_name, part_type);
-        ready_parts.emplace_back(std::move(part_data));
+    auto part_type{"additional"};
+    if (part_size == "512M"sv || part_size == "1G"sv || part_size == "2G"sv) {
+        //make_esp(part_name, bootloader);
+        spdlog::info("boot partition: name={}", part_name);
+        continue;
     }
-    auto root_part = std::max_element(parts.begin(), parts.end(), [](auto&& lhs, auto&& rhs) { return lhs.second < rhs.second; })->first;
-    ready_parts.push_back();*/
+
+    auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"), part_name,
+        partition_map["mountpoint"].GetString(), partition_map["size"].GetString(), part_fs_name, part_type);
+    ready_parts.emplace_back(std::move(part_data));
+}
+auto root_part = std::max_element(parts.begin(), parts.end(), [](auto&& lhs, auto&& rhs) { return lhs.second < rhs.second; })->first;
+ready_parts.push_back();*/
     return ready_parts;
 }
 
@@ -366,16 +370,16 @@ void menu_simple() noexcept {
     // something similar to default partioning table created by calamares is fine.
     if (ready_parts.empty()) {
         spdlog::info("TODO: auto make layout(ready parts)!");
-        //ready_parts = auto_make_partitions(device_info, fs_name, mount_opts_info);
+        // ready_parts = auto_make_partitions(device_info, fs_name, mount_opts_info);
         return;
     }
 
     const auto root_ready_part = *std::find_if(ready_parts.begin(), ready_parts.end(), [](const std::string_view& ready_part) {
-        const auto part_type = utils::make_multiline(ready_part, false, '\t')[4];
+        const auto part_type = gucc::utils::make_multiline(ready_part, false, '\t')[4];
         return part_type == "root"sv;
     });
-    auto root_part             = utils::make_multiline(root_ready_part, false, '\t')[0];
-    if(!make_partitions_prepared(bootloader, fs_name, mount_opts_info, ready_parts)) {
+    auto root_part             = gucc::utils::make_multiline(root_ready_part, false, '\t')[0];
+    if (!make_partitions_prepared(bootloader, fs_name, mount_opts_info, ready_parts)) {
         utils::umount_partitions();
         return;
     }
