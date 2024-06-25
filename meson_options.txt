@@ -1,2 +1,3 @@
 option('devenv', type: 'boolean', value: true, description: 'enable dev environment')
 option('build_tests', type: 'boolean', value: false, description: 'enable tests')
+option('build_static', type: 'boolean', value: false, description: 'build all static')

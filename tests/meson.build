@@ -14,8 +14,9 @@ test_libreq = shared_library('test_libreq',
         source_path + 'simple_tui.cpp',
         source_path + 'tui.cpp',
     ],
-    include_directories : [include_directories(source_path)],
-    dependencies: deps
+    include_directories : [include_directories(source_path), include_directories('../gucc/src')],
+    dependencies: deps,
+    link_with: [gucc_lib]
 )
 
 executable(

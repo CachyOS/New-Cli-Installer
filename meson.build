@@ -11,6 +11,7 @@ project('cachyos-installer', 'cpp',
 is_debug_build = get_option('buildtype').startswith('debug')
 is_dev_environment = get_option('devenv')
 is_tests_build = get_option('build_tests')
+do_build_static = get_option('build_static')
 cc = meson.get_compiler('cpp')
 if cc.get_id() == 'clang'
     specific_cc_flags = [
@@ -68,9 +69,6 @@ src_files = files(
     'src/definitions.hpp',
     'src/config.cpp', 'src/config.hpp',
     'src/utils.cpp', 'src/utils.hpp',
-    'src/cpu.cpp', 'src/cpu.hpp',
-    'src/pacmanconf_repo.cpp', 'src/pacmanconf_repo.hpp',
-    'src/initcpio.cpp', 'src/initcpio.hpp',
     'src/chwd_profiles.cpp', 'src/chwd_profiles.hpp',
     'src/disk.cpp', 'src/disk.hpp',
     'src/drivers.cpp', 'src/drivers.hpp',
@@ -152,7 +150,9 @@ if not is_debug_build
    endif
 
    possible_cc_flags += ['-fdata-sections', '-ffunction-sections']
-   possible_link_flags = ['-Wl,--gc-sections', '-static-libgcc', '-static-libstdc++']
+   if do_build_static
+      possible_link_flags = ['-Wl,--gc-sections', '-static-libgcc', '-static-libstdc++']
+   endif
    add_project_link_arguments(cc.get_supported_link_arguments(possible_link_flags), language : 'cpp')
 endif
 
@@ -163,11 +163,14 @@ if not is_dev_environment
    deps += [cpr]
 endif
 
+subdir('gucc')
+
 executable(
   'cachyos-installer',
   src_files,
   dependencies: deps,
-  include_directories: [include_directories('src')],
+  link_with: gucc_lib,
+  include_directories: [include_directories('src'), include_directories('gucc/src')],
   install: true)
 
 install_data(
