@@ -933,7 +933,7 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
 
     const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-    auto initcpio                 = detail::Initcpio{initcpio_filename};
+    auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
 
     // NOTE: make sure that we have valid initcpio config,
     // overwise we will end up here with unbootable system.
@@ -1181,7 +1181,7 @@ void install_refind() noexcept {
         utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
 
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-        auto initcpio                 = detail::Initcpio{initcpio_filename};
+        auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
 
         // Remove autodetect hook
         initcpio.remove_hook("autodetect");
@@ -1269,7 +1269,7 @@ void install_systemd_boot() noexcept {
     if (utils::to_int(removable.data()) == 1) {
         const auto& mountpoint        = std::get<std::string>(config_data["MOUNTPOINT"]);
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-        auto initcpio                 = detail::Initcpio{initcpio_filename};
+        auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
 
         // Remove autodetect hook
         initcpio.remove_hook("autodetect");
@@ -1716,7 +1716,7 @@ void install_cachyos_repo() noexcept {
             return;
         }
 
-        detail::pacmanconf::push_repos_front(pacman_conf_cachyos, repos_data);
+        gucc::detail::pacmanconf::push_repos_front(pacman_conf_cachyos, repos_data);
 
         spdlog::info("backup old config");
         fs::rename(pacman_conf, pacman_conf_path_backup, err);
