@@ -36,8 +36,8 @@ jobs:
         run: |
           cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
           cd ${{github.workspace}}/build
-          ./tests/test-initcpio
-          ./tests/test-pacmanconf
+          ./gucc/tests/test-initcpio
+          ./gucc/tests/test-pacmanconf
         shell: bash
   build-cmake_withoutdev:
     name: Build with CMake (DEVENV OFF)
@@ -80,8 +80,8 @@ jobs:
         run: |
           meson compile -C ${{github.workspace}}/build
           cd ${{github.workspace}}/build
-          ./tests/test-initcpio
-          ./tests/test-pacmanconf
+          ./gucc/tests/test-initcpio
+          ./gucc/tests/test-pacmanconf
         shell: bash
   build-meson_withoutdev:
     name: Build with Meson (DEVENV OFF)
