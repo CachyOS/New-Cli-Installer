@@ -6,6 +6,7 @@ gucc_lib = library('gucc',
         'src/cpu.cpp',
         'src/pacmanconf_repo.cpp',
         'src/initcpio.cpp',
+        'src/luks.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps

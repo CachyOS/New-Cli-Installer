@@ -5,6 +5,7 @@
 
 // import gucc
 #include "gucc/io_utils.hpp"
+#include "gucc/luks.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <fmt/compile.h>
@@ -112,7 +113,11 @@ bool luks_open() noexcept {
     // show the error
     detail::infobox_widget("\nPlease wait...\n");
 #ifdef NDEVENV
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup open --type luks {} {}"), luks_password, partition, luks_root_name)});
+    if (!gucc::crypto::luks1_open(luks_password, partition, luks_root_name)) {
+        spdlog::error("Failed to open luks1 partition {} with name {}", partition, luks_root_name);
+        detail::msgbox_widget("\nFailed to open luks1 partition\n");
+        return false;
+    }
 #endif
 
     const auto& devlist = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT {} | grep \"crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\""), partition));
@@ -160,15 +165,21 @@ void luks_encrypt([[maybe_unused]] const std::string_view& command) noexcept {
     const auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
     const auto& luks_password  = std::get<std::string>(config_data["PASSWD"]);
 
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup -q {} {}"), luks_password, command, partition)});
+    if (!gucc::crypto::luks1_format(luks_password, partition, command)) {
+        spdlog::error("Failed to format luks1 partition {} with additional flags {}", partition, command);
+        detail::msgbox_widget("\nFailed to format luks1 partition\n");
+    }
 
     // Now open the encrypted partition or LV
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup open {} {}"), luks_password, partition, luks_root_name)});
+    if (!gucc::crypto::luks1_open(luks_password, partition, luks_root_name)) {
+        spdlog::error("Failed to open luks1 partition {} with name {}", partition, luks_root_name);
+        detail::msgbox_widget("\nFailed to open luks1 partition\n");
+    }
 #endif
 }
 
 void luks_default() noexcept {
-    tui::luks_encrypt("--type luks1 luksFormat");
+    tui::luks_encrypt("");
 }
 
 bool luks_key_define() noexcept {
@@ -183,7 +194,7 @@ bool luks_key_define() noexcept {
 }
 
 void luks_express() noexcept {
-    tui::luks_encrypt("--pbkdf-force-iterations 200000 --type luks1 luksFormat");
+    tui::luks_encrypt("--pbkdf-force-iterations 200000");
 }
 
 void luks_show() noexcept {

@@ -16,6 +16,7 @@ add_library(${PROJECT_NAME} SHARED
    src/cpu.cpp include/gucc/cpu.hpp
    src/pacmanconf_repo.cpp include/gucc/pacmanconf_repo.hpp
    src/initcpio.cpp include/gucc/initcpio.hpp
+   src/luks.cpp include/gucc/luks.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )

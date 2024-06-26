@@ -10,6 +10,7 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/luks.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/string_utils.hpp"
 
@@ -2031,25 +2032,26 @@ void setup_luks_keyfile() noexcept {
     // Add keyfile to luks
     const auto& root_name          = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
     const auto& root_part          = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
-    const auto& number_of_lukskeys = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump /dev/\"{}\" | grep \"ENABLED\" | wc -l"), root_part)));
+    const auto& partition          = fmt::format(FMT_COMPILE("/dev/{}"), root_part);
+    const auto& number_of_lukskeys = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump \"{}\" | grep \"ENABLED\" | wc -l"), partition)));
     if (number_of_lukskeys < 4) {
         // Create a keyfile
 #ifdef NDEVENV
-        if (!fs::exists("/mnt/crypto_keyfile.bin")) {
+        const std::string_view keyfile_path{"/mnt/crypto_keyfile.bin"};
+        if (!fs::exists(keyfile_path)) {
             const auto& ret_status = gucc::utils::exec("dd bs=512 count=4 if=/dev/urandom of=/mnt/crypto_keyfile.bin", true);
             /* clang-format off */
             if (ret_status == "0") { spdlog::info("Generating a keyfile"); }
             /* clang-format on */
         }
-        gucc::utils::exec("chmod 000 /mnt/crypto_keyfile.bin");
+        gucc::utils::exec("chmod 600 /mnt/crypto_keyfile.bin");
         spdlog::info("Adding the keyfile to the LUKS configuration");
-        auto ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup --pbkdf-force-iterations 200000 luksAddKey /dev/\"{}\" /mnt/crypto_keyfile.bin"), root_part), true);
-        /* clang-format off */
-        if (ret_status != "0") { spdlog::info("Something went wrong with adding the LUKS key. Is /dev/{} the right partition?", root_part); }
-        /* clang-format on */
+        if (!gucc::crypto::luks1_add_key(keyfile_path, partition, "--pbkdf-force-iterations 200000")) {
+            spdlog::error("Something went wrong with adding the LUKS key. Is {} the right partition?", partition);
+        }
 
         // Add keyfile to initcpio
-        ret_status = gucc::utils::exec("grep -q '/crypto_keyfile.bin' /mnt/etc/mkinitcpio.conf || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' /mnt/etc/mkinitcpio.conf", true);
+        auto ret_status = gucc::utils::exec("grep -q '/crypto_keyfile.bin' /mnt/etc/mkinitcpio.conf || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' /mnt/etc/mkinitcpio.conf", true);
         /* clang-format off */
         if (ret_status == "0") { spdlog::info("Adding keyfile to the initcpio"); }
         /* clang-format on */
