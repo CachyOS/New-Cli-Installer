@@ -2038,23 +2038,10 @@ void setup_luks_keyfile() noexcept {
         // Create a keyfile
 #ifdef NDEVENV
         const std::string_view keyfile_path{"/mnt/crypto_keyfile.bin"};
-        if (!fs::exists(keyfile_path)) {
-            const auto& ret_status = gucc::utils::exec("dd bs=512 count=4 if=/dev/urandom of=/mnt/crypto_keyfile.bin", true);
-            /* clang-format off */
-            if (ret_status == "0") { spdlog::info("Generating a keyfile"); }
-            /* clang-format on */
-        }
-        gucc::utils::exec("chmod 600 /mnt/crypto_keyfile.bin");
-        spdlog::info("Adding the keyfile to the LUKS configuration");
-        if (!gucc::crypto::luks1_add_key(keyfile_path, partition, "--pbkdf-force-iterations 200000")) {
-            spdlog::error("Something went wrong with adding the LUKS key. Is {} the right partition?", partition);
+        if (!gucc::crypto::luks1_setup_keyfile(keyfile_path, "/mnt", partition, "--pbkdf-force-iterations 200000")) {
+            return;
         }
 
-        // Add keyfile to initcpio
-        auto ret_status = gucc::utils::exec("grep -q '/crypto_keyfile.bin' /mnt/etc/mkinitcpio.conf || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' /mnt/etc/mkinitcpio.conf", true);
-        /* clang-format off */
-        if (ret_status == "0") { spdlog::info("Adding keyfile to the initcpio"); }
-        /* clang-format on */
         utils::arch_chroot("mkinitcpio -P");
 #endif
     }
