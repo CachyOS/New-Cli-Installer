@@ -23,7 +23,7 @@ executable(
   'test-exec-interactive',
   files('unit-exec-interactive.cpp'),
   dependencies: deps,
-  link_with: [test_libreq],
+  link_with: [test_libreq, gucc_lib],
   include_directories: [include_directories(source_path), include_directories('../gucc/include')],
   install: false)
 
@@ -31,6 +31,6 @@ executable(
   'test-process-tailing',
   files('unit-proccess-tailing.cpp'),
   dependencies: deps,
-  link_with: [test_libreq],
+  link_with: [test_libreq, gucc_lib],
   include_directories: [include_directories(source_path), include_directories('../gucc/include')],
   install: false)
