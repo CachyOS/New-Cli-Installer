@@ -6,7 +6,7 @@
 #include "widgets.hpp"
 
 // import gucc
-#include "string_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 /* clang-format off */
 #include <cstdlib>                                 // for setenv

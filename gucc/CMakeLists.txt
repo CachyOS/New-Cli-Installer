@@ -10,17 +10,17 @@ project(gucc
 
 add_library(${PROJECT_NAME} SHARED
    #src/utils.cpp src/utils.hpp
-   src/string_utils.cpp src/string_utils.hpp
-   src/file_utils.cpp src/file_utils.hpp
-   src/cpu.cpp src/cpu.hpp
-   src/pacmanconf_repo.cpp src/pacmanconf_repo.hpp
-   src/initcpio.cpp src/initcpio.hpp
+   src/string_utils.cpp include/gucc/string_utils.hpp
+   src/file_utils.cpp include/gucc/file_utils.hpp
+   src/cpu.cpp include/gucc/cpu.hpp
+   src/pacmanconf_repo.cpp include/gucc/pacmanconf_repo.hpp
+   src/initcpio.cpp include/gucc/initcpio.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )
 
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_DIR}/src)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PUBLIC project_warnings project_options spdlog::spdlog fmt::fmt range-v3::range-v3)
 
 if(COS_INSTALLER_BUILD_TESTS)

@@ -132,7 +132,7 @@ target_link_libraries(screen PRIVATE range-v3::range-v3)
 target_link_libraries(dom PRIVATE range-v3::range-v3)
 target_link_libraries(component PRIVATE range-v3::range-v3)
 
-include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/gucc/src ${RAPIDJSON_INCLUDE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/gucc/include ${RAPIDJSON_INCLUDE_DIR})
 
 add_subdirectory(gucc)
 

@@ -4,7 +4,7 @@
 #include "widgets.hpp"
 
 // import gucc
-#include "string_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <filesystem>                              // for exists, is_directory
 #include <ftxui/component/component.hpp>           // for Renderer, Button

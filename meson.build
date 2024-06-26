@@ -170,7 +170,7 @@ executable(
   src_files,
   dependencies: deps,
   link_with: gucc_lib,
-  include_directories: [include_directories('src'), include_directories('gucc/src')],
+  include_directories: [include_directories('src'), include_directories('gucc/include')],
   install: true)
 
 install_data(

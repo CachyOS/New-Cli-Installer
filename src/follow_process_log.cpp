@@ -4,7 +4,7 @@
 #include "widgets.hpp"
 
 // import gucc
-#include "string_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <chrono>  // for operator""s, chrono_literals
 #include <string>  // for string, operator<<, to_string

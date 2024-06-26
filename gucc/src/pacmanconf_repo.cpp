@@ -1,5 +1,5 @@
-#include "pacmanconf_repo.hpp"
-#include "file_utils.hpp"
+#include "gucc/pacmanconf_repo.hpp"
+#include "gucc/file_utils.hpp"
 
 #include <fstream>  // for ofstream
 #include <string>   // for string

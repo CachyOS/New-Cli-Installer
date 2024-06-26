@@ -1,4 +1,4 @@
-#include "cpu.hpp"
+#include "gucc/cpu.hpp"
 
 #include <sys/utsname.h>  // for uname
 

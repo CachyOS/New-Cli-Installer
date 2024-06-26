@@ -2,7 +2,7 @@
 #include "utils.hpp"
 
 // import gucc
-#include "string_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for any_of, sort, for_each
 

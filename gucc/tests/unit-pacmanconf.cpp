@@ -1,5 +1,5 @@
-#include "file_utils.hpp"
-#include "pacmanconf_repo.hpp"
+#include "gucc/file_utils.hpp"
+#include "gucc/pacmanconf_repo.hpp"
 
 #include <cassert>
 #include <filesystem>

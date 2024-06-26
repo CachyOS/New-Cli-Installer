@@ -10,7 +10,7 @@
 #include "widgets.hpp"
 
 // import gucc
-#include "string_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <fmt/compile.h>
 #include <fmt/format.h>

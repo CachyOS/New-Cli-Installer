@@ -1,5 +1,7 @@
 #include "widgets.hpp"
-#include "string_utils.hpp"  // for make_multiline
+
+// import gucc
+#include "gucc/string_utils.hpp"  // for make_multiline
 
 #include <algorithm>  // for transform
 #include <cstddef>    // for size_t

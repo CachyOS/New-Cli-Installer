@@ -3,7 +3,7 @@ executable(
   files('unit-initcpio.cpp'),
   dependencies: deps,
   link_with: [gucc_lib],
-  include_directories: [include_directories('../src')],
+  include_directories: [include_directories('../include')],
   install: false)
 
 executable(
@@ -11,5 +11,5 @@ executable(
   files('unit-pacmanconf.cpp'),
   dependencies: deps,
   link_with: [gucc_lib],
-  include_directories: [include_directories('../src')],
+  include_directories: [include_directories('../include')],
   install: false)

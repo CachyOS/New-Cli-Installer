@@ -1,4 +1,4 @@
-#include "string_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #if defined(__clang__)
 #pragma clang diagnostic push

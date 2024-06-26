@@ -1,16 +1,16 @@
 #include "utils.hpp"
 #include "config.hpp"
-#include "cpu.hpp"
 #include "definitions.hpp"
-#include "initcpio.hpp"
-#include "pacmanconf_repo.hpp"
 #include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
 
 // import gucc
-#include "file_utils.hpp"
-#include "string_utils.hpp"
+#include "gucc/cpu.hpp"
+#include "gucc/file_utils.hpp"
+#include "gucc/initcpio.hpp"
+#include "gucc/pacmanconf_repo.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <algorithm>      // for transform
 #include <array>          // for array
