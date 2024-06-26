@@ -2037,8 +2037,6 @@ void setup_luks_keyfile() noexcept {
         if (!gucc::crypto::luks1_setup_keyfile(keyfile_path, "/mnt", partition, "--pbkdf-force-iterations 200000")) {
             return;
         }
-
-        utils::arch_chroot("mkinitcpio -P");
 #endif
     }
 }

@@ -64,6 +64,7 @@ auto luks1_setup_keyfile(std::string_view dest_file, std::string_view mountpoint
     }
 
     spdlog::info("Adding keyfile to the initcpio");
+    utils::arch_chroot("mkinitcpio -P", mountpoint);
     return true;
 }
 
