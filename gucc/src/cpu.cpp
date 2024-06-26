@@ -11,6 +11,7 @@ namespace gucc::cpu {
 /* clang-format off */
 namespace {
 
+// NOLINTBEGIN
 static uint64_t xgetbv() noexcept {
     uint32_t eax{};
     uint32_t edx{};
@@ -106,6 +107,7 @@ static int32_t get_cpu_features() noexcept {
     return 0;
 #endif
 }
+// NOLINTEND
 
 }  // namespace
 /* clang-format on */
@@ -114,9 +116,9 @@ auto get_isa_levels() noexcept -> std::vector<std::string> {
     std::vector<std::string> supported_isa_levels;
 
     {
-        struct utsname un;
+        struct utsname un{};
         uname(&un);
-        supported_isa_levels.push_back(std::string{un.machine});
+        supported_isa_levels.emplace_back(un.machine);
     }
 
     const int32_t features = get_cpu_features();
@@ -125,21 +127,21 @@ auto get_isa_levels() noexcept -> std::vector<std::string> {
     const bool supports_v2 = (features & SSSE3) && (features & SSE41) && (features & SSE42);
     if (supports_v2) {
         spdlog::info("cpu supports x86_64_v2");
-        supported_isa_levels.push_back("x86_64_v2");
+        supported_isa_levels.emplace_back("x86_64_v2");
     }
 
     /* Check for x86_64_v3 */
     const bool supports_v3 = (supports_v2) && (features & AVX) && (features & AVX2);
     if (supports_v3) {
         spdlog::info("cpu supports x86_64_v3");
-        supported_isa_levels.push_back("x86_64_v3");
+        supported_isa_levels.emplace_back("x86_64_v3");
     }
 
     /* Check for x86_64_v4 */
     const bool supports_v4 = (supports_v3) && (features & AVX512F) && (features & AVX512VL) && (features & AVX512BW) && (features & AVX512CD) && (features & AVX512DQ);
     if (supports_v4) {
         spdlog::info("cpu supports x86_64_v4");
-        supported_isa_levels.push_back("x86_64_v4");
+        supported_isa_levels.emplace_back("x86_64_v4");
     }
 
     return supported_isa_levels;

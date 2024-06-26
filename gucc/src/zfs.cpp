@@ -40,7 +40,7 @@ void zfs_destroy_dataset(std::string_view zdataset) noexcept {
 // returns a list of imported zpools
 auto zfs_list_pools() noexcept -> std::string {
 #ifdef NDEVENV
-    return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\""sv);
+    return utils::exec(R"(zfs list -H -o name 2>/dev/null | grep "/")"sv);
 #else
     return {"vol0\nvol1\n"};
 #endif
@@ -50,8 +50,8 @@ auto zfs_list_pools() noexcept -> std::string {
 auto zfs_list_devs() noexcept -> std::string {
     std::string list_of_devices{};
     // get a list of devices with zpools on them
-    const auto& devices = utils::make_multiline(utils::exec("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\""sv));
-    for (const auto& device : devices) {
+    auto devices = utils::make_multiline(utils::exec(R"(zpool status -PL 2>/dev/null | awk '{print $1}' | grep "^/")"sv));
+    for (auto&& device : std::move(devices)) {
         // add the device
         list_of_devices += fmt::format(FMT_COMPILE("{}\n"), device);
         // now let's add any other forms of those devices
@@ -65,10 +65,10 @@ auto zfs_list_datasets(std::string_view type) noexcept -> std::string {
     if (type == "zvol"sv) {
         return utils::exec("zfs list -Ht volume -o name,volsize 2>/dev/null"sv);
     } else if (type == "legacy"sv) {
-        return utils::exec("zfs list -Ht filesystem -o name,mountpoint 2>/dev/null | grep \"^.*/.*legacy$\" | awk '{print $1}'"sv);
+        return utils::exec(R"(zfs list -Ht filesystem -o name,mountpoint 2>/dev/null | grep "^.*/.*legacy$" | awk '{print $1}')"sv);
     }
 
-    return utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\""sv);
+    return utils::exec(R"(zfs list -H -o name 2>/dev/null | grep "/")"sv);
 #else
     spdlog::debug("type := {}", type);
     return {"zpcachyos"};
