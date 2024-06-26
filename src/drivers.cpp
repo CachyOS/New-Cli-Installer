@@ -81,11 +81,11 @@ void install_graphics_menu() noexcept {
 #ifdef NDEVENV
         case 0:
             utils::arch_chroot("chwd -a pci free 0300"sv);
-            std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
+            std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};  // NOLINT
             break;
         case 1:
             utils::arch_chroot("chwd -a pci nonfree 0300"sv);
-            std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
+            std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};  // NOLINT
             break;
 #endif
         case 2:

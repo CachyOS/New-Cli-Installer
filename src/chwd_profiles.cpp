@@ -52,7 +52,7 @@ auto get_all_profile_names(std::string_view profile_type) noexcept -> std::optio
                 const auto& nested_profile_name = fmt::format(FMT_COMPILE("{}.{}"), std::string_view{key}, std::string_view{nested_key});
                 profile_names.push_back(nested_profile_name);
             }
-            profile_names.push_back(std::string(key));
+            profile_names.emplace_back(key);
         }
     }
 

@@ -294,16 +294,19 @@ void auto_partition() noexcept {
     const auto& part_table = gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
 
     // Create partition table if one does not already exist
-    if ((system_info == "BIOS") && (part_table != "msdos"))
+    if ((system_info == "BIOS") && (part_table != "msdos")) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    if ((system_info == "UEFI") && (part_table != "gpt"))
+    }
+    if ((system_info == "UEFI") && (part_table != "gpt")) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    }
 
     // Create partitions (same basic partitioning scheme for BIOS and UEFI)
-    if (system_info == "BIOS")
+    if (system_info == "BIOS") {
         gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    else
+    } else {
         gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    }
 
     gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
@@ -359,8 +362,9 @@ void generate_fstab(const std::string_view& fstab_cmd) noexcept {
     // remove any zfs datasets that are mounted by zfs
     const auto& msource_list = gucc::utils::make_multiline(gucc::utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
     for (const auto& msource : msource_list) {
-        if (gucc::utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0")
+        if (gucc::utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0") {
             gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e \"\\|^{}[[:space:]]| s/^#*/#/\" -i {}/etc/fstab"), msource, mountpoint));
+        }
     }
 #endif
 }
@@ -870,7 +874,7 @@ void install_base(const std::string_view& packages) noexcept {
     fs::copy_file("/etc/pacman.conf", fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint), fs::copy_options::overwrite_existing);
 
     static constexpr auto base_installed = "/mnt/.base_installed";
-    std::ofstream{base_installed};
+    std::ofstream{base_installed};  // NOLINT
 
     // mkinitcpio handling for specific filesystems
     std::int32_t btrfs_root = 0;
@@ -1032,7 +1036,7 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
 
     // if the device is removable append removable to the grub-install
     const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable.data()) == 1) {
+    if (utils::to_int(removable) == 1) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/^grub-install /s/$/ --removable/g' -i {}"), grub_installer_path));
     }
 
@@ -1042,7 +1046,7 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
     }
     // If encryption used amend grub
-    if (luks_dev != "") {
+    if (!luks_dev.empty()) {
         const auto& luks_dev_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
         ret_status                     = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
         if (ret_status == "0") {
@@ -1102,7 +1106,7 @@ void install_refind() noexcept {
 
     // install refind
     const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable.data()) == 1) {
+    if (utils::to_int(removable) == 1) {
         gucc::utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
 
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
@@ -1139,19 +1143,19 @@ void install_refind() noexcept {
         gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
     }
     // Figure out microcode
-    const auto& rootsubvol = gucc::utils::exec("findmnt -o TARGET,SOURCE | awk '/\\/mnt / {print $2}' | grep -o \"\\[.*\\]\" | cut -d \"[\" -f2 | cut -d \"]\" -f1 | sed 's/^\\///'");
+    const auto& rootsubvol = gucc::utils::exec(R"(findmnt -o TARGET,SOURCE | awk '/\/mnt / {print $2}' | grep -o "\[.*\]" | cut -d "[" -f2 | cut -d "]" -f1 | sed 's/^\///')");
     const auto& ucode      = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qqs ucode 2>>/tmp/cachyos-install.log"), mountpoint));
-    if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l)"), ucode)).data()) > 1) {
+    if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l)"), ucode))) > 1) {
         // set microcode
         if (gucc::utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
             // there is a separate boot, path to microcode is at partition root
-            gucc::utils::exec("sed -i \"s|\\\"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
+            gucc::utils::exec(R"(sed -i "s|\"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img\"|g" /mnt/boot/refind_linux.conf)");
         } else if (!rootsubvol.empty()) {
             // Initramfs is on the root partition and root is on btrfs subvolume
             gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/intel-ucode.img initrd={0}/boot/amd-ucode.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol));
         } else {
             // Initramfs is on the root partition
-            gucc::utils::exec("sed -i \"s|\\\"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
+            gucc::utils::exec(R"(sed -i "s|\"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img\"|g" /mnt/boot/refind_linux.conf)");
         }
     } else {
         if (gucc::utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
@@ -1191,7 +1195,7 @@ void install_systemd_boot() noexcept {
     const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
     const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable.data()) == 1) {
+    if (utils::to_int(removable) == 1) {
         const auto& mountpoint        = std::get<std::string>(config_data["MOUNTPOINT"]);
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
         auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
@@ -1309,7 +1313,7 @@ grub-install --target=i386-pc --recheck)";
     }
 
     // If encryption used amend grub
-    if (luks_dev != "") {
+    if (!luks_dev.empty()) {
         const auto& luks_dev_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
         ret_status                     = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
         if (ret_status == "0") {
@@ -1553,7 +1557,7 @@ bool check_mount() noexcept {
     auto* config_instance       = Config::instance();
     auto& config_data           = config_instance->data();
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    if (gucc::utils::exec(fmt::format(FMT_COMPILE("findmnt -nl {}"), mountpoint_info)) == "") {
+    if (gucc::utils::exec(fmt::format(FMT_COMPILE("findmnt -nl {}"), mountpoint_info)).empty()) {
         return false;
     }
 #endif

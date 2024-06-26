@@ -22,7 +22,7 @@ auto lvm_show_vg() noexcept -> std::vector<std::string>;
 [[nodiscard]] bool zfs_create_zpool(const std::string_view& partition, const std::string_view& pool_name) noexcept;
 
 // Other filesystems
-void select_filesystem(const std::string_view& fs) noexcept;
+void select_filesystem(const std::string_view& file_sys) noexcept;
 
 }  // namespace utils
 

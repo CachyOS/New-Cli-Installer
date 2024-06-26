@@ -191,7 +191,7 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
                 // Check if there are subvolumes already on the btrfs partition
                 const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), part_mountpoint);
                 const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
-                const auto& lines_count      = utils::to_int(subvolumes_count.data());
+                const auto& lines_count      = utils::to_int(subvolumes_count);
                 if (lines_count > 1) {
                     // Pre-existing subvolumes and user wants to mount them
                     utils::mount_existing_subvols({root_part, root_part});

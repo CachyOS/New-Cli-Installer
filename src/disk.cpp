@@ -30,7 +30,7 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
 
 #ifdef NDEVENV
     // save mount options and name of the root partition
-    gucc::utils::exec("mount | grep \"on /mnt \" | grep -Po '(?<=\\().*(?=\\))' > /tmp/.root_mount_options"sv);
+    gucc::utils::exec(R"(mount | grep 'on /mnt ' | grep -Po '(?<=\().*(?=\))' > /tmp/.root_mount_options)"sv);
     // gucc::utils::exec("lsblk -lno MOUNTPOINT,NAME | awk '/^\\/mnt / {print $2}' > /tmp/.root_partition"sv);
 
     if (mode == "manual"sv) {
@@ -108,7 +108,7 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
         fs_opts = "compress=lzo,noatime,space_cache,ssd,commit=120"sv;
     }
 #ifdef NDEVENV
-    gucc::utils::exec("btrfs subvolume list /mnt 2>/dev/null | cut -d\" \" -f9 > /tmp/.subvols"sv, true);
+    gucc::utils::exec("btrfs subvolume list /mnt 2>/dev/null | cut -d' ' -f9 > /tmp/.subvols"sv, true);
     umount("/mnt");
 
     // Mount subvolumes one by one

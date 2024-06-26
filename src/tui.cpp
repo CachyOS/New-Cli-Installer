@@ -1037,7 +1037,7 @@ bool mount_current_partition(bool force) noexcept {
 #ifdef NDEVENV
     std::error_code err{};
     // Make the mount directory
-    fs::path mount_dir(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev));
+    const fs::path mount_dir(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev));
     fs::create_directories(mount_dir, err);
 #endif
 
