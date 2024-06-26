@@ -7,6 +7,7 @@ gucc_lib = library('gucc',
         'src/pacmanconf_repo.cpp',
         'src/initcpio.cpp',
         'src/luks.cpp',
+        'src/zfs.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps

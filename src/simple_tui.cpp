@@ -8,6 +8,7 @@
 // import gucc
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/zfs.hpp"
 
 /* clang-format off */
 #include <cstdlib>                                 // for setenv
@@ -350,7 +351,7 @@ void menu_simple() noexcept {
 
     // Filter out partitions that have already been mounted and partitions that just contain crypt or zfs devices
     auto ignore_part = utils::list_mounted();
-    ignore_part += utils::zfs_list_devs();
+    ignore_part += gucc::fs::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
     // We must have bootloader before running partitioning step

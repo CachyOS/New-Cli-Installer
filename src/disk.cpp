@@ -6,6 +6,7 @@
 // import gucc
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/zfs.hpp"
 
 #include <filesystem>                              // for exists, is_directory
 #include <ftxui/component/component.hpp>           // for Renderer, Button
@@ -149,12 +150,12 @@ bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zf
     }
 
     // next create the datasets including their parents
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), "none"sv);
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), "none"sv);
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), "/"sv);
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), "/home"sv);
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), "/var/cache"sv);
-    utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), "/var/log"sv);
+    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), "none"sv);
+    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), "none"sv);
+    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), "/"sv);
+    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), "/home"sv);
+    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), "/var/cache"sv);
+    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), "/var/log"sv);
 
 #ifdef NDEVENV
     // set the rootfs
@@ -206,78 +207,6 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
 #endif
 
     return true;
-}
-
-// Creates a zfs volume
-void zfs_create_zvol(const std::string_view& zsize, const std::string_view& zpath) noexcept {
-#ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zfs create -V {}M {} 2>>/tmp/cachyos-install.log"), zsize, zpath), true);
-#else
-    spdlog::debug("zfs create -V {}M {}", zsize, zpath);
-#endif
-}
-
-// Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
-void zfs_create_dataset(const std::string_view& zpath, const std::string_view& zmount) noexcept {
-#ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log"), zmount, zpath), true);
-#else
-    spdlog::debug("zfs create -o mountpoint={} {}", zmount, zpath);
-#endif
-}
-
-void zfs_destroy_dataset(const std::string_view& zdataset) noexcept {
-#ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zfs destroy -r {} 2>>/tmp/cachyos-install.log"), zdataset), true);
-#else
-    spdlog::debug("zfs destroy -r {}", zdataset);
-#endif
-}
-
-// returns a list of imported zpools
-std::string zfs_list_pools() noexcept {
-#ifdef NDEVENV
-    return gucc::utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\""sv);
-#else
-    return "vol0\nvol1\n";
-#endif
-}
-
-// returns a list of devices containing zfs members
-std::string zfs_list_devs() noexcept {
-    std::string list_of_devices{};
-    // get a list of devices with zpools on them
-    const auto& devices = gucc::utils::make_multiline(gucc::utils::exec("zpool status -PL 2>/dev/null | awk '{print $1}' | grep \"^/\""sv));
-    for (const auto& device : devices) {
-        // add the device
-        list_of_devices += fmt::format(FMT_COMPILE("{}\n"), device);
-        // now let's add any other forms of those devices
-        list_of_devices += gucc::utils::exec(fmt::format(FMT_COMPILE("find -L /dev/ -xtype l -samefile {} 2>/dev/null"), device));
-    }
-    return list_of_devices;
-}
-
-std::string zfs_list_datasets(const std::string_view& type) noexcept {
-#ifdef NDEVENV
-    if (type == "zvol"sv) {
-        return gucc::utils::exec("zfs list -Ht volume -o name,volsize 2>/dev/null"sv);
-    } else if (type == "legacy"sv) {
-        return gucc::utils::exec("zfs list -Ht filesystem -o name,mountpoint 2>/dev/null | grep \"^.*/.*legacy$\" | awk '{print $1}'"sv);
-    }
-
-    return gucc::utils::exec("zfs list -H -o name 2>/dev/null | grep \"/\""sv);
-#else
-    spdlog::debug("type := {}", type);
-    return "zpcachyos";
-#endif
-}
-
-void zfs_set_property(const std::string_view& property, const std::string_view& dataset) noexcept {
-#ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zfs set {} {} 2>>/tmp/cachyos-install.log"), property, dataset), true);
-#else
-    spdlog::debug("zfs set {} {}", property, dataset);
-#endif
 }
 
 // Other filesystems

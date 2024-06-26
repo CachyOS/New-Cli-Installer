@@ -12,6 +12,7 @@
 // import gucc
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/zfs.hpp"
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -1326,7 +1327,7 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
 
     // Filter out partitions that have already been mounted and partitions that just contain crypt or zfs devices
     auto ignore_part = utils::list_mounted();
-    ignore_part += utils::zfs_list_devs();
+    ignore_part += gucc::fs::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
     /* const auto& parts = gucc::utils::make_multiline(ignore_part);
@@ -1438,7 +1439,7 @@ bool zfs_import_pool() noexcept {
 }
 
 bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
-    const auto& zlist = gucc::utils::make_multiline(utils::zfs_list_pools());
+    const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_pools());
     if (zlist.empty()) {
         // no available datasets
         detail::infobox_widget("\nNo pools available\"\n"sv);
@@ -1489,7 +1490,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
     }
 
     if (zmount == "legacy") {
-        utils::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name), zmount);
+        gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name), zmount);
     } else if (zmount == "zvol") {
         static constexpr auto zvol_size_menu_body       = "\nEnter the size of the zvol in megabytes(MB)\n"sv;
         static constexpr auto zvol_size_menu_validation = "\nYou must enter a number greater than 0\n"sv;
@@ -1515,7 +1516,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
             if (zfs_menu_text == zvol_size_menu_body) { break; }
             /* clang-format on */
         }
-        utils::zfs_create_zvol(zvol_size, fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name));
+        gucc::fs::zfs_create_zvol(zvol_size, fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name));
     } else {
         spdlog::error("HELLO! IMPLEMENT ME!");
         return false;
@@ -1525,7 +1526,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
 }
 
 void zfs_set_property() noexcept {
-    const auto& zlist = gucc::utils::make_multiline(utils::zfs_list_datasets());
+    const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_datasets());
     if (zlist.empty()) {
         // no available datasets
         detail::infobox_widget("\nNo datasets available\"\n"sv);
@@ -1576,11 +1577,11 @@ void zfs_set_property() noexcept {
     }
 
     // Set the property
-    utils::zfs_set_property(zfs_property_ent, zdataset);
+    gucc::fs::zfs_set_property(zfs_property_ent, zdataset);
 }
 
 void zfs_destroy_dataset() noexcept {
-    const auto& zlist = gucc::utils::make_multiline(utils::zfs_list_datasets());
+    const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_datasets());
     if (zlist.empty()) {
         // no available datasets
         detail::infobox_widget("\nNo datasets available\"\n"sv);
@@ -1612,7 +1613,7 @@ void zfs_destroy_dataset() noexcept {
     if (!do_destroy) { return; }
     /* clang-format on */
 
-    utils::zfs_destroy_dataset(zdataset);
+    gucc::fs::zfs_destroy_dataset(zdataset);
 }
 
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
@@ -1840,7 +1841,7 @@ void mount_partitions() noexcept {
 
     // Filter out partitions that have already been mounted and partitions that just contain crypt or zfs devices
     auto ignore_part = utils::list_mounted();
-    ignore_part += utils::zfs_list_devs();
+    ignore_part += gucc::fs::zfs_list_devs();
     ignore_part += utils::list_containing_crypt();
 
     /* const auto& parts = gucc::utils::make_multiline(ignore_part);
