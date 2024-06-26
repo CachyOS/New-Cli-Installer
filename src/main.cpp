@@ -3,6 +3,9 @@
 #include "tui.hpp"          // for init
 #include "utils.hpp"        // for exec, check_root, clear_sc...
 
+// import gucc
+#include "gucc/io_utils.hpp"
+
 #include <chrono>  // for seconds
 #include <regex>   // for regex_search, match_result...
 #include <thread>  // for sleep_for
@@ -13,10 +16,10 @@
 #include <spdlog/spdlog.h>                 // for set_default_logger, set_level
 
 int main() {
-    const auto& tty = utils::exec("tty");
+    const auto& tty = gucc::utils::exec("tty");
     const std::regex tty_regex("/dev/tty[0-9]*");
     if (std::regex_search(tty, tty_regex)) {
-        utils::exec("setterm -blank 0 -powersave off");
+        gucc::utils::exec("setterm -blank 0 -powersave off");
     }
 
     // Check if installer has enough permissions.

@@ -6,6 +6,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 /* clang-format off */
@@ -128,10 +129,10 @@ void make_esp(const std::string& part_name, std::string_view bootloader_name, bo
     config_data["UEFI_PART"]  = partition;
 
     // If it is already a fat/vfat partition...
-    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("fsck -N {} | grep fat &>/dev/null"), partition), true);
+    const auto& ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("fsck -N {} | grep fat &>/dev/null"), partition), true);
     if (ret_status != "0" && reformat_part) {
 #ifdef NDEVENV
-        utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
 #endif
         spdlog::debug("Formating boot partition with fat/vfat!");
     }
@@ -140,8 +141,8 @@ void make_esp(const std::string& part_name, std::string_view bootloader_name, bo
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& path_formatted  = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
 
-    utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), path_formatted));
-    utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, path_formatted));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), path_formatted));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, path_formatted));
 #endif
 }
 
@@ -188,7 +189,7 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
             if (root_fs == "btrfs"sv) {
                 // Check if there are subvolumes already on the btrfs partition
                 const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), part_mountpoint);
-                const auto& subvolumes_count = utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
+                const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
                 const auto& lines_count      = utils::to_int(subvolumes_count.data());
                 if (lines_count > 1) {
                     // Pre-existing subvolumes and user wants to mount them
@@ -212,7 +213,7 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
             // 2 = separate lvm boot. For Grub configuration
             if (part_mountpoint == "/boot"sv) {
                 const auto& cmd             = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"lvm\""), part_name);
-                const auto& cmd_out         = utils::exec(cmd);
+                const auto& cmd_out         = gucc::utils::exec(cmd);
                 config_data["LVM_SEP_BOOT"] = 1;
                 if (!cmd_out.empty()) {
                     config_data["LVM_SEP_BOOT"] = 2;
@@ -342,7 +343,7 @@ void menu_simple() noexcept {
     utils::umount_partitions();
 
     // We need to remount the zfs filesystems that have defined mountpoints already
-    utils::exec("zfs mount -aO &>/dev/null");
+    gucc::utils::exec("zfs mount -aO &>/dev/null");
 
     // Get list of available partitions
     utils::find_partitions();
@@ -388,7 +389,7 @@ void menu_simple() noexcept {
     /*if (utils::get_mountpoint_fs(mountpoint) == "btrfs") {
         // Check if there are subvolumes already on the btrfs partition
         const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mountpoint);
-        const auto& subvolumes_count = utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
+        const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
         const auto& lines_count      = utils::to_int(subvolumes_count.data());
         if (lines_count > 1) {
             // Pre-existing subvolumes and user wants to mount them
@@ -473,7 +474,7 @@ void menu_simple() noexcept {
         // so that output will be synchronized.
         auto logger = spdlog::get("cachyos_logger");
         logger->flush();
-        utils::exec(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), post_install), true);
+        gucc::utils::exec(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), post_install), true);
     }
 
     tui::exit_done();

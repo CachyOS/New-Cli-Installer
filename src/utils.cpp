@@ -9,6 +9,7 @@
 #include "gucc/cpu.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
+#include "gucc/io_utils.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/string_utils.hpp"
 
@@ -26,9 +27,7 @@
 #include <mutex>          // for mutex
 #include <string>         // for operator==, string, basic_string, allocator
 #include <sys/mount.h>    // for mount
-#include <sys/wait.h>     // for waitpid
 #include <thread>         // for sleep_for
-#include <unistd.h>       // for execvp, fork
 #include <unordered_map>  // for unordered_map
 
 #include <fmt/compile.h>
@@ -107,14 +106,9 @@ bool is_connected() noexcept {
 #endif
 }
 
-std::string safe_getenv(const char* env_name) noexcept {
-    const char* const raw_val = getenv(env_name);
-    return raw_val != nullptr ? std::string(raw_val) : std::string{};
-}
-
 bool check_root() noexcept {
 #ifdef NDEVENV
-    return (utils::exec("whoami") == "root");
+    return (gucc::utils::exec("whoami") == "root");
 #else
     return true;
 #endif
@@ -136,13 +130,13 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     if (follow) {
         const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
         if (headless_mode) {
-            utils::exec(cmd_formatted, true);
+            gucc::utils::exec(cmd_formatted, true);
         } else {
             tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         }
         return;
     }
-    utils::exec(cmd_formatted);
+    gucc::utils::exec(cmd_formatted);
 #else
     spdlog::info("Running with arch-chroot(follow='{}'): '{}'", follow, cmd_formatted);
 #endif
@@ -154,8 +148,8 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
         return;
     }
 
-    const bool log_exec_cmds = safe_getenv("LOG_EXEC_CMDS") == "1";
-    const bool dirty_cmd_run = safe_getenv("DIRTY_CMD_RUN") == "1";
+    const bool log_exec_cmds = gucc::utils::safe_getenv("LOG_EXEC_CMDS") == "1";
+    const bool dirty_cmd_run = gucc::utils::safe_getenv("DIRTY_CMD_RUN") == "1";
 
     if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
         spdlog::debug("[exec_follow] cmd := {}", vec);
@@ -202,72 +196,6 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
     running = false;
 }
 
-void exec(const std::vector<std::string>& vec) noexcept {
-    const bool log_exec_cmds = safe_getenv("LOG_EXEC_CMDS") == "1";
-    const bool dirty_cmd_run = safe_getenv("DIRTY_CMD_RUN") == "1";
-
-    if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
-        spdlog::debug("[exec] cmd := {}", vec);
-    }
-    if (dirty_cmd_run) {
-        return;
-    }
-
-    std::int32_t status{};
-    auto pid = fork();
-    if (pid == 0) {
-        std::vector<char*> args;
-        std::transform(vec.cbegin(), vec.cend(), std::back_inserter(args),
-            [=](const std::string& arg) -> char* { return const_cast<char*>(arg.data()); });
-        args.push_back(nullptr);
-
-        char** command = args.data();
-        execvp(command[0], command);
-    } else {
-        do {
-            waitpid(pid, &status, 0);
-        } while ((!WIFEXITED(status)) && (!WIFSIGNALED(status)));
-    }
-}
-
-// https://github.com/sheredom/subprocess.h
-// https://gist.github.com/konstantint/d49ab683b978b3d74172
-// https://github.com/arun11299/cpp-subprocess/blob/master/subprocess.hpp#L1218
-// https://stackoverflow.com/questions/11342868/c-interface-for-interactive-bash
-// https://github.com/hniksic/rust-subprocess
-std::string exec(const std::string_view& command, const bool& interactive) noexcept {
-    const bool log_exec_cmds = safe_getenv("LOG_EXEC_CMDS") == "1";
-
-    if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
-        spdlog::debug("[exec] cmd := '{}'", command);
-    }
-
-    if (interactive) {
-        const auto& ret_code = system(command.data());
-        return std::to_string(ret_code);
-    }
-
-    const std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.data(), "r"), pclose);
-    if (!pipe) {
-        spdlog::error("popen failed! '{}'", command);
-        return "-1";
-    }
-
-    std::string result{};
-    std::array<char, 128> buffer{};
-    while (!feof(pipe.get())) {
-        if (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-            result += buffer.data();
-        }
-    }
-
-    if (result.ends_with('\n')) {
-        result.pop_back();
-    }
-
-    return result;
-}
-
 void dump_to_log(const std::string& data) noexcept {
     spdlog::info("[DUMP_TO_LOG] :=\n{}", data);
 }
@@ -301,7 +229,7 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
 
 // install a pkg in the live session if not installed
 void inst_needed(const std::string_view& pkg) noexcept {
-    if (utils::exec(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg), true) != "0") {
+    if (gucc::utils::exec(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg), true) != "0") {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         utils::clear_screen();
 
@@ -312,11 +240,11 @@ void inst_needed(const std::string_view& pkg) noexcept {
         auto& config_data         = config_instance->data();
         const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
         if (headless_mode) {
-            utils::exec(cmd_formatted, true);
+            gucc::utils::exec(cmd_formatted, true);
         } else {
             tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         }
-        // utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg));
+        // gucc::utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg));
 #else
         spdlog::info("Installing needed: '{}'", cmd_formatted);
 #endif
@@ -329,9 +257,9 @@ void umount_partitions() noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    auto mount_info             = utils::exec(fmt::format(FMT_COMPILE("mount | grep \"{}\" | {}"), mountpoint_info, "awk '{print $3}' | sort -r"));
+    auto mount_info             = gucc::utils::exec(fmt::format(FMT_COMPILE("mount | grep \"{}\" | {}"), mountpoint_info, "awk '{print $3}' | sort -r"));
 #ifdef NDEVENV
-    utils::exec("swapoff -a");
+    gucc::utils::exec("swapoff -a");
 #endif
 
     const auto& lines = gucc::utils::make_multiline(mount_info);
@@ -354,34 +282,34 @@ void auto_partition() noexcept {
 
 #ifdef NDEVENV
     // Find existing partitions (if any) to remove
-    const auto& parts     = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk '/^ / {print $1}'"));
+    const auto& parts     = gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk '/^ / {print $1}'"));
     const auto& del_parts = gucc::utils::make_multiline(parts);
     for (const auto& del_part : del_parts) {
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} 2>>/tmp/cachyos-install.log &>/dev/null"), device_info, del_part));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} 2>>/tmp/cachyos-install.log &>/dev/null"), device_info, del_part));
     }
 
     // Clear disk
-    utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of=\"{}\" bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    utils::exec(fmt::format(FMT_COMPILE("wipefs -af \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of=\"{}\" bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("wipefs -af \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 
     // Identify the partition table
-    const auto& part_table = utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
+    const auto& part_table = gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
 
     // Create partition table if one does not already exist
     if ((system_info == "BIOS") && (part_table != "msdos"))
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     if ((system_info == "UEFI") && (part_table != "gpt"))
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 
     // Create partitions (same basic partitioning scheme for BIOS and UEFI)
     if (system_info == "BIOS")
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     else
-        utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 
-    utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 #else
     spdlog::info("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info);
 #endif
@@ -399,11 +327,11 @@ void secure_wipe() noexcept {
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info);
     if (headless_mode) {
-        utils::exec(cmd_formatted, true);
+        gucc::utils::exec(cmd_formatted, true);
     } else {
         tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
     }
-    // utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info));
+    // gucc::utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info));
 #else
     spdlog::debug("{}\n", device_info);
 #endif
@@ -416,7 +344,7 @@ void generate_fstab(const std::string_view& fstab_cmd) noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    utils::exec(fmt::format(FMT_COMPILE("{0} {1} > {1}/etc/fstab"), fstab_cmd, mountpoint));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("{0} {1} > {1}/etc/fstab"), fstab_cmd, mountpoint));
     spdlog::info("Created fstab file:");
 
     const auto& fstab_content = gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/fstab"), mountpoint));
@@ -425,17 +353,17 @@ void generate_fstab(const std::string_view& fstab_cmd) noexcept {
     const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
     if (fs::exists(swap_file) && fs::is_regular_file(swap_file)) {
         spdlog::info("appending swapfile to the fstab..");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {0}/etc/fstab"), mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {0}/etc/fstab"), mountpoint));
     }
 
     // Edit fstab in case of btrfs subvolumes
-    utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
 
     // remove any zfs datasets that are mounted by zfs
-    const auto& msource_list = gucc::utils::make_multiline(utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
+    const auto& msource_list = gucc::utils::make_multiline(gucc::utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
     for (const auto& msource : msource_list) {
-        if (utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0")
-            utils::exec(fmt::format(FMT_COMPILE("sed -e \"\\|^{}[[:space:]]| s/^#*/#/\" -i {}/etc/fstab"), msource, mountpoint));
+        if (gucc::utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0")
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e \"\\|^{}[[:space:]]| s/^#*/#/\" -i {}/etc/fstab"), msource, mountpoint));
     }
 #endif
 }
@@ -447,9 +375,9 @@ void set_hostname(const std::string_view& hostname) noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" > {}/etc/hostname"), hostname, mountpoint));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" > {}/etc/hostname"), hostname, mountpoint));
     const auto& cmd = fmt::format(FMT_COMPILE("echo -e \"#<ip-address>\\t<hostname.domain.org>\\t<hostname>\\n127.0.0.1\\tlocalhost.localdomain\\tlocalhost\\t{0}\\n::1\\tlocalhost.localdomain\\tlocalhost\\t{0}\">{1}/etc/hosts"), hostname, mountpoint);
-    utils::exec(cmd);
+    gucc::utils::exec(cmd);
 #endif
 }
 
@@ -478,7 +406,7 @@ LC_MESSAGES="{0}")";
     std::ofstream locale_config_file{locale_config_path};
     locale_config_file << fmt::format(locale_config_part, locale);
 
-    utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
 
     // Generate locales
     utils::arch_chroot("locale-gen", false);
@@ -492,7 +420,7 @@ void set_xkbmap(const std::string_view& xkbmap) noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    utils::exec(fmt::format(FMT_COMPILE("echo -e \"Section \"\\\"InputClass\"\\\"\\nIdentifier \"\\\"system-keyboard\"\\\"\\nMatchIsKeyboard \"\\\"on\"\\\"\\nOption \"\\\"XkbLayout\"\\\" \"\\\"{0}\"\\\"\\nEndSection\" > {1}/etc/X11/xorg.conf.d/00-keyboard.conf"), xkbmap, mountpoint));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("echo -e \"Section \"\\\"InputClass\"\\\"\\nIdentifier \"\\\"system-keyboard\"\\\"\\nMatchIsKeyboard \"\\\"on\"\\\"\\nOption \"\\\"XkbLayout\"\\\" \"\\\"{0}\"\\\"\\nEndSection\" > {1}/etc/X11/xorg.conf.d/00-keyboard.conf"), xkbmap, mountpoint));
 #endif
 }
 
@@ -535,7 +463,7 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
         const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
         const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
         if (headless_mode) {
-            utils::exec(cmd_formatted, true);
+            gucc::utils::exec(cmd_formatted, true);
         } else {
             tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
         }
@@ -548,13 +476,13 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
     spdlog::info("add user to groups");
 
     // check if user has been created
-    const auto& user_check = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} getent passwd {}"), mountpoint, user));
+    const auto& user_check = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} getent passwd {}"), mountpoint, user));
     if (user_check.empty()) {
         spdlog::error("User has not been created!");
     }
     std::error_code err{};
-    utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\\n{0}\" > /tmp/.passwd"), password));
-    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd {} < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\\n{0}\" > /tmp/.passwd"), password));
+    const auto& ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd {} < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
     spdlog::info("create user pwd: {}", ret_status);
     fs::remove("/tmp/.passwd", err);
 
@@ -563,7 +491,7 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
     utils::arch_chroot(fmt::format(FMT_COMPILE("chown -R {0}:{0} /home/{0}"), user), false);
     const auto& sudoers_file = fmt::format(FMT_COMPILE("{}/etc/sudoers"), mountpoint);
     if (fs::exists(sudoers_file)) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i '/NOPASSWD/!s/# %sudo/%sudo/g' {}"), sudoers_file));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i '/NOPASSWD/!s/# %sudo/%sudo/g' {}"), sudoers_file));
     }
 #else
     spdlog::debug("user := {}, password := {}", user, password);
@@ -578,8 +506,8 @@ void set_root_password(const std::string_view& password) noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
     std::error_code err{};
-    utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\n{0}\" > /tmp/.passwd"), password));
-    utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd root < /tmp/.passwd &>/dev/null"), mountpoint));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\n{0}\" > /tmp/.passwd"), password));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd root < /tmp/.passwd &>/dev/null"), mountpoint));
     fs::remove("/tmp/.passwd", err);
 #else
     spdlog::debug("root password := {}", password);
@@ -599,7 +527,7 @@ void find_partitions() noexcept {
 
     // get the list of partitions and also include the zvols since it is common to mount filesystems directly on them.  It should be safe to include them here since they present as block devices.
     static constexpr auto other_piece = R"(sed 's/part$/\/dev\//g' | sed 's/lvm$\|crypt$/\/dev\/mapper\//g' | awk '{print $3$1 " " $2}' | awk '!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk '{printf "/dev/zvol/%s %s\n", $1, $2}')";
-    const auto& partitions_tmp        = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME,SIZE,TYPE | grep '{}' | {}"), include_part, other_piece));
+    const auto& partitions_tmp        = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME,SIZE,TYPE | grep '{}' | {}"), include_part, other_piece));
 
     spdlog::info("found partitions:\n{}", partitions_tmp);
 
@@ -646,9 +574,9 @@ void find_partitions() noexcept {
 }
 
 void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
-    const auto& lvm_pv = utils::exec("pvs -o pv_name --noheading 2>/dev/null");
-    const auto& lvm_vg = utils::exec("vgs -o vg_name --noheading 2>/dev/null");
-    const auto& lvm_lv = utils::exec("lvs -o vg_name,lv_name --noheading --separator - 2>/dev/null");
+    const auto& lvm_pv = gucc::utils::exec("pvs -o pv_name --noheading 2>/dev/null");
+    const auto& lvm_vg = gucc::utils::exec("vgs -o vg_name --noheading 2>/dev/null");
+    const auto& lvm_lv = gucc::utils::exec("lvs -o vg_name,lv_name --noheading --separator - 2>/dev/null");
 
     if (lvm_lv.empty() || lvm_vg.empty() || lvm_pv.empty()) {
         return;
@@ -659,9 +587,9 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
     }
 
 #ifdef NDEVENV
-    utils::exec("modprobe dm-mod");
-    utils::exec("vgscan >/dev/null 2>&1");
-    utils::exec("vgchange -ay >/dev/null 2>&1");
+    gucc::utils::exec("modprobe dm-mod");
+    gucc::utils::exec("vgscan >/dev/null 2>&1");
+    gucc::utils::exec("vgchange -ay >/dev/null 2>&1");
 #endif
 }
 
@@ -910,7 +838,7 @@ void install_from_pkglist(const std::string_view& packages) noexcept {
 #ifdef NDEVENV
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     if (headless_mode) {
-        utils::exec(cmd_formatted, true);
+        gucc::utils::exec(cmd_formatted, true);
     } else {
         tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
     }
@@ -1008,8 +936,8 @@ void install_base(const std::string_view& packages) noexcept {
     utils::arch_chroot("systemctl enable zfs-import.target", false);
 
     // we also need create the cachefile
-    utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
-    utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
 #endif
 }
 
@@ -1040,13 +968,13 @@ void remove_pkgs(const std::string_view& packages) noexcept {
 void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept {
 #ifdef NDEVENV
     fs::create_directory("/mnt/hostlvm");
-    utils::exec("mount --bind /run/lvm /mnt/hostlvm");
+    gucc::utils::exec("mount --bind /run/lvm /mnt/hostlvm");
 #endif
 
     // if root is encrypted, amend /etc/default/grub
-    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
-    const auto& root_part   = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
+    const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
+    const auto& root_part   = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
 #ifdef NDEVENV
     utils::boot_encrypted_setting();
 #endif
@@ -1066,7 +994,7 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
     // grub config changes for zfs root
     if (utils::get_mountpoint_fs(mountpoint) == "zfs") {
         // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
         setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
 
         constexpr auto bash_codepart1 = R"(#!/bin/bash
@@ -1106,20 +1034,20 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
         fs::perm_options::add);
 
     // if the device is removable append removable to the grub-install
-    const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
+    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
     if (utils::to_int(removable.data()) == 1) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/^grub-install /s/$/ --removable/g' -i {}"), grub_installer_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/^grub-install /s/$/ --removable/g' -i {}"), grub_installer_path));
     }
 
     // If the root is on btrfs-subvolume, amend grub installation
-    auto ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
+    auto ret_status = gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
     if (ret_status != "0") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
     }
     // If encryption used amend grub
     if (luks_dev != "") {
-        const auto& luks_dev_formatted = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
-        ret_status                     = utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
+        const auto& luks_dev_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
+        ret_status                     = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
         if (ret_status == "0") {
             spdlog::info("adding kernel parameter {}", luks_dev);
         }
@@ -1129,7 +1057,7 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
     const auto& fde = std::get<std::int32_t>(config_data["fde"]);
     if (fde == 1) {
         spdlog::info("Full disk encryption enabled");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
     }
 
     std::error_code err{};
@@ -1165,8 +1093,8 @@ void install_refind() noexcept {
     utils::inst_needed("refind");
 
     // Check if the volume is removable. If so, install all drivers
-    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
+    const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
 
     // Clean the configuration in case there is previous one because the configuration part is not idempotent
@@ -1176,9 +1104,9 @@ void install_refind() noexcept {
     }
 
     // install refind
-    const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
+    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
     if (utils::to_int(removable.data()) == 1) {
-        utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
+        gucc::utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
 
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
         auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
@@ -1187,57 +1115,57 @@ void install_refind() noexcept {
         initcpio.remove_hook("autodetect");
         spdlog::info("\"Autodetect\" hook was removed");
     } else if (luks == 1) {
-        utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
+        gucc::utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
     } else {
-        utils::exec("refind-install --root /mnt --alldrivers &>>/tmp/cachyos-install.log");
+        gucc::utils::exec("refind-install --root /mnt --alldrivers &>>/tmp/cachyos-install.log");
     }
 
     // Mount as rw
     // sed -i 's/ro\ /rw\ \ /g' /mnt/boot/refind_linux.conf
 
     // Set appropriate rootflags if installed on btrfs subvolume
-    if (utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true) == "0") {
-        const auto& rootflag = fmt::format(FMT_COMPILE("rootflags={}"), utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g'"));
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$|\\ {}\\\"|g\" /mnt/boot/refind_linux.conf"), rootflag));
+    if (gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true) == "0") {
+        const auto& rootflag = fmt::format(FMT_COMPILE("rootflags={}"), gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g'"));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$|\\ {}\\\"|g\" /mnt/boot/refind_linux.conf"), rootflag));
     }
 
     // LUKS and lvm with LUKS
     if (luks == 1) {
-        const auto& mapper_name = utils::exec("mount | awk '/\\/mnt / {print $1}'");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |{} root={} |g\" /mnt/boot/refind_linux.conf"), luks_dev, mapper_name));
-        utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
+        const auto& mapper_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}'");
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |{} root={} |g\" /mnt/boot/refind_linux.conf"), luks_dev, mapper_name));
+        gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
     }
     // Lvm without LUKS
-    else if (utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep \"/mnt$\" | awk '{print $6}'") == "lvm") {
-        const auto& mapper_name = utils::exec("mount | awk '/\\/mnt / {print $1}'");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |root={} |g\" /mnt/boot/refind_linux.conf"), mapper_name));
-        utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
+    else if (gucc::utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep \"/mnt$\" | awk '{print $6}'") == "lvm") {
+        const auto& mapper_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}'");
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |root={} |g\" /mnt/boot/refind_linux.conf"), mapper_name));
+        gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
     }
     // Figure out microcode
-    const auto& rootsubvol = utils::exec("findmnt -o TARGET,SOURCE | awk '/\\/mnt / {print $2}' | grep -o \"\\[.*\\]\" | cut -d \"[\" -f2 | cut -d \"]\" -f1 | sed 's/^\\///'");
-    const auto& ucode      = utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qqs ucode 2>>/tmp/cachyos-install.log"), mountpoint));
-    if (utils::to_int(utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l)"), ucode)).data()) > 1) {
+    const auto& rootsubvol = gucc::utils::exec("findmnt -o TARGET,SOURCE | awk '/\\/mnt / {print $2}' | grep -o \"\\[.*\\]\" | cut -d \"[\" -f2 | cut -d \"]\" -f1 | sed 's/^\\///'");
+    const auto& ucode      = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qqs ucode 2>>/tmp/cachyos-install.log"), mountpoint));
+    if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l)"), ucode)).data()) > 1) {
         // set microcode
-        if (utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
+        if (gucc::utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
             // there is a separate boot, path to microcode is at partition root
-            utils::exec("sed -i \"s|\\\"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
+            gucc::utils::exec("sed -i \"s|\\\"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
         } else if (!rootsubvol.empty()) {
             // Initramfs is on the root partition and root is on btrfs subvolume
-            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/intel-ucode.img initrd={0}/boot/amd-ucode.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol));
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/intel-ucode.img initrd={0}/boot/amd-ucode.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol));
         } else {
             // Initramfs is on the root partition
-            utils::exec("sed -i \"s|\\\"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
+            gucc::utils::exec("sed -i \"s|\\\"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf");
         }
     } else {
-        if (utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
+        if (gucc::utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
             // there is a separate boot, path to microcode is at partition root
-            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd=/{}.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd=/{}.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
         } else if (!rootsubvol.empty()) {
             // Initramfs is on the root partition and root is on btrfs subvolume
-            utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/{1}.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol, ucode));
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/{1}.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol, ucode));
         } else {
             // Initramfs is on the root partition
-            utils::exec(fmt::format(FMT_COMPILE(" sed -i \"s|\\\"$| initrd=/boot/{}.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
+            gucc::utils::exec(fmt::format(FMT_COMPILE(" sed -i \"s|\\\"$| initrd=/boot/{}.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
         }
     }
 
@@ -1262,10 +1190,10 @@ void install_systemd_boot() noexcept {
     utils::arch_chroot("sdboot-manage gen", false);
 
     // Check if the volume is removable. If so, don't use autodetect
-    const auto& root_name   = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
+    const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-    const auto& removable = utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
+    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
     if (utils::to_int(removable.data()) == 1) {
         const auto& mountpoint        = std::get<std::string>(config_data["MOUNTPOINT"]);
         const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
@@ -1285,7 +1213,7 @@ void uefi_bootloader(const std::string_view& bootloader) noexcept {
     static constexpr auto efi_path = "/sys/firmware/efi/";
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
         // Mount efivarfs if it is not already mounted
-        const auto& mount_out = utils::exec("mount | grep /sys/firmware/efi/efivars");
+        const auto& mount_out = gucc::utils::exec("mount | grep /sys/firmware/efi/efivars");
         if (mount_out.empty()) {
             if (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0) {
                 perror("utils::uefi_bootloader");
@@ -1322,18 +1250,18 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
 
     // if /boot is LVM (whether using a seperate /boot mount or not), amend grub
     if ((lvm == 1 && lvm_sep_boot == 0) || lvm_sep_boot == 2) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/GRUB_PRELOAD_MODULES=\\\"/GRUB_PRELOAD_MODULES=\\\"lvm /g\" {}/etc/default/grub"), mountpoint));
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/GRUB_PRELOAD_MODULES=\\\"/GRUB_PRELOAD_MODULES=\\\"lvm /g\" {}/etc/default/grub"), mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
     }
 
     // If root is on btrfs volume, amend grub
     if (utils::get_mountpoint_fs(mountpoint) == "btrfs") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
     }
 
     // Same setting is needed for LVM
     if (lvm == 1) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
     }
 
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
@@ -1341,7 +1269,7 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
     // grub config changes for zfs root
     if (utils::get_mountpoint_fs(mountpoint) == "zfs") {
         // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
         setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
 
         constexpr auto bash_codepart1 = R"(#!/bin/bash
@@ -1378,15 +1306,15 @@ grub-install --target=i386-pc --recheck)";
     }
 
     // If the root is on btrfs-subvolume, amend grub installation
-    auto ret_status = utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
+    auto ret_status = gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
     if (ret_status != "0") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
     }
 
     // If encryption used amend grub
     if (luks_dev != "") {
-        const auto& luks_dev_formatted = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
-        ret_status                     = utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
+        const auto& luks_dev_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
+        ret_status                     = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
         if (ret_status == "0") {
             spdlog::info("adding kernel parameter {}", luks_dev);
         }
@@ -1396,14 +1324,14 @@ grub-install --target=i386-pc --recheck)";
     const auto& fde = std::get<std::int32_t>(config_data["fde"]);
     if (fde == 1) {
         spdlog::info("Full disk encryption enabled");
-        utils::exec(fmt::format(FMT_COMPILE("sed  -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed  -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
     }
 
     // Remove os-prober if not selected
     constexpr std::string_view needle{"os-prober"};
     const auto& found = ranges::search(bootloader, needle);
     if (found.empty()) {
-        utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ os-prober//g' -i {}"), grub_installer_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ os-prober//g' -i {}"), grub_installer_path));
     }
 
     std::error_code err{};
@@ -1413,9 +1341,9 @@ grub-install --target=i386-pc --recheck)";
         fs::perm_options::add);
 
     tui::detail::infobox_widget("\nPlease wait...\n");
-    utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of={} seek=1 count=2047"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of={} seek=1 count=2047"), device_info));
     fs::create_directory("/mnt/hostlvm", err);
-    utils::exec("mount --bind /run/lvm /mnt/hostlvm");
+    gucc::utils::exec("mount --bind /run/lvm /mnt/hostlvm");
 
     // install grub
     utils::arch_chroot("grub_installer.sh");
@@ -1445,24 +1373,24 @@ void install_bootloader(const std::string_view& bootloader) noexcept {
 
 // List partitions to be hidden from the mounting menu
 std::string list_mounted() noexcept {
-    utils::exec("lsblk -l | awk '$7 ~ /mnt/ {print $1}' > /tmp/.mounted");
-    return utils::exec("echo /dev/* /dev/mapper/* | xargs -n1 2>/dev/null | grep -f /tmp/.mounted");
+    gucc::utils::exec("lsblk -l | awk '$7 ~ /mnt/ {print $1}' > /tmp/.mounted");
+    return gucc::utils::exec("echo /dev/* /dev/mapper/* | xargs -n1 2>/dev/null | grep -f /tmp/.mounted");
 }
 
 std::string get_mountpoint_fs(const std::string_view& mountpoint) noexcept {
-    return utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint));
+    return gucc::utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o FSTYPE \"{}\""), mountpoint));
 }
 
 std::string get_mountpoint_source(const std::string_view& mountpoint) noexcept {
-    return utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE \"{}\""), mountpoint));
+    return gucc::utils::exec(fmt::format(FMT_COMPILE("findmnt -ln -o SOURCE \"{}\""), mountpoint));
 }
 
 std::string list_containing_crypt() noexcept {
-    return utils::exec("blkid | awk '/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
+    return gucc::utils::exec("blkid | awk '/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
 }
 
 std::string list_non_crypt() noexcept {
-    return utils::exec("blkid | awk '!/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
+    return gucc::utils::exec("blkid | awk '!/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
 }
 
 void get_cryptroot() noexcept {
@@ -1470,30 +1398,30 @@ void get_cryptroot() noexcept {
     auto& config_data     = config_instance->data();
 
     // Identify if /mnt or partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    if ((utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt", true) != "0")
-        || (utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt$/,/part/p" | awk '{print $6}' | grep -q crypt)", true) != "0")) {
+    if ((gucc::utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt", true) != "0")
+        || (gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt$/,/part/p" | awk '{print $6}' | grep -q crypt)", true) != "0")) {
         return;
     }
 
     config_data["LUKS"] = 1;
     auto& luks_name     = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
-    luks_name           = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    luks_name           = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
     // Get the name of the Luks device
-    if (utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
+    if (gucc::utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
         // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-        luks_name = utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt$/,/crypt/p" | awk '/crypt/ {print $1}')");
+        luks_name = gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt$/,/crypt/p" | awk '/crypt/ {print $1}')");
     }
 
     const auto& check_cryptparts = [&luks_name](const auto& cryptparts, auto functor) {
         for (const auto& cryptpart : cryptparts) {
-            if (!utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep \"{}\""), cryptpart, luks_name)).empty()) {
+            if (!gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep \"{}\""), cryptpart, luks_name)).empty()) {
                 functor(cryptpart);
             }
         }
     };
 
     // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-    auto temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "lvm" | grep "/mnt$" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')");
+    auto temp_out = gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "lvm" | grep "/mnt$" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')");
     if (!temp_out.empty()) {
         const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto& cryptpart) {
@@ -1505,12 +1433,12 @@ void get_cryptroot() noexcept {
     }
 
     // Check if LVM on LUKS
-    temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')");
+    temp_out = gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')");
     if (!temp_out.empty()) {
         const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
         const auto& check_functor = [&]([[maybe_unused]] const auto& cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
+            luks_uuid               = gucc::utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
             config_data["LVM"]      = 1;
         };
@@ -1519,12 +1447,12 @@ void get_cryptroot() noexcept {
     }
 
     // Check if LUKS alone (parent = part /dev/...)
-    temp_out = utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "/mnt$" | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')");
+    temp_out = gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "/mnt$" | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')");
     if (!temp_out.empty()) {
         const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto& cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
+            luks_uuid               = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
         };
         check_cryptparts(cryptparts, check_functor);
@@ -1536,18 +1464,18 @@ void recheck_luks() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& root_name = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
 
     // Check if there is separate encrypted /boot partition
-    if (utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0") {
+    if (gucc::utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0") {
         config_data["LUKS"] = 1;
     }
     // Check if root is encrypted and there is no separate /boot
-    else if ((utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0") && utils::exec("lsblk | grep \"/mnt/boot$\"", false).empty()) {
+    else if ((gucc::utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0") && gucc::utils::exec("lsblk | grep \"/mnt/boot$\"", false).empty()) {
         config_data["LUKS"] = 1;
     }
     // Check if root is on encrypted lvm volume
-    else if ((utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0") && (utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), root_name, "awk '{print $6}'"), true) == "0")) {
+    else if ((gucc::utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0") && (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), root_name, "awk '{print $6}'"), true) == "0")) {
         config_data["LUKS"] = 1;
     }
 }
@@ -1557,26 +1485,26 @@ void get_cryptboot() noexcept {
     auto& config_data     = config_instance->data();
 
     // If /boot is encrypted
-    if ((utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt\\/boot$/ {print $6}' | grep -q crypt", true) != "0")
-        || (utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot$/,/part/p" | awk '{print $6}' | grep -q crypt)", true) != "0")) {
+    if ((gucc::utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt\\/boot$/ {print $6}' | grep -q crypt", true) != "0")
+        || (gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot$/,/part/p" | awk '{print $6}' | grep -q crypt)", true) != "0")) {
         return;
     }
     config_data["LUKS"] = 1;
 
     // Mountpoint is directly on the LUKS device, so LUKS device is the same as root name
-    std::string boot_name{utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g")};
+    std::string boot_name{gucc::utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g")};
     // Get UUID of the encrypted /boot
-    std::string boot_uuid{utils::exec("lsblk -lno UUID,MOUNTPOINT | awk '/\\mnt\\/boot$/ {print $1}'")};
+    std::string boot_uuid{gucc::utils::exec("lsblk -lno UUID,MOUNTPOINT | awk '/\\mnt\\/boot$/ {print $1}'")};
 
     // Get the name of the Luks device
-    if (utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
+    if (gucc::utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
         // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-        boot_name = utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot$/,/crypt/p" | awk '/crypt/ {print $1}')");
-        boot_uuid = utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
+        boot_name = gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot$/,/crypt/p" | awk '/crypt/ {print $1}')");
+        boot_uuid = gucc::utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
     }
 
     // Check if LVM on LUKS
-    if (utils::exec("lsblk -lno TYPE,MOUNTPOINT | grep \"/mnt/boot$\" | grep -q lvm", true) == "0") {
+    if (gucc::utils::exec("lsblk -lno TYPE,MOUNTPOINT | grep \"/mnt/boot$\" | grep -q lvm", true) == "0") {
         config_data["LVM"] = 1;
     }
 
@@ -1596,27 +1524,27 @@ void boot_encrypted_setting() noexcept {
     auto& fde          = std::get<std::int32_t>(config_data["fde"]);
 
     // Check if there is separate /boot partition
-    if (utils::exec("lsblk | grep \"/mnt/boot$\"").empty()) {
+    if (gucc::utils::exec("lsblk | grep \"/mnt/boot$\"").empty()) {
         // There is no separate /boot parition
-        const auto& root_name = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+        const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
         const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
         // Check if root is encrypted
         if ((luks == 1)
-            || (utils::exec(fmt::format(FMT_COMPILE("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'"), root_name), true) == "0")
-            || (utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0")
+            || (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'"), root_name), true) == "0")
+            || (gucc::utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0")
             // Check if root is on encrypted lvm volume
-            || (utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), root_name, "awk '{print $6}'"), true) == "0")) {
+            || (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), root_name, "awk '{print $6}'"), true) == "0")) {
             fde = 1;
             utils::setup_luks_keyfile();
         }
         return;
     }
     // There is a separate /boot. Check if it is encrypted
-    const auto& boot_name = utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    if ((utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0")
+    const auto& boot_name = gucc::utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    if ((gucc::utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0")
         // Check if the /boot is inside encrypted lvm volume
-        || (utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), boot_name, "awk '{print $6}'"), true) == "0")
-        || (utils::exec(fmt::format(FMT_COMPILE("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'"), boot_name), true) == "0")) {
+        || (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), boot_name, "awk '{print $6}'"), true) == "0")
+        || (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'"), boot_name), true) == "0")) {
         fde = 1;
         utils::setup_luks_keyfile();
     }
@@ -1628,7 +1556,7 @@ bool check_mount() noexcept {
     auto* config_instance       = Config::instance();
     auto& config_data           = config_instance->data();
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    if (utils::exec(fmt::format(FMT_COMPILE("findmnt -nl {}"), mountpoint_info)) == "") {
+    if (gucc::utils::exec(fmt::format(FMT_COMPILE("findmnt -nl {}"), mountpoint_info)) == "") {
         return false;
     }
 #endif
@@ -1657,18 +1585,18 @@ void id_system() noexcept {
     auto& config_data     = config_instance->data();
 
     // Apple System Detection
-    const auto& sys_vendor = utils::exec("cat /sys/class/dmi/id/sys_vendor");
+    const auto& sys_vendor = gucc::utils::exec("cat /sys/class/dmi/id/sys_vendor");
     if ((sys_vendor == "Apple Inc.") || (sys_vendor == "Apple Computer, Inc.")) {
-        utils::exec("modprobe -r -q efivars || true");  // if MAC
+        gucc::utils::exec("modprobe -r -q efivars || true");  // if MAC
     } else {
-        utils::exec("modprobe -q efivarfs");  // all others
+        gucc::utils::exec("modprobe -q efivarfs");  // all others
     }
 
     // BIOS or UEFI Detection
     static constexpr auto efi_path = "/sys/firmware/efi/";
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
         // Mount efivarfs if it is not already mounted
-        const auto& mount_out = utils::exec("mount | grep /sys/firmware/efi/efivars");
+        const auto& mount_out = gucc::utils::exec("mount | grep /sys/firmware/efi/efivars");
         if (mount_out.empty()) {
             if (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0) {
                 perror("utils::id_system");
@@ -1679,14 +1607,14 @@ void id_system() noexcept {
     }
 
     // init system
-    const auto& init_sys = utils::exec("cat /proc/1/comm");
+    const auto& init_sys = gucc::utils::exec("cat /proc/1/comm");
     auto& h_init         = std::get<std::string>(config_data["H_INIT"]);
     if (init_sys == "systemd") {
         h_init = "systemd";
     }
 
     // TODO(vnepogodin): Test which nw-client is available, including if the service according to $H_INIT is running
-    if (h_init == "systemd" && utils::exec("systemctl is-active NetworkManager") == "active") {
+    if (h_init == "systemd" && gucc::utils::exec("systemctl is-active NetworkManager") == "active") {
         config_data["NW_CMD"] = "nmtui";
     }
 }
@@ -1731,8 +1659,8 @@ void install_cachyos_repo() noexcept {
     spdlog::info("install_cachyos_repo: repo_list := '{}'", repo_list);
 
 #ifdef NDEVENV
-    utils::exec("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com", true);
-    utils::exec("pacman-key --lsign-key F3B607488DB35A47", true);
+    gucc::utils::exec("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com", true);
+    gucc::utils::exec("pacman-key --lsign-key F3B607488DB35A47", true);
 #endif
 
     const auto& isa_levels = gucc::cpu::get_isa_levels();
@@ -1794,7 +1722,7 @@ bool handle_connection() noexcept {
 
     if (connected) {
         utils::install_cachyos_repo();
-        utils::exec("yes | pacman -Sy --noconfirm", true);
+        gucc::utils::exec("yes | pacman -Sy --noconfirm", true);
     }
 #else
     utils::install_cachyos_repo();
@@ -1813,7 +1741,7 @@ void show_iwctl() noexcept {
     info_inter("6 - type `exit`\n");
 
     while (utils::prompt_char("Press a key to continue...", CYAN)) {
-        utils::exec("iwctl", true);
+        gucc::utils::exec("iwctl", true);
         break;
     }
 }
@@ -1823,28 +1751,28 @@ void set_keymap() noexcept {
     auto& config_data     = config_instance->data();
     const auto& keymap    = std::get<std::string>(config_data["KEYMAP"]);
 
-    utils::exec(fmt::format(FMT_COMPILE("loadkeys {}"), keymap));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("loadkeys {}"), keymap));
 }
 
 void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unused]] const std::string_view& user) noexcept {
 #ifdef NDEVENV
     // enable autologin
     if (dm == "gdm") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^AutomaticLogin=*/AutomaticLogin={}/g' /mnt/etc/gdm/custom.conf"), user));
-        utils::exec("sed -i 's/^AutomaticLoginEnable=*/AutomaticLoginEnable=true/g' /mnt/etc/gdm/custom.conf");
-        utils::exec("sed -i 's/^TimedLoginEnable=*/TimedLoginEnable=true/g' /mnt/etc/gdm/custom.conf");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^TimedLogin=*/TimedLoginEnable={}/g' /mnt/etc/gdm/custom.conf"), user));
-        utils::exec("sed -i 's/^TimedLoginDelay=*/TimedLoginDelay=0/g' /mnt/etc/gdm/custom.conf");
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^AutomaticLogin=*/AutomaticLogin={}/g' /mnt/etc/gdm/custom.conf"), user));
+        gucc::utils::exec("sed -i 's/^AutomaticLoginEnable=*/AutomaticLoginEnable=true/g' /mnt/etc/gdm/custom.conf");
+        gucc::utils::exec("sed -i 's/^TimedLoginEnable=*/TimedLoginEnable=true/g' /mnt/etc/gdm/custom.conf");
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^TimedLogin=*/TimedLoginEnable={}/g' /mnt/etc/gdm/custom.conf"), user));
+        gucc::utils::exec("sed -i 's/^TimedLoginDelay=*/TimedLoginDelay=0/g' /mnt/etc/gdm/custom.conf");
     } else if (dm == "lightdm") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^#autologin-user=/autologin-user={}/' /mnt/etc/lightdm/lightdm.conf"), user));
-        utils::exec("sed -i 's/^#autologin-user-timeout=0/autologin-user-timeout=0/' /mnt/etc/lightdm/lightdm.conf");
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^#autologin-user=/autologin-user={}/' /mnt/etc/lightdm/lightdm.conf"), user));
+        gucc::utils::exec("sed -i 's/^#autologin-user-timeout=0/autologin-user-timeout=0/' /mnt/etc/lightdm/lightdm.conf");
 
         utils::arch_chroot("groupadd -r autologin", false);
         utils::arch_chroot(fmt::format(FMT_COMPILE("gpasswd -a {} autologin"), user), false);
     } else if (dm == "sddm") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' /mnt/etc/sddm.conf"), user));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' /mnt/etc/sddm.conf"), user));
     } else if (dm == "lxdm") {
-        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^# autologin=dgod/autologin={}/g' /mnt/etc/lxdm/lxdm.conf"), user));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^# autologin=dgod/autologin={}/g' /mnt/etc/lxdm/lxdm.conf"), user));
     }
 #endif
 }
@@ -1862,9 +1790,9 @@ ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue
         std::ofstream rules{rules_path};
         rules << ioscheduler_rules;
     }
-    utils::exec("vim /mnt/etc/udev/rules.d/60-ioscheduler.rules", true);
+    gucc::utils::exec("vim /mnt/etc/udev/rules.d/60-ioscheduler.rules", true);
 #else
-    utils::exec("vim /etc/udev/rules.d/60-ioscheduler.rules", true);
+    gucc::utils::exec("vim /etc/udev/rules.d/60-ioscheduler.rules", true);
 #endif
 }
 
@@ -1878,9 +1806,9 @@ vm.vfs_cache_pressure = 50
         std::ofstream rules{rules_path};
         rules << sysctl_rules;
     }
-    utils::exec("vim /mnt/etc/sysctl.d/99-sysctl.conf", true);
+    gucc::utils::exec("vim /mnt/etc/sysctl.d/99-sysctl.conf", true);
 #else
-    utils::exec("vim /etc/sysctl.d/99-sysctl.conf", true);
+    gucc::utils::exec("vim /etc/sysctl.d/99-sysctl.conf", true);
 #endif
 }
 
@@ -2101,27 +2029,27 @@ bool parse_config() noexcept {
 
 void setup_luks_keyfile() noexcept {
     // Add keyfile to luks
-    const auto& root_name          = utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_part          = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
-    const auto& number_of_lukskeys = utils::to_int(utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump /dev/\"{}\" | grep \"ENABLED\" | wc -l"), root_part)));
+    const auto& root_name          = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    const auto& root_part          = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
+    const auto& number_of_lukskeys = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump /dev/\"{}\" | grep \"ENABLED\" | wc -l"), root_part)));
     if (number_of_lukskeys < 4) {
         // Create a keyfile
 #ifdef NDEVENV
         if (!fs::exists("/mnt/crypto_keyfile.bin")) {
-            const auto& ret_status = utils::exec("dd bs=512 count=4 if=/dev/urandom of=/mnt/crypto_keyfile.bin", true);
+            const auto& ret_status = gucc::utils::exec("dd bs=512 count=4 if=/dev/urandom of=/mnt/crypto_keyfile.bin", true);
             /* clang-format off */
             if (ret_status == "0") { spdlog::info("Generating a keyfile"); }
             /* clang-format on */
         }
-        utils::exec("chmod 000 /mnt/crypto_keyfile.bin");
+        gucc::utils::exec("chmod 000 /mnt/crypto_keyfile.bin");
         spdlog::info("Adding the keyfile to the LUKS configuration");
-        auto ret_status = utils::exec(fmt::format(FMT_COMPILE("cryptsetup --pbkdf-force-iterations 200000 luksAddKey /dev/\"{}\" /mnt/crypto_keyfile.bin"), root_part), true);
+        auto ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup --pbkdf-force-iterations 200000 luksAddKey /dev/\"{}\" /mnt/crypto_keyfile.bin"), root_part), true);
         /* clang-format off */
         if (ret_status != "0") { spdlog::info("Something went wrong with adding the LUKS key. Is /dev/{} the right partition?", root_part); }
         /* clang-format on */
 
         // Add keyfile to initcpio
-        ret_status = utils::exec("grep -q '/crypto_keyfile.bin' /mnt/etc/mkinitcpio.conf || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' /mnt/etc/mkinitcpio.conf", true);
+        ret_status = gucc::utils::exec("grep -q '/crypto_keyfile.bin' /mnt/etc/mkinitcpio.conf || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' /mnt/etc/mkinitcpio.conf", true);
         /* clang-format off */
         if (ret_status == "0") { spdlog::info("Adding keyfile to the initcpio"); }
         /* clang-format on */
@@ -2149,7 +2077,7 @@ void set_lightdm_greeter() {
         if (temp == "lightdm-gtk-greeter") {
             continue;
         }
-        utils::exec(fmt::format(FMT_COMPILE("sed -i -e \"s/^.*greeter-session=.*/greeter-session={}/\" {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i -e \"s/^.*greeter-session=.*/greeter-session={}/\" {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
         break;
     }
 }
@@ -2177,16 +2105,16 @@ void enable_services() noexcept {
 
     // enable display manager for systemd
     const auto& temp = fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq"), mountpoint);
-    if (utils::exec(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp), true) == "0") {
+    if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp), true) == "0") {
         utils::set_lightdm_greeter();
         utils::arch_chroot("systemctl enable lightdm", false);
-    } else if (utils::exec(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp), true) == "0") {
+    } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp), true) == "0") {
         utils::arch_chroot("systemctl enable sddm", false);
-    } else if (utils::exec(fmt::format(FMT_COMPILE("{} gdm &> /dev/null"), temp), true) == "0") {
+    } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} gdm &> /dev/null"), temp), true) == "0") {
         utils::arch_chroot("systemctl enable gdm", false);
-    } else if (utils::exec(fmt::format(FMT_COMPILE("{} lxdm &> /dev/null"), temp), true) == "0") {
+    } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} lxdm &> /dev/null"), temp), true) == "0") {
         utils::arch_chroot("systemctl enable lxdm", false);
-    } else if (utils::exec(fmt::format(FMT_COMPILE("{} ly &> /dev/null"), temp), true) == "0") {
+    } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} ly &> /dev/null"), temp), true) == "0") {
         utils::arch_chroot("systemctl enable ly", false);
     }
 
@@ -2201,8 +2129,8 @@ void enable_services() noexcept {
     utils::arch_chroot("systemctl enable zfs-import.target", false);
 
     // we also need create the cachefile
-    utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
-    utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
 #endif
 }
 
@@ -2223,13 +2151,13 @@ void final_check() noexcept {
     const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
     // Check if bootloader is installed
     if (system_info == "BIOS") {
-        if (utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), mountpoint), true) != "0") {
+        if (gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), mountpoint), true) != "0") {
             checklist += "- Bootloader is not installed\n";
         }
     }
 
     // Check if fstab is generated
-    if (utils::exec(fmt::format(FMT_COMPILE("grep -qv '^#' {}/etc/fstab 2>/dev/null"), mountpoint), true) != "0") {
+    if (gucc::utils::exec(fmt::format(FMT_COMPILE("grep -qv '^#' {}/etc/fstab 2>/dev/null"), mountpoint), true) != "0") {
         checklist += "- Fstab has not been generated\n";
     }
 
@@ -2237,12 +2165,12 @@ void final_check() noexcept {
     //[[ ! -e /mnt/.video_installed ]] && echo "- $_GCCheck" >> ${CHECKLIST}
 
     // Check if locales have been generated
-    if (utils::to_int(utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} locale -a | wc -l"), mountpoint), false)) < 3) {
+    if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} locale -a | wc -l"), mountpoint), false)) < 3) {
         checklist += "- Locales have not been generated\n";
     }
 
     // Check if root password has been set
-    if (utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd --status root | cut -d' ' -f2 | grep -q 'NP'"), mountpoint), true) == "0") {
+    if (gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd --status root | cut -d' ' -f2 | grep -q 'NP'"), mountpoint), true) == "0") {
         checklist += "- Root password is not set\n";
     }
 

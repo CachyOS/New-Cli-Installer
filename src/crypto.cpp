@@ -4,6 +4,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <fmt/compile.h>
@@ -114,7 +115,7 @@ bool luks_open() noexcept {
     detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup open --type luks {} {}"), luks_password, partition, luks_root_name)});
 #endif
 
-    const auto& devlist = utils::exec(fmt::format(FMT_COMPILE("lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT {} | grep \"crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\""), partition));
+    const auto& devlist = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT {} | grep \"crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\""), partition));
     detail::msgbox_widget(devlist);
 
     return true;
@@ -125,7 +126,7 @@ bool luks_setup() noexcept {
     auto& config_data     = config_instance->data();
 
 #ifdef NDEVENV
-    utils::exec("modprobe -a dm-mod dm_crypt");
+    gucc::utils::exec("modprobe -a dm-mod dm_crypt");
 #endif
     config_data["INCLUDE_PART"] = "part\\|lvm";
     utils::umount_partitions();
@@ -187,7 +188,7 @@ void luks_express() noexcept {
 
 void luks_show() noexcept {
     static constexpr auto luks_success = "Done!";
-    const auto& lsblk                  = utils::exec(R"(lsblk -o NAME,TYPE,FSTYPE,SIZE | grep "part\|crypt\|NAME\|TYPE\|FSTYPE\|SIZE")");
+    const auto& lsblk                  = gucc::utils::exec(R"(lsblk -o NAME,TYPE,FSTYPE,SIZE | grep "part\|crypt\|NAME\|TYPE\|FSTYPE\|SIZE")");
     const auto& content                = fmt::format(FMT_COMPILE("\n{}\n \n{}"), luks_success, lsblk);
     detail::msgbox_widget(content, size(HEIGHT, GREATER_THAN, 5));
 }

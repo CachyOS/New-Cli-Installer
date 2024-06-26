@@ -10,6 +10,7 @@ project(gucc
 
 add_library(${PROJECT_NAME} SHARED
    #src/utils.cpp src/utils.hpp
+   src/io_utils.cpp include/gucc/io_utils.hpp
    src/string_utils.cpp include/gucc/string_utils.hpp
    src/file_utils.cpp include/gucc/file_utils.hpp
    src/cpu.cpp include/gucc/cpu.hpp

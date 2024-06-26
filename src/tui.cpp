@@ -10,6 +10,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <fmt/compile.h>
@@ -175,7 +176,7 @@ void set_hostname() noexcept {
 
 // Set system language
 void set_locale() noexcept {
-    const auto& locales = gucc::utils::make_multiline(utils::exec("cat /etc/locale.gen | grep -v \"#  \" | sed 's/#//g' | awk '/UTF-8/ {print $1}'"));
+    const auto& locales = gucc::utils::make_multiline(gucc::utils::exec("cat /etc/locale.gen | grep -v \"#  \" | sed 's/#//g' | awk '/UTF-8/ {print $1}'"));
 
     // System language
     std::string locale{};
@@ -209,7 +210,7 @@ void set_xkbmap() noexcept {
     std::string xkbmap_choice{};
     auto ok_callback = [&] {
         const auto& keymap = xkbmap_list[static_cast<std::size_t>(selected)];
-        xkbmap_choice      = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/_.*//'"), keymap));
+        xkbmap_choice      = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/_.*//'"), keymap));
         success            = true;
         screen.ExitLoopClosure()();
     };
@@ -238,7 +239,7 @@ void select_keymap() noexcept {
     if (!keep_default) { return; }
     /* clang-format on */
 
-    const auto& keymaps = gucc::utils::make_multiline(utils::exec(R"(ls -R /usr/share/kbd/keymaps | grep "map.gz" | sed 's/\.map\.gz//g' | sort)"));
+    const auto& keymaps = gucc::utils::make_multiline(gucc::utils::exec(R"(ls -R /usr/share/kbd/keymaps | grep "map.gz" | sed 's/\.map\.gz//g' | sort)"));
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{226};
@@ -257,7 +258,7 @@ bool set_timezone() noexcept {
     std::string zone{};
     {
         auto screen           = ScreenInteractive::Fullscreen();
-        const auto& cmd       = utils::exec(R"(cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep "/" | sed "s/\/.*//g" | sort -ud)");
+        const auto& cmd       = gucc::utils::exec(R"(cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep "/" | sed "s/\/.*//g" | sort -ud)");
         const auto& zone_list = gucc::utils::make_multiline(cmd);
 
         std::int32_t selected{};
@@ -277,7 +278,7 @@ bool set_timezone() noexcept {
     std::string subzone{};
     {
         auto screen           = ScreenInteractive::Fullscreen();
-        const auto& cmd       = utils::exec(fmt::format(FMT_COMPILE("cat /usr/share/zoneinfo/zone.tab | {1} | grep \"{0}/\" | sed \"s/{0}\\///g\" | sort -ud"), zone, "awk '{print $3}'"));
+        const auto& cmd       = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /usr/share/zoneinfo/zone.tab | {1} | grep \"{0}/\" | sed \"s/{0}\\///g\" | sort -ud"), zone, "awk '{print $3}'"));
         const auto& city_list = gucc::utils::make_multiline(cmd);
 
         std::int32_t selected{};
@@ -465,9 +466,9 @@ void chroot_interactive() noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} bash"), mountpoint);
-    utils::exec(cmd_formatted, true);
+    gucc::utils::exec(cmd_formatted, true);
 #else
-    utils::exec("bash", true);
+    gucc::utils::exec("bash", true);
 #endif
 }
 
@@ -479,7 +480,7 @@ void install_grub_uefi() noexcept {
     /* clang-format on */
 
     std::string bootid{"cachyos"};
-    auto ret_status = utils::exec("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos", true);
+    auto ret_status = gucc::utils::exec("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos", true);
     if (ret_status == "0"sv) {
         static constexpr auto bootid_content = "\nInput the name identify your grub installation. Choosing an existing name overwrites it.\n"sv;
         if (!detail::inputbox_widget(bootid, bootid_content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
@@ -544,7 +545,7 @@ void uefi_bootloader() noexcept {
     static constexpr auto efi_path = "/sys/firmware/efi/"sv;
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
         // Mount efivarfs if it is not already mounted
-        const auto& mount_out = utils::exec("mount | grep /sys/firmware/efi/efivars");
+        const auto& mount_out = gucc::utils::exec("mount | grep /sys/firmware/efi/efivars");
         if (mount_out.empty() && (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0)) {
             perror("utils::uefi_bootloader");
             exit(1);
@@ -608,16 +609,16 @@ void install_base() noexcept {
     std::string packages{};
     auto ok_callback = [&] {
         packages        = detail::from_checklist_string(available_kernels, kernels_state.get());
-        auto ret_status = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"linux\""), packages), true);
+        auto ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"linux\""), packages), true);
         if (ret_status != "0") {
             // Check if a kernel is already installed
-            ret_status = utils::exec(fmt::format(FMT_COMPILE("ls {}/boot/*.img >/dev/null 2>&1"), mountpoint), true);
+            ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("ls {}/boot/*.img >/dev/null 2>&1"), mountpoint), true);
             if (ret_status != "0") {
                 static constexpr auto ErrNoKernel = "\nAt least one kernel must be selected.\n"sv;
                 detail::msgbox_widget(ErrNoKernel);
                 return;
             }
-            const auto& cmd = utils::exec(fmt::format(FMT_COMPILE("ls {}/boot/*.img | cut -d'-' -f2 | grep -v ucode.img | sort -u"), mountpoint));
+            const auto& cmd = gucc::utils::exec(fmt::format(FMT_COMPILE("ls {}/boot/*.img | cut -d'-' -f2 | grep -v ucode.img | sort -u"), mountpoint));
             detail::msgbox_widget(fmt::format(FMT_COMPILE("\nlinux-{} detected\n"), cmd));
             screen.ExitLoopClosure()();
         }
@@ -766,14 +767,14 @@ void bios_bootloader() {
 
 void enable_autologin() {
     // Detect display manager
-    const auto& dm      = utils::exec("file /mnt/etc/systemd/system/display-manager.service 2>/dev/null | awk -F'/' '{print $NF}' | cut -d. -f1");
+    const auto& dm      = gucc::utils::exec("file /mnt/etc/systemd/system/display-manager.service 2>/dev/null | awk -F'/' '{print $NF}' | cut -d. -f1");
     const auto& content = fmt::format(FMT_COMPILE("\nThis option enables autologin using {}.\n\nProceed?\n"), dm);
     /* clang-format off */
     if (!detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75))) { return; }
-    if (utils::exec("echo /mnt/home/* | xargs -n1 | wc -l") != "1") { return; }
+    if (gucc::utils::exec("echo /mnt/home/* | xargs -n1 | wc -l") != "1") { return; }
     /* clang-format on */
 
-    const auto& autologin_user = utils::exec("echo /mnt/home/* | cut -d/ -f4");
+    const auto& autologin_user = gucc::utils::exec("echo /mnt/home/* | cut -d/ -f4");
     utils::enable_autologin(dm, autologin_user);
 }
 
@@ -859,13 +860,13 @@ void auto_partition() noexcept {
     utils::auto_partition();
 
     // Show created partitions
-    const auto& disk_list = utils::exec(fmt::format(FMT_COMPILE("lsblk {} -o NAME,TYPE,FSTYPE,SIZE"), device_info));
+    const auto& disk_list = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk {} -o NAME,TYPE,FSTYPE,SIZE"), device_info));
     detail::msgbox_widget(disk_list, size(HEIGHT, GREATER_THAN, 5));
 }
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    const auto& lsblk = utils::exec(R"(lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep "disk\|part\|lvm\|crypt\|NAME\|MODEL\|TYPE\|FSTYPE\|SIZE\|MOUNTPOINT")");
+    const auto& lsblk = gucc::utils::exec(R"(lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep "disk\|part\|lvm\|crypt\|NAME\|MODEL\|TYPE\|FSTYPE\|SIZE\|MOUNTPOINT")");
     detail::msgbox_widget(lsblk, size(HEIGHT, GREATER_THAN, 5));
 }
 
@@ -883,7 +884,7 @@ void refresh_pacman_keys() noexcept {
 bool select_device() noexcept {
     auto* config_instance    = Config::instance();
     auto& config_data        = config_instance->data();
-    auto devices             = utils::exec(R"(lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print "/dev/" $1 " " $2}' | sort -u)");
+    auto devices             = gucc::utils::exec(R"(lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print "/dev/" $1 " " $2}' | sort -u)");
     const auto& devices_list = gucc::utils::make_multiline(devices);
 
     auto screen = ScreenInteractive::Fullscreen();
@@ -942,7 +943,7 @@ bool select_filesystem() noexcept {
     const auto& do_mount  = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     if (do_mount) {
 #ifdef NDEVENV
-        utils::exec(fmt::format(FMT_COMPILE("{} {}"), file_sys, partition));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("{} {}"), file_sys, partition));
 #endif
         spdlog::info("mount.{} {}", partition, file_sys);
     }
@@ -959,10 +960,10 @@ void mount_opts(bool force) noexcept {
     const auto& file_sys      = std::get<std::string>(config_data["FILESYSTEM"]);
     const auto& fs_opts       = std::get<std::vector<std::string>>(config_data["fs_opts"]);
     const auto& partition     = std::get<std::string>(config_data["PARTITION"]);
-    const auto& format_name   = utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), partition));
-    const auto& format_device = utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk '/disk/ {print $1}'"));
+    const auto& format_name   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), partition));
+    const auto& format_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk '/disk/ {print $1}'"));
 
-    const auto& rotational_queue = (utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1"sv);
+    const auto& rotational_queue = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1"sv);
 
     std::unique_ptr<bool[]> fs_opts_state{new bool[fs_opts.size()]{false}};
     for (size_t i = 0; i < fs_opts.size(); ++i) {
@@ -988,8 +989,8 @@ void mount_opts(bool force) noexcept {
 
     // Now clean up the file
     auto cleaup_mount_opts = [](auto& opts_info) {
-        opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/ /,/g'"), opts_info));
-        opts_info = utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed '$s/,$//'"), opts_info));
+        opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/ /,/g'"), opts_info));
+        opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed '$s/,$//'"), opts_info));
     };
 
     if (force) {
@@ -1004,7 +1005,7 @@ void mount_opts(bool force) noexcept {
         screen.ExitLoopClosure()();
     };
 
-    const auto& file_sys_formatted = utils::exec(fmt::format(FMT_COMPILE("echo {} | sed \"s/.*\\.//g;s/-.*//g\""), file_sys));
+    const auto& file_sys_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | sed \"s/.*\\.//g;s/-.*//g\""), file_sys));
     const auto& fs_title           = fmt::format(FMT_COMPILE("New CLI Installer | {}"), file_sys_formatted);
     auto content_size              = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
 
@@ -1052,11 +1053,11 @@ bool mount_current_partition(bool force) noexcept {
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
     if (!mount_opts_info.empty()) {
         // check_for_error "mount ${PARTITION} $(cat ${MOUNT_OPTS})"
-        const auto& mount_status = utils::exec(fmt::format(FMT_COMPILE("mount -o {} {} {}{}"), mount_opts_info, partition, mountpoint, mount_dev));
+        const auto& mount_status = gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {} {} {}{}"), mount_opts_info, partition, mountpoint, mount_dev));
         spdlog::info("{}", mount_status);
     } else {
         // check_for_error "mount ${PARTITION}"
-        const auto& mount_status = utils::exec(fmt::format(FMT_COMPILE("mount {} {}{}"), partition, mountpoint, mount_dev));
+        const auto& mount_status = gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}{}"), partition, mountpoint, mount_dev));
         spdlog::info("{}", mount_status);
     }
 #endif
@@ -1066,15 +1067,15 @@ bool mount_current_partition(bool force) noexcept {
     /* clang-format on */
 
     // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    if (!utils::exec(fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"crypt\""), partition)).empty()) {
+    if (!gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"crypt\""), partition)).empty()) {
         // cryptname for bootloader configuration either way
         config_data["LUKS"]          = 1;
         auto& luks_name              = std::get<std::string>(config_data["LUKS_NAME"]);
         const auto& luks_dev         = std::get<std::string>(config_data["LUKS_DEV"]);
-        luks_name                    = utils::exec(fmt::format(FMT_COMPILE("echo {} | sed \"s~^/dev/mapper/~~g\""), partition));
+        luks_name                    = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | sed \"s~^/dev/mapper/~~g\""), partition));
         const auto& check_cryptparts = [&](const auto cryptparts, auto functor) {
             for (const auto& cryptpart : cryptparts) {
-                if (!utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep \"{}\""), cryptpart, luks_name)).empty()) {
+                if (!gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep \"{}\""), cryptpart, luks_name)).empty()) {
                     functor(cryptpart);
                     return true;
                 }
@@ -1083,7 +1084,7 @@ bool mount_current_partition(bool force) noexcept {
         };
 
         // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-        auto cryptparts    = gucc::utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "lvm" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')"));
+        auto cryptparts    = gucc::utils::make_multiline(gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "lvm" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')"));
         auto check_functor = [&](const auto cryptpart) {
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("{} cryptdevice={}:{}"), luks_dev, cryptpart, luks_name);
             config_data["LVM"]      = 1;
@@ -1093,16 +1094,16 @@ bool mount_current_partition(bool force) noexcept {
         }
 
         // Check if LVM on LUKS
-        cryptparts = gucc::utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')"));
+        cryptparts = gucc::utils::make_multiline(gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')"));
         if (check_cryptparts(cryptparts, check_functor)) {
             return true;
         }
 
         // Check if LUKS alone (parent = part /dev/...)
-        cryptparts                 = gucc::utils::make_multiline(utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')"));
+        cryptparts                 = gucc::utils::make_multiline(gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')"));
         const auto& check_func_dev = [&](const auto cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
+            luks_uuid               = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("{} cryptdevice=UUID={}:{}"), luks_dev, luks_uuid, luks_name);
         };
         if (check_cryptparts(cryptparts, check_func_dev)) {
@@ -1186,13 +1187,13 @@ void make_swap() noexcept {
     /* clang-format on */
 
     if (partition == sel_swap_file) {
-        const auto& total_memory = utils::exec("grep MemTotal /proc/meminfo | awk '{print $2/1024}' | sed 's/\\..*//'");
+        const auto& total_memory = gucc::utils::exec("grep MemTotal /proc/meminfo | awk '{print $2/1024}' | sed 's/\\..*//'");
         std::string value{fmt::format(FMT_COMPILE("{}M"), total_memory)};
         if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return;
         }
 
-        while (utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"M\\|G\""), value)).empty()) {
+        while (gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"M\\|G\""), value)).empty()) {
             detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
             value = fmt::format(FMT_COMPILE("{}M"), total_memory);
             if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
@@ -1202,10 +1203,10 @@ void make_swap() noexcept {
 
 #ifdef NDEVENV
         const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint_info);
-        utils::exec(fmt::format(FMT_COMPILE("fallocate -l {} {} 2>>/tmp/cachyos-install.log &>/dev/null"), value, swapfile_path));
-        utils::exec(fmt::format(FMT_COMPILE("chmod 600 {} 2>>/tmp/cachyos-install.log"), swapfile_path));
-        utils::exec(fmt::format(FMT_COMPILE("mkswap {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
-        utils::exec(fmt::format(FMT_COMPILE("swapon {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("fallocate -l {} {} 2>>/tmp/cachyos-install.log &>/dev/null"), value, swapfile_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("chmod 600 {} 2>>/tmp/cachyos-install.log"), swapfile_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("mkswap {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("swapon {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
 #endif
         return;
     }
@@ -1214,7 +1215,7 @@ void make_swap() noexcept {
     auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
 
     // Warn user if creating a new swap
-    const auto& swap_part = utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE \"{}\" | grep -i \"swap\""), partition));
+    const auto& swap_part = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE \"{}\" | grep -i \"swap\""), partition));
     if (swap_part != "swap") {
         const auto& do_swap = detail::yesno_widget(fmt::format(FMT_COMPILE("\nmkswap {}\n"), partition), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
@@ -1222,14 +1223,14 @@ void make_swap() noexcept {
         /* clang-format on */
 
 #ifdef NDEVENV
-        utils::exec(fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), partition));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), partition));
 #endif
         spdlog::info("mkswap.{}", partition);
     }
 
 #ifdef NDEVENV
     // Whether existing to newly created, activate swap
-    utils::exec(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), partition));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), partition));
 #endif
 
     // Since a partition was used, remove that partition from the list
@@ -1276,7 +1277,7 @@ void lvm_del_vg() noexcept {
 
 #ifdef NDEVENV
     // if confirmation given, delete
-    utils::exec(fmt::format(FMT_COMPILE("vgremove -f {} 2>/dev/null"), sel_vg), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("vgremove -f {} 2>/dev/null"), sel_vg), true);
 #endif
 }
 
@@ -1397,7 +1398,7 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
 }
 
 bool zfs_import_pool() noexcept {
-    const auto& zlist = gucc::utils::make_multiline(utils::exec("zpool import 2>/dev/null | grep \"^[[:space:]]*pool\" | awk -F : '{print $2}' | awk '{$1=$1};1'"));
+    const auto& zlist = gucc::utils::make_multiline(gucc::utils::exec("zpool import 2>/dev/null | grep \"^[[:space:]]*pool\" | awk -F : '{print $2}' | awk '{$1=$1};1'"));
     if (zlist.empty()) {
         // no available datasets
         detail::infobox_widget("\nNo pools available\"\n"sv);
@@ -1428,7 +1429,7 @@ bool zfs_import_pool() noexcept {
 
 #ifdef NDEVENV
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, zfs_zpool_name), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, zfs_zpool_name), true);
 #endif
 
     config_data["ZFS"] = 1;
@@ -1691,7 +1692,7 @@ void zfs_menu_manual() noexcept {
 void zfs_menu() noexcept {
 #ifdef NDEVENV
     // check for zfs support
-    if (utils::exec("modprobe zfs 2>>/tmp/cachyos-install.log &>/dev/null", true) != "0"sv) {
+    if (gucc::utils::exec("modprobe zfs 2>>/tmp/cachyos-install.log &>/dev/null", true) != "0"sv) {
         detail::infobox_widget("\nThe kernel modules to support ZFS could not be found\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
@@ -1763,7 +1764,7 @@ void make_esp() noexcept {
     config_data["UEFI_PART"]  = partition;
 
     // If it is already a fat/vfat partition...
-    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("fsck -N {} | grep fat"), partition), true);
+    const auto& ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("fsck -N {} | grep fat"), partition), true);
     bool do_boot_partition{};
     if (ret_status != "0") {
         const auto& content = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), partition);
@@ -1771,7 +1772,7 @@ void make_esp() noexcept {
     }
     if (do_boot_partition) {
 #ifdef NDEVENV
-        utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
 #endif
         spdlog::debug("Formating boot partition with fat/vfat!");
     }
@@ -1804,8 +1805,8 @@ void make_esp() noexcept {
     uefi_mount                  = answer;
     const auto& path_formatted  = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
 #ifdef NDEVENV
-    utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), path_formatted));
-    utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, path_formatted));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), path_formatted));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, path_formatted));
 #endif
     confirm_mount(path_formatted);
 }
@@ -1825,7 +1826,7 @@ void mount_partitions() noexcept {
     utils::umount_partitions();
 
     // We need to remount the zfs filesystems that have defined mountpoints already
-    utils::exec("zfs mount -aO &>/dev/null");
+    gucc::utils::exec("zfs mount -aO &>/dev/null");
 
     // Get list of available partitions
     utils::find_partitions();
@@ -1896,10 +1897,10 @@ void mount_partitions() noexcept {
         if (utils::get_mountpoint_fs(mountpoint_info) == "btrfs") {
             // Check if there are subvolumes already on the btrfs partition
             const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mountpoint_info);
-            const auto& subvolumes_count = utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
+            const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
             const auto& lines_count      = utils::to_int(subvolumes_count);
             if (lines_count > 1) {
-                const auto& subvolumes_formated = utils::exec(fmt::format(FMT_COMPILE("{} | cut -d\" \" -f9"), subvolumes));
+                const auto& subvolumes_formated = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | cut -d\" \" -f9"), subvolumes));
                 const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes_formated), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
                 // Pre-existing subvolumes and user wants to mount them
                 /* clang-format off */
@@ -2008,7 +2009,7 @@ void mount_partitions() noexcept {
         // 2 = separate lvm boot. For Grub configuration
         if (mount_dev == "/boot") {
             const auto& cmd             = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"lvm\""), partition);
-            const auto& cmd_out         = utils::exec(cmd);
+            const auto& cmd_out         = gucc::utils::exec(cmd);
             config_data["LVM_SEP_BOOT"] = 1;
             if (!cmd_out.empty()) {
                 config_data["LVM_SEP_BOOT"] = 2;
@@ -2035,7 +2036,7 @@ void configure_mirrorlist() noexcept {
             break;
         case 1:
             screen.Suspend();
-            utils::exec("cachyos-rate-mirrors"sv, true);
+            gucc::utils::exec("cachyos-rate-mirrors"sv, true);
             screen.Resume();
             break;
         default:
@@ -2072,7 +2073,7 @@ void create_partitions() noexcept {
         if (selected_entry != optwipe && selected_entry != optauto) {
             screen.Suspend();
 #ifdef NDEVENV
-            utils::exec(fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])), true);
+            gucc::utils::exec(fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])), true);
 #else
             spdlog::debug("to be executed: {}", fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])));
 #endif

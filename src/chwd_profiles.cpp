@@ -2,6 +2,7 @@
 #include "utils.hpp"
 
 // import gucc
+#include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for any_of, sort, for_each
@@ -64,7 +65,7 @@ auto get_available_profile_names(std::string_view profile_type) noexcept -> std:
     if (!all_profile_names.has_value()) { return {}; }
     /* clang-format on */
 
-    const auto& available_profile_names = gucc::utils::make_multiline(utils::exec("chwd --list -d | grep Name | awk '{print $4}'"));
+    const auto& available_profile_names = gucc::utils::make_multiline(gucc::utils::exec("chwd --list -d | grep Name | awk '{print $4}'"));
 
     std::vector<std::string> filtered_profile_names{};
     const auto& functor = [available_profile_names](auto&& profile_name) { return ranges::any_of(available_profile_names, [profile_name](auto&& available_profile) { return available_profile == profile_name; }); };

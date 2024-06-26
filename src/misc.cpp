@@ -3,6 +3,9 @@
 #include "utils.hpp"
 #include "widgets.hpp"
 
+// import gucc
+#include "gucc/io_utils.hpp"
+
 /* clang-format off */
 #include <filesystem>                              // for exists, is_directory
 #include <ftxui/component/component.hpp>           // for Renderer, Button
@@ -37,7 +40,7 @@ void edit_mkinitcpio(ScreenInteractive& screen) noexcept {
     const std::string& mountpoint = "/";
 #endif
 
-    utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint), true);
     screen.Resume();
 
     static constexpr auto content = "\nRun mkinitcpio?\n"sv;
@@ -57,7 +60,7 @@ void edit_grub(ScreenInteractive& screen) noexcept {
     const std::string& mountpoint = "/";
 #endif
 
-    utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint), true);
     screen.Resume();
 
     static constexpr auto content = "\nUpdate GRUB?\n"sv;
@@ -74,7 +77,7 @@ namespace tui {
 // Revised to deal with partition sizes now being displayed to the user
 bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quite) {
 #ifdef NDEVENV
-    const auto& ret_status = utils::exec(fmt::format(FMT_COMPILE("mount | grep {}"), part_user), true);
+    const auto& ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("mount | grep {}"), part_user), true);
     if (!quite && (ret_status != "0"sv)) {
         detail::infobox_widget("\nMount Failed!\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -142,7 +145,7 @@ void edit_configs() noexcept {
                                     bool is_custom = false, std::function<void()>&& cust_func = []() {}) {
         const auto& append_function = [&functions](const std::string& filename) {
             /* clang-format off */
-            functions.emplace_back([filename]{ utils::exec(fmt::format(FMT_COMPILE("vim {}"), filename), true); });
+            functions.emplace_back([filename]{ gucc::utils::exec(fmt::format(FMT_COMPILE("vim {}"), filename), true); });
             /* clang-format on */
         };
         /* clang-format off */
@@ -215,12 +218,12 @@ void edit_configs() noexcept {
 }
 
 void edit_pacman_conf() noexcept {
-    utils::exec("vim /etc/pacman.conf"sv, true);
+    gucc::utils::exec("vim /etc/pacman.conf"sv, true);
 
 #ifdef NDEVENV
     // NOTE: don't care now, Will change in future..
     detail::infobox_widget("\nUpdating database ...\n"sv);
-    utils::exec("pacman -Syy"sv, true);
+    gucc::utils::exec("pacman -Syy"sv, true);
 #endif
 }
 
@@ -247,16 +250,16 @@ void logs_menu() noexcept {
         screen.Suspend();
         switch (selected) {
         case 0:
-            utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} dmesg | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
+            gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} dmesg | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
             break;
         case 1:
-            utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/pacman.log"), mountpoint), true);
+            gucc::utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/pacman.log"), mountpoint), true);
             break;
         case 2:
-            utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/Xorg.0.log"), mountpoint), true);
+            gucc::utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/Xorg.0.log"), mountpoint), true);
             break;
         case 3:
-            utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} journalctl | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
+            gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} journalctl | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
             break;
         default:
             screen.Resume();

@@ -59,10 +59,6 @@ void recheck_luks() noexcept;
 
 void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
 void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept;
-void exec(const std::vector<std::string>& vec) noexcept;
-auto exec(const std::string_view& command, const bool& interactive = false) noexcept -> std::string;
-[[nodiscard]] auto read_whole_file(const std::string_view& filepath) noexcept -> std::string;
-bool write_to_file(const std::string_view& data, const std::string_view& filepath) noexcept;
 void dump_to_log(const std::string& data) noexcept;
 void dump_settings_to_log() noexcept;
 [[nodiscard]] bool check_root() noexcept;
