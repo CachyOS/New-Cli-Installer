@@ -39,6 +39,9 @@ if not is_dev_environment
     add_global_arguments('-DNDEVENV', language : 'cpp')
 endif
 
+add_global_arguments('-DSPDLOG_DISABLE_DEFAULT_LOGGER', language : 'cpp')
+add_global_arguments('-DSPDLOG_FMT_EXTERNAL', language : 'cpp')
+
 version_commit_hash = run_command('git', 'rev-parse', '--short', 'HEAD', check: false).stdout().strip()
 build_timestamp = run_command('date', '+%Y%m%d', check: true).stdout().strip()
 
