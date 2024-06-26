@@ -1,5 +1,6 @@
 gucc_lib = library('gucc',
     sources : [
+        'src/io_utils.cpp',
         'src/file_utils.cpp',
         'src/string_utils.cpp',
         'src/cpu.cpp',
