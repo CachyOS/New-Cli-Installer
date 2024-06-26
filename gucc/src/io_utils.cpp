@@ -10,6 +10,7 @@
 #include <algorithm>  // for transform
 #include <fstream>    // for ofstream
 
+#include <fmt/compile.h>
 #include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 
@@ -86,6 +87,17 @@ auto exec(std::string_view command, bool interactive) noexcept -> std::string {
     }
 
     return result;
+}
+
+void arch_chroot(std::string_view command, std::string_view mountpoint, bool interactive) noexcept {
+    // TODO(vnepogodin): refactor to move output into variable and print into log
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
+
+#ifdef NDEVENV
+    gucc::utils::exec(cmd_formatted, interactive);
+#else
+    spdlog::info("Running with arch-chroot(interactive='{}'): '{}'", interactive, cmd_formatted);
+#endif
 }
 
 }  // namespace gucc::utils

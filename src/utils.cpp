@@ -125,21 +125,17 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
 
-#ifdef NDEVENV
-    if (follow) {
-        const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
-        if (headless_mode) {
-            gucc::utils::exec(cmd_formatted, true);
-        } else {
-            tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
-        }
-        return;
+    const bool follow_headless = follow && headless_mode;
+    if (!follow || follow_headless) {
+        gucc::utils::arch_chroot(command, mountpoint, follow_headless);
     }
-    gucc::utils::exec(cmd_formatted);
-#else
-    spdlog::info("Running with arch-chroot(follow='{}'): '{}'", follow, cmd_formatted);
+#ifdef NDEVENV
+    else {
+        const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
+        tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+    }
 #endif
 }
 
