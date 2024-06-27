@@ -20,6 +20,7 @@
 #include <fmt/core.h>
 
 using namespace std::string_view_literals;
+using namespace std::string_literals;
 namespace fs = std::filesystem;
 
 namespace utils {
@@ -81,9 +82,9 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
 
     // Create subvolumes automatically
     const std::vector<gucc::fs::BtrfsSubvolume> subvolumes{
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@"sv, .mountpoint = "/"sv},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@home"sv, .mountpoint = "/home"sv},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@cache"sv, .mountpoint = "/var/cache"sv},
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@"s, .mountpoint = "/"s},
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@home"s, .mountpoint = "/home"s},
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@cache"s, .mountpoint = "/var/cache"s},
         // gucc::fs::BtrfsSubvolume{.subvolume = "/@snapshots"sv, .mountpoint = "/.snapshots"sv},
     };
     if (!gucc::fs::btrfs_create_subvols(subvolumes, disk.root, root_mountpoint, disk.mount_opts)) {
@@ -106,23 +107,33 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
         fs_opts = "compress=lzo,noatime,space_cache,ssd,commit=120"sv;
     }
 #ifdef NDEVENV
-    gucc::utils::exec("btrfs subvolume list /mnt 2>/dev/null | cut -d' ' -f9 > /tmp/.subvols"sv, true);
-    umount("/mnt");
+    const auto root_mountpoint = "/mnt"sv;
 
-    // Mount subvolumes one by one
-    for (const auto& subvol : gucc::utils::make_multiline(gucc::utils::exec("cat /tmp/.subvols"sv))) {
+    gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list {} 2>/dev/null | cut -d' ' -f9 > /tmp/.subvols"), root_mountpoint), true);
+    if (gucc::utils::exec(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint), true) != "0") {
+        spdlog::error("Failed to unmount {}", root_mountpoint);
+    }
+
+    const auto& subvol_list = gucc::utils::make_multiline(gucc::utils::exec("cat /tmp/.subvols"sv));
+
+    // Get mountpoints of subvolumes
+    std::vector<gucc::fs::BtrfsSubvolume> subvolumes{};
+    for (auto&& subvol : subvol_list) {
         // Ask for mountpoint
-        const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending /mnt).\n"), subvol);
+        const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending {}).\n"), subvol, root_mountpoint);
         std::string mountpoint{"/"};
         if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return;
         }
-        const auto& mount_dir{fmt::format(FMT_COMPILE("/mnt/{}"), mountpoint)};
-        if (!fs::exists(mount_dir)) {
-            fs::create_directories(mount_dir);
-        }
-        // Mount the subvolume
-        gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o \"{},subvol={}\" \"{}\" \"{}\""), fs_opts, subvol, disk.root, mount_dir));
+
+        subvolumes.push_back(gucc::fs::BtrfsSubvolume{.subvolume = subvol, .mountpoint = mountpoint});
+    }
+
+    // TODO(vnepogodin): add confirmation for selected mountpoint for particular subvolume
+
+    // Mount subvolumes
+    if (!gucc::fs::btrfs_mount_subvols(subvolumes, disk.root, root_mountpoint, fs_opts)) {
+        spdlog::error("Failed to mount btrfs subvolumes");
     }
 #endif
 }

@@ -52,9 +52,17 @@ auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::strin
         }
     }
     // TODO(vnepogodin): handle exit code
-    utils::exec(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint));
+    utils::exec(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint), true);
 
     // Mount subvolumes
+    if (!fs::btrfs_mount_subvols(subvols, device, root_mountpoint, mount_opts)) {
+        spdlog::error("Failed to mount btrfs subvolumes");
+        return false;
+    }
+    return true;
+}
+
+auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> bool {
     for (const auto& subvol : subvols) {
         auto mount_option = fmt::format(FMT_COMPILE("subvol={},{}"), subvol.subvolume, mount_opts);
         if (subvol.subvolume.empty()) {

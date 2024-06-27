@@ -116,7 +116,7 @@ auto get_isa_levels() noexcept -> std::vector<std::string> {
     std::vector<std::string> supported_isa_levels;
 
     {
-        struct utsname un{};
+        struct utsname un { };
         uname(&un);
         supported_isa_levels.emplace_back(un.machine);
     }
