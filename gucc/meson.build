@@ -8,6 +8,7 @@ gucc_lib = library('gucc',
         'src/initcpio.cpp',
         'src/luks.cpp',
         'src/zfs.cpp',
+        'src/btrfs.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps

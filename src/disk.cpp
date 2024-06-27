@@ -4,6 +4,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/btrfs.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
@@ -29,26 +30,28 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
     /* clang-format on */
 
 #ifdef NDEVENV
+    const auto root_mountpoint = "/mnt"sv;
+
     // save mount options and name of the root partition
     gucc::utils::exec(R"(mount | grep 'on /mnt ' | grep -Po '(?<=\().*(?=\))' > /tmp/.root_mount_options)"sv);
     // gucc::utils::exec("lsblk -lno MOUNTPOINT,NAME | awk '/^\\/mnt / {print $2}' > /tmp/.root_partition"sv);
 
     if (mode == "manual"sv) {
         // Create subvolumes manually
-        std::string subvols{"@ @home @cache"};
+        std::string subvols{"/@ /@home /@cache"};
         static constexpr auto subvols_body = "\nInput names of the subvolumes separated by spaces.\nThe first one will be used for mounting /.\n"sv;
         if (!tui::detail::inputbox_widget(subvols, subvols_body, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 4))) {
             return;
         }
         const auto& saved_path = fs::current_path();
-        fs::current_path("/mnt");
+        fs::current_path(root_mountpoint);
         auto subvol_list = gucc::utils::make_multiline(subvols, false, ' ');
         for (const auto& subvol : subvol_list) {
             gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume create {} 2>>/tmp/cachyos-install.log"), subvol), true);
         }
         fs::current_path(saved_path);
         // Mount subvolumes
-        umount("/mnt");
+        umount(root_mountpoint.data());
         // Mount the first subvolume as /
         gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=\"{}\" \"{}\" /mnt"), disk.mount_opts, subvol_list[0], disk.root));
         // Remove the first subvolume from the subvolume list
@@ -62,14 +65,14 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
                 return;
             }
 
-            const auto& mountp_formatted = fmt::format(FMT_COMPILE("/mnt{}"), mountp);
+            const auto& mountp_formatted = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, mountp);
             fs::create_directories(mountp_formatted);
             gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=\"{}\" \"{}\" \"{}\""), disk.mount_opts, subvol, disk.root, mountp_formatted));
         }
         return;
     }
     if (!ignore_note) {
-        static constexpr auto content = "\nThis creates subvolumes:\n@ for /,\n@home for /home,\n@cache for /var/cache.\n"sv;
+        static constexpr auto content = "\nThis creates subvolumes:\n/@ for /,\n/@home for /home,\n/@cache for /var/cache.\n"sv;
         const auto& do_create         = tui::detail::yesno_widget(content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 15) | size(ftxui::WIDTH, ftxui::LESS_THAN, 75));
         /* clang-format off */
         if (!do_create) { return; }
@@ -77,20 +80,15 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
     }
 
     // Create subvolumes automatically
-    const auto& saved_path = fs::current_path();
-    fs::current_path("/mnt");
-    gucc::utils::exec("btrfs subvolume create @ 2>>/tmp/cachyos-install.log"sv, true);
-    gucc::utils::exec("btrfs subvolume create @home 2>>/tmp/cachyos-install.log"sv, true);
-    gucc::utils::exec("btrfs subvolume create @cache 2>>/tmp/cachyos-install.log"sv, true);
-    // gucc::utils::exec("btrfs subvolume create @snapshots 2>>/tmp/cachyos-install.log"sv, true);
-    fs::current_path(saved_path);
-    // Mount subvolumes
-    umount("/mnt");
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=@ \"{}\" /mnt"), disk.mount_opts, disk.root));
-    fs::create_directories("/mnt/home");
-    fs::create_directories("/mnt/var/cache");
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=@home \"{}\" /mnt/home"), disk.mount_opts, disk.root));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=@cache \"{}\" /mnt/var/cache"), disk.mount_opts, disk.root));
+    const std::vector<gucc::fs::BtrfsSubvolume> subvolumes{
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@"sv, .mountpoint = "/"sv},
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@home"sv, .mountpoint = "/home"sv},
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@cache"sv, .mountpoint = "/var/cache"sv},
+        // gucc::fs::BtrfsSubvolume{.subvolume = "/@snapshots"sv, .mountpoint = "/.snapshots"sv},
+    };
+    if (!gucc::fs::btrfs_create_subvols(subvolumes, disk.root, root_mountpoint, disk.mount_opts)) {
+        spdlog::error("Failed to create subvolumes automatically");
+    }
 #else
     spdlog::info("Do we ignore note? {}", ignore_note);
 #endif
