@@ -44,31 +44,31 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
         if (!tui::detail::inputbox_widget(subvols, subvols_body, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 4))) {
             return;
         }
-        const auto& saved_path = fs::current_path();
-        fs::current_path(root_mountpoint);
         auto subvol_list = gucc::utils::make_multiline(subvols, false, ' ');
-        for (const auto& subvol : subvol_list) {
-            gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume create {} 2>>/tmp/cachyos-install.log"), subvol), true);
-        }
-        fs::current_path(saved_path);
-        // Mount subvolumes
-        umount(root_mountpoint.data());
-        // Mount the first subvolume as /
-        gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=\"{}\" \"{}\" /mnt"), disk.mount_opts, subvol_list[0], disk.root));
+
+        // Make the first subvolume with mountpoint /
+        std::vector<gucc::fs::BtrfsSubvolume> subvolumes{
+            gucc::fs::BtrfsSubvolume{.subvolume = std::move(subvol_list[0]), .mountpoint = "/"s},
+        };
+
         // Remove the first subvolume from the subvolume list
         subvol_list.erase(subvol_list.begin());
 
-        // Loop to mount all created subvolumes
-        for (const auto& subvol : subvol_list) {
-            std::string mountp{"/home"};
-            const auto& mountp_body = fmt::format(FMT_COMPILE("\nInput mountpoint of the subvolume {}\nas it would appear in installed system\n(without prepending /mnt).\n"), subvol);
-            if (!tui::detail::inputbox_widget(mountp, mountp_body, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 4))) {
+        // Get mountpoints of subvolumes
+        for (auto&& subvol : subvol_list) {
+            // Ask for mountpoint
+            const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending {}).\n"), subvol, root_mountpoint);
+            std::string mountpoint{"/home"};
+            if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
                 return;
             }
 
-            const auto& mountp_formatted = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, mountp);
-            fs::create_directories(mountp_formatted);
-            gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {},subvol=\"{}\" \"{}\" \"{}\""), disk.mount_opts, subvol, disk.root, mountp_formatted));
+            subvolumes.push_back(gucc::fs::BtrfsSubvolume{.subvolume = std::move(subvol), .mountpoint = std::move(mountpoint)});
+        }
+
+        // Create subvolumes
+        if (!gucc::fs::btrfs_create_subvols(subvolumes, disk.root, root_mountpoint, disk.mount_opts)) {
+            spdlog::error("Failed to create subvolumes");
         }
         return;
     }
@@ -126,7 +126,7 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
             return;
         }
 
-        subvolumes.push_back(gucc::fs::BtrfsSubvolume{.subvolume = subvol, .mountpoint = mountpoint});
+        subvolumes.push_back(gucc::fs::BtrfsSubvolume{.subvolume = std::move(subvol), .mountpoint = std::move(mountpoint)});
     }
 
     // TODO(vnepogodin): add confirmation for selected mountpoint for particular subvolume
