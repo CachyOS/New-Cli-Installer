@@ -478,9 +478,9 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
         .username      = user,
         .password      = password,
         .shell         = shell,
-        .sudoers_group = "sudo"sv,
+        .sudoers_group = "wheel"sv,
     };
-    const std::vector default_user_groups{"sudo"s, "storage"s, "power"s, "network"s, "video"s, "audio"s, "lp"s, "sys"s, "input"s};
+    const std::vector default_user_groups{"wheel"s, "rfkill"s, "sys"s, "users"s, "lp"s, "video"s, "network"s, "storage"s, "audio"s};
     if (!gucc::user::create_new_user(user_info, default_user_groups, mountpoint)) {
         spdlog::error("Failed to create user");
     }
