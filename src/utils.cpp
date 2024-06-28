@@ -13,6 +13,7 @@
 #include "gucc/luks.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/user.hpp"
 
 #include <algorithm>      // for transform
 #include <array>          // for array
@@ -470,29 +471,18 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
         }
     }
 
-    // Create the user, set password, then remove temporary password file
-    utils::arch_chroot("groupadd sudo", false);
-    utils::arch_chroot(fmt::format(FMT_COMPILE("groupadd {}"), user), false);
-    utils::arch_chroot(fmt::format(FMT_COMPILE("useradd {0} -m -g {0} -G sudo,storage,power,network,video,audio,lp,sys,input -s {1}"), user, shell), false);
-    spdlog::info("add user to groups");
-
-    // check if user has been created
-    const auto& user_check = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} getent passwd {}"), mountpoint, user));
-    if (user_check.empty()) {
-        spdlog::error("User has not been created!");
-    }
-    std::error_code err{};
-    gucc::utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\\n{0}\" > /tmp/.passwd"), password));
-    const auto& ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd {} < /tmp/.passwd &>/dev/null"), mountpoint, user), true);
-    spdlog::info("create user pwd: {}", ret_status);
-    fs::remove("/tmp/.passwd", err);
-
-    // Set up basic configuration files and permissions for user
-    // arch_chroot "cp /etc/skel/.bashrc /home/${USER}"
-    utils::arch_chroot(fmt::format(FMT_COMPILE("chown -R {0}:{0} /home/{0}"), user), false);
-    const auto& sudoers_file = fmt::format(FMT_COMPILE("{}/etc/sudoers"), mountpoint);
-    if (fs::exists(sudoers_file)) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i '/NOPASSWD/!s/# %sudo/%sudo/g' {}"), sudoers_file));
+    // Create user with sudoers and default groups
+    using namespace std::string_literals;
+    using namespace std::string_view_literals;
+    const gucc::user::UserInfo user_info{
+        .username      = user,
+        .password      = password,
+        .shell         = shell,
+        .sudoers_group = "sudo"sv,
+    };
+    const std::vector default_user_groups{"sudo"s, "storage"s, "power"s, "network"s, "video"s, "audio"s, "lp"s, "sys"s, "input"s};
+    if (!gucc::user::create_new_user(user_info, default_user_groups, mountpoint)) {
+        spdlog::error("Failed to create user");
     }
 #else
     spdlog::debug("user := {}, password := {}", user, password);
@@ -1768,6 +1758,7 @@ void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unuse
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^#autologin-user=/autologin-user={}/' /mnt/etc/lightdm/lightdm.conf"), user));
         gucc::utils::exec("sed -i 's/^#autologin-user-timeout=0/autologin-user-timeout=0/' /mnt/etc/lightdm/lightdm.conf");
 
+        // TODO(vnepogodin): refactor with gucc
         utils::arch_chroot("groupadd -r autologin", false);
         utils::arch_chroot(fmt::format(FMT_COMPILE("gpasswd -a {} autologin"), user), false);
     } else if (dm == "sddm") {

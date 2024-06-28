@@ -94,9 +94,21 @@ void arch_chroot(std::string_view command, std::string_view mountpoint, bool int
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
 
 #ifdef NDEVENV
-    gucc::utils::exec(cmd_formatted, interactive);
+    utils::exec(cmd_formatted, interactive);
 #else
     spdlog::info("Running with arch-chroot(interactive='{}'): '{}'", interactive, cmd_formatted);
+#endif
+}
+
+auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool {
+    // TODO(vnepogodin): refactor to move output into variable and print into log
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 1>/dev/null"), mountpoint, command);
+
+#ifdef NDEVENV
+    return utils::exec(cmd_formatted, true) == "0";
+#else
+    spdlog::info("Running with checked arch-chroot: '{}'", cmd_formatted);
+    return true;
 #endif
 }
 
