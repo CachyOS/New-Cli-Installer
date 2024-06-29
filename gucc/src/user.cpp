@@ -42,6 +42,17 @@ auto create_group(std::string_view group, std::string_view mountpoint) noexcept 
     return utils::arch_chroot_checked(cmd, mountpoint);
 }
 
+auto set_user_password(std::string_view username, std::string_view password, std::string_view mountpoint) noexcept -> bool {
+    // TODO(vnepogodin): should encrypt user password properly here
+    const auto& encrypted_passwd = utils::exec(fmt::format(FMT_COMPILE("openssl passwd {}"), password));
+    const auto& password_set_cmd = fmt::format(FMT_COMPILE("usermod -p '{}' {}"), encrypted_passwd, username);
+    if (!utils::arch_chroot_checked(password_set_cmd, mountpoint)) {
+        spdlog::error("Failed to set password for user {}", username);
+        return false;
+    }
+    return true;
+}
+
 auto create_new_user(const user::UserInfo& user_info, const std::vector<std::string>& default_groups, std::string_view mountpoint) noexcept -> bool {
     if (!user_info.sudoers_group.empty() && !ranges::contains(default_groups, user_info.sudoers_group)) {
         spdlog::error("Failed to create user {}! User default groups doesn't contain sudoers group({})", user_info.username, user_info.sudoers_group);
@@ -90,11 +101,8 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
         return false;
     }
 
-    // TODO(vnepogodin): should encrypt user password properly here
-    const auto& encrypted_passwd = utils::exec(fmt::format(FMT_COMPILE("openssl passwd {}"), user_info.password));
-    const auto& password_set_cmd = fmt::format(FMT_COMPILE("usermod -p '{}' {}"), encrypted_passwd, user_info.username);
-    if (!utils::arch_chroot_checked(password_set_cmd, mountpoint)) {
-        spdlog::error("Failed to set password for user {}", user_info.username);
+    // Set user password
+    if (!set_user_password(user_info.username, user_info.password, mountpoint)) {
         return false;
     }
 
@@ -170,14 +178,7 @@ ff02::2    ip6-allrouters
 }
 
 auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept -> bool {
-    // TODO(vnepogodin): should encrypt password properly here
-    const auto& encrypted_passwd = utils::exec(fmt::format(FMT_COMPILE("openssl passwd {}"), password));
-    const auto& password_set_cmd = fmt::format(FMT_COMPILE("usermod -p '{}' root"), encrypted_passwd);
-    if (!utils::arch_chroot_checked(password_set_cmd, mountpoint)) {
-        spdlog::error("Failed to set password for root user");
-        return false;
-    }
-    return true;
+    return set_user_password("root"sv, password, mountpoint);
 }
 
 }  // namespace gucc::user

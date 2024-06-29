@@ -17,6 +17,9 @@ struct UserInfo final {
 // Create group on the system
 auto create_group(std::string_view group, std::string_view mountpoint) noexcept -> bool;
 
+// Set user password on the system
+auto set_user_password(std::string_view username, std::string_view password, std::string_view mountpoint) noexcept -> bool;
+
 // Create user on the system
 auto create_new_user(const user::UserInfo& user_info, const std::vector<std::string>& default_groups, std::string_view mountpoint) noexcept -> bool;
 
