@@ -10,6 +10,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
@@ -1157,7 +1158,7 @@ void make_swap() noexcept {
     std::string answer{};
     {
         std::vector<std::string> temp{"None -"};
-        const auto& root_filesystem = utils::get_mountpoint_fs(mountpoint_info);
+        const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
         if (!(root_filesystem == "zfs" || root_filesystem == "btrfs")) {
             temp.emplace_back("Swapfile -");
         }
@@ -1851,7 +1852,7 @@ void mount_partitions() noexcept {
 
     // check to see if we already have a zfs root mounted
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    if (utils::get_mountpoint_fs(mountpoint_info) == "zfs"sv) {
+    if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "zfs"sv) {
         detail::infobox_widget("\nUsing ZFS root on \'/\'\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
     } else {
@@ -1895,7 +1896,7 @@ void mount_partitions() noexcept {
         // get_cryptroot
         // echo "$LUKS_DEV" > /tmp/.luks_dev
         // If the root partition is btrfs, offer to create subvolumes
-        if (utils::get_mountpoint_fs(mountpoint_info) == "btrfs") {
+        if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "btrfs") {
             // Check if there are subvolumes already on the btrfs partition
             const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mountpoint_info);
             const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));

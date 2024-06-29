@@ -6,6 +6,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
@@ -387,7 +388,7 @@ void menu_simple() noexcept {
     }
 
     // If the root partition is btrfs, offer to create subvolumes
-    /*if (utils::get_mountpoint_fs(mountpoint) == "btrfs") {
+    /*if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs") {
         // Check if there are subvolumes already on the btrfs partition
         const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mountpoint);
         const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
