@@ -10,6 +10,7 @@ gucc_lib = library('gucc',
         'src/zfs.cpp',
         'src/btrfs.cpp',
         'src/user.cpp',
+        'src/locale.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps

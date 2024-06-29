@@ -10,6 +10,7 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/locale.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/string_utils.hpp"
@@ -388,31 +389,13 @@ void set_hostname(const std::string_view& hostname) noexcept {
 void set_locale(const std::string_view& locale) noexcept {
     spdlog::info("Selected locale: {}", locale);
 #ifdef NDEVENV
-    auto* config_instance          = Config::instance();
-    auto& config_data              = config_instance->data();
-    const auto& mountpoint         = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& locale_config_path = fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint);
-    const auto& locale_gen_path    = fmt::format(FMT_COMPILE("{}/etc/locale.gen"), mountpoint);
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    static constexpr auto locale_config_part = R"(LANG="{0}"
-LC_NUMERIC="{0}"
-LC_TIME="{0}"
-LC_MONETARY="{0}"
-LC_PAPER="{0}"
-LC_NAME="{0}"
-LC_ADDRESS="{0}"
-LC_TELEPHONE="{0}"
-LC_MEASUREMENT="{0}"
-LC_IDENTIFICATION="{0}"
-LC_MESSAGES="{0}")";
-
-    std::ofstream locale_config_file{locale_config_path};
-    locale_config_file << fmt::format(locale_config_part, locale);
-
-    gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
-
-    // Generate locales
-    utils::arch_chroot("locale-gen", false);
+    if (!gucc::locale::set_locale(locale, mountpoint)) {
+        spdlog::error("Failed to set locale");
+    }
 #endif
 }
 

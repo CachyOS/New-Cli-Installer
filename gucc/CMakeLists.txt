@@ -20,6 +20,7 @@ add_library(${PROJECT_NAME} SHARED
    src/zfs.cpp include/gucc/zfs.hpp
    src/btrfs.cpp include/gucc/btrfs.hpp
    src/user.cpp include/gucc/user.hpp
+   src/locale.cpp include/gucc/locale.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )
