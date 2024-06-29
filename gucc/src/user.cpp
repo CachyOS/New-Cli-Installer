@@ -126,4 +126,47 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
     return true;
 }
 
+auto set_hostname(std::string_view hostname, std::string_view mountpoint) noexcept -> bool {
+    {
+        const auto& hostname_filepath = fmt::format(FMT_COMPILE("{}/etc/hostname"), mountpoint);
+        const auto& hostname_line     = fmt::format(FMT_COMPILE("{}\n"), hostname);
+        std::ofstream hostname_file{hostname_filepath, std::ios::out | std::ios::trunc};
+        if (!hostname_file.is_open()) {
+            spdlog::error("Failed to open hostname for writing {}", hostname_filepath);
+            return false;
+        }
+        hostname_file << hostname_line;
+    }
+
+    if (!user::set_hosts(hostname, mountpoint)) {
+        spdlog::error("Failed to set hosts");
+        return false;
+    }
+    return true;
+}
+
+auto set_hosts(std::string_view hostname, std::string_view mountpoint) noexcept -> bool {
+    static constexpr auto STANDARD_HOSTS = R"(# Standard host addresses
+127.0.0.1  localhost
+::1        localhost ip6-localhost ip6-loopback
+ff02::1    ip6-allnodes
+ff02::2    ip6-allrouters
+)"sv;
+    static constexpr auto REQUESTED_HOST = R"(# This host address
+127.0.1.1  {}
+)";
+
+    {
+        const auto& hosts_filepath = fmt::format(FMT_COMPILE("{}/etc/hosts"), mountpoint);
+        const auto& hosts_text     = fmt::format(FMT_COMPILE("{}{}"), STANDARD_HOSTS, hostname.empty() ? std::string{} : fmt::format(REQUESTED_HOST, hostname));
+        std::ofstream hosts_file{hosts_filepath, std::ios::out | std::ios::trunc};
+        if (!hosts_file.is_open()) {
+            spdlog::error("Failed to open hosts for writing {}", hosts_filepath);
+            return false;
+        }
+        hosts_file << hosts_text;
+    }
+    return true;
+}
+
 }  // namespace gucc::user

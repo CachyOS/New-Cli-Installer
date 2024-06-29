@@ -20,6 +20,12 @@ auto create_group(std::string_view group, std::string_view mountpoint) noexcept 
 // Create user on the system
 auto create_new_user(const user::UserInfo& user_info, const std::vector<std::string>& default_groups, std::string_view mountpoint) noexcept -> bool;
 
+// Set system hostname
+auto set_hostname(std::string_view hostname, std::string_view mountpoint) noexcept -> bool;
+
+// Set system hosts
+auto set_hosts(std::string_view hostname, std::string_view mountpoint) noexcept -> bool;
+
 }  // namespace gucc::user
 
 #endif  // USER_HPP
