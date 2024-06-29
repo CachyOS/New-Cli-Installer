@@ -38,6 +38,7 @@ jobs:
           cd ${{github.workspace}}/build
           ./gucc/tests/test-initcpio
           ./gucc/tests/test-pacmanconf
+          ./gucc/tests/test-fstab_gen
         shell: bash
   build-cmake_withoutdev:
     name: Build with CMake (DEVENV OFF)
@@ -82,6 +83,7 @@ jobs:
           cd ${{github.workspace}}/build
           ./gucc/tests/test-initcpio
           ./gucc/tests/test-pacmanconf
+          ./gucc/tests/test-fstab_gen
         shell: bash
   build-meson_withoutdev:
     name: Build with Meson (DEVENV OFF)

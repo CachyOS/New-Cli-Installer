@@ -12,6 +12,7 @@ gucc_lib = library('gucc',
         'src/btrfs.cpp',
         'src/user.cpp',
         'src/locale.cpp',
+        'src/fstab.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps
