@@ -26,6 +26,9 @@ auto set_hostname(std::string_view hostname, std::string_view mountpoint) noexce
 // Set system hosts
 auto set_hosts(std::string_view hostname, std::string_view mountpoint) noexcept -> bool;
 
+// Set password for root user
+auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept -> bool;
+
 }  // namespace gucc::user
 
 #endif  // USER_HPP

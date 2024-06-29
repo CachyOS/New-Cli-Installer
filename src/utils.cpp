@@ -497,10 +497,9 @@ void set_root_password(const std::string_view& password) noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    std::error_code err{};
-    gucc::utils::exec(fmt::format(FMT_COMPILE("echo -e \"{0}\n{0}\" > /tmp/.passwd"), password));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd root < /tmp/.passwd &>/dev/null"), mountpoint));
-    fs::remove("/tmp/.passwd", err);
+    if (!gucc::user::set_root_password(password, mountpoint)) {
+        spdlog::error("Failed to set root password");
+    }
 #else
     spdlog::debug("root password := {}", password);
 #endif

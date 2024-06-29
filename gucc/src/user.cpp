@@ -169,4 +169,15 @@ ff02::2    ip6-allrouters
     return true;
 }
 
+auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept -> bool {
+    // TODO(vnepogodin): should encrypt password properly here
+    const auto& encrypted_passwd = utils::exec(fmt::format(FMT_COMPILE("openssl passwd {}"), password));
+    const auto& password_set_cmd = fmt::format(FMT_COMPILE("usermod -p '{}' root"), encrypted_passwd);
+    if (!utils::arch_chroot_checked(password_set_cmd, mountpoint)) {
+        spdlog::error("Failed to set password for root user");
+        return false;
+    }
+    return true;
+}
+
 }  // namespace gucc::user
