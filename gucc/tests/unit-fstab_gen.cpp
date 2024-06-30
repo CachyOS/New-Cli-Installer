@@ -63,13 +63,31 @@ UUID=8EFB-4B84                            /boot          vfat    defaults,noatim
 
 )"sv;
 
+static constexpr auto FSTAB_LUKS_BTRFS_TEST = R"(# Static information about the filesystems.
+# See fstab(5) for details.
+
+# <file system> <dir> <type> <options> <dump> <pass>
+# /dev/nvme0n1p1
+/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f /              btrfs   subvol=/@,defaults,noatime,compress=zstd,space_cache=v2,commit=120 0 0
+
+# /dev/nvme0n1p1
+/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f /home          btrfs   subvol=/@home,defaults,noatime,compress=zstd,space_cache=v2,commit=120 0 0
+
+# /dev/nvme0n1p1
+/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f /var/cache     btrfs   subvol=/@cache,defaults,noatime,compress=zstd,space_cache=v2,commit=120 0 0
+
+# /dev/nvme0n1p2
+UUID=8EFB-4B84                            /boot          vfat    defaults,noatime 0 2
+
+)"sv;
+
 int main() {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg& msg) {
         // noop
     });
     spdlog::set_default_logger(std::make_shared<spdlog::logger>("default", callback_sink));
 
-    // btrfs with snapshots
+    // btrfs with subvolumes
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .luks_mapper_name = {}, .subvolume = "/@"s},
@@ -109,5 +127,16 @@ int main() {
         };
         const auto& fstab_content = gucc::fs::generate_fstab_content(partitions);
         assert(fstab_content == FSTAB_ZFS_TEST);
+    }
+    // luks btrfs with subvolumes
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@home"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@cache"s},
+            gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
+        };
+        const auto& fstab_content = gucc::fs::generate_fstab_content(partitions);
+        assert(fstab_content == FSTAB_LUKS_BTRFS_TEST);
     }
 }

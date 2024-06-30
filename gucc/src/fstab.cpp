@@ -33,6 +33,8 @@ namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
 namespace {
+
+// NOLINTNEXTLINE
 static constexpr auto FSTAB_HEADER = R"(# Static information about the filesystems.
 # See fstab(5) for details.
 
