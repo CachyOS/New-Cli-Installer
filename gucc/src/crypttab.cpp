@@ -30,7 +30,6 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace fs = std::filesystem;
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
