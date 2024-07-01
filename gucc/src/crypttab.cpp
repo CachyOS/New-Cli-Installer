@@ -1,10 +1,10 @@
 #include "gucc/crypttab.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/partition.hpp"
 
 #include <algorithm>  // for any_of, sort, unique_copy
 
 #include <filesystem>
-#include <fstream>
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -104,13 +104,11 @@ auto generate_crypttab_content(const std::vector<Partition>& partitions, std::st
 
 auto generate_crypttab(const std::vector<Partition>& partitions, std::string_view root_mountpoint, std::string_view crypttab_opts) noexcept -> bool {
     const auto& crypttab_filepath = fmt::format(FMT_COMPILE("{}/etc/crypttab"), root_mountpoint);
-
-    std::ofstream crypttab_file{crypttab_filepath, std::ios::out | std::ios::trunc};
-    if (!crypttab_file.is_open()) {
+    const auto& crypttab_content  = fs::generate_crypttab_content(partitions, crypttab_opts);
+    if (!file_utils::create_file_for_overwrite(crypttab_filepath, crypttab_content)) {
         spdlog::error("Failed to open crypttab for writing {}", crypttab_filepath);
         return false;
     }
-    crypttab_file << fs::generate_crypttab_content(partitions, crypttab_opts);
     return true;
 }
 

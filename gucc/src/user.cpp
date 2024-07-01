@@ -1,10 +1,10 @@
 #include "gucc/user.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for find
 #include <filesystem>
-#include <fstream>  // for ofstream
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -115,12 +115,10 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
     const auto& sudoers_filepath = fmt::format(FMT_COMPILE("{}/etc/sudoers.d/10-installer"), mountpoint);
     {
         const auto& sudoers_line = fmt::format(FMT_COMPILE("%{} ALL=(ALL) ALL\n"), user_info.sudoers_group);
-        std::ofstream sudoers_file{sudoers_filepath, std::ios::out | std::ios::trunc};
-        if (!sudoers_file.is_open()) {
+        if (!file_utils::create_file_for_overwrite(sudoers_filepath, sudoers_line)) {
             spdlog::error("Failed to open sudoers for writing {}", sudoers_filepath);
             return false;
         }
-        sudoers_file << sudoers_line;
     }
 
     std::error_code err{};
@@ -138,12 +136,10 @@ auto set_hostname(std::string_view hostname, std::string_view mountpoint) noexce
     {
         const auto& hostname_filepath = fmt::format(FMT_COMPILE("{}/etc/hostname"), mountpoint);
         const auto& hostname_line     = fmt::format(FMT_COMPILE("{}\n"), hostname);
-        std::ofstream hostname_file{hostname_filepath, std::ios::out | std::ios::trunc};
-        if (!hostname_file.is_open()) {
+        if (!file_utils::create_file_for_overwrite(hostname_filepath, hostname_line)) {
             spdlog::error("Failed to open hostname for writing {}", hostname_filepath);
             return false;
         }
-        hostname_file << hostname_line;
     }
 
     if (!user::set_hosts(hostname, mountpoint)) {
@@ -167,12 +163,10 @@ ff02::2    ip6-allrouters
     {
         const auto& hosts_filepath = fmt::format(FMT_COMPILE("{}/etc/hosts"), mountpoint);
         const auto& hosts_text     = fmt::format(FMT_COMPILE("{}{}"), STANDARD_HOSTS, hostname.empty() ? std::string{} : fmt::format(REQUESTED_HOST, hostname));
-        std::ofstream hosts_file{hosts_filepath, std::ios::out | std::ios::trunc};
-        if (!hosts_file.is_open()) {
+        if (!file_utils::create_file_for_overwrite(hosts_filepath, hosts_text)) {
             spdlog::error("Failed to open hosts for writing {}", hosts_filepath);
             return false;
         }
-        hosts_file << hosts_text;
     }
     return true;
 }

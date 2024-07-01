@@ -1,8 +1,7 @@
 #include "gucc/locale.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
-
-#include <fstream>  // for ofstream
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -32,12 +31,10 @@ LC_MESSAGES="{0}"
 
     {
         const auto& locale_config_text = fmt::format(LOCALE_CONFIG_PART, locale);
-        std::ofstream locale_config_file{locale_config_path, std::ios::out | std::ios::trunc};
-        if (!locale_config_file.is_open()) {
+        if (!file_utils::create_file_for_overwrite(locale_config_path, locale_config_text)) {
             spdlog::error("Failed to open locale config for writing {}", locale_config_path);
             return false;
         }
-        locale_config_file << locale_config_text;
     }
 
     // TODO(vnepogodin): refactor and make backups of locale config and locale gen

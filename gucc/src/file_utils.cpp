@@ -10,7 +10,7 @@
 
 namespace gucc::file_utils {
 
-auto read_whole_file(const std::string_view& filepath) noexcept -> std::string {
+auto read_whole_file(std::string_view filepath) noexcept -> std::string {
     // Use std::fopen because it's faster than std::ifstream
     auto* file = std::fopen(filepath.data(), "rb");
     if (file == nullptr) {
@@ -35,10 +35,19 @@ auto read_whole_file(const std::string_view& filepath) noexcept -> std::string {
     return buf;
 }
 
-bool write_to_file(const std::string_view& data, const std::string_view& filepath) noexcept {
+auto write_to_file(std::string_view data, std::string_view filepath) noexcept -> bool {
     std::ofstream file{filepath.data()};
     if (!file.is_open()) {
         spdlog::error("[WRITE_TO_FILE] '{}' open failed: {}", filepath, std::strerror(errno));
+        return false;
+    }
+    file << data;
+    return true;
+}
+
+auto create_file_for_overwrite(std::string_view filepath, std::string_view data) noexcept -> bool {
+    std::ofstream file{filepath.data(), std::ios::out | std::ios::trunc};
+    if (!file.is_open()) {
         return false;
     }
     file << data;

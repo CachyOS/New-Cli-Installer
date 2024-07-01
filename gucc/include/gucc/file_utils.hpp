@@ -6,8 +6,12 @@
 
 namespace gucc::file_utils {
 
-auto read_whole_file(const std::string_view& filepath) noexcept -> std::string;
-bool write_to_file(const std::string_view& data, const std::string_view& filepath) noexcept;
+auto read_whole_file(std::string_view filepath) noexcept -> std::string;
+auto write_to_file(std::string_view data, std::string_view filepath) noexcept -> bool;
+
+// If the file doesn't exist, then it create one and write into it.
+// If the file exists already, then it will overwrite file content with provided data.
+auto create_file_for_overwrite(std::string_view filepath, std::string_view data) noexcept -> bool;
 
 }  // namespace gucc::file_utils
 

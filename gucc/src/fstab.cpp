@@ -1,11 +1,11 @@
 #include "gucc/fstab.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 
 #include <cctype>  // for tolower
 
 #include <algorithm>  // for transform
 #include <filesystem>
-#include <fstream>
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -127,13 +127,11 @@ auto generate_fstab_content(const std::vector<Partition>& partitions) noexcept -
 
 auto generate_fstab(const std::vector<Partition>& partitions, std::string_view root_mountpoint) noexcept -> bool {
     const auto& fstab_filepath = fmt::format(FMT_COMPILE("{}/etc/fstab"), root_mountpoint);
-
-    std::ofstream fstab_file{fstab_filepath, std::ios::out | std::ios::trunc};
-    if (!fstab_file.is_open()) {
+    const auto& fstab_content  = fs::generate_fstab_content(partitions);
+    if (!file_utils::create_file_for_overwrite(fstab_filepath, fstab_content)) {
         spdlog::error("Failed to open fstab for writing {}", fstab_filepath);
         return false;
     }
-    fstab_file << fs::generate_fstab_content(partitions);
     return true;
 }
 
