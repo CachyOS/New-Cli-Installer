@@ -75,14 +75,16 @@ void enable_services() noexcept;
 void final_check() noexcept;
 
 template <typename T = std::int32_t>
-inline T to_int(const std::string_view& str) requires std::numeric_limits<T>::is_integer {
+    requires std::numeric_limits<T>::is_integer
+inline T to_int(const std::string_view& str) {
     T result = 0;
     std::from_chars(str.data(), str.data() + str.size(), result);
     return result;
 }
 
 template <typename T = double>
-inline T to_floating(const std::string_view& str) requires std::is_floating_point<T>::value {
+    requires std::is_floating_point<T>::value
+inline T to_floating(const std::string_view& str) {
     T result = 0;
     std::from_chars(str.data(), str.data() + str.size(), result);
     return result;
