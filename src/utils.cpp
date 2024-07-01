@@ -6,6 +6,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/bootloader.hpp"
 #include "gucc/cpu.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
@@ -1158,25 +1159,27 @@ void install_systemd_boot() noexcept {
 #ifdef NDEVENV
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
-    utils::arch_chroot(fmt::format(FMT_COMPILE("bootctl --path={} install"), uefi_mount), false);
+    // preinstall systemd-boot-manager. it has to be installed
     utils::install_from_pkglist("systemd-boot-manager");
-    utils::arch_chroot("sdboot-manage gen", false);
 
-    // Check if the volume is removable. If so, don't use autodetect
-    const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+    // Check if the volume is removable
+
+    // NOTE: for /mnt on /dev/mapper/cryptroot `root_name` will be cryptroot
+    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+
+    // NOTE: for /mnt on /dev/mapper/cryptroot on /dev/sda2 with `root_name`=cryptroot, `root_device` will be sda
     const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable) == 1) {
-        const auto& mountpoint        = std::get<std::string>(config_data["MOUNTPOINT"]);
-        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-        auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
+    const auto& removable          = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
+    const bool is_volume_removable = (utils::to_int(removable) == 1);
 
-        // Remove autodetect hook
-        initcpio.remove_hook("autodetect");
-        spdlog::info("\"Autodetect\" hook was removed");
+    // start systemd-boot install & configuration
+    if (!gucc::bootloader::install_systemd_boot(mountpoint, uefi_mount, is_volume_removable)) {
+        spdlog::error("Failed to install systemd-boot");
+        return;
     }
 #endif
     spdlog::info("Systemd-boot was installed");

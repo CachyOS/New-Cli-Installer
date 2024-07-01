@@ -14,6 +14,7 @@ gucc_lib = library('gucc',
         'src/locale.cpp',
         'src/fstab.cpp',
         'src/crypttab.cpp',
+        'src/bootloader.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps
