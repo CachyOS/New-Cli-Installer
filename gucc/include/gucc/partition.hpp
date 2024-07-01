@@ -7,17 +7,15 @@
 namespace gucc::fs {
 
 struct Partition final {
-    std::string fstype;
-    std::string mountpoint;
-    std::string uuid_str;
-    std::string device;
+    std::string fstype{};
+    std::string mountpoint{};
+    std::string uuid_str{};
+    std::string device{};
 
     // mount points that will be written in fstab,
     // excluding subvol={subvol name}
     // if device is ssd, mount options for ssd should be appended
-    std::string mount_opts;
-    std::optional<std::string> luks_mapper_name;
-    std::optional<std::string> luks_uuid;
+    std::string mount_opts{};
 
     /*
     // subvolumes per partition
@@ -25,7 +23,12 @@ struct Partition final {
     std::optional<std::vector<BtrfsSubvolume>> subvols;
     */
     // subvolume name if the partition is btrrfs subvolume
-    std::optional<std::string> subvolume;
+    std::optional<std::string> subvolume{};
+
+    /// LUKS data
+    std::optional<std::string> luks_mapper_name{};
+    std::optional<std::string> luks_uuid{};
+    std::optional<std::string> luks_passphrase{};
 };
 
 }  // namespace gucc::fs
