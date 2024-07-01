@@ -44,9 +44,9 @@ int main() {
     // btrfs with subvolumes
     {
         const std::vector<gucc::fs::Partition> partitions{
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = uuid_str, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = {}, .subvolume = "/@"s},
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .uuid_str = uuid_str, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = {}, .subvolume = "/@home"s},
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .uuid_str = uuid_str, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = {}, .subvolume = "/@cache"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = uuid_str, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .uuid_str = uuid_str, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@home"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .uuid_str = uuid_str, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@cache"s},
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
@@ -85,9 +85,9 @@ int main() {
     // luks btrfs with subvolumes
     {
         const std::vector<gucc::fs::Partition> partitions{
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@"s},
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@home"s},
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@cache"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@home"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@cache"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
@@ -96,10 +96,10 @@ int main() {
     // luks btrfs with subvolumes {shuffled}
     {
         const std::vector<gucc::fs::Partition> partitions{
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@home"s},
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@home"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .subvolume = "/@cache"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@cache"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
         assert(crypttab_content == CRYPTTAB_UNENCR_BOOT_TEST);

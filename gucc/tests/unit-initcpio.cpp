@@ -2,11 +2,11 @@
 #include "gucc/initcpio.hpp"
 
 #include <cassert>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
 #include <vector>
-#include <filesystem>
 
 namespace fs = std::filesystem;
 
@@ -39,7 +39,7 @@ HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs usr lv
 )";
 
 int main() {
-    using namespace gucc; // NOLINT
+    using namespace gucc;  // NOLINT
 
     static constexpr std::string_view filename{"/tmp/mkinitcpio.conf"};
 
