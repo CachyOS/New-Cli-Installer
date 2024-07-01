@@ -4,7 +4,8 @@
 #include <algorithm>    // for transform
 #include <string>       // for string
 #include <string_view>  // for string_view
-#include <vector>       // for vector
+#include <type_traits>
+#include <vector>  // for vector
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -72,6 +73,20 @@ constexpr auto make_split_view(std::string_view str, char delim = '\n') noexcept
         | ranges::views::split(delim)
         | ranges::views::transform(functor)
         | ranges::views::filter(second);
+}
+
+template <typename T, typename npos_type = std::remove_cvref_t<decltype(T::npos)>>
+concept string_findable = requires(T value) {
+    // check that type of T::npos is T::size_type
+    { npos_type{} } -> std::same_as<typename T::size_type>;
+    // check that type of T::find is T::size_type
+    { value.find(std::string_view{""}) } -> std::same_as<typename T::size_type>;
+};
+
+// simple helper function to check if string contains a string
+constexpr auto contains(string_findable auto const& str, std::string_view needle) noexcept -> bool {
+    using str_type = std::remove_reference_t<decltype(str)>;
+    return str.find(needle) != str_type::npos;
 }
 
 }  // namespace gucc::utils

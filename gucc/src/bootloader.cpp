@@ -1,6 +1,7 @@
 #include "gucc/bootloader.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -132,20 +133,6 @@ GRUB_DISABLE_RECOVERY=true
 #GRUB_DISABLE_OS_PROBER=false
 )"sv;
 
-template <typename T, typename npos_type = std::remove_cvref_t<decltype(T::npos)>>
-concept string_findable = requires(T value) {
-    // check that type of T::npos is T::size_type
-    { npos_type{} } -> std::same_as<typename T::size_type>;
-    // check that type of T::find is T::size_type
-    { value.find(std::string_view{""}) } -> std::same_as<typename T::size_type>;
-};
-
-// simple helper function to check if string contains a string
-constexpr auto contains(string_findable auto const& str, std::string_view needle) noexcept -> bool {
-    using str_type = std::remove_reference_t<decltype(str)>;
-    return str.find(needle) != str_type::npos;
-}
-
 constexpr auto convert_boolean_val(std::string_view needle, bool value) noexcept -> std::string_view {
     if (needle == "GRUB_ENABLE_CRYPTODISK="sv || needle == "GRUB_DISABLE_SUBMENU="sv) {
         return value ? "y"sv : "n"sv;
@@ -176,7 +163,7 @@ auto parse_grub_line(const gucc::bootloader::GrubConfig& grub_config, std::strin
         CONV_OPT_F_S("GRUB_BACKGROUND=", grub_config.background, "/path/to/wallpaper");
         CONV_OPT_F_S("GRUB_THEME=", grub_config.theme, "/path/to/gfxtheme");
         CONV_OPT_F_S("GRUB_INIT_TUNE=", grub_config.init_tune, "480 440 1");
-        if (contains(line, "=y") || contains(line, "=true") || contains(line, "=false")) {
+        if (gucc::utils::contains(line, "=y") || gucc::utils::contains(line, "=true") || gucc::utils::contains(line, "=false")) {
             // booleans
             CONV_OPT_B("GRUB_ENABLE_CRYPTODISK=", grub_config.enable_cryptodisk, "y");
             CONV_OPT_B("GRUB_DISABLE_LINUX_UUID=", grub_config.disable_linux_uuid, "true");
