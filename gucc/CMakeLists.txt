@@ -23,6 +23,7 @@ add_library(${PROJECT_NAME} SHARED
    src/user.cpp include/gucc/user.hpp
    src/locale.cpp include/gucc/locale.hpp
    src/fstab.cpp include/gucc/fstab.hpp
+   src/crypttab.cpp include/gucc/crypttab.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )

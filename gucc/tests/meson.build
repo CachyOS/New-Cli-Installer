@@ -21,3 +21,11 @@ executable(
   link_with: [gucc_lib],
   include_directories: [include_directories('../include')],
   install: false)
+
+executable(
+  'test-crypttab_gen',
+  files('unit-crypttab_gen.cpp'),
+  dependencies: deps,
+  link_with: [gucc_lib],
+  include_directories: [include_directories('../include')],
+  install: false)
