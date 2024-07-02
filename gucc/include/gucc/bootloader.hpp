@@ -56,8 +56,23 @@ struct GrubConfig final {
     std::optional<bool> disable_os_prober{};
 };
 
-// Generate grub_config into string
+struct GrubInstallConfig final {
+    bool is_efi{};
+    bool do_recheck{};
+    bool is_removable{};
+    bool is_root_on_zfs{};
+    std::optional<std::string> efi_directory{};
+    std::optional<std::string> bootloader_id{};
+};
+
+// Generate grub config into string
 auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string;
+
+// Writes grub config to file on the system
+auto write_grub_config(const GrubConfig& grub_config, std::string_view root_mountpoint) noexcept -> bool;
+
+// Installs and configures grub on system
+auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_install_config, std::string_view root_mountpoint) noexcept -> bool;
 
 // Installs & configures systemd-boot on system
 auto install_systemd_boot(std::string_view root_mountpoint, std::string_view efi_directory, bool is_volume_removable) noexcept -> bool;

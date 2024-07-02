@@ -967,40 +967,47 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
     const auto& luks_dev            = std::get<std::string>(config_data["LUKS_DEV"]);
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
 
+    gucc::bootloader::GrubConfig grub_config_struct{};
+    gucc::bootloader::GrubInstallConfig grub_install_config_struct{};
+
+    grub_install_config_struct.is_efi        = true;
+    grub_install_config_struct.do_recheck    = true;
+    grub_install_config_struct.efi_directory = uefi_mount;
+    grub_install_config_struct.bootloader_id = bootid;
+
     // grub config changes for zfs root
     if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "zfs") {
         // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        gucc::utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
-        setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
+        gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
 
-        constexpr auto bash_codepart1 = R"(#!/bin/bash
+        grub_install_config_struct.is_root_on_zfs = true;
+
+        // zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
+        grub_config_struct.savedefault = std::nullopt;
+
+        // we need to tell grub where the zfs root is
+        const auto& mountpoint_source            = gucc::fs::utils::get_mountpoint_source(mountpoint);
+        const auto& zroot_var                    = fmt::format(FMT_COMPILE("zfs={} rw"), mountpoint_source);
+        grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("{} {}"), grub_config_struct.cmdline_linux_default, zroot_var);
+        grub_config_struct.cmdline_linux         = fmt::format(FMT_COMPILE("{} {}"), grub_config_struct.cmdline_linux, zroot_var);
+
+        constexpr auto bash_code = R"(#!/bin/bash
 ln -s /hostlvm /run/lvm
-export ZPOOL_VDEV_NAME_PATH=YES
 pacman -S --noconfirm --needed grub efibootmgr dosfstools
-# zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-# we need to tell grub where the zfs root is)";
-
-        const auto& mountpoint_source = gucc::fs::utils::get_mountpoint_source(mountpoint);
-        const auto& zroot_var         = fmt::format(FMT_COMPILE("zroot=\"zfs={} rw\""), mountpoint_source);
-
-        constexpr auto bash_codepart2 = R"(
-sed -e '/^GRUB_CMDLINE_LINUX_DEFAULT=/s@"$@ '"${zroot}"'"@g' -e '/^GRUB_CMDLINE_LINUX=/s@"$@ '"${zroot}"'"@g' -i /etc/default/grub
-sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub)";
-
-        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
-        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\n{}\n{}\ngrub-install --target=x86_64-efi --efi-directory={} --bootloader-id={} --recheck\n{}\n"), bash_codepart1, zroot_var, bash_codepart2, uefi_mount, bootid, mkconfig_codepart);
+)";
         std::ofstream grub_installer{grub_installer_path};
         grub_installer << bash_code;
     } else {
-        constexpr auto bash_codepart = R"(#!/bin/bash
+        // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
+        const auto is_root_lvm = gucc::utils::exec("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm", true) == "0";
+        if (is_root_lvm || (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs")) {
+            grub_config_struct.savedefault = std::nullopt;
+        }
+
+        constexpr auto bash_code = R"(#!/bin/bash
 ln -s /hostlvm /run/lvm
 pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
-findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub)";
-
-        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
-        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\ngrub-install --target=x86_64-efi --efi-directory={} --bootloader-id={} --recheck\n{}\n"), bash_codepart, uefi_mount, bootid, mkconfig_codepart);
+)";
         std::ofstream grub_installer{grub_installer_path};
         grub_installer << bash_code;
     }
@@ -1012,7 +1019,7 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
     // if the device is removable append removable to the grub-install
     const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
     if (utils::to_int(removable) == 1) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/^grub-install /s/$/ --removable/g' -i {}"), grub_installer_path));
+        grub_install_config_struct.is_removable = true;
     }
 
     // If the root is on btrfs-subvolume, amend grub installation
@@ -1022,24 +1029,30 @@ lsblk -ino TYPE,MOUNTPOINT | grep " /$" | grep -q lvm && sed -e '/GRUB_SAVEDEFAU
     }
     // If encryption used amend grub
     if (!luks_dev.empty()) {
-        const auto& luks_dev_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
-        ret_status                     = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
-        if (ret_status == "0") {
-            spdlog::info("adding kernel parameter {}", luks_dev);
-        }
+        const auto& luks_dev_formatted   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
+        grub_config_struct.cmdline_linux = fmt::format(FMT_COMPILE("{} {}"), luks_dev_formatted, grub_config_struct.cmdline_linux);
+        spdlog::info("adding kernel parameter {}", luks_dev);
     }
 
     // If Full disk encryption is used, use a keyfile
     const auto& fde = std::get<std::int32_t>(config_data["fde"]);
     if (fde == 1) {
         spdlog::info("Full disk encryption enabled");
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
+        grub_config_struct.enable_cryptodisk = true;
     }
 
     std::error_code err{};
 
     // install grub
     utils::arch_chroot("grub_installer.sh");
+
+    if (!gucc::bootloader::install_grub(grub_config_struct, grub_install_config_struct, mountpoint)) {
+        spdlog::error("Failed to install grub");
+        umount("/mnt/hostlvm");
+        fs::remove("/mnt/hostlvm", err);
+        tui::detail::infobox_widget("\nFailed to install grub\n");
+        return;
+    }
     umount("/mnt/hostlvm");
     fs::remove("/mnt/hostlvm", err);
 
@@ -1226,20 +1239,26 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
     const auto& mountpoint   = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& device_info  = std::get<std::string>(config_data["DEVICE"]);
 
+    gucc::bootloader::GrubConfig grub_config_struct{};
+    gucc::bootloader::GrubInstallConfig grub_install_config_struct{};
+
+    grub_install_config_struct.is_efi     = false;
+    grub_install_config_struct.do_recheck = true;
+
     // if /boot is LVM (whether using a seperate /boot mount or not), amend grub
     if ((lvm == 1 && lvm_sep_boot == 0) || lvm_sep_boot == 2) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/GRUB_PRELOAD_MODULES=\\\"/GRUB_PRELOAD_MODULES=\\\"lvm /g\" {}/etc/default/grub"), mountpoint));
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
+        grub_config_struct.preload_modules = fmt::format(FMT_COMPILE("lvm {}"), grub_config_struct.preload_modules);
+        grub_config_struct.savedefault     = std::nullopt;
     }
 
     // If root is on btrfs volume, amend grub
     if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs") {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
+        grub_config_struct.savedefault = std::nullopt;
     }
 
     // Same setting is needed for LVM
     if (lvm == 1) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i {}/etc/default/grub"), mountpoint));
+        grub_config_struct.savedefault = std::nullopt;
     }
 
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
@@ -1247,38 +1266,36 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
     // grub config changes for zfs root
     if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "zfs") {
         // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        gucc::utils::exec(fmt::format(FMT_COMPILE("echo ZPOOL_VDEV_NAME_PATH=YES >> {}/etc/environment"), mountpoint));
-        setenv("ZPOOL_VDEV_NAME_PATH", "YES", 1);
+        gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
 
-        constexpr auto bash_codepart1 = R"(#!/bin/bash
+        // zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
+        if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs") {
+            grub_config_struct.savedefault = std::nullopt;
+        }
+
+        // we need to tell grub where the zfs root is
+        const auto& mountpoint_source            = gucc::fs::utils::get_mountpoint_source(mountpoint);
+        const auto& zroot_var                    = fmt::format(FMT_COMPILE("zfs={} rw"), mountpoint_source);
+        grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("{} {}"), grub_config_struct.cmdline_linux_default, zroot_var);
+        grub_config_struct.cmdline_linux         = fmt::format(FMT_COMPILE("{} {}"), grub_config_struct.cmdline_linux, zroot_var);
+
+        constexpr auto bash_code = R"(#!/bin/bash
 ln -s /hostlvm /run/lvm
-export ZPOOL_VDEV_NAME_PATH=YES
 pacman -S --noconfirm --needed grub os-prober
-# zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-# we need to tell grub where the zfs root is)";
-
-        const auto& mountpoint_source = gucc::fs::utils::get_mountpoint_source(mountpoint);
-        const auto& zroot_var         = fmt::format(FMT_COMPILE("zroot=\"zfs={} rw\""), mountpoint_source);
-
-        constexpr auto bash_codepart2 = R"(
-sed -e '/^GRUB_CMDLINE_LINUX_DEFAULT=/s@"$@ '"${zroot}"'"@g' -e '/^GRUB_CMDLINE_LINUX=/s@"$@ '"${zroot}"'"@g' -i /etc/default/grub
-sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-grub-install --target=i386-pc --recheck)";
-
-        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
-        const auto& bash_code                   = fmt::format(FMT_COMPILE("{}\n{}\n{} {}\n{}\n"), bash_codepart1, zroot_var, bash_codepart2, device_info, mkconfig_codepart);
+)";
         std::ofstream grub_installer{grub_installer_path};
         grub_installer << bash_code;
     } else {
-        constexpr auto bash_codepart = R"(#!/bin/bash
+        // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
+        const auto is_root_lvm = gucc::utils::exec("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm", true) == "0";
+        if (is_root_lvm || (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs")) {
+            grub_config_struct.savedefault = std::nullopt;
+        }
+
+        constexpr auto bash_code = R"(#!/bin/bash
 ln -s /hostlvm /run/lvm
 pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
-findmnt | awk '/^\/ / {print $3}' | grep -q btrfs && sed -e '/GRUB_SAVEDEFAULT/ s/^#*/#/' -i /etc/default/grub
-grub-install --target=i386-pc --recheck)";
-
-        static constexpr auto mkconfig_codepart = "grub-mkconfig -o /boot/grub/grub.cfg";
-        const auto& bash_code                   = fmt::format(FMT_COMPILE("{} {}\n{}\n"), bash_codepart, device_info, mkconfig_codepart);
+)";
         std::ofstream grub_installer{grub_installer_path};
         grub_installer << bash_code;
     }
@@ -1291,18 +1308,16 @@ grub-install --target=i386-pc --recheck)";
 
     // If encryption used amend grub
     if (!luks_dev.empty()) {
-        const auto& luks_dev_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
-        ret_status                     = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"sed -i \\\"s~GRUB_CMDLINE_LINUX=.*~GRUB_CMDLINE_LINUX=\\\\\\\"\"{}\\\\\\\"~g\\\"\" /etc/default/grub\" >> {}"), luks_dev_formatted, grub_installer_path), true);
-        if (ret_status == "0") {
-            spdlog::info("adding kernel parameter {}", luks_dev);
-        }
+        const auto& luks_dev_formatted   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
+        grub_config_struct.cmdline_linux = fmt::format(FMT_COMPILE("{} {}"), luks_dev_formatted, grub_config_struct.cmdline_linux);
+        spdlog::info("adding kernel parameter {}", luks_dev);
     }
 
     // If Full disk encryption is used, use a keyfile
     const auto& fde = std::get<std::int32_t>(config_data["fde"]);
     if (fde == 1) {
         spdlog::info("Full disk encryption enabled");
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed  -i '3a\\grep -q \"^GRUB_ENABLE_CRYPTODISK=y\" /etc/default/grub || sed -i \"s/#GRUB_ENABLE_CRYPTODISK=y/GRUB_ENABLE_CRYPTODISK=y/\" /etc/default/grub' {}"), grub_installer_path));
+        grub_config_struct.enable_cryptodisk = true;
     }
 
     // Remove os-prober if not selected
@@ -1331,6 +1346,12 @@ grub-install --target=i386-pc --recheck)";
 
     umount("/mnt/hostlvm");
     fs::remove("/mnt/hostlvm", err);
+
+    if (!gucc::bootloader::install_grub(grub_config_struct, grub_install_config_struct, mountpoint)) {
+        spdlog::error("Failed to install grub");
+        tui::detail::infobox_widget("\nFailed to install grub\n");
+        return;
+    }
 #endif
 }
 

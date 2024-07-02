@@ -1,4 +1,5 @@
 #include "gucc/bootloader.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
@@ -216,6 +217,62 @@ auto install_systemd_boot(std::string_view root_mountpoint, std::string_view efi
         initcpio.remove_hook("autodetect");
         spdlog::info("\"Autodetect\" hook was removed");
     }
+    return true;
+}
+
+auto write_grub_config(const GrubConfig& grub_config, std::string_view root_mountpoint) noexcept -> bool {
+    const auto& grub_config_content = bootloader::gen_grub_config(grub_config);
+    const auto& grub_config_path    = fmt::format(FMT_COMPILE("{}/etc/default/grub"), root_mountpoint);
+    if (!file_utils::create_file_for_overwrite(grub_config_path, grub_config_content)) {
+        spdlog::error("Failed to open grub config for writing {}", grub_config_path);
+        return false;
+    }
+    return true;
+}
+
+auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_install_config, std::string_view root_mountpoint) noexcept -> bool {
+    // Write grub configuration on the system
+    if (!bootloader::write_grub_config(grub_config, root_mountpoint)) {
+        return false;
+    }
+
+    // Get grub install cmd
+    const auto& grub_install_cmd = [](const GrubInstallConfig& grub_install_config) -> std::string {
+        std::string result{};
+        if (grub_install_config.is_root_on_zfs) {
+            result += "ZPOOL_VDEV_NAME_PATH=YES "sv;
+        }
+        result += "grub-install --target="sv;
+        result += grub_install_config.is_efi ? "x86_64-efi"sv : "i386-pc"sv;
+
+        if (grub_install_config.do_recheck) {
+            result += " --recheck";
+        }
+        if (grub_install_config.is_removable) {
+            result += " --removable";
+        }
+        if (grub_install_config.is_efi && grub_install_config.efi_directory) {
+            result += fmt::format(FMT_COMPILE(" --efi-directory={}"), *grub_install_config.efi_directory);
+        }
+        if (grub_install_config.is_efi && grub_install_config.bootloader_id) {
+            result += fmt::format(FMT_COMPILE(" --bootloader-id={}"), *grub_install_config.bootloader_id);
+        }
+        return result;
+    }(grub_install_config);
+
+    // Install grub on the system
+    if (!utils::arch_chroot_checked(grub_install_cmd, root_mountpoint)) {
+        spdlog::error("Failed to install grub on path {} with: {}", root_mountpoint, grub_install_cmd);
+        return false;
+    }
+
+    // Generate grub configuration on the boot partition
+    static constexpr auto grub_config_cmd = "grub-mkconfig -o /boot/grub/grub.cfg"sv;
+    if (!utils::arch_chroot_checked(grub_config_cmd, root_mountpoint)) {
+        spdlog::error("Failed to generate grub on path {} with: {}", root_mountpoint, grub_config_cmd);
+        return false;
+    }
+
     return true;
 }
 
