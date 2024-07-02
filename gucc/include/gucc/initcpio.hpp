@@ -17,6 +17,7 @@
 #endif
 
 #include <range/v3/algorithm/contains.hpp>
+#include <range/v3/algorithm/find.hpp>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/filter.hpp>
 
@@ -30,7 +31,8 @@ namespace gucc::detail {
 
 class Initcpio final {
  public:
-    explicit Initcpio(const std::string_view& file_path) noexcept : m_file_path(file_path) { }
+    explicit Initcpio(const std::string_view& file_path) noexcept
+      : m_file_path(file_path) { }
 
     bool parse_file() noexcept;
 
@@ -78,8 +80,8 @@ class Initcpio final {
         if (ranges::contains(hooks, hook)) { return false; }
         /* clang-format on */
 
-        const auto& needle_pos = std::find(hooks.begin(), hooks.end(), std::move(needle));
-        hooks.insert(needle_pos, hook);
+        auto&& needle_pos = ranges::find(hooks, std::move(needle));
+        hooks.insert(std::move(needle_pos), std::move(hook));
         return this->write();
     }
     inline bool insert_hook(std::string&& needle, std::vector<std::string>&& hook) noexcept {
@@ -91,29 +93,29 @@ class Initcpio final {
         if (filtered_input.empty()) { return false; }
         /* clang-format on */
 
-        const auto& needle_pos = std::find(hooks.begin(), hooks.end(), std::move(needle));
-        hooks.insert(needle_pos, filtered_input.begin(), filtered_input.end());
+        auto&& needle_pos = ranges::find(hooks, std::move(needle));
+        hooks.insert(std::move(needle_pos), filtered_input.begin(), filtered_input.end());
         return this->write();
     }
 
     inline bool remove_module(std::string&& module) noexcept {
         /* clang-format off */
         if (!this->parse_file()) { return false; }
-        const auto& needle_pos = std::find(modules.begin(), modules.end(), std::move(module));
+        auto&& needle_pos = ranges::find(modules, std::move(module));
         if (needle_pos == modules.end()) { return false; }
         /* clang-format on */
 
-        modules.erase(needle_pos);
+        modules.erase(std::move(needle_pos));
         return this->write();
     }
     inline bool remove_hook(std::string&& hook) noexcept {
         /* clang-format off */
         if (!this->parse_file()) { return false; }
-        const auto& needle_pos = std::find(hooks.begin(), hooks.end(), std::move(hook));
+        auto&& needle_pos = ranges::find(hooks, std::move(hook));
         if (needle_pos == hooks.end()) { return false; }
         /* clang-format on */
 
-        hooks.erase(needle_pos);
+        hooks.erase(std::move(needle_pos));
         return this->write();
     }
 
