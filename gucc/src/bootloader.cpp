@@ -203,7 +203,7 @@ auto install_systemd_boot(std::string_view root_mountpoint, std::string_view efi
 
     // Generate systemd-boot configuration entries with our sdboot
     static constexpr auto sdboot_cmd = "sdboot-manage gen"sv;
-    if (!utils::arch_chroot_checked(bootctl_cmd, root_mountpoint)) {
+    if (!utils::arch_chroot_checked(sdboot_cmd, root_mountpoint)) {
         spdlog::error("Failed to run sdboot-manage gen on mountpoint: {}", root_mountpoint);
         return false;
     }
