@@ -83,7 +83,7 @@ inline T to_int(const std::string_view& str) {
 }
 
 template <typename T = double>
-    requires std::is_floating_point<T>::value
+    requires std::is_floating_point_v<T>
 inline T to_floating(const std::string_view& str) {
     T result = 0;
     std::from_chars(str.data(), str.data() + str.size(), result);
