@@ -38,7 +38,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME fmt
   GITHUB_REPOSITORY fmtlib/fmt
-  GIT_TAG 10.2.1
+  GIT_TAG 11.0.0
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -50,7 +50,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME spdlog
   GITHUB_REPOSITORY gabime/spdlog
-  GIT_TAG 62302019babd8fdf63c1c6dc4c9faa48d441a7f0
+  GIT_TAG eeb22c13bb65f342434c991641b80ecf4821e9b9
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -63,7 +63,7 @@ if(NOT ENABLE_DEVENV)
 CPMAddPackage(
   NAME cpr
   GITHUB_REPOSITORY libcpr/cpr
-  GIT_TAG 7cd69d2cc3105a3920da765e285d2a89d2247f0d
+  GIT_TAG 923f83a5946f8d276be757d7808101aafc900dd6
   EXCLUDE_FROM_ALL YES
 )
 endif()
@@ -76,7 +76,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME ctre
   GITHUB_REPOSITORY hanickadot/compile-time-regular-expressions
-  GIT_TAG v3.8.1
+  GIT_TAG v3.9.0
   EXCLUDE_FROM_ALL YES
 )
 
