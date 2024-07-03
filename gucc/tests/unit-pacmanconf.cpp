@@ -98,7 +98,6 @@ ParallelDownloads = 10
 [cachyos]
 Include = /etc/pacman.d/cachyos-mirrorlist
 
-
 [core]
 Include = /etc/pacman.d/mirrorlist
 
@@ -115,7 +114,8 @@ Include = /etc/pacman.d/mirrorlist
 #Include = /etc/pacman.d/mirrorlist
 
 [multilib]
-Include = /etc/pacman.d/mirrorlist)";
+Include = /etc/pacman.d/mirrorlist
+)";
 
 int main() {
     using namespace gucc;
