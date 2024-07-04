@@ -16,6 +16,7 @@
 #include "gucc/luks.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/systemd_services.hpp"
 #include "gucc/user.hpp"
 
 #include <algorithm>      // for transform
@@ -96,6 +97,7 @@
 */
 
 namespace fs = std::filesystem;
+using namespace std::string_view_literals;
 
 namespace utils {
 
@@ -906,10 +908,9 @@ void install_base(const std::string_view& packages) noexcept {
     /* clang-format on */
 
     // if we are using a zfs we should enable the zfs services
-    utils::arch_chroot("systemctl enable zfs.target", false);
-    utils::arch_chroot("systemctl enable zfs-import-cache", false);
-    utils::arch_chroot("systemctl enable zfs-mount", false);
-    utils::arch_chroot("systemctl enable zfs-import.target", false);
+    for (auto&& service_name : {"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv}) {
+        gucc::services::enable_systemd_service(service_name, mountpoint);
+    }
 
     // we also need create the cachefile
     gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
@@ -2070,12 +2071,12 @@ void enable_services() noexcept {
     const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
 
     static constexpr std::array enable_systemd{"avahi-daemon", "bluetooth", "cronie", "ModemManager", "NetworkManager", "org.cups.cupsd", "tlp", "haveged", "ufw", "apparmor", "fstrim.timer"};
-    for (auto&& service : enable_systemd) {
-        if (!fs::exists(fmt::format(FMT_COMPILE("{}/usr/lib/systemd/system/{}.service"), mountpoint, service))) {
+    for (auto&& service_name : enable_systemd) {
+        if (!fs::exists(fmt::format(FMT_COMPILE("{}/usr/lib/systemd/system/{}.service"), mountpoint, service_name))) {
             continue;
         }
-        utils::arch_chroot(fmt::format(FMT_COMPILE("systemctl enable {}"), service), false);
-        spdlog::info("enabled service {}", service);
+        gucc::services::enable_systemd_service(service_name, mountpoint);
+        spdlog::info("enabled service {}", service_name);
     }
 
     utils::arch_chroot("systemctl disable pacman-init", false);
@@ -2085,15 +2086,15 @@ void enable_services() noexcept {
     const auto& temp = fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq"), mountpoint);
     if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp), true) == "0") {
         utils::set_lightdm_greeter();
-        utils::arch_chroot("systemctl enable lightdm", false);
+        gucc::services::enable_systemd_service("lightdm"sv, mountpoint);
     } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp), true) == "0") {
-        utils::arch_chroot("systemctl enable sddm", false);
+        gucc::services::enable_systemd_service("sddm"sv, mountpoint);
     } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} gdm &> /dev/null"), temp), true) == "0") {
-        utils::arch_chroot("systemctl enable gdm", false);
+        gucc::services::enable_systemd_service("gdm"sv, mountpoint);
     } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} lxdm &> /dev/null"), temp), true) == "0") {
-        utils::arch_chroot("systemctl enable lxdm", false);
+        gucc::services::enable_systemd_service("lxdm"sv, mountpoint);
     } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} ly &> /dev/null"), temp), true) == "0") {
-        utils::arch_chroot("systemctl enable ly", false);
+        gucc::services::enable_systemd_service("ly"sv, mountpoint);
     }
 
     /* clang-format off */
@@ -2101,10 +2102,9 @@ void enable_services() noexcept {
     /* clang-format on */
 
     // if we are using a zfs we should enable the zfs services
-    utils::arch_chroot("systemctl enable zfs.target", false);
-    utils::arch_chroot("systemctl enable zfs-import-cache", false);
-    utils::arch_chroot("systemctl enable zfs-mount", false);
-    utils::arch_chroot("systemctl enable zfs-import.target", false);
+    for (auto&& service_name : {"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv}) {
+        gucc::services::enable_systemd_service(service_name, mountpoint);
+    }
 
     // we also need create the cachefile
     gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
