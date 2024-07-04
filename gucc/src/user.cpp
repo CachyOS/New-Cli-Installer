@@ -34,11 +34,11 @@ using namespace std::string_view_literals;
 
 namespace gucc::user {
 
-auto create_group(std::string_view group, std::string_view mountpoint) noexcept -> bool {
+auto create_group(std::string_view group, std::string_view mountpoint, bool is_system) noexcept -> bool {
     // TODO(vnepogodin):
     // 1. add parameter to check if the group was already created
     // 2. add parameter if the group should be --system group
-    const auto& cmd = fmt::format(FMT_COMPILE("groupadd {}"), group);
+    const auto& cmd = fmt::format(FMT_COMPILE("groupadd {}{}"), is_system ? "--system"sv : ""sv, group);
     return utils::arch_chroot_checked(cmd, mountpoint);
 }
 
