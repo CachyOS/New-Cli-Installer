@@ -89,6 +89,16 @@ constexpr auto contains(string_findable auto const& str, std::string_view needle
     return str.find(needle) != str_type::npos;
 }
 
+template <ranges::viewable_range R>
+constexpr auto index_viewable_range(R&& rng, ranges::range_difference_t<R> n) noexcept {
+    return ranges::next(ranges::begin(rng), n);
+}
+
+template <ranges::viewable_range R>
+constexpr auto size_viewable_range(R&& rng) noexcept {
+    return ranges::distance(ranges::begin(rng), ranges::end(rng));
+}
+
 }  // namespace gucc::utils
 
 #endif  // STRING_UTILS_HPP
