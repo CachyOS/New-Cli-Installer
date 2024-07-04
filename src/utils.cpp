@@ -1770,41 +1770,6 @@ void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unuse
 #endif
 }
 
-void set_schedulers() noexcept {
-#ifdef NDEVENV
-    static constexpr auto rules_path = "/mnt/etc/udev/rules.d/60-ioscheduler.rules";
-    if (!fs::exists(rules_path)) {
-        static constexpr auto ioscheduler_rules = R"(# set scheduler for NVMe
-ACTION=="add|change", KERNEL=="nvme[0-9]n[0-9]", ATTR{queue/scheduler}="none"
-# set scheduler for SSD and eMMC
-ACTION=="add|change", KERNEL=="sd[a-z]|mmcblk[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
-# set scheduler for rotating disks
-ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq")";
-        std::ofstream rules{rules_path};
-        rules << ioscheduler_rules;
-    }
-    gucc::utils::exec("vim /mnt/etc/udev/rules.d/60-ioscheduler.rules", true);
-#else
-    gucc::utils::exec("vim /etc/udev/rules.d/60-ioscheduler.rules", true);
-#endif
-}
-
-void set_swappiness() noexcept {
-#ifdef NDEVENV
-    static constexpr auto rules_path = "/mnt/etc/sysctl.d/99-sysctl.conf";
-    if (!fs::exists(rules_path)) {
-        static constexpr auto sysctl_rules = R"(vm.swappiness = 10
-vm.vfs_cache_pressure = 50
-#vm.dirty_ratio = 3)";
-        std::ofstream rules{rules_path};
-        rules << sysctl_rules;
-    }
-    gucc::utils::exec("vim /mnt/etc/sysctl.d/99-sysctl.conf", true);
-#else
-    gucc::utils::exec("vim /etc/sysctl.d/99-sysctl.conf", true);
-#endif
-}
-
 bool parse_config() noexcept {
     using namespace rapidjson;
 

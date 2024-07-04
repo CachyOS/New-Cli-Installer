@@ -780,40 +780,9 @@ void enable_autologin() {
     utils::enable_autologin(dm, autologin_user);
 }
 
-void performance_menu() {
-    const std::vector<std::string> menu_entries = {
-        "I/O Schedulers",
-        "Swap Configuration",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            screen.Suspend();
-            utils::set_schedulers();
-            screen.Resume();
-            break;
-        case 1:
-            screen.Suspend();
-            utils::set_swappiness();
-            screen.Resume();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
-    static constexpr auto tweaks_body = "Various configuration options"sv;
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, tweaks_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-}
-
 void tweaks_menu() noexcept {
     const std::vector<std::string> menu_entries = {
         "Enable Automatic Login",
-        "Performance",
         "Back",
     };
 
@@ -823,9 +792,6 @@ void tweaks_menu() noexcept {
         switch (selected) {
         case 0:
             tui::enable_autologin();
-            break;
-        case 1:
-            tui::performance_menu();
             break;
         default:
             screen.ExitLoopClosure()();
