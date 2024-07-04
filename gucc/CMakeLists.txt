@@ -26,6 +26,7 @@ add_library(${PROJECT_NAME} SHARED
    src/crypttab.cpp include/gucc/crypttab.hpp
    src/bootloader.cpp include/gucc/bootloader.hpp
    src/systemd_services.cpp include/gucc/systemd_services.hpp
+   src/autologin.cpp include/gucc/autologin.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )

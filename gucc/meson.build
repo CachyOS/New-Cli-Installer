@@ -16,6 +16,7 @@ gucc_lib = library('gucc',
         'src/crypttab.cpp',
         'src/bootloader.cpp',
         'src/systemd_services.cpp',
+        'src/autologin.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps

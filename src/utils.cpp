@@ -6,6 +6,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/autologin.hpp"
 #include "gucc/bootloader.hpp"
 #include "gucc/cpu.hpp"
 #include "gucc/file_utils.hpp"
@@ -1746,26 +1747,14 @@ void set_keymap() noexcept {
     gucc::utils::exec(fmt::format(FMT_COMPILE("loadkeys {}"), keymap));
 }
 
-void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unused]] const std::string_view& user) noexcept {
+void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unused]] const std::string_view& username) noexcept {
 #ifdef NDEVENV
-    // enable autologin
-    if (dm == "gdm") {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^AutomaticLogin=*/AutomaticLogin={}/g' /mnt/etc/gdm/custom.conf"), user));
-        gucc::utils::exec("sed -i 's/^AutomaticLoginEnable=*/AutomaticLoginEnable=true/g' /mnt/etc/gdm/custom.conf");
-        gucc::utils::exec("sed -i 's/^TimedLoginEnable=*/TimedLoginEnable=true/g' /mnt/etc/gdm/custom.conf");
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^TimedLogin=*/TimedLoginEnable={}/g' /mnt/etc/gdm/custom.conf"), user));
-        gucc::utils::exec("sed -i 's/^TimedLoginDelay=*/TimedLoginDelay=0/g' /mnt/etc/gdm/custom.conf");
-    } else if (dm == "lightdm") {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^#autologin-user=/autologin-user={}/' /mnt/etc/lightdm/lightdm.conf"), user));
-        gucc::utils::exec("sed -i 's/^#autologin-user-timeout=0/autologin-user-timeout=0/' /mnt/etc/lightdm/lightdm.conf");
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-        // TODO(vnepogodin): refactor with gucc
-        utils::arch_chroot("groupadd -r autologin", false);
-        utils::arch_chroot(fmt::format(FMT_COMPILE("gpasswd -a {} autologin"), user), false);
-    } else if (dm == "sddm") {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' /mnt/etc/sddm.conf"), user));
-    } else if (dm == "lxdm") {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^# autologin=dgod/autologin={}/g' /mnt/etc/lxdm/lxdm.conf"), user));
+    if (!gucc::user::enable_autologin(dm, username, mountpoint)) {
+        spdlog::error("Failed to enable autologin");
     }
 #endif
 }
