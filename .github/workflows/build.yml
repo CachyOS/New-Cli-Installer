@@ -38,6 +38,7 @@ jobs:
           cd ${{github.workspace}}/build
           ./gucc/tests/test-initcpio
           ./gucc/tests/test-pacmanconf
+          ./gucc/tests/test-mtab
           ./gucc/tests/test-fstab_gen
           ./gucc/tests/test-crypttab_gen
           ./gucc/tests/test-grub_config_gen
@@ -85,6 +86,7 @@ jobs:
           cd ${{github.workspace}}/build
           ./gucc/tests/test-initcpio
           ./gucc/tests/test-pacmanconf
+          ./gucc/tests/test-mtab
           ./gucc/tests/test-fstab_gen
           ./gucc/tests/test-crypttab_gen
           ./gucc/tests/test-grub_config_gen
