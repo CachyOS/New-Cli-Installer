@@ -8,6 +8,9 @@
 #include <string_view>
 #include <vector>
 
+#include <spdlog/sinks/callback_sink.h>
+#include <spdlog/spdlog.h>
+
 namespace fs = std::filesystem;
 
 static constexpr auto MKINITCPIO_STR = R"(
@@ -22,6 +25,22 @@ FILES=()
 
 # HOOKS
 HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)
+)";
+
+static constexpr auto MKINITCPIO_INVALID_TEST = R"(
+# MODULES
+MODULES=()
+
+ (
+# BINARIES
+BINARIES=()
+)
+# FILES
+FILES=()
+()
+# HOOKS
+HOOKS=(base udev autodetect modconf block filesystems keyboard fsck
+
 )";
 
 static constexpr auto MKINITCPIO_TEST = R"(
@@ -39,17 +58,22 @@ HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs usr lv
 )";
 
 int main() {
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    spdlog::set_default_logger(std::make_shared<spdlog::logger>("default", callback_sink));
+
     using namespace gucc;  // NOLINT
 
     static constexpr std::string_view filename{"/tmp/mkinitcpio.conf"};
 
     // Open mkinitcpio file for writing.
-    std::ofstream mhinitcpio_file{filename.data()};
-    assert(mhinitcpio_file.is_open());
+    std::ofstream mkinitcpio_file{filename.data()};
+    assert(mkinitcpio_file.is_open());
 
     // Setup mkinitcpio file.
-    mhinitcpio_file << MKINITCPIO_STR;
-    mhinitcpio_file.close();
+    mkinitcpio_file << MKINITCPIO_STR;
+    mkinitcpio_file.close();
 
     auto initcpio = detail::Initcpio{filename};
 
@@ -78,4 +102,45 @@ int main() {
 
     // Cleanup.
     fs::remove(filename);
+
+    // check invalid file
+    mkinitcpio_file = std::ofstream{filename.data()};
+    assert(mkinitcpio_file.is_open());
+
+    mkinitcpio_file << MKINITCPIO_INVALID_TEST;
+    mkinitcpio_file.close();
+
+    initcpio = detail::Initcpio{filename};
+    assert(initcpio.parse_file());
+
+    assert(initcpio.modules.empty());
+    assert(initcpio.files.empty());
+    assert(initcpio.hooks.empty());
+
+    // Cleanup.
+    fs::remove(filename);
+
+    // check empty file
+    mkinitcpio_file = std::ofstream{filename.data()};
+    assert(mkinitcpio_file.is_open());
+
+    mkinitcpio_file << "";
+    mkinitcpio_file.close();
+
+    initcpio = detail::Initcpio{filename};
+    assert(!initcpio.parse_file());
+    assert(!initcpio.write());
+
+    // Cleanup.
+    fs::remove(filename);
+
+    // check write to nonexistent file
+    initcpio = detail::Initcpio{"/path/to/non/exist_file.conf"};
+    assert(!initcpio.parse_file());
+    assert(!initcpio.write());
+
+    // check write to root file
+    initcpio = detail::Initcpio{"/etc/mtab"};
+    assert(!initcpio.parse_file());
+    assert(!initcpio.write());
 }
