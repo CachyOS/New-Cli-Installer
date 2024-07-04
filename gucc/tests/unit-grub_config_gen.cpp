@@ -134,7 +134,7 @@ inline auto filtered_res(std::string_view content) noexcept -> std::string {
 }
 
 int main() {
-    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg& msg) {
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
     spdlog::set_default_logger(std::make_shared<spdlog::logger>("default", callback_sink));

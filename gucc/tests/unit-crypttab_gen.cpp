@@ -32,7 +32,7 @@ luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f UUID=6bdb3301-8efb-4b84-b0b7-4caeef26f
 )"sv;
 
 int main() {
-    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg& msg) {
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
     spdlog::set_default_logger(std::make_shared<spdlog::logger>("default", callback_sink));

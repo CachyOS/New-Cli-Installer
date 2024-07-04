@@ -82,7 +82,7 @@ UUID=8EFB-4B84                            /boot          vfat    defaults,noatim
 )"sv;
 
 int main() {
-    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg& msg) {
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
     spdlog::set_default_logger(std::make_shared<spdlog::logger>("default", callback_sink));
