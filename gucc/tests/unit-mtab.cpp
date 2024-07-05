@@ -2,8 +2,13 @@
 
 #include <cassert>
 
+#include <filesystem>
+#include <fstream>
 #include <string_view>
 
+#include <fmt/core.h>
+
+namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
 static constexpr auto MTAB_RUNNING_SYSTEM_TEST = R"(
@@ -47,6 +52,61 @@ run /run/firejail/firejail.ro.dir tmpfs ro,nosuid,nodev,relatime,mode=755,inode6
 run /run/firejail/firejail.ro.file tmpfs ro,nosuid,nodev,relatime,mode=755,inode64 0 0
 )"sv;
 
+static constexpr auto MTAB_LIVE_ISO_TEST = R"(
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+sys /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+dev /dev devtmpfs rw,nosuid,relatime,size=3722300k,nr_inodes=930575,mode=755,inode64 0 0
+run /run tmpfs rw,nosuid,nodev,relatime,mode=755,inode64 0 0
+efivarfs /sys/firmware/efi/efivars efivarfs rw,nosuid,nodev,noexec,relatime 0 0
+/dev/sr0 /run/archiso/bootmnt iso9660 ro,relatime,nojoliet,check=s,map=n,blocksize=2048,iocharset=utf8 0 0
+cowspace /run/archiso/cowspace tmpfs rw,relatime,size=10485760k,mode=755,inode64 0 0
+/dev/loop0 /run/archiso/airootfs squashfs ro,relatime,errors=continue,threads=single 0 0
+airootfs / overlay rw,relatime,lowerdir=/run/archiso/airootfs,upperdir=/run/archiso/cowspace/persistent_/x86_64/upperdir,workdir=/run/archiso/cowspace/persistent_/x86_64/workdir,uuid=on 0 0
+securityfs /sys/kernel/security securityfs rw,nosuid,nodev,noexec,relatime 0 0
+tmpfs /dev/shm tmpfs rw,nosuid,nodev,inode64 0 0
+devpts /dev/pts devpts rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000 0 0
+cgroup2 /sys/fs/cgroup cgroup2 rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot 0 0
+pstore /sys/fs/pstore pstore rw,nosuid,nodev,noexec,relatime 0 0
+bpf /sys/fs/bpf bpf rw,nosuid,nodev,noexec,relatime,mode=700 0 0
+systemd-1 /proc/sys/fs/binfmt_misc autofs rw,relatime,fd=39,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=5202 0 0
+tracefs /sys/kernel/tracing tracefs rw,nosuid,nodev,noexec,relatime 0 0
+mqueue /dev/mqueue mqueue rw,nosuid,nodev,noexec,relatime 0 0
+hugetlbfs /dev/hugepages hugetlbfs rw,nosuid,nodev,relatime,pagesize=2M 0 0
+debugfs /sys/kernel/debug debugfs rw,nosuid,nodev,noexec,relatime 0 0
+tmpfs /run/credentials/systemd-journald.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-network-generator.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-udev-load-credentials.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+fusectl /sys/fs/fuse/connections fusectl rw,nosuid,nodev,noexec,relatime 0 0
+configfs /sys/kernel/config configfs rw,nosuid,nodev,noexec,relatime 0 0
+tmpfs /run/credentials/systemd-tmpfiles-setup-dev-early.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-sysctl.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-sysusers.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-tmpfiles-setup-dev.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-networkd.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-vconsole-setup.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /etc/pacman.d/gnupg tmpfs rw,relatime,mode=755,inode64,noswap 0 0
+tmpfs /tmp tmpfs rw,nosuid,nodev,size=3799484k,nr_inodes=1048576,inode64 0 0
+tmpfs /run/credentials/systemd-tmpfiles-setup.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-firstboot.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/credentials/systemd-resolved.service tmpfs ro,nosuid,nodev,noexec,relatime,nosymfollow,size=1024k,nr_inodes=1024,mode=700,inode64,noswap 0 0
+tmpfs /run/user/1000 tmpfs rw,nosuid,nodev,relatime,size=759896k,nr_inodes=189974,mode=700,uid=1000,gid=1000,inode64 0 0
+portal /run/user/1000/doc fuse.portal rw,nosuid,nodev,relatime,user_id=0,group_id=0 0 0
+/dev/sda2 /tmp/calamares-root-q_z5rdlx btrfs rw,noatime,compress=zstd:3,space_cache=v2,commit=120,subvolid=256,subvol=/@ 0 0
+/dev/sda2 /tmp/calamares-root-q_z5rdlx/home btrfs rw,noatime,compress=zstd:3,space_cache=v2,commit=120,subvolid=257,subvol=/@home 0 0
+/dev/sda2 /tmp/calamares-root-q_z5rdlx/root btrfs rw,noatime,compress=zstd:3,space_cache=v2,commit=120,subvolid=258,subvol=/@root 0 0
+/dev/sda2 /tmp/calamares-root-q_z5rdlx/srv btrfs rw,noatime,compress=zstd:3,space_cache=v2,commit=120,subvolid=259,subvol=/@srv 0 0
+/dev/sda2 /tmp/calamares-root-q_z5rdlx/var/cache btrfs rw,noatime,compress=zstd:3,space_cache=v2,commit=120,subvolid=260,subvol=/@cache 0 0
+/dev/sda2 /tmp/calamares-root-q_z5rdlx/var/tmp btrfs rw,noatime,compress=zstd:3,space_cache=v2,commit=120,subvolid=261,subvol=/@tmp 0 0
+/dev/sda2 /tmp/calamares-root-q_z5rdlx/var/log btrfs rw,noatime,compress=zstd:3,space_cache=v2,commit=120,subvolid=262,subvol=/@log 0 0
+/dev/sda1 /tmp/calamares-root-q_z5rdlx/boot vfat rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=ascii,shortname=mixed,utf8,errors=remount-ro 0 0
+dev /tmp/calamares-root-q_z5rdlx/dev devtmpfs rw,nosuid,relatime,size=3722300k,nr_inodes=930575,mode=755,inode64 0 0
+proc /tmp/calamares-root-q_z5rdlx/proc proc rw,noatime 0 0
+tmpfs /tmp/calamares-root-q_z5rdlx/run tmpfs rw,noatime,inode64 0 0
+run /tmp/calamares-root-q_z5rdlx/run/udev tmpfs rw,nosuid,nodev,relatime,mode=755,inode64 0 0
+sys /tmp/calamares-root-q_z5rdlx/sys sysfs rw,noatime 0 0
+efivarfs /tmp/calamares-root-q_z5rdlx/sys/firmware/efi/efivars efivarfs rw,noatime 0 0
+)"sv;
+
 int main() {
     // running system
     {
@@ -56,5 +116,71 @@ int main() {
         assert(mtab_entries[0].mountpoint == "/mnt");
         assert(mtab_entries[1].device == "/dev/nvme0n1p1");
         assert(mtab_entries[1].mountpoint == "/mnt/boot");
+    }
+    // live iso system
+    {
+        static constexpr std::string_view filename{"/tmp/mtab.conf"};
+        // Open mtab file for writing.
+        std::ofstream mtab_file{filename.data()};
+        assert(mtab_file.is_open());
+
+        // Setup mtab file.
+        mtab_file << MTAB_LIVE_ISO_TEST;
+        mtab_file.close();
+
+        const auto& mtab_entries = gucc::mtab::parse_mtab("/tmp/calamares-root-q_z5rdlx"sv, filename);
+        assert(mtab_entries.has_value());
+
+        // Cleanup.
+        fs::remove(filename);
+
+        const auto& entries = *mtab_entries;
+        assert(entries.size() == 14);
+        assert(entries[0].device == "/dev/sda2");
+        assert(entries[0].mountpoint == "/tmp/calamares-root-q_z5rdlx");
+        assert(entries[1].device == "/dev/sda2");
+        assert(entries[1].mountpoint == "/tmp/calamares-root-q_z5rdlx/home");
+        assert(entries[2].device == "/dev/sda2");
+        assert(entries[2].mountpoint == "/tmp/calamares-root-q_z5rdlx/root");
+        assert(entries[3].device == "/dev/sda2");
+        assert(entries[3].mountpoint == "/tmp/calamares-root-q_z5rdlx/srv");
+        assert(entries[4].device == "/dev/sda2");
+        assert(entries[4].mountpoint == "/tmp/calamares-root-q_z5rdlx/var/cache");
+        assert(entries[5].device == "/dev/sda2");
+        assert(entries[5].mountpoint == "/tmp/calamares-root-q_z5rdlx/var/tmp");
+        assert(entries[6].device == "/dev/sda2");
+        assert(entries[6].mountpoint == "/tmp/calamares-root-q_z5rdlx/var/log");
+        assert(entries[7].device == "/dev/sda1");
+        assert(entries[7].mountpoint == "/tmp/calamares-root-q_z5rdlx/boot");
+
+        assert(entries[8].device == "dev");
+        assert(entries[8].mountpoint == "/tmp/calamares-root-q_z5rdlx/dev");
+        assert(entries[9].device == "proc");
+        assert(entries[9].mountpoint == "/tmp/calamares-root-q_z5rdlx/proc");
+        assert(entries[10].device == "tmpfs");
+        assert(entries[10].mountpoint == "/tmp/calamares-root-q_z5rdlx/run");
+        assert(entries[11].device == "run");
+        assert(entries[11].mountpoint == "/tmp/calamares-root-q_z5rdlx/run/udev");
+        assert(entries[12].device == "sys");
+        assert(entries[12].mountpoint == "/tmp/calamares-root-q_z5rdlx/sys");
+        assert(entries[13].device == "efivarfs");
+        assert(entries[13].mountpoint == "/tmp/calamares-root-q_z5rdlx/sys/firmware/efi/efivars");
+    }
+    // empty file
+    {
+        static constexpr std::string_view filename{"/tmp/mtab.conf"};
+        // Open mtab file for writing.
+        std::ofstream mtab_file{filename.data()};
+        assert(mtab_file.is_open());
+
+        // Setup mtab file.
+        mtab_file << "";
+        mtab_file.close();
+
+        const auto& mtab_entries = gucc::mtab::parse_mtab("/tmp/calamares-root-q_z5rdlx"sv, filename);
+        assert(!mtab_entries.has_value());
+
+        // Cleanup.
+        fs::remove(filename);
     }
 }

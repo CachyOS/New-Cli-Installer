@@ -28,9 +28,8 @@ auto parse_mtab_content(std::string_view mtab_content, std::string_view root_mou
     return entries;
 }
 
-auto parse_mtab(std::string_view root_mountpoint) noexcept -> std::optional<std::vector<MTabEntry>> {
-    static constexpr auto mtab_path = "/etc/mtab"sv;
-    auto&& file_content             = file_utils::read_whole_file(mtab_path);
+auto parse_mtab(std::string_view root_mountpoint, std::string_view mtab_path) noexcept -> std::optional<std::vector<MTabEntry>> {
+    auto&& file_content = file_utils::read_whole_file(mtab_path);
     if (file_content.empty()) {
         return std::nullopt;
     }
