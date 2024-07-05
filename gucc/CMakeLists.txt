@@ -29,6 +29,7 @@ add_library(${PROJECT_NAME} SHARED
    src/autologin.cpp include/gucc/autologin.hpp
    src/mtab.cpp include/gucc/mtab.hpp
    src/umount_partitions.cpp include/gucc/umount_partitions.hpp
+   src/hwclock.cpp include/gucc/hwclock.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )

@@ -11,6 +11,7 @@
 #include "gucc/cpu.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
+#include "gucc/hwclock.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
@@ -432,7 +433,21 @@ void set_timezone(const std::string_view& timezone) noexcept {
 void set_hw_clock(const std::string_view& clock_type) noexcept {
     spdlog::info("Clock type is: {}", clock_type);
 #ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("hwclock --systohc --{}"), clock_type), false);
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    if (clock_type == "utc"sv) {
+        if (!gucc::hwclock::set_hwclock_utc(mountpoint)) {
+            spdlog::error("Failed to set UTC hwclock");
+        }
+    } else if (clock_type == "localtime"sv) {
+        if (!gucc::hwclock::set_hwclock_localtime(mountpoint)) {
+            spdlog::error("Failed to set localtime hwclock");
+        }
+    } else {
+        spdlog::error("Unknown clock type {}", clock_type);
+    }
 #endif
 }
 
