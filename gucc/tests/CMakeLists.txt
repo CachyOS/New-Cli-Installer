@@ -4,6 +4,8 @@
 
 file(GLOB files unit-*.cpp)
 
+set(GUCC_TEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/")
+
 foreach(file ${files})
     get_filename_component(file_basename ${file} NAME_WE)
     string(REGEX REPLACE "unit-([^$]+)" "test-\\1" testcase ${file_basename})
@@ -13,5 +15,6 @@ foreach(file ${files})
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal>
         $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
     )
+    add_definitions(-DGUCC_TEST_DIR="${GUCC_TEST_DIR}")
     target_link_libraries(${testcase} PRIVATE project_warnings project_options gucc::gucc)
 endforeach()

@@ -12,7 +12,7 @@ using namespace std::string_view_literals;
 
 namespace gucc::locale {
 
-auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -> bool {
+auto prepare_locale_set(std::string_view locale, std::string_view mountpoint) noexcept -> bool {
     const auto& locale_config_path = fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint);
     const auto& locale_gen_path    = fmt::format(FMT_COMPILE("{}/etc/locale.gen"), mountpoint);
 
@@ -40,13 +40,23 @@ LC_MESSAGES="{0}"
     // TODO(vnepogodin): refactor and make backups of locale config and locale gen
     utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
 
+    // NOTE: maybe we should also write into /etc/default/locale if /etc/default exists and is a dir?
+    return true;
+}
+
+auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -> bool {
+    // Prepare locale
+    if (!locale::prepare_locale_set(locale, mountpoint)) {
+        spdlog::error("Failed to prepare locale files for '{}'", locale);
+        return false;
+    }
+
     // Generate locales
     if (!utils::arch_chroot_checked("locale-gen", mountpoint)) {
         spdlog::error("Failed to run locale-gen with locale '{}'", locale);
         return false;
     }
 
-    // NOTE: maybe we should also write into /etc/default/locale if /etc/default exists and is a dir?
     return true;
 }
 
