@@ -4,7 +4,6 @@
 #include "definitions.hpp"
 #include "disk.hpp"
 #include "drivers.hpp"
-#include "gucc/locale.hpp"
 #include "misc.hpp"
 #include "simple_tui.hpp"
 #include "utils.hpp"
