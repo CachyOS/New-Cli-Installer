@@ -18,6 +18,7 @@
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
+#include "gucc/umount_partitions.hpp"
 #include "gucc/user.hpp"
 
 #include <algorithm>      // for transform
@@ -260,20 +261,18 @@ void umount_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    auto mount_info             = gucc::utils::exec(fmt::format(FMT_COMPILE("mount | grep \"{}\" | {}"), mountpoint_info, "awk '{print $3}' | sort -r"));
+    const auto& mountpoint      = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
 #ifdef NDEVENV
-    gucc::utils::exec("swapoff -a");
-#endif
 
-    const auto& lines = gucc::utils::make_multiline(mount_info);
-    for (const auto& line : lines) {
-#ifdef NDEVENV
-        umount(line.c_str());
-#else
-        spdlog::debug("{}\n", line);
-#endif
+    gucc::utils::exec("swapoff -a");
+
+    if (!gucc::umount::umount_partitions(mountpoint, zfs_zpool_names)) {
+        spdlog::error("Failed to umount partitions");
     }
+#else
+    spdlog::info("Unmounting partitions on {}, zfs zpool names {}", mountpoint, zfs_zpool_names);
+#endif
 }
 
 // BIOS and UEFI

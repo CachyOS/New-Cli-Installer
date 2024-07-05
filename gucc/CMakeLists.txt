@@ -28,6 +28,7 @@ add_library(${PROJECT_NAME} SHARED
    src/systemd_services.cpp include/gucc/systemd_services.hpp
    src/autologin.cpp include/gucc/autologin.hpp
    src/mtab.cpp include/gucc/mtab.hpp
+   src/umount_partitions.cpp include/gucc/umount_partitions.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )

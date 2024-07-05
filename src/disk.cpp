@@ -178,8 +178,6 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    config_data["ZFS_ZPOOL_NAME"] = std::string{pool_name.data()};
-
     static constexpr auto zpool_options{"-f -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O atime=off -O relatime=off -O normalization=formD -O xattr=sa -O mountpoint=none"sv};
 
 #ifdef NDEVENV
@@ -214,6 +212,10 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
     gucc::utils::exec(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), pool_name), true);
     gucc::utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, pool_name), true);
 #endif
+
+    // insert zpool name into config
+    auto zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
+    zfs_zpool_names.push_back(pool_name.data());
 
     return true;
 }

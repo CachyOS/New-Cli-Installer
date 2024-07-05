@@ -18,6 +18,7 @@ gucc_lib = library('gucc',
         'src/systemd_services.cpp',
         'src/autologin.cpp',
         'src/mtab.cpp',
+        'src/umount_partitions.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps
