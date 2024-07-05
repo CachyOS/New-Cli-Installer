@@ -60,4 +60,9 @@ auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -
     return true;
 }
 
+auto get_possible_locales() noexcept -> std::vector<std::string> {
+    const auto& locales = utils::exec("cat /etc/locale.gen | grep -v '#  ' | sed 's/#//g' | awk '/UTF-8/ {print $1}'");
+    return utils::make_multiline(locales);
+}
+
 }  // namespace gucc::locale

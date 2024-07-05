@@ -4,6 +4,7 @@
 #include "definitions.hpp"
 #include "disk.hpp"
 #include "drivers.hpp"
+#include "gucc/locale.hpp"
 #include "misc.hpp"
 #include "simple_tui.hpp"
 #include "utils.hpp"
@@ -12,6 +13,7 @@
 // import gucc
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/locale.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
@@ -178,7 +180,7 @@ void set_hostname() noexcept {
 
 // Set system language
 void set_locale() noexcept {
-    const auto& locales = gucc::utils::make_multiline(gucc::utils::exec("cat /etc/locale.gen | grep -v \"#  \" | sed 's/#//g' | awk '/UTF-8/ {print $1}'"));
+    const auto& locales = gucc::locale::get_possible_locales();
 
     // System language
     std::string locale{};
