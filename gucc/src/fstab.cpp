@@ -50,11 +50,32 @@ constexpr auto convert_fsname_fstab(std::string_view fsname) noexcept -> std::st
     return fsname;
 }
 
-auto string_tolower(std::string_view text) noexcept -> std::string {
+constexpr auto get_check_number(std::string_view mountpoint, std::string_view fstype) noexcept -> std::int32_t {
+    if (mountpoint == "/"sv && fstype != "btrfs"sv) {
+        return 1;
+    } else if (mountpoint != "swap"sv && fstype != "btrfs"sv) {
+        return 2;
+    }
+    return 0;
+}
+
+constexpr auto get_mount_options(std::string_view mount_opts, std::string_view btrfs_subvolume, std::string_view fstype) noexcept -> std::string {
+    if (fstype == "btrfs"sv && !btrfs_subvolume.empty()) {
+        return fmt::format(FMT_COMPILE("subvol={},{}"), btrfs_subvolume, mount_opts);
+    }
+    return std::string{mount_opts};
+}
+
+constexpr auto string_tolower(std::string_view text) noexcept -> std::string {
     std::string res{text};
     ranges::transform(res, res.begin(),
         [](char char_elem) { return static_cast<char>(std::tolower(static_cast<unsigned char>(char_elem))); });
     return res;
+}
+
+constexpr auto get_converted_fs(std::string_view fstype) noexcept -> std::string {
+    auto lower_fstype = string_tolower(fstype);
+    return std::string{convert_fsname_fstab(lower_fstype)};
 }
 
 }  // namespace
@@ -63,10 +84,7 @@ namespace gucc::fs {
 
 auto gen_fstab_entry(const Partition& partition) noexcept -> std::optional<std::string> {
     // Apperently some FS names named differently in /etc/fstab.
-    const auto& fstype = [](auto&& fstype) -> std::string {
-        auto lower_fstype = string_tolower(fstype);
-        return std::string{convert_fsname_fstab(lower_fstype)};
-    }(partition.fstype);
+    const auto& fstype = get_converted_fs(partition.fstype);
 
     const auto& luks_mapper_name = partition.luks_mapper_name;
     const auto& mountpoint       = partition.mountpoint;
@@ -78,21 +96,8 @@ auto gen_fstab_entry(const Partition& partition) noexcept -> std::optional<std::
         return std::nullopt;
     }
 
-    const auto check_num = [](auto&& mountpoint, auto&& fstype) -> std::int32_t {
-        if (mountpoint == "/"sv && fstype != "btrfs"sv) {
-            return 1;
-        } else if (mountpoint != "swap"sv && fstype != "btrfs"sv) {
-            return 2;
-        }
-        return 0;
-    }(mountpoint, fstype);
-
-    const auto& mount_options = [](auto&& mount_opts, auto&& subvolume, auto&& fstype) -> std::string {
-        if (fstype == "btrfs"sv && !subvolume.empty()) {
-            return fmt::format(FMT_COMPILE("subvol={},{}"), subvolume, mount_opts);
-        }
-        return {mount_opts};
-    }(partition.mount_opts, partition.subvolume.value_or(""), fstype);
+    const auto check_num      = get_check_number(mountpoint, fstype);
+    const auto& mount_options = get_mount_options(partition.mount_opts, partition.subvolume.value_or(""), fstype);
 
     std::string device_str{partition.device};
     if (luks_mapper_name) {
