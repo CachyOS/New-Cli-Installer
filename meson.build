@@ -53,6 +53,9 @@ else
 endif
 add_global_arguments('-DINSTALLER_VERSION="' + git_version + '"', language : 'cpp')
 
+# gucc test path
+add_global_arguments('-DGUCC_TEST_DIR="' + meson.current_source_dir() + '/gucc/tests/"', language : 'cpp')
+
 # Common dependencies
 spdlog = dependency('spdlog', version : ['>=1.12.0'], fallback : ['spdlog', 'spdlog_dep'])
 fmt = dependency('fmt', version : ['>=10.1.0'], fallback : ['fmt', 'fmt_dep'])

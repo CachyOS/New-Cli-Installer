@@ -1,6 +1,3 @@
-# gucc test path
-add_global_arguments('-DGUCC_TEST_DIR="' + meson.current_source_dir() + '"', language : 'cpp')
-
 executable(
   'test-initcpio',
   files('unit-initcpio.cpp'),
