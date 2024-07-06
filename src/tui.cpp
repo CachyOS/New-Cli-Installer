@@ -128,38 +128,13 @@ void btrfs_subvolumes() noexcept {
 
 // Function will not allow incorrect UUID type for installed system.
 void generate_fstab() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "genfstab -U -p",
-        "genfstab -p",
-        "genfstab -L -p",
-        "genfstab -t PARTUUID -p",
-    };
-
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::string fstab_cmd{};
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        if (system_info == "BIOS"sv && selected == 3) {
-            static constexpr auto FstabErr = "\nThe Part UUID option is only for UEFI/GPT installations.\n"sv;
-            detail::msgbox_widget(FstabErr);
-            return;
-        }
-        fstab_cmd = menu_entries[static_cast<std::size_t>(selected)];
-        screen.ExitLoopClosure()();
-    };
-
-    static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) is recommended.\n\nIf no labels were set for the partitions earlier,\ndevice names will be used for the label option.\n"sv;
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, fstab_body);
-
+    static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) used.\n"sv;
+    const auto& do_set_fstab         = detail::yesno_widget(fstab_body, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     /* clang-format off */
-    if (fstab_cmd.empty()) { return; }
+    if (!do_set_fstab) { return; }
     /* clang-format on */
 
-    utils::generate_fstab(fstab_cmd);
+    utils::generate_fstab();
 }
 
 // Set system hostname

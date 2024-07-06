@@ -344,7 +344,8 @@ void secure_wipe() noexcept {
 #endif
 }
 
-void generate_fstab(const std::string_view& fstab_cmd) noexcept {
+void generate_fstab() noexcept {
+    static constexpr auto fstab_cmd = "genfstab -U -p"sv;
     spdlog::info("Generating with fstab '{}'", fstab_cmd);
 
 #ifdef NDEVENV
@@ -916,7 +917,7 @@ void install_base(const std::string_view& packages) noexcept {
         spdlog::info("re-run mkinitcpio");
     }
 
-    utils::generate_fstab("genfstab -U -p");
+    utils::generate_fstab();
 
     /* clang-format off */
     if (zfs == 0) { return; }

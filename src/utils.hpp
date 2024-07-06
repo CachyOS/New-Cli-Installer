@@ -19,7 +19,7 @@ void clear_screen() noexcept;
 void inst_needed(const std::string_view& pkg) noexcept;
 void secure_wipe() noexcept;
 void auto_partition() noexcept;
-void generate_fstab(const std::string_view& fstab_cmd) noexcept;
+void generate_fstab() noexcept;
 void set_hostname(const std::string_view& hostname) noexcept;
 void set_locale(const std::string_view& locale) noexcept;
 void set_xkbmap(const std::string_view& xkbmap) noexcept;

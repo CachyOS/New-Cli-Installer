@@ -402,7 +402,7 @@ void menu_simple() noexcept {
     }*/
 
     // at this point we should have everything already mounted
-    utils::generate_fstab("genfstab -U");
+    utils::generate_fstab();
 
     if (hostname.empty()) {
         tui::set_hostname();
