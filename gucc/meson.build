@@ -20,6 +20,7 @@ gucc_lib = library('gucc',
         'src/mtab.cpp',
         'src/umount_partitions.cpp',
         'src/hwclock.cpp',
+        'src/package_profiles.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps

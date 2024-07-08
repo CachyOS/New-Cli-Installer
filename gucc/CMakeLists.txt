@@ -30,13 +30,14 @@ add_library(${PROJECT_NAME} SHARED
    src/mtab.cpp include/gucc/mtab.hpp
    src/umount_partitions.cpp include/gucc/umount_partitions.hpp
    src/hwclock.cpp include/gucc/hwclock.hpp
+   src/package_profiles.cpp include/gucc/package_profiles.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )
 
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_DIR}/include)
-target_link_libraries(${PROJECT_NAME} PUBLIC project_warnings project_options spdlog::spdlog fmt::fmt range-v3::range-v3)
+target_link_libraries(${PROJECT_NAME} PUBLIC project_warnings project_options spdlog::spdlog fmt::fmt range-v3::range-v3 tomlplusplus::tomlplusplus)
 
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
