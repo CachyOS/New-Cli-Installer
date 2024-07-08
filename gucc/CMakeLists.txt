@@ -31,6 +31,7 @@ add_library(${PROJECT_NAME} SHARED
    src/umount_partitions.cpp include/gucc/umount_partitions.hpp
    src/hwclock.cpp include/gucc/hwclock.hpp
    src/package_profiles.cpp include/gucc/package_profiles.hpp
+   src/logger.cpp include/gucc/logger.hpp
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )

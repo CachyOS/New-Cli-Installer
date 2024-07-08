@@ -1,4 +1,5 @@
 #include "gucc/file_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/package_profiles.hpp"
 
 #include <cassert>
@@ -62,7 +63,9 @@ int main() {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
-    spdlog::set_default_logger(std::make_shared<spdlog::logger>("default", callback_sink));
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
 
     // valid profile
     {

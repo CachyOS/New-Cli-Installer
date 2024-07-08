@@ -1,4 +1,5 @@
 #include "gucc/crypttab.hpp"
+#include "gucc/logger.hpp"
 
 #include <cassert>
 
@@ -35,7 +36,9 @@ int main() {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
-    spdlog::set_default_logger(std::make_shared<spdlog::logger>("default", callback_sink));
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
 
     const auto& uuid_str        = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s;
     const auto& btrfs_mountopts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s;
