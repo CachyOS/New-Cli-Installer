@@ -8,7 +8,7 @@ project(gucc
         VERSION 0.0.1
         LANGUAGES CXX)
 
-add_library(${PROJECT_NAME} SHARED
+add_library(${PROJECT_NAME} #SHARED
    #src/utils.cpp src/utils.hpp
    src/io_utils.cpp include/gucc/io_utils.hpp
    src/string_utils.cpp include/gucc/string_utils.hpp
