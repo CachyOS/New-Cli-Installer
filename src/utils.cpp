@@ -16,6 +16,7 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/luks.hpp"
+#include "gucc/package_profiles.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
@@ -587,11 +588,12 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
 #endif
 }
 
-auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<std::string> {
+auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>> {
     auto* config_instance       = Config::instance();
     auto& config_data           = config_instance->data();
     const auto& server_mode     = std::get<std::int32_t>(config_data["SERVER_MODE"]);
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& net_profs_url   = std::get<std::string>(config_data["NET_PROFILES_URL"]);
 
     const auto& root_filesystem     = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
     const auto& is_root_on_zfs      = (root_filesystem == "zfs");
@@ -614,29 +616,49 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::vector<
     if (is_root_on_bcachefs) {
         pkg_list.insert(pkg_list.cend(), {"bcachefs-tools"});
     }
+
+    auto net_profs_content = gucc::file_utils::read_whole_file(net_profs_url);
+    if (net_profs_content.empty()) {
+        spdlog::error("Failed to get net profiles content");
+        return std::nullopt;
+    }
+    auto base_net_profs = gucc::profile::parse_base_profiles(net_profs_content);
+    if (!base_net_profs.has_value()) {
+        spdlog::error("Failed to parse net profiles");
+        return std::nullopt;
+    }
+
     if (server_mode == 0) {
         if (is_root_on_btrfs) {
             pkg_list.insert(pkg_list.cend(), {"snapper", "btrfs-assistant-git"});
         }
-        pkg_list.insert(pkg_list.cend(), {"alacritty", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager"});
-        pkg_list.insert(pkg_list.cend(), {"cachyos-rate-mirrors", "cachyos-packageinstaller", "cachyos-settings", "cachyos-zsh-config", "chwd", "chwd-db"});
-        pkg_list.insert(pkg_list.cend(), {"bluez", "bluez-hid2hci", "bluez-libs", "bluez-utils"});
-        pkg_list.insert(pkg_list.cend(), {"firewalld"});
-        pkg_list.insert(pkg_list.cend(), {"adobe-source-han-sans-cn-fonts", "adobe-source-han-sans-jp-fonts", "adobe-source-han-sans-kr-fonts", "awesome-terminal-fonts", "noto-fonts-emoji"});
-        pkg_list.insert(pkg_list.cend(), {"noto-color-emoji-fontconfig", "cantarell-fonts", "noto-fonts", "ttf-bitstream-vera", "ttf-dejavu", "ttf-opensans", "ttf-meslo-nerd", "noto-fonts-cjk"});
-        pkg_list.insert(pkg_list.cend(), {"alsa-firmware", "alsa-plugins", "alsa-utils", "pavucontrol", "pipewire-pulse", "wireplumber", "pipewire-alsa", "pipewire-jack", "rtkit"});
-        pkg_list.insert(pkg_list.cend(), {"cpupower", "power-profiles-daemon", "upower"});
-        pkg_list.insert(pkg_list.cend(), {"duf", "fsarchiver", "hwinfo", "inxi", "fastfetch"});
+        pkg_list.insert(pkg_list.cend(),
+            base_net_profs->base_desktop_packages.begin(),
+            base_net_profs->base_desktop_packages.end());
     }
-    pkg_list.insert(pkg_list.cend(), {"amd-ucode", "intel-ucode"});
-    pkg_list.insert(pkg_list.cend(), {"base", "base-devel", "linux-firmware", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "pacman-contrib", "paru", "btop"});
-    pkg_list.insert(pkg_list.cend(), {"man-db", "less"});
-    pkg_list.insert(pkg_list.cend(), {"cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-v4-mirrorlist", "cachyos-keyring"});
+    pkg_list.insert(pkg_list.cend(),
+        base_net_profs->base_packages.begin(),
+        base_net_profs->base_packages.end());
 
-    return pkg_list;
+    return std::make_optional<std::vector<std::string>>(pkg_list);
 }
 
-auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::vector<std::string> {
+auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::optional<std::vector<std::string>> {
+    auto* config_instance     = Config::instance();
+    auto& config_data         = config_instance->data();
+    const auto& net_profs_url = std::get<std::string>(config_data["NET_PROFILES_URL"]);
+
+    auto net_profs_content = gucc::file_utils::read_whole_file(net_profs_url);
+    if (net_profs_content.empty()) {
+        spdlog::error("Failed to get net profiles content");
+        return std::nullopt;
+    }
+    auto desktop_net_profs = gucc::profile::parse_desktop_profiles(net_profs_content);
+    if (!desktop_net_profs.has_value()) {
+        spdlog::error("Failed to parse net profiles");
+        return std::nullopt;
+    }
+
     std::vector<std::string> pkg_list{};
 
     constexpr std::string_view kde{"kde"};
@@ -659,166 +681,104 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::v
     bool needed_xorg{};
     auto found = ranges::search(desktop_env, i3wm);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"i3-wm", "i3blocks", "i3lock-color", "i3status", "rofi", "polybar", "ly", "cachyos-picom-config", "dunst", "cachyos-i3wm-settings"});
+        auto profile = ranges::find(*desktop_net_profs, i3wm, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, sway);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"sway", "waybar", "wl-clipboard", "egl-wayland", "wayland-protocols", "wofi", "ly", "xorg-xwayland", "xdg-desktop-portal", "xdg-desktop-portal-wlr"});
+        auto profile = ranges::find(*desktop_net_profs, sway, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
     }
     found = ranges::search(desktop_env, kde);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"ark", "bluedevil", "breeze-gtk",
-            "cachyos-nord-kde-theme-git", "cachyos-iridescent-kde", "cachyos-emerald-kde-theme-git",
-            "cachyos-kde-settings", "cachyos-themes-sddm", "cachyos-wallpapers", "char-white", "dolphin", "egl-wayland", "gwenview",
-            "konsole", "kate", "kdeconnect", "kscreen", "kde-gtk-config", "khotkeys", "kinfocenter",
-            "kinit", "kwallet-pam", "kwalletmanager", "plasma-wayland-protocols", "plasma-wayland-session",
-            "plasma-desktop", "plasma-framework5", "plasma-nm", "plasma-pa", "plasma-workspace", "plasma-integration",
-            "plasma-firewall", "plasma-browser-integration", "plasma-systemmonitor", "plasma-thunderbolt",
-            "powerdevil", "ksysguard", "spectacle", "sddm", "sddm-kcm", "xsettingsd", "xdg-desktop-portal", "xdg-desktop-portal-kde", "phonon-qt5-vlc"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, kde, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, xfce);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"cachyos-xfce-settings", "blueman", "file-roller", "galculator",
-            "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
-            "lightdm", "lightdm-gtk-greeter", "lightdm-gtk-greeter-settings",
-            "network-manager-applet", "parole", "ristretto", "thunar-archive-plugin", "thunar-media-tags-plugin",
-            "xdg-user-dirs-gtk", "xed", "xfce4", "xfce4-battery-plugin", "xfce4-datetime-plugin", "xfce4-mount-plugin",
-            "xfce4-netload-plugin", "xfce4-notifyd", "xfce4-pulseaudio-plugin", "xfce4-screensaver", "xfce4-screenshooter",
-            "xfce4-taskmanager", "xfce4-wavelan-plugin", "xfce4-weather-plugin", "xfce4-whiskermenu-plugin", "xfce4-xkb-plugin"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, xfce, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, gnome);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"adwaita-icon-theme", "cachyos-gnome-settings",
-            "cachyos-nord-gtk-theme-git", "eog", "evince", "file-roller", "gdm", "gedit", "gnome-calculator",
-            "gnome-control-center", "gnome-disk-utility", "gnome-keyring", "gnome-nettool", "gnome-power-manager",
-            "gnome-screenshot", "gnome-shell", "gnome-terminal", "gnome-themes-extra", "gnome-tweaks",
-            "gnome-usage", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
-            "nautilus", "nautilus-sendto", "sushi", "totem", "qt6-wayland", "xdg-user-dirs-gtk", "xdg-desktop-portal-gnome"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, gnome, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, wayfire);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"cachyos-wayfire-settings", "wayfire-desktop-git", "egl-wayland", "wayland-protocols", "wofi", "ly", "xorg-xhost", "xorg-xwayland"});
+        auto profile = ranges::find(*desktop_net_profs, wayfire, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
     }
     found = ranges::search(desktop_env, openbox);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"cachyos-openbox-settings", "obconf", "libwnck3", "acpi", "arandr",
-            "archlinux-xdg-menu", "dex", "dmenu", "dunst", "feh", "gtk-engine-murrine", "gvfs", "gvfs-afc", "gvfs-gphoto2",
-            "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "jgmenu", "jq", "lightdm", "lightdm-slick-greeter",
-            "lxappearance-gtk3", "mpv", "network-manager-applet", "nitrogen", "obconf", "openbox",
-            "pasystray", "picom", "polkit-gnome", "rofi", "scrot", "slock", "sysstat", "thunar",
-            "thunar-archive-plugin", "thunar-media-tags-plugin", "thunar-volman", "tint2",
-            "ttf-nerd-fonts-symbols", "tumbler", "xbindkeys", "xcursor-neutral",
-            "xdg-user-dirs-gtk", "xed", "xfce4-terminal"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, openbox, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, lxqt);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"audiocd-kio", "baka-mplayer", "breeze", "breeze-gtk",
-            "featherpad", "gvfs", "gvfs-mtp", "kio-fuse", "libstatgrab", "libsysstat", "lm_sensors",
-            "lxqt", "lxqt-archiver", "network-manager-applet", "oxygen-icons", "pavucontrol-qt",
-            "print-manager", "qt5-translations", "sddm", "xdg-utils", "xscreensaver", "xsettingsd"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, lxqt, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, bspwm);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config"});
+        auto profile = ranges::find(*desktop_net_profs, bspwm, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, cinnamon);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"cinnamon", "system-config-printer", "gnome-keyring", "gnome-terminal", "blueberry", "metacity", "lightdm", "lightdm-gtk-greeter"});
+        auto profile = ranges::find(*desktop_net_profs, cinnamon, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, ukui);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"sddm", "thunar", "thunar-archive-plugin", "thunar-volman", "peony", "xfce4-terminal", "ukui", "mate-terminal"});
-        pkg_list.insert(pkg_list.cend(), {"mate-system-monitor", "mate-control-center", "redshift", "gnome-screenshot", "accountsservice", "gvfs", "qt5-quickcontrols"});
+        auto profile = ranges::find(*desktop_net_profs, ukui, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, qtile);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"ttf-nerd-fonts-symbols", "qtile", "ttf-cascadia-code", "cachyos-qtile-settings",
-            "wired", "rofi", "thunar", "polkit-gnome", "qt5ct", "noto-fonts", "flameshot",
-            "gnome-themes-extra", "ttf-jetbrains-mono", "ttf-font-awesome", "picom", "ly"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, qtile, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, mate);
     if (!found.empty()) {
-        pkg_list.insert(pkg_list.cend(), {"celluloid", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lightdm", "lightdm-gtk-greeter", "mate", "mate-extra", "network-manager-applet", "xdg-user-dirs-gtk"});
+        auto profile = ranges::find(*desktop_net_profs, mate, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, lxde);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"celluloid", "file-roller", "galculator", "gnome-screenshot", "gpicview",
-            "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lxappearance-gtk3",
-            "lxde-common", "lxde-icon-theme", "lxhotkey-gtk3", "lxinput-gtk3", "lxlauncher-gtk3",
-            "lxpanel-gtk3", "lxrandr-gtk3", "lxsession-gtk3", "lxtask-gtk3", "lxterminal", "ly", "notification-daemon",
-            "pcmanfm-gtk3", "lxmusic", "network-manager-applet", "xdg-user-dirs-gtk", "xed"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, lxde, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
     found = ranges::search(desktop_env, hyprland);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"cachyos-hyprland-settings", "hyprland-git", "kvantum", "qt5ct", "sddm",
-            "swaybg", "swaylock-effects-git", "swaylock-fancy-git", "waybar-hyprland", "xdg-desktop-portal-hyprland",
-            "grimblast-git", "slurp", "mako", "wob", "pamixer", "rofi", "rofi-emoji", "wofi",
-            "wlogout", "swappy",  "wl-clipboard", "polkit-kde-agent", "bemenu", "bemenu-wayland", "xorg-xwayland",
-            "capitaine-cursors", "cachyos-wallpapers", "kvantum-theme-nordic-git", "cachyos-nord-gtk-theme-git"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, hyprland, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
     }
     found = ranges::search(desktop_env, budgie);
     if (!found.empty()) {
-        /* clang-format off */
-        static constexpr std::array to_be_inserted{"budgie-control-center", "budgie-desktop", "budgie-desktop-view", "budgie-extras",
-            "budgie-screensaver", "eog", "evince", "file-roller", "gedit", "gnome-keyring", "gnome-screenshot",
-            "gnome-terminal", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "ly",
-            "nemo", "nemo-fileroller", "nemo-preview", "network-manager-applet", "sushi", "totem", "xdg-user-dirs-gtk"};
-        /* clang-format on */
-        pkg_list.insert(pkg_list.end(), std::move_iterator(to_be_inserted.begin()),
-            std::move_iterator(to_be_inserted.end()));
+        auto profile = ranges::find(*desktop_net_profs, budgie, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
 
     if (needed_xorg) {
-        pkg_list.insert(pkg_list.cend(), {"libwnck3", "mesa-utils", "xf86-input-libinput", "xorg-xdpyinfo", "xorg-server", "xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr"});
+        auto profile = ranges::find(*desktop_net_profs, "xorg"sv, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
     }
-    pkg_list.insert(pkg_list.cend(), {"cachyos", "octopi", "awesome-terminal-fonts", "noto-fonts-emoji"});
 
-    return pkg_list;
+    return std::make_optional<std::vector<std::string>>(pkg_list);
 }
 
 void install_from_pkglist(const std::string_view& packages) noexcept {
@@ -842,10 +802,14 @@ void install_from_pkglist(const std::string_view& packages) noexcept {
 }
 
 void install_base(const std::string_view& packages) noexcept {
-    const auto& pkg_list  = utils::get_pkglist_base(packages);
-    const auto& base_pkgs = gucc::utils::make_multiline(pkg_list, false, " ");
+    const auto& pkg_list = utils::get_pkglist_base(packages);
+    if (!pkg_list.has_value()) {
+        spdlog::error("Failed to install base");
+        return;
+    }
+    const auto& base_pkgs = gucc::utils::join(*pkg_list, " ");
 
-    spdlog::info(fmt::format(FMT_COMPILE("Preparing for pkgs to install: \"{}\""), base_pkgs));
+    spdlog::info("Preparing for pkgs to install: '{}'", base_pkgs);
 
 #ifdef NDEVENV
     // Prep variables
@@ -936,10 +900,14 @@ void install_base(const std::string_view& packages) noexcept {
 
 void install_desktop(const std::string_view& desktop) noexcept {
     // Create the base list of packages
-    const auto& pkg_list        = utils::get_pkglist_desktop(desktop);
-    const std::string& packages = gucc::utils::make_multiline(pkg_list, false, " ");
+    const auto& pkg_list = utils::get_pkglist_desktop(desktop);
+    if (!pkg_list.has_value()) {
+        spdlog::error("Failed to install desktop");
+        return;
+    }
+    const auto& packages = gucc::utils::join(*pkg_list, " ");
 
-    spdlog::info(fmt::format(FMT_COMPILE("Preparing for desktop envs to install: \"{}\""), packages));
+    spdlog::info("Preparing for desktop envs to install: '{}'", packages);
     utils::install_from_pkglist(packages);
 
     auto* config_instance = Config::instance();

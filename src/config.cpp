@@ -39,6 +39,10 @@ bool Config::initialize() noexcept {
         s_config->m_data["READY_PARTITIONS"] = std::vector<std::string>{};
         s_config->m_data["ZFS_ZPOOL_NAMES"]  = std::vector<std::string>{};
 
+        // TODO(vnepogodin): change location and try first remote location(e.g from CDN) or
+        // local location as a fallback.
+        s_config->m_data["NET_PROFILES_URL"] = "net-profiles.toml";
+
         // Mounting
         s_config->m_data["MOUNTPOINT"] = "/mnt";
 
