@@ -55,6 +55,7 @@ add_global_arguments('-DINSTALLER_VERSION="' + git_version + '"', language : 'cp
 
 # gucc test path
 add_global_arguments('-DGUCC_TEST_DIR="' + meson.current_source_dir() + '/gucc/tests/"', language : 'cpp')
+add_global_arguments('-DGUCC_TOP_DIR="' + meson.current_source_dir() + '/"', language : 'cpp')
 
 # Common dependencies
 spdlog = dependency('spdlog', version : ['>=1.12.0'], fallback : ['spdlog', 'spdlog_dep'])

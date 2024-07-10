@@ -22,6 +22,7 @@ gucc_lib = library('gucc',
         'src/hwclock.cpp',
         'src/package_profiles.cpp',
         'src/logger.cpp',
+        'src/fetch_file.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps

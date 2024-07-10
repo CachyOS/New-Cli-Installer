@@ -61,3 +61,11 @@ executable(
   link_with: [gucc_lib],
   include_directories: [include_directories('../include')],
   install: false)
+
+executable(
+  'test-fetch_file',
+  files('unit-fetch_file.cpp'),
+  dependencies: deps,
+  link_with: [gucc_lib],
+  include_directories: [include_directories('../include')],
+  install: false)

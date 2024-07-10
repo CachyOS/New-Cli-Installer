@@ -4,7 +4,8 @@
 
 file(GLOB files unit-*.cpp)
 
-set(GUCC_TEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/")
+set(GUCC_TEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(GUCC_TOP_DIR "${CMAKE_SOURCE_DIR}")
 
 foreach(file ${files})
     get_filename_component(file_basename ${file} NAME_WE)
@@ -16,5 +17,6 @@ foreach(file ${files})
         $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
     )
     add_definitions(-DGUCC_TEST_DIR="${GUCC_TEST_DIR}")
+    add_definitions(-DGUCC_TOP_DIR="${GUCC_TOP_DIR}")
     target_link_libraries(${testcase} PRIVATE project_warnings project_options gucc::gucc)
 endforeach()
