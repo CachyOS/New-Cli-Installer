@@ -43,6 +43,8 @@ jobs:
           ./gucc/tests/test-crypttab_gen
           ./gucc/tests/test-grub_config_gen
           ./gucc/tests/test-fetch_file
+          ./gucc/tests/test-locale
+          ./gucc/tests/test-package_profiles
         shell: bash
   build-cmake_withoutdev:
     name: Build with CMake (DEVENV OFF)
@@ -92,6 +94,8 @@ jobs:
           ./gucc/tests/test-crypttab_gen
           ./gucc/tests/test-grub_config_gen
           ./gucc/tests/test-fetch_file
+          ./gucc/tests/test-locale
+          ./gucc/tests/test-package_profiles
         shell: bash
   build-meson_withoutdev:
     name: Build with Meson (DEVENV OFF)
