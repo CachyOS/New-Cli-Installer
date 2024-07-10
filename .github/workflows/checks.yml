@@ -23,9 +23,9 @@ jobs:
 
       - name: install deps
         run: |
-          apt-get update
-          apt-get upgrade -y
-          apt-get install -y curl
+          sudo apt-get update
+          sudo apt-get upgrade -y
+          sudo apt-get install -y curl
         shell: bash
 
       - name: Configure CMake
