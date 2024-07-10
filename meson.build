@@ -65,10 +65,7 @@ ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 
 ctre = dependency('ctre', version : ['>=3.8.0'], fallback : ['ctre', 'ctre_dep'])
 tomlplusplus = dependency('tomlplusplus', version : ['>=3.4.0'], fallback : ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['compile_library=false'])
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
-
-if not is_dev_environment
-    cpr = dependency('cpr', version : ['>=1.10.0'], fallback : ['cpr', 'cpr_dep'])
-endif
+cpr = dependency('cpr', version : ['>=1.10.0'], fallback : ['cpr', 'cpr_dep'])
 
 src_files = files(
     'src/view.hpp',
@@ -164,10 +161,7 @@ endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
-deps = [fmt, spdlog, ftxui, ranges, rapidjson, ctre, tomlplusplus]
-if not is_dev_environment
-   deps += [cpr]
-endif
+deps = [fmt, spdlog, ftxui, ranges, rapidjson, ctre, tomlplusplus, cpr]
 
 subdir('gucc')
 
