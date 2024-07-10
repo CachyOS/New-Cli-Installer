@@ -19,17 +19,17 @@ jobs:
   cpp-linter:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Configure CMake
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug
 
-      - uses: cpp-linter/cpp-linter-action@v2.3.0
+      - uses: cpp-linter/cpp-linter-action@v2.12.0
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           style: file
-          version: '14'
+          version: '18'
           database: ${{github.workspace}}/build
 
       - name: Fail fast?!
@@ -43,11 +43,11 @@ jobs:
     name: "Check C++ style"
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Run clang-format style check for C/C++/Protobuf programs.
-      uses: jidicula/clang-format-action@v4.10.1
+      uses: jidicula/clang-format-action@v4.13.0
       with:
-        clang-format-version: '15'
+        clang-format-version: '18'
         check-path: 'src'
         exclude-regex: 'src/subprocess.h'
 
