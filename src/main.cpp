@@ -5,7 +5,9 @@
 
 // import gucc
 #include "gucc/io_utils.hpp"
+#ifndef COS_BUILD_STATIC
 #include "gucc/logger.hpp"
+#endif
 
 #include <chrono>  // for seconds
 #include <regex>   // for regex_search, match_result...
@@ -45,8 +47,10 @@ int main() {
     spdlog::set_level(spdlog::level::debug);
     spdlog::flush_every(std::chrono::seconds(5));
 
+#ifndef COS_BUILD_STATIC
     // Set gucc logger.
     gucc::logger::set_logger(logger);
+#endif
 
     if (!utils::handle_connection()) {
         error_inter("An active network connection could not be detected, please connect and restart the installer.\n");

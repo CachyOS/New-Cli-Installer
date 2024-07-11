@@ -87,6 +87,7 @@ endif()
 # Builds as statically linked
 option(COS_BUILD_STATIC "Build all static" OFF)
 if(COS_BUILD_STATIC)
+  add_definitions(-DCOS_BUILD_STATIC)
   set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "" FORCE)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")# -static")
 endif()

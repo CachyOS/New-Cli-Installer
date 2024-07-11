@@ -8,6 +8,12 @@ project(gucc
         VERSION 0.0.1
         LANGUAGES CXX)
 
+
+set(GUCC_LOGGER_FILES "")
+if(NOT COS_BUILD_STATIC)
+   set(GUCC_LOGGER_FILES "src/logger.cpp include/gucc/logger.hpp")
+endif()
+
 add_library(${PROJECT_NAME} #SHARED
    #src/utils.cpp src/utils.hpp
    src/io_utils.cpp include/gucc/io_utils.hpp
@@ -31,8 +37,8 @@ add_library(${PROJECT_NAME} #SHARED
    src/umount_partitions.cpp include/gucc/umount_partitions.hpp
    src/hwclock.cpp include/gucc/hwclock.hpp
    src/package_profiles.cpp include/gucc/package_profiles.hpp
-   src/logger.cpp include/gucc/logger.hpp
    src/fetch_file.cpp include/gucc/fetch_file.hpp
+   ${GUCC_LOGGER_FILES}
    #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )
