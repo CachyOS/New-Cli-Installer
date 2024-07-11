@@ -13,6 +13,7 @@
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
+#include "gucc/mount_partitions.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
@@ -977,10 +978,10 @@ bool mount_current_partition(bool force) noexcept {
     const auto& partition  = std::get<std::string>(config_data["PARTITION"]);
     const auto& mount_dev  = std::get<std::string>(config_data["MOUNT"]);
 
+    // Make the mount directory
+    const auto& mount_dir = fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev);
 #ifdef NDEVENV
     std::error_code err{};
-    // Make the mount directory
-    const fs::path mount_dir(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev));
     fs::create_directories(mount_dir, err);
 #endif
 
@@ -995,96 +996,28 @@ bool mount_current_partition(bool force) noexcept {
     // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
 #ifdef NDEVENV
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    if (!mount_opts_info.empty()) {
-        // check_for_error "mount ${PARTITION} $(cat ${MOUNT_OPTS})"
-        const auto& mount_status = gucc::utils::exec(fmt::format(FMT_COMPILE("mount -o {} {} {}{}"), mount_opts_info, partition, mountpoint, mount_dev));
-        spdlog::info("{}", mount_status);
-    } else {
-        // check_for_error "mount ${PARTITION}"
-        const auto& mount_status = gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}{}"), partition, mountpoint, mount_dev));
-        spdlog::info("{}", mount_status);
+    if (!gucc::mount::mount_partition(partition, mount_dir, mount_opts_info)) {
+        spdlog::error("Failed to mount partition {} at {} with {}", partition, mount_dir, mount_opts_info);
     }
 #endif
 
     /* clang-format off */
-    confirm_mount(fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev), force);
+    confirm_mount(mount_dir, force);
     /* clang-format on */
 
-    // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    if (!gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"crypt\""), partition)).empty()) {
-        // cryptname for bootloader configuration either way
-        config_data["LUKS"]          = 1;
-        auto& luks_name              = std::get<std::string>(config_data["LUKS_NAME"]);
-        const auto& luks_dev         = std::get<std::string>(config_data["LUKS_DEV"]);
-        luks_name                    = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | sed \"s~^/dev/mapper/~~g\""), partition));
-        const auto& check_cryptparts = [&](const auto cryptparts, auto functor) {
-            for (const auto& cryptpart : cryptparts) {
-                if (!gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep \"{}\""), cryptpart, luks_name)).empty()) {
-                    functor(cryptpart);
-                    return true;
-                }
-            }
-            return false;
-        };
+    auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
+    auto& luks_dev  = std::get<std::string>(config_data["LUKS_DEV"]);
+    auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
 
-        // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-        auto cryptparts    = gucc::utils::make_multiline(gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "lvm" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')"));
-        auto check_functor = [&](const auto cryptpart) {
-            config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("{} cryptdevice={}:{}"), luks_dev, cryptpart, luks_name);
-            config_data["LVM"]      = 1;
-        };
-        if (check_cryptparts(cryptparts, check_functor)) {
-            return true;
-        }
+    auto& is_luks = std::get<std::int32_t>(config_data["LUKS"]);
+    auto& is_lvm  = std::get<std::int32_t>(config_data["LVM"]);
 
-        // Check if LVM on LUKS
-        cryptparts = gucc::utils::make_multiline(gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')"));
-        if (check_cryptparts(cryptparts, check_functor)) {
-            return true;
-        }
-
-        // Check if LUKS alone (parent = part /dev/...)
-        cryptparts                 = gucc::utils::make_multiline(gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')"));
-        const auto& check_func_dev = [&](const auto cryptpart) {
-            auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
-            config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("{} cryptdevice=UUID={}:{}"), luks_dev, luks_uuid, luks_name);
-        };
-        if (check_cryptparts(cryptparts, check_func_dev)) {
-            return true;
-        }
+    if (!gucc::mount::query_partition(partition, is_luks, is_lvm, luks_name, luks_dev, luks_uuid)) {
+        spdlog::error("Failed to query partition: {}", partition);
+        return false;
     }
-    /*
 
-        // If LVM logical volume....
-    elif [[ $(lsblk -lno TYPE ${PARTITION} | grep "lvm") != "" ]]; then
-        LVM=1
-
-        // First get crypt name (code above would get lv name)
-        cryptparts=$(lsblk -lno NAME,TYPE,FSTYPE | grep "crypt" | grep -i "lvm2_member" | uniq | awk '{print "/dev/mapper/"$1}')
-        for i in ${cryptparts}; do
-            if [[ $(lsblk -lno NAME ${i} | grep $(echo $PARTITION | sed "s~^/dev/mapper/~~g")) != "" ]]; then
-                LUKS_NAME=$(echo ${i} | sed s~/dev/mapper/~~g)
-                return 0;
-            fi
-        done
-
-        // Now get the device (/dev/...) for the crypt name
-        cryptparts=$(lsblk -lno NAME,FSTYPE,TYPE | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')
-        for i in ${cryptparts}; do
-            if [[ $(lsblk -lno NAME ${i} | grep $LUKS_NAME) != "" ]]; then
-                # Create UUID for comparison
-                LUKS_UUID=$(lsblk -lno UUID,TYPE,FSTYPE ${i} | grep "part" | grep -i "crypto_luks" | awk '{print $1}')
-
-                # Check if not already added as a LUKS DEVICE (i.e. multiple LVs on one crypt). If not, add.
-                if [[ $(echo $LUKS_DEV | grep $LUKS_UUID) == "" ]]; then
-                    LUKS_DEV="$LUKS_DEV cryptdevice=UUID=$LUKS_UUID:$LUKS_NAME"
-                    LUKS=1
-                fi
-
-                return 0;
-            fi
-    fi*/
+    spdlog::debug("partition '{}': is_luks:={};is_lvm:={};luks_name:='{}';luks_dev:='{}';luks_uuid:='{}'", partition, is_luks, is_lvm, luks_name, luks_dev, luks_uuid);
     return true;
 }
 
