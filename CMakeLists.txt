@@ -153,3 +153,7 @@ install(
    TARGETS ${PROJECT_NAME}
    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+install(
+   FILES net-profiles.toml
+   DESTINATION ${CMAKE_INSTALL_LOCALSTATEDIR}/lib/cachyos-installer
+)
