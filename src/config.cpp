@@ -39,9 +39,9 @@ bool Config::initialize() noexcept {
         s_config->m_data["READY_PARTITIONS"] = std::vector<std::string>{};
         s_config->m_data["ZFS_ZPOOL_NAMES"]  = std::vector<std::string>{};
 
-        // TODO(vnepogodin): change location and try first remote location(e.g from CDN) or
-        // local location as a fallback.
-        s_config->m_data["NET_PROFILES_URL"] = "net-profiles.toml";
+        // URLs to fetch net profiles
+        s_config->m_data["NET_PROFILES_URL"]          = "https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/net-profiles.toml";
+        s_config->m_data["NET_PROFILES_FALLBACK_URL"] = "file:///var/lib/cachyos-installer/net-profiles.toml";
 
         // Mounting
         s_config->m_data["MOUNTPOINT"] = "/mnt";

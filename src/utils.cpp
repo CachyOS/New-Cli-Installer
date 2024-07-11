@@ -9,6 +9,7 @@
 #include "gucc/autologin.hpp"
 #include "gucc/bootloader.hpp"
 #include "gucc/cpu.hpp"
+#include "gucc/fetch_file.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/hwclock.hpp"
@@ -589,11 +590,12 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
 }
 
 auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>> {
-    auto* config_instance       = Config::instance();
-    auto& config_data           = config_instance->data();
-    const auto& server_mode     = std::get<std::int32_t>(config_data["SERVER_MODE"]);
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& net_profs_url   = std::get<std::string>(config_data["NET_PROFILES_URL"]);
+    auto* config_instance              = Config::instance();
+    auto& config_data                  = config_instance->data();
+    const auto& server_mode            = std::get<std::int32_t>(config_data["SERVER_MODE"]);
+    const auto& mountpoint_info        = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
+    const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
 
     const auto& root_filesystem     = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
     const auto& is_root_on_zfs      = (root_filesystem == "zfs");
@@ -617,12 +619,12 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optiona
         pkg_list.insert(pkg_list.cend(), {"bcachefs-tools"});
     }
 
-    auto net_profs_content = gucc::file_utils::read_whole_file(net_profs_url);
-    if (net_profs_content.empty()) {
+    auto net_profs_content = gucc::fetch::fetch_file_from_url(net_profs_url, net_profs_fallback_url);
+    if (!net_profs_content) {
         spdlog::error("Failed to get net profiles content");
         return std::nullopt;
     }
-    auto base_net_profs = gucc::profile::parse_base_profiles(net_profs_content);
+    auto base_net_profs = gucc::profile::parse_base_profiles(*net_profs_content);
     if (!base_net_profs.has_value()) {
         spdlog::error("Failed to parse net profiles");
         return std::nullopt;
@@ -644,16 +646,17 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optiona
 }
 
 auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::optional<std::vector<std::string>> {
-    auto* config_instance     = Config::instance();
-    auto& config_data         = config_instance->data();
-    const auto& net_profs_url = std::get<std::string>(config_data["NET_PROFILES_URL"]);
+    auto* config_instance              = Config::instance();
+    auto& config_data                  = config_instance->data();
+    const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
+    const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
 
-    auto net_profs_content = gucc::file_utils::read_whole_file(net_profs_url);
-    if (net_profs_content.empty()) {
+    auto net_profs_content = gucc::fetch::fetch_file_from_url(net_profs_url, net_profs_fallback_url);
+    if (!net_profs_content) {
         spdlog::error("Failed to get net profiles content");
         return std::nullopt;
     }
-    auto desktop_net_profs = gucc::profile::parse_desktop_profiles(net_profs_content);
+    auto desktop_net_profs = gucc::profile::parse_desktop_profiles(*net_profs_content);
     if (!desktop_net_profs.has_value()) {
         spdlog::error("Failed to parse net profiles");
         return std::nullopt;
