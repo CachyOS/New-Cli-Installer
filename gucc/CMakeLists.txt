@@ -9,9 +9,9 @@ project(gucc
         LANGUAGES CXX)
 
 
-set(GUCC_LOGGER_FILES "")
+set(GUCC_LOGGER_FILES)
 if(NOT COS_BUILD_STATIC)
-   set(GUCC_LOGGER_FILES "src/logger.cpp include/gucc/logger.hpp")
+   set(GUCC_LOGGER_FILES src/logger.cpp include/gucc/logger.hpp)
 endif()
 
 add_library(${PROJECT_NAME} #SHARED
