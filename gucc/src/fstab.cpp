@@ -4,30 +4,14 @@
 
 #include <cctype>  // for tolower
 
-#include <algorithm>  // for transform
-#include <filesystem>
+#include <algorithm>   // for transform
+#include <filesystem>  // for fs::path
+#include <ranges>      // for ranges::transform
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/algorithm/transform.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 namespace fs = std::filesystem;
 using namespace std::string_view_literals;
@@ -68,7 +52,7 @@ constexpr auto get_mount_options(std::string_view mount_opts, std::string_view b
 
 constexpr auto string_tolower(std::string_view text) noexcept -> std::string {
     std::string res{text};
-    ranges::transform(res, res.begin(),
+    std::ranges::transform(res, res.begin(),
         [](char char_elem) { return static_cast<char>(std::tolower(static_cast<unsigned char>(char_elem))); });
     return res;
 }
@@ -83,7 +67,7 @@ constexpr auto get_converted_fs(std::string_view fstype) noexcept -> std::string
 namespace gucc::fs {
 
 auto gen_fstab_entry(const Partition& partition) noexcept -> std::optional<std::string> {
-    // Apperently some FS names named differently in /etc/fstab.
+    // Apparently some FS names named differently in /etc/fstab.
     const auto& fstype = get_converted_fs(partition.fstype);
 
     const auto& luks_mapper_name = partition.luks_mapper_name;
