@@ -75,18 +75,14 @@ constexpr auto make_split_view(std::string_view str, char delim = '\n') noexcept
         | ranges::views::filter(second);
 }
 
-template <typename T, typename npos_type = std::remove_cvref_t<decltype(T::npos)>>
+template <typename T>
 concept string_findable = requires(T value) {
-    // check that type of T::npos is T::size_type
-    { npos_type{} } -> std::same_as<typename T::size_type>;
-    // check that type of T::find is T::size_type
-    { value.find(std::string_view{""}) } -> std::same_as<typename T::size_type>;
+    // check that type of T::contains is bool
+    { value.contains(std::string_view{""}) } -> std::same_as<bool>;
 };
-
 // simple helper function to check if string contains a string
 constexpr auto contains(string_findable auto const& str, std::string_view needle) noexcept -> bool {
-    using str_type = std::remove_reference_t<decltype(str)>;
-    return str.find(needle) != str_type::npos;
+    return str.contains(needle);
 }
 
 template <ranges::viewable_range R>
