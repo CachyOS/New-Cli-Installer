@@ -8,27 +8,6 @@
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wnull-dereference"
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/algorithm/find.hpp>
-#include <range/v3/view/join.hpp>
-#include <range/v3/view/split.hpp>
-#include <range/v3/view/transform.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
 using namespace std::string_view_literals;
 
 namespace gucc::detail {
@@ -39,29 +18,28 @@ bool Initcpio::write() const noexcept {
         spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
         return false;
     }
-    std::string&& result = file_content | ranges::views::split('\n')
-        | ranges::views::transform([&](auto&& rng) {
+    std::string&& result = file_content | std::ranges::views::split('\n')
+        | std::ranges::views::transform([&](auto&& rng) {
               /* clang-format off */
-              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
+              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
               if (line.starts_with("MODULES"sv)) {
-                  auto&& formatted_modules = modules | ranges::views::join(' ')
-                                                     | ranges::to<std::string>();
+                  auto&& formatted_modules = modules | std::ranges::views::join_with(' ')
+                                                     | std::ranges::to<std::string>();
                   return fmt::format(FMT_COMPILE("MODULES=({})"), std::move(formatted_modules));
               } else if (line.starts_with("FILES"sv)) {
-                  auto&& formatted_files = files | ranges::views::join(' ')
-                                                 | ranges::to<std::string>();
+                  auto&& formatted_files = files | std::ranges::views::join_with(' ')
+                                                 | std::ranges::to<std::string>();
                   return fmt::format(FMT_COMPILE("FILES=({})"), std::move(formatted_files));
               } else if (line.starts_with("HOOKS"sv)) {
-                  auto&& formatted_hooks = hooks | ranges::views::join(' ')
-                                                 | ranges::to<std::string>();
+                  auto&& formatted_hooks = hooks | std::ranges::views::join_with(' ')
+                                                 | std::ranges::to<std::string>();
                   return fmt::format(FMT_COMPILE("HOOKS=({})"), std::move(formatted_hooks));
               }
               /* clang-format on */
               return std::string{line.data(), line.size()};
           })
-        | ranges::views::join('\n')
-        | ranges::to<std::string>();
-    result += '\n';
+        | std::ranges::views::join_with('\n')
+        | std::ranges::to<std::string>();
 
     std::ofstream mhinitcpio_file{m_file_path.data()};
     if (!mhinitcpio_file.is_open()) {
@@ -81,12 +59,12 @@ bool Initcpio::parse_file() noexcept {
 
     const auto& parse_line = [](std::string_view line) -> std::vector<std::string> {
         auto&& open_bracket_pos = line.find('(');
-        auto&& close_bracket    = ranges::find(line, ')');
+        auto&& close_bracket    = std::ranges::find(line, ')');
         if (open_bracket_pos != std::string_view::npos && close_bracket != line.end()) {
-            const auto length = ranges::distance(line.begin() + static_cast<std::int64_t>(open_bracket_pos), close_bracket - 1);
+            const auto length = std::ranges::distance(line.begin() + static_cast<std::int64_t>(open_bracket_pos), close_bracket - 1);
 
             auto&& input_data = line.substr(open_bracket_pos + 1, static_cast<std::size_t>(length));
-            return input_data | ranges::views::split(' ') | ranges::to<std::vector<std::string>>();
+            return input_data | std::ranges::views::split(' ') | std::ranges::to<std::vector<std::string>>();
         }
         return {};
     };
