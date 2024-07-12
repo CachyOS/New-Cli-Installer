@@ -3,32 +3,12 @@
 #include "gucc/partition.hpp"
 
 #include <algorithm>  // for any_of, sort, unique_copy
-
-#include <filesystem>
+#include <ranges>     // for ranges::*
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/algorithm/any_of.hpp>
-#include <range/v3/algorithm/sort.hpp>
-#include <range/v3/algorithm/unique_copy.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
@@ -78,18 +58,18 @@ auto generate_crypttab_content(const std::vector<Partition>& partitions, std::st
 
     // sort by mountpoint & device
     auto partitions_sorted{partitions};
-    ranges::sort(partitions_sorted, {}, &Partition::mountpoint);
-    ranges::sort(partitions_sorted, {}, &Partition::device);
+    std::ranges::sort(partitions_sorted, {}, &Partition::mountpoint);
+    std::ranges::sort(partitions_sorted, {}, &Partition::device);
 
     // filter duplicates
     std::vector<Partition> partitions_filtered{};
-    ranges::unique_copy(
+    std::ranges::unique_copy(
         partitions_sorted, std::back_inserter(partitions_filtered),
         {},
         &Partition::device);
 
-    const bool is_root_encrypted = ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/"sv && part.luks_mapper_name; });
-    const bool is_boot_encrypted = ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/bool"sv && part.luks_mapper_name; });
+    const bool is_root_encrypted = std::ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/"sv && part.luks_mapper_name; });
+    const bool is_boot_encrypted = std::ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/bool"sv && part.luks_mapper_name; });
 
     for (auto&& partition : partitions_filtered) {
         auto crypttab_entry = gen_crypttab_entry(partition, crypttab_opts, is_root_encrypted, is_boot_encrypted);
