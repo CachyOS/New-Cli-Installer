@@ -2,33 +2,11 @@
 #define STRING_UTILS_HPP
 
 #include <algorithm>    // for transform
+#include <concepts>     // for same_as
+#include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
-#include <type_traits>
-#include <vector>  // for vector
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#pragma clang diagnostic ignored "-Wsign-conversion"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wnull-dereference"
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/iterator/operations.hpp>
-#include <range/v3/range/traits.hpp>
-#include <range/v3/view/filter.hpp>
-#include <range/v3/view/split.hpp>
-#include <range/v3/view/transform.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+#include <vector>       // for vector
 
 namespace gucc::utils {
 
@@ -65,14 +43,14 @@ auto join(const std::vector<std::string>& lines, std::string_view delim = "\n") 
 /// @return A range view representing the split lines.
 constexpr auto make_split_view(std::string_view str, char delim = '\n') noexcept {
     constexpr auto functor = [](auto&& rng) {
-        return std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
+        return std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
     };
     constexpr auto second = [](auto&& rng) { return rng != ""; };
 
     return str
-        | ranges::views::split(delim)
-        | ranges::views::transform(functor)
-        | ranges::views::filter(second);
+        | std::ranges::views::split(delim)
+        | std::ranges::views::transform(functor)
+        | std::ranges::views::filter(second);
 }
 
 template <typename T>
@@ -85,14 +63,14 @@ constexpr auto contains(string_findable auto const& str, std::string_view needle
     return str.contains(needle);
 }
 
-template <ranges::viewable_range R>
-constexpr auto index_viewable_range(R&& rng, ranges::range_difference_t<R> n) noexcept {
-    return ranges::next(ranges::begin(rng), n);
+template <std::ranges::viewable_range R>
+constexpr auto index_viewable_range(R&& rng, std::ranges::range_difference_t<R> n) noexcept {
+    return std::ranges::next(std::ranges::begin(rng), n);
 }
 
-template <ranges::viewable_range R>
+template <std::ranges::viewable_range R>
 constexpr auto size_viewable_range(R&& rng) noexcept {
-    return ranges::distance(ranges::begin(rng), ranges::end(rng));
+    return std::ranges::distance(std::ranges::begin(rng), std::ranges::end(rng));
 }
 
 }  // namespace gucc::utils
