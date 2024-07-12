@@ -36,23 +36,7 @@
 using namespace ftxui;
 namespace fs = std::filesystem;
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/algorithm/any_of.hpp>
-#include <range/v3/algorithm/search.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+#include <ranges>
 
 #ifdef NDEVENV
 #include "follow_process_log.hpp"
@@ -332,7 +316,7 @@ void create_new_user() noexcept {
     }
 
     // Loop while username is blank, has spaces, or has capital letters in it.
-    while (user.empty() || (user.find_first_of(' ') != std::string::npos) || ranges::any_of(user, [](char ch) { return std::isupper(ch); })) {
+    while (user.empty() || gucc::utils::contains(user, " ") || std::ranges::any_of(user, [](char ch) { return std::isupper(ch); })) {
         user.clear();
         static constexpr auto user_err_body = "An incorrect user name was entered. Please try again."sv;
         if (!detail::inputbox_widget(user, user_err_body, size(HEIGHT, GREATER_THAN, 1))) {
@@ -1250,7 +1234,7 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
         zfs_menu_text = zfs_zpool_body;
 
         // validation
-        if (zfs_zpool_name.empty() || std::isdigit(zfs_zpool_name[0]) || (ranges::any_of(zfs_zpool_name, [](char ch) { return (!std::isalnum(ch)) && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
+        if (zfs_zpool_name.empty() || std::isdigit(zfs_zpool_name[0]) || (std::ranges::any_of(zfs_zpool_name, [](char ch) { return (!std::isalnum(ch)) && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
             zfs_menu_text = zfs_zpoolcvalidation1;
         }
 
@@ -1355,7 +1339,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
         zfs_menu_text = zfs_dataset_body;
 
         // validation
-        if (zfs_dataset_name.empty() || std::isdigit(zfs_dataset_name[0]) || (ranges::any_of(zfs_dataset_name, [](char ch) { return (!std::isalnum(ch)) && (ch != '/') && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
+        if (zfs_dataset_name.empty() || std::isdigit(zfs_dataset_name[0]) || (std::ranges::any_of(zfs_dataset_name, [](char ch) { return (!std::isalnum(ch)) && (ch != '/') && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
             zfs_menu_text = zfs_zpoolcvalidation1;
         }
 
@@ -1383,7 +1367,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
 
             // validation
 
-            if (zvol_size.empty() || ranges::any_of(zvol_size, [](char ch) { return !std::isdigit(ch); })) {
+            if (zvol_size.empty() || std::ranges::any_of(zvol_size, [](char ch) { return !std::isdigit(ch); })) {
                 zfs_menu_text = zvol_size_menu_validation;
             }
 
