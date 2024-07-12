@@ -4,31 +4,12 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
+#include <ranges>  // for ranges::*
+
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wnull-dereference"
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/range/conversion.hpp>
-#include <range/v3/view/join.hpp>
-#include <range/v3/view/split.hpp>
-#include <range/v3/view/transform.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 using namespace std::string_view_literals;
 
@@ -182,14 +163,13 @@ auto parse_grub_line(const gucc::bootloader::GrubConfig& grub_config, std::strin
 namespace gucc::bootloader {
 
 auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string {
-    std::string result = GRUB_DEFAULT_CONFIG | ranges::views::split('\n')
-        | ranges::views::transform([&](auto&& rng) {
-              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
+    std::string result = GRUB_DEFAULT_CONFIG | std::ranges::views::split('\n')
+        | std::ranges::views::transform([&](auto&& rng) {
+              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
               return parse_grub_line(grub_config, line);
           })
-        | ranges::views::join('\n')
-        | ranges::to<std::string>();
-    result += '\n';
+        | std::ranges::views::join_with('\n')
+        | std::ranges::to<std::string>();
     return result;
 }
 
