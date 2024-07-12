@@ -2,26 +2,9 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/mtab.hpp"
-#include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for sort
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/algorithm/sort.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+#include <ranges>     // for ranges::*
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -38,7 +21,7 @@ auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::
         spdlog::error("Failed to umount partitions: failed to parse /etc/mtab");
         return false;
     }
-    ranges::sort(*mtab_entries, {}, &mtab::MTabEntry::mountpoint);
+    std::ranges::sort(*mtab_entries, {}, &mtab::MTabEntry::mountpoint);
 
     spdlog::debug("Got {} entries from mountpoint {}", mtab_entries->size(), root_mountpoint);
     for (auto&& mtab_entry : std::move(*mtab_entries)) {
