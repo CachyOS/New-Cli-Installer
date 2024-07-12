@@ -3,31 +3,11 @@
 #include "gucc/string_utils.hpp"
 
 #include <fstream>  // for ofstream
+#include <ranges>   // for ranges::*
 #include <string>   // for string
 #include <vector>   // for vector
 
 #include <spdlog/spdlog.h>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wnull-dereference"
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/algorithm/find_if.hpp>
-#include <range/v3/range/conversion.hpp>
-#include <range/v3/view/filter.hpp>
-#include <range/v3/view/split.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 namespace gucc::detail::pacmanconf {
 
@@ -40,15 +20,15 @@ bool push_repos_front(std::string_view file_path, std::string_view value) noexce
 
     auto file_split_view = utils::make_split_view(file_content);
     // Find the insertion point (using ranges for iteration)
-    auto insertion_point_it = ranges::find_if(
+    auto insertion_point_it = std::ranges::find_if(
         file_split_view,
         [](auto&& rng) {
-            auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
+            auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
             return !line.empty() && !line.starts_with('#') && line.starts_with('[') && !line.starts_with("[options]");
         });
 
     // Handle case where insertion point is not found
-    if (insertion_point_it == ranges::end(file_split_view)) {
+    if (insertion_point_it == std::ranges::end(file_split_view)) {
         // No suitable insertion point found
         spdlog::error("[PACMANCONFREPO] Could not find a suitable insertion point in {}", file_path);
         return false;
@@ -73,12 +53,12 @@ auto get_repo_list(std::string_view file_path) noexcept -> std::vector<std::stri
         spdlog::error("[PACMANCONFREPO] '{}' error occurred!", file_path);
         return {};
     }
-    return file_content | ranges::views::split('\n')
-        | ranges::views::filter([](auto&& rng) {
-              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
+    return file_content | std::ranges::views::split('\n')
+        | std::ranges::views::filter([](auto&& rng) {
+              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
               return !line.empty() && !line.starts_with('#') && line.starts_with('[') && !line.starts_with("[options]");
           })
-        | ranges::to<std::vector<std::string>>();
+        | std::ranges::to<std::vector<std::string>>();
 }
 
 }  // namespace gucc::detail::pacmanconf
