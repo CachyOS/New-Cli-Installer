@@ -810,7 +810,7 @@ void install_base(const std::string_view& packages) noexcept {
         spdlog::error("Failed to install base");
         return;
     }
-    const auto& base_pkgs = gucc::utils::join(*pkg_list, " ");
+    const auto& base_pkgs = gucc::utils::join(*pkg_list, ' ');
 
     spdlog::info("Preparing for pkgs to install: '{}'", base_pkgs);
 
@@ -908,7 +908,7 @@ void install_desktop(const std::string_view& desktop) noexcept {
         spdlog::error("Failed to install desktop");
         return;
     }
-    const auto& packages = gucc::utils::join(*pkg_list, " ");
+    const auto& packages = gucc::utils::join(*pkg_list, ' ');
 
     spdlog::info("Preparing for desktop envs to install: '{}'", packages);
     utils::install_from_pkglist(packages);

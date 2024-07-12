@@ -35,7 +35,7 @@ auto make_multiline(const std::vector<std::string>& multiline, bool reverse, std
     return res;
 }
 
-auto join(const std::vector<std::string>& lines, std::string_view delim) noexcept -> std::string {
+auto join(const std::vector<std::string>& lines, char delim) noexcept -> std::string {
     return lines | std::ranges::views::join_with(delim) | std::ranges::to<std::string>();
 }
 

@@ -85,7 +85,7 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
 
     // Set user groups
     spdlog::info("Setting groups for user {}", user_info.username);
-    const auto& groups_set_cmd = fmt::format(FMT_COMPILE("usermod -aG {} {}"), utils::join(default_groups, ","), user_info.username);
+    const auto& groups_set_cmd = fmt::format(FMT_COMPILE("usermod -aG {} {}"), utils::join(default_groups, ','), user_info.username);
     if (!utils::arch_chroot_checked(groups_set_cmd, mountpoint)) {
         spdlog::error("Failed to set user groups with {}", groups_set_cmd);
         return false;

@@ -35,7 +35,7 @@ auto make_multiline(const std::vector<std::string>& multiline, bool reverse = fa
 /// @param lines The lines to join.
 /// @param delim The delimiter to join the lines.
 /// @return The joined lines as a single string.
-auto join(const std::vector<std::string>& lines, std::string_view delim = "\n") noexcept -> std::string;
+auto join(const std::vector<std::string>& lines, char delim = '\n') noexcept -> std::string;
 
 /// @brief Make a split view from a string into multiple lines based on a delimiter.
 /// @param str The string to split.
