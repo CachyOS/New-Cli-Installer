@@ -6,33 +6,11 @@
 
 #include <filesystem>
 #include <fstream>
+#include <ranges>
 #include <string_view>
-
-#include <fmt/core.h>
 
 #include <spdlog/sinks/callback_sink.h>
 #include <spdlog/spdlog.h>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wnull-dereference"
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/range/conversion.hpp>
-#include <range/v3/view/filter.hpp>
-#include <range/v3/view/join.hpp>
-#include <range/v3/view/split.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 namespace fs = std::filesystem;
 using namespace std::string_view_literals;
@@ -54,13 +32,13 @@ static constexpr auto LOCALE_GEN_TEST = R"(ru_RU.UTF-8 UTF-8
 )"sv;
 
 inline auto filtered_res(std::string_view content) noexcept -> std::string {
-    auto&& result = content | ranges::views::split('\n')
-        | ranges::views::filter([](auto&& rng) {
-              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(ranges::distance(rng)));
+    auto&& result = content | std::ranges::views::split('\n')
+        | std::ranges::views::filter([](auto&& rng) {
+              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
               return !line.empty() && !line.starts_with('#');
           })
-        | ranges::views::join('\n')
-        | ranges::to<std::string>();
+        | std::ranges::views::join_with('\n')
+        | std::ranges::to<std::string>();
     return result + '\n';
 }
 

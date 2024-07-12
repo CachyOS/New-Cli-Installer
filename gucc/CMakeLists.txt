@@ -46,7 +46,7 @@ add_library(${PROJECT_NAME} #SHARED
 
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_DIR}/include)
-target_link_libraries(${PROJECT_NAME} PUBLIC project_warnings project_options spdlog::spdlog fmt::fmt range-v3::range-v3 tomlplusplus::tomlplusplus cpr::cpr)
+target_link_libraries(${PROJECT_NAME} PUBLIC project_warnings project_options spdlog::spdlog fmt::fmt tomlplusplus::tomlplusplus cpr::cpr)
 
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
