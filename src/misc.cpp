@@ -96,7 +96,7 @@ bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quit
     }
 
     // remove current mount from all partitions list
-    std::erase_if(partitions, [partition](std::string_view x) { return x.find(partition) != std::string_view::npos; });
+    std::erase_if(partitions, [partition](std::string_view x) { return gucc::utils::contains(x, partition); });
     number_partitions -= 1;
     return true;
 }
