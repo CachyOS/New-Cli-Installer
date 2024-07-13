@@ -229,7 +229,7 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
 
 // install a pkg in the live session if not installed
 void inst_needed(const std::string_view& pkg) noexcept {
-    if (gucc::utils::exec(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg), true) != "0") {
+    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg))) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         utils::clear_screen();
 
@@ -287,9 +287,9 @@ void auto_partition() noexcept {
     }
 
     // Clear disk
-    gucc::utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of=\"{}\" bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("wipefs -af \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo \"{}\" 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of='{}' bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("wipefs -af '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 
     // Identify the partition table
     const auto& part_table = gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
@@ -359,13 +359,13 @@ void generate_fstab() noexcept {
     }
 
     // Edit fstab in case of btrfs subvolumes
-    gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/subvolid=.*,subvol=\\/.*,//g\" {}/etc/fstab"), mountpoint));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/subvolid=.*,subvol=\\/.*,//g' {}/etc/fstab"), mountpoint));
 
     // remove any zfs datasets that are mounted by zfs
-    const auto& msource_list = gucc::utils::make_multiline(gucc::utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep \"^[a-z,A-Z]\" | {}"), mountpoint, "awk '{print $1}'")));
+    const auto& msource_list = gucc::utils::make_multiline(gucc::utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep '^[a-z,A-Z]' | {}"), mountpoint, "awk '{print $1}'")));
     for (const auto& msource : msource_list) {
-        if (gucc::utils::exec(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep \"^/\"  | {} | grep \"^{}$\""), "awk '{print $2}'", msource), true) == "0") {
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e \"\\|^{}[[:space:]]| s/^#*/#/\" -i {}/etc/fstab"), msource, mountpoint));
+        if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep '^/' | {} | grep -q '^{}$'"), "awk '{print $2}'", msource))) {
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '\\|^{}[[:space:]]| s/^#*/#/' -i {}/etc/fstab"), msource, mountpoint));
         }
     }
 #endif
@@ -929,8 +929,8 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
 
     // if root is encrypted, amend /etc/default/grub
     const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
-    const auto& root_part   = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
+    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
+    const auto& root_part   = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/part/p' | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
 #ifdef NDEVENV
     utils::boot_encrypted_setting();
 #endif
@@ -979,7 +979,7 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools
         grub_installer << bash_code;
     } else {
         // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
-        const auto is_root_lvm = gucc::utils::exec("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm", true) == "0";
+        const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
         if (is_root_lvm || (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs")) {
             grub_config_struct.savedefault = std::nullopt;
         }
@@ -1003,13 +1003,13 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
     }
 
     // If the root is on btrfs-subvolume, amend grub installation
-    auto ret_status = gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
-    if (ret_status != "0") {
+    auto is_btrfs_subvol = gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5");
+    if (!is_btrfs_subvol) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
     }
     // If encryption used amend grub
     if (!luks_dev.empty()) {
-        const auto& luks_dev_formatted   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
+        const auto& luks_dev_formatted   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | {}"), luks_dev, "awk '{print $1}'"));
         grub_config_struct.cmdline_linux = fmt::format(FMT_COMPILE("{} {}"), luks_dev_formatted, grub_config_struct.cmdline_linux);
         spdlog::info("adding kernel parameter {}", luks_dev);
     }
@@ -1063,7 +1063,7 @@ void install_refind() noexcept {
 
     // Check if the volume is removable. If so, install all drivers
     const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
+    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
 
     // Clean the configuration in case there is previous one because the configuration part is not idempotent
@@ -1082,7 +1082,7 @@ void install_refind() noexcept {
 
         // Remove autodetect hook
         initcpio.remove_hook("autodetect");
-        spdlog::info("\"Autodetect\" hook was removed");
+        spdlog::info("'Autodetect' hook was removed");
     } else if (luks == 1) {
         gucc::utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
     } else {
@@ -1093,7 +1093,7 @@ void install_refind() noexcept {
     // sed -i 's/ro\ /rw\ \ /g' /mnt/boot/refind_linux.conf
 
     // Set appropriate rootflags if installed on btrfs subvolume
-    if (gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true) == "0") {
+    if (gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5")) {
         const auto& rootflag = fmt::format(FMT_COMPILE("rootflags={}"), gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g'"));
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$|\\ {}\\\"|g\" /mnt/boot/refind_linux.conf"), rootflag));
     }
@@ -1101,13 +1101,13 @@ void install_refind() noexcept {
     // LUKS and lvm with LUKS
     if (luks == 1) {
         const auto& mapper_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}'");
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |{} root={} |g\" /mnt/boot/refind_linux.conf"), luks_dev, mapper_name));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|root=.* |{} root={} |g' /mnt/boot/refind_linux.conf"), luks_dev, mapper_name));
         gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
     }
     // Lvm without LUKS
-    else if (gucc::utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep \"/mnt$\" | awk '{print $6}'") == "lvm") {
+    else if (gucc::utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep '/mnt$' | awk '{print $6}'") == "lvm") {
         const auto& mapper_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}'");
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|root=.* |root={} |g\" /mnt/boot/refind_linux.conf"), mapper_name));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|root=.* |root={} |g' /mnt/boot/refind_linux.conf"), mapper_name));
         gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
     }
     // Figure out microcode
@@ -1115,26 +1115,26 @@ void install_refind() noexcept {
     const auto& ucode      = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qqs ucode 2>>/tmp/cachyos-install.log"), mountpoint));
     if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l)"), ucode))) > 1) {
         // set microcode
-        if (gucc::utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
+        if (gucc::utils::exec_checked("findmnt -o TARGET,SOURCE | grep -q '/mnt/boot '")) {
             // there is a separate boot, path to microcode is at partition root
-            gucc::utils::exec(R"(sed -i "s|\"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img\"|g" /mnt/boot/refind_linux.conf)");
+            gucc::utils::exec(R"(sed -i 's|"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img"|g' /mnt/boot/refind_linux.conf)");
         } else if (!rootsubvol.empty()) {
             // Initramfs is on the root partition and root is on btrfs subvolume
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/intel-ucode.img initrd={0}/boot/amd-ucode.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol));
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$| initrd={0}/boot/intel-ucode.img initrd={0}/boot/amd-ucode.img initrd={0}/boot/initramfs-%v.img\"|g' /mnt/boot/refind_linux.conf"), rootsubvol));
         } else {
             // Initramfs is on the root partition
-            gucc::utils::exec(R"(sed -i "s|\"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img\"|g" /mnt/boot/refind_linux.conf)");
+            gucc::utils::exec(R"(sed -i 's|"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img"|g' /mnt/boot/refind_linux.conf)");
         }
     } else {
-        if (gucc::utils::exec("findmnt -o TARGET,SOURCE | grep -q \"/mnt/boot \"", true) == "0") {
+        if (gucc::utils::exec_checked("findmnt -o TARGET,SOURCE | grep -q '/mnt/boot '")) {
             // there is a separate boot, path to microcode is at partition root
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd=/{}.img initrd=/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$| initrd=/{}.img initrd=/initramfs-%v.img\"|g' /mnt/boot/refind_linux.conf"), ucode));
         } else if (!rootsubvol.empty()) {
             // Initramfs is on the root partition and root is on btrfs subvolume
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$| initrd={0}/boot/{1}.img initrd={0}/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), rootsubvol, ucode));
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$| initrd={0}/boot/{1}.img initrd={0}/boot/initramfs-%v.img\"|g' /mnt/boot/refind_linux.conf"), rootsubvol, ucode));
         } else {
             // Initramfs is on the root partition
-            gucc::utils::exec(fmt::format(FMT_COMPILE(" sed -i \"s|\\\"$| initrd=/boot/{}.img initrd=/boot/initramfs-%v.img\\\"|g\" /mnt/boot/refind_linux.conf"), ucode));
+            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$| initrd=/boot/{}.img initrd=/boot/initramfs-%v.img\"|g' /mnt/boot/refind_linux.conf"), ucode));
         }
     }
 
@@ -1164,7 +1164,7 @@ void install_systemd_boot() noexcept {
     const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
 
     // NOTE: for /mnt on /dev/mapper/cryptroot on /dev/sda2 with `root_name`=cryptroot, `root_device` will be sda
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), root_name, "awk '/disk/ {print $1}'"));
+    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
     const auto& removable          = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
     const bool is_volume_removable = (utils::to_int(removable) == 1);
@@ -1267,7 +1267,7 @@ pacman -S --noconfirm --needed grub os-prober
         grub_installer << bash_code;
     } else {
         // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
-        const auto is_root_lvm = gucc::utils::exec("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm", true) == "0";
+        const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
         if (is_root_lvm || (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs")) {
             grub_config_struct.savedefault = std::nullopt;
         }
@@ -1281,14 +1281,14 @@ pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
     }
 
     // If the root is on btrfs-subvolume, amend grub installation
-    auto ret_status = gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5", true);
-    if (ret_status != "0") {
+    auto is_btrfs_subvol = gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5");
+    if (!is_btrfs_subvol) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
     }
 
     // If encryption used amend grub
     if (!luks_dev.empty()) {
-        const auto& luks_dev_formatted   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | {}"), luks_dev, "awk '{print $1}'"));
+        const auto& luks_dev_formatted   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | {}"), luks_dev, "awk '{print $1}'"));
         grub_config_struct.cmdline_linux = fmt::format(FMT_COMPILE("{} {}"), luks_dev_formatted, grub_config_struct.cmdline_linux);
         spdlog::info("adding kernel parameter {}", luks_dev);
     }
@@ -1369,8 +1369,8 @@ void get_cryptroot() noexcept {
     auto& config_data     = config_instance->data();
 
     // Identify if /mnt or partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    if ((gucc::utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt", true) != "0")
-        || (gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt$/,/part/p" | awk '{print $6}' | grep -q crypt)", true) != "0")) {
+    if (!gucc::utils::exec_checked("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt")
+        || !gucc::utils::exec_checked(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt$/,/part/p' | awk '{print $6}' | grep -q crypt)")) {
         return;
     }
 
@@ -1378,14 +1378,14 @@ void get_cryptroot() noexcept {
     auto& luks_name     = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
     luks_name           = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
     // Get the name of the Luks device
-    if (gucc::utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
+    if (!gucc::utils::exec_checked("lsblk -i | grep -q -e 'crypt /mnt'")) {
         // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-        luks_name = gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt$/,/crypt/p" | awk '/crypt/ {print $1}')");
+        luks_name = gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt$/,/crypt/p' | awk '/crypt/ {print $1}')");
     }
 
     const auto& check_cryptparts = [&luks_name](const auto& cryptparts, auto functor) {
         for (const auto& cryptpart : cryptparts) {
-            if (!gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep \"{}\""), cryptpart, luks_name)).empty()) {
+            if (!gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep '{}'"), cryptpart, luks_name)).empty()) {
                 functor(cryptpart);
             }
         }
@@ -1423,7 +1423,7 @@ void get_cryptroot() noexcept {
         const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
         const auto& check_functor = [&](const auto& cryptpart) {
             auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep \"part\" | grep -i \"crypto_luks\" | {}"), cryptpart, "awk '{print $1}'"));
+            luks_uuid               = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep 'part' | grep -i 'crypto_luks' | {}"), cryptpart, "awk '{print $1}'"));
             config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
         };
         check_cryptparts(cryptparts, check_functor);
@@ -1438,15 +1438,15 @@ void recheck_luks() noexcept {
     const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
 
     // Check if there is separate encrypted /boot partition
-    if (gucc::utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0") {
+    if (gucc::utils::exec_checked("lsblk | grep '/mnt/boot' | grep -q 'crypt'")) {
         config_data["LUKS"] = 1;
     }
     // Check if root is encrypted and there is no separate /boot
-    else if ((gucc::utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0") && gucc::utils::exec("lsblk | grep \"/mnt/boot$\"", false).empty()) {
+    else if ((gucc::utils::exec_checked("lsblk | grep '/mnt$' | grep -q 'crypt'")) && !gucc::utils::exec_checked("lsblk | grep -q '/mnt/boot$'")) {
         config_data["LUKS"] = 1;
     }
     // Check if root is on encrypted lvm volume
-    else if ((gucc::utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0") && (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), root_name, "awk '{print $6}'"), true) == "0")) {
+    else if (gucc::utils::exec_checked("lsblk | grep '/mnt/boot' | grep -q 'crypt'") && gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {} | grep -q crypt"), root_name, "awk '{print $6}'"))) {
         config_data["LUKS"] = 1;
     }
 }
@@ -1456,8 +1456,8 @@ void get_cryptboot() noexcept {
     auto& config_data     = config_instance->data();
 
     // If /boot is encrypted
-    if ((gucc::utils::exec("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt\\/boot$/ {print $6}' | grep -q crypt", true) != "0")
-        || (gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot$/,/part/p" | awk '{print $6}' | grep -q crypt)", true) != "0")) {
+    if (!gucc::utils::exec_checked("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt\\/boot$/ {print $6}' | grep -q crypt")
+        || !gucc::utils::exec_checked(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt\/boot$/,/part/p' | awk '{print $6}' | grep -q crypt)")) {
         return;
     }
     config_data["LUKS"] = 1;
@@ -1468,14 +1468,14 @@ void get_cryptboot() noexcept {
     std::string boot_uuid{gucc::utils::exec("lsblk -lno UUID,MOUNTPOINT | awk '/\\mnt\\/boot$/ {print $1}'")};
 
     // Get the name of the Luks device
-    if (gucc::utils::exec("lsblk -i | grep -q -e \"crypt /mnt\"", true) != "0") {
+    if (!gucc::utils::exec_checked("lsblk -i | grep -q -e 'crypt /mnt'")) {
         // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-        boot_name = gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot$/,/crypt/p" | awk '/crypt/ {print $1}')");
-        boot_uuid = gucc::utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt\/boot /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
+        boot_name = gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt\/boot$/,/crypt/p' | awk '/crypt/ {print $1}')");
+        boot_uuid = gucc::utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt\/boot /,/part/p' | awk '/crypto_LUKS/ {print $4}')");
     }
 
     // Check if LVM on LUKS
-    if (gucc::utils::exec("lsblk -lno TYPE,MOUNTPOINT | grep \"/mnt/boot$\" | grep -q lvm", true) == "0") {
+    if (gucc::utils::exec_checked("lsblk -lno TYPE,MOUNTPOINT | grep '/mnt/boot$' | grep -q lvm")) {
         config_data["LVM"] = 1;
     }
 
@@ -1495,16 +1495,16 @@ void boot_encrypted_setting() noexcept {
     auto& fde          = std::get<std::int32_t>(config_data["fde"]);
 
     // Check if there is separate /boot partition
-    if (gucc::utils::exec("lsblk | grep \"/mnt/boot$\"").empty()) {
+    if (gucc::utils::exec("lsblk | grep '/mnt/boot$'").empty()) {
         // There is no separate /boot parition
         const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
         const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
         // Check if root is encrypted
         if ((luks == 1)
-            || (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'"), root_name), true) == "0")
-            || (gucc::utils::exec("lsblk | grep \"/mnt$\" | grep -q 'crypt'", true) == "0")
+            || gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk '/dev/mapper/{}' | grep -q 'crypt'"), root_name))
+            || gucc::utils::exec_checked("lsblk | grep '/mnt$' | grep -q 'crypt'")
             // Check if root is on encrypted lvm volume
-            || (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), root_name, "awk '{print $6}'"), true) == "0")) {
+            || gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {} | grep -q crypt"), root_name, "awk '{print $6}'"))) {
             fde = 1;
             utils::setup_luks_keyfile();
         }
@@ -1512,10 +1512,10 @@ void boot_encrypted_setting() noexcept {
     }
     // There is a separate /boot. Check if it is encrypted
     const auto& boot_name = gucc::utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    if ((gucc::utils::exec("lsblk | grep '/mnt/boot' | grep -q 'crypt'", true) == "0")
+    if (gucc::utils::exec_checked("lsblk | grep '/mnt/boot' | grep -q 'crypt'")
         // Check if the /boot is inside encrypted lvm volume
-        || (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {} | grep -q crypt"), boot_name, "awk '{print $6}'"), true) == "0")
-        || (gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk \"/dev/mapper/{}\" | grep -q 'crypt'"), boot_name), true) == "0")) {
+        || gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {} | grep -q crypt"), boot_name, "awk '{print $6}'"))
+        || gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk '/dev/mapper/{}' | grep -q 'crypt'"), boot_name))) {
         fde = 1;
         utils::setup_luks_keyfile();
     }
@@ -1795,7 +1795,7 @@ bool parse_config() noexcept {
         assert(doc["device"].IsString());
         config_data["DEVICE"] = std::string{doc["device"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"device\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'device' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1839,7 +1839,7 @@ bool parse_config() noexcept {
         }
         config_data["READY_PARTITIONS"] = std::move(ready_parts);
     } else if (headless_mode) {
-        fmt::print(stderr, "\"partitions\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'partitions' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1847,7 +1847,7 @@ bool parse_config() noexcept {
         assert(doc["fs_name"].IsString());
         config_data["FILESYSTEM_NAME"] = std::string{doc["fs_name"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"fs_name\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'fs_name' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1860,7 +1860,7 @@ bool parse_config() noexcept {
         assert(doc["hostname"].IsString());
         config_data["HOSTNAME"] = std::string{doc["hostname"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"hostname\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'hostname' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1868,7 +1868,7 @@ bool parse_config() noexcept {
         assert(doc["locale"].IsString());
         config_data["LOCALE"] = std::string{doc["locale"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"locale\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'locale' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1876,7 +1876,7 @@ bool parse_config() noexcept {
         assert(doc["xkbmap"].IsString());
         config_data["XKBMAP"] = std::string{doc["xkbmap"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"xkbmap\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'xkbmap' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1884,7 +1884,7 @@ bool parse_config() noexcept {
         assert(doc["timezone"].IsString());
         config_data["TIMEZONE"] = std::string{doc["timezone"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"timezone\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'timezone' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1896,7 +1896,7 @@ bool parse_config() noexcept {
         config_data["USER_PASS"]  = std::string{doc["user_pass"].GetString()};
         config_data["USER_SHELL"] = std::string{doc["user_shell"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"user_name\", \"user_pass\", \"user_shell\" fields are required in HEADLESS mode!\n");
+        fmt::print(stderr, "'user_name', 'user_pass', 'user_shell' fields are required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1904,7 +1904,7 @@ bool parse_config() noexcept {
         assert(doc["root_pass"].IsString());
         config_data["ROOT_PASS"] = std::string{doc["root_pass"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"root_pass\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'root_pass' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1912,7 +1912,7 @@ bool parse_config() noexcept {
         assert(doc["kernel"].IsString());
         config_data["KERNEL"] = std::string{doc["kernel"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"kernel\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'kernel' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1920,7 +1920,7 @@ bool parse_config() noexcept {
         assert(doc["desktop"].IsString());
         config_data["DE"] = std::string{doc["desktop"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"desktop\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'desktop' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1928,7 +1928,7 @@ bool parse_config() noexcept {
         assert(doc["bootloader"].IsString());
         config_data["BOOTLOADER"] = std::string{doc["bootloader"].GetString()};
     } else if (headless_mode) {
-        fmt::print(stderr, "\"bootloader\" field is required in HEADLESS mode!\n");
+        fmt::print(stderr, "'bootloader' field is required in HEADLESS mode!\n");
         return false;
     }
 
@@ -1955,9 +1955,9 @@ bool parse_config() noexcept {
 void setup_luks_keyfile() noexcept {
     // Add keyfile to luks
     const auto& root_name          = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_part          = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/part/p\" | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
+    const auto& root_part          = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/part/p' | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
     const auto& partition          = fmt::format(FMT_COMPILE("/dev/{}"), root_part);
-    const auto& number_of_lukskeys = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump \"{}\" | grep \"ENABLED\" | wc -l"), partition)));
+    const auto& number_of_lukskeys = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump '{}' | grep 'ENABLED' | wc -l"), partition)));
     if (number_of_lukskeys < 4) {
         // Create a keyfile
 #ifdef NDEVENV
@@ -1988,7 +1988,7 @@ void set_lightdm_greeter() {
         if (temp == "lightdm-gtk-greeter") {
             continue;
         }
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i -e \"s/^.*greeter-session=.*/greeter-session={}/\" {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i -e 's/^.*greeter-session=.*/greeter-session={}/' {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
         break;
     }
 }
@@ -2016,16 +2016,16 @@ void enable_services() noexcept {
 
     // enable display manager for systemd
     const auto& temp = fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq"), mountpoint);
-    if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp), true) == "0") {
+    if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp))) {
         utils::set_lightdm_greeter();
         gucc::services::enable_systemd_service("lightdm"sv, mountpoint);
-    } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp), true) == "0") {
+    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp))) {
         gucc::services::enable_systemd_service("sddm"sv, mountpoint);
-    } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} gdm &> /dev/null"), temp), true) == "0") {
+    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} gdm &> /dev/null"), temp))) {
         gucc::services::enable_systemd_service("gdm"sv, mountpoint);
-    } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} lxdm &> /dev/null"), temp), true) == "0") {
+    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} lxdm &> /dev/null"), temp))) {
         gucc::services::enable_systemd_service("lxdm"sv, mountpoint);
-    } else if (gucc::utils::exec(fmt::format(FMT_COMPILE("{} ly &> /dev/null"), temp), true) == "0") {
+    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} ly &> /dev/null"), temp))) {
         gucc::services::enable_systemd_service("ly"sv, mountpoint);
     }
 
@@ -2061,13 +2061,13 @@ void final_check() noexcept {
     const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
     // Check if bootloader is installed
     if (system_info == "BIOS") {
-        if (gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), mountpoint), true) != "0") {
+        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), mountpoint))) {
             checklist += "- Bootloader is not installed\n";
         }
     }
 
     // Check if fstab is generated
-    if (gucc::utils::exec(fmt::format(FMT_COMPILE("grep -qv '^#' {}/etc/fstab 2>/dev/null"), mountpoint), true) != "0") {
+    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("grep -qv '^#' {}/etc/fstab 2>/dev/null"), mountpoint))) {
         checklist += "- Fstab has not been generated\n";
     }
 
@@ -2080,7 +2080,7 @@ void final_check() noexcept {
     }
 
     // Check if root password has been set
-    if (gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} passwd --status root | cut -d' ' -f2 | grep -q 'NP'"), mountpoint), true) == "0") {
+    if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("arch-chroot {} passwd --status root | cut -d' ' -f2 | grep -q 'NP'"), mountpoint))) {
         checklist += "- Root password is not set\n";
     }
 
