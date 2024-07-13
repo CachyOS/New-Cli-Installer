@@ -24,20 +24,22 @@
 #include "gucc/umount_partitions.hpp"
 #include "gucc/user.hpp"
 
-#include <algorithm>      // for transform
+#include <cerrno>       // for errno, strerror
+#include <cstdint>      // for int32_t
+#include <cstdio>       // for feof, fgets, pclose, perror, popen
+#include <cstdlib>      // for exit, WIFEXITED, WIFSIGNALED
+#include <sys/mount.h>  // for mount
+
+#include <algorithm>      // for transform, find, search
 #include <array>          // for array
 #include <bit>            // for bit_cast
-#include <cerrno>         // for errno, strerror
 #include <chrono>         // for filesystem, seconds
-#include <cstdint>        // for int32_t
-#include <cstdio>         // for feof, fgets, pclose, perror, popen
-#include <cstdlib>        // for exit, WIFEXITED, WIFSIGNALED
 #include <filesystem>     // for exists, is_directory
 #include <fstream>        // for ofstream
 #include <iostream>       // for basic_istream, cin
 #include <mutex>          // for mutex
+#include <ranges>         // for ranges::*
 #include <string>         // for operator==, string, basic_string, allocator
-#include <sys/mount.h>    // for mount
 #include <thread>         // for sleep_for
 #include <unordered_map>  // for unordered_map
 
@@ -52,16 +54,6 @@
 #pragma GCC diagnostic ignored "-Wuseless-cast"
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #endif
-
-#include <range/v3/algorithm/contains.hpp>
-#include <range/v3/algorithm/for_each.hpp>
-#include <range/v3/algorithm/none_of.hpp>
-#include <range/v3/algorithm/reverse.hpp>
-#include <range/v3/algorithm/search.hpp>
-#include <range/v3/view/filter.hpp>
-#include <range/v3/view/join.hpp>
-#include <range/v3/view/split.hpp>
-#include <range/v3/view/transform.hpp>
 
 #include <rapidjson/document.h>
 #include <rapidjson/istreamwrapper.h>
@@ -682,102 +674,102 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::o
     constexpr std::string_view budgie{"budgie"};
 
     bool needed_xorg{};
-    auto found = ranges::search(desktop_env, i3wm);
+    auto found = std::ranges::search(desktop_env, i3wm);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, i3wm, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, i3wm, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, sway);
+    found = std::ranges::search(desktop_env, sway);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, sway, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, sway, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
     }
-    found = ranges::search(desktop_env, kde);
+    found = std::ranges::search(desktop_env, kde);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, kde, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = ranges::search(desktop_env, xfce);
-    if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, xfce, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, kde, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, gnome);
+    found = std::ranges::search(desktop_env, xfce);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, gnome, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, xfce, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, wayfire);
+    found = std::ranges::search(desktop_env, gnome);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, wayfire, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-    }
-    found = ranges::search(desktop_env, openbox);
-    if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, openbox, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, gnome, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, lxqt);
+    found = std::ranges::search(desktop_env, wayfire);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, lxqt, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, wayfire, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
+    }
+    found = std::ranges::search(desktop_env, openbox);
+    if (!found.empty()) {
+        auto profile = std::ranges::find(*desktop_net_profs, openbox, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, bspwm);
+    found = std::ranges::search(desktop_env, lxqt);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, bspwm, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, lxqt, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, cinnamon);
+    found = std::ranges::search(desktop_env, bspwm);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, cinnamon, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, bspwm, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, ukui);
+    found = std::ranges::search(desktop_env, cinnamon);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, ukui, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, cinnamon, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, qtile);
+    found = std::ranges::search(desktop_env, ukui);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, qtile, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, ukui, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, mate);
+    found = std::ranges::search(desktop_env, qtile);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, mate, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, qtile, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, lxde);
+    found = std::ranges::search(desktop_env, mate);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, lxde, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, mate, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = ranges::search(desktop_env, hyprland);
+    found = std::ranges::search(desktop_env, lxde);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, hyprland, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, lxde, &gucc::profile::DesktopProfile::profile_name);
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
+        needed_xorg = true;
+    }
+    found = std::ranges::search(desktop_env, hyprland);
+    if (!found.empty()) {
+        auto profile = std::ranges::find(*desktop_net_profs, hyprland, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
     }
-    found = ranges::search(desktop_env, budgie);
+    found = std::ranges::search(desktop_env, budgie);
     if (!found.empty()) {
-        auto profile = ranges::find(*desktop_net_profs, budgie, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, budgie, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
 
     if (needed_xorg) {
-        auto profile = ranges::find(*desktop_net_profs, "xorg"sv, &gucc::profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, "xorg"sv, &gucc::profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
     }
 
@@ -1310,7 +1302,7 @@ pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
 
     // Remove os-prober if not selected
     constexpr std::string_view needle{"os-prober"};
-    const auto& found = ranges::search(bootloader, needle);
+    const auto& found = std::ranges::search(bootloader, needle);
     if (found.empty()) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ os-prober//g' -i {}"), grub_installer_path));
     }
@@ -1489,7 +1481,7 @@ void get_cryptboot() noexcept {
 
     // Add cryptdevice to LUKS_DEV, if not already present (if on same LVM on LUKS as /)
     auto& luks_dev    = std::get<std::string>(config_data["LUKS_DEV"]);
-    const auto& found = ranges::search(luks_dev, boot_uuid);
+    const auto& found = std::ranges::search(luks_dev, boot_uuid);
     if (found.empty()) {
         luks_dev = fmt::format(FMT_COMPILE("{} cryptdevice=UUID={}:{}"), luks_dev, boot_uuid, boot_name);
     }
@@ -1600,14 +1592,14 @@ void id_system() noexcept {
 
 void install_cachyos_repo() noexcept {
     const auto& add_arch_specific_repo = [](auto&& isa_level, auto&& repo_name, const auto& isa_levels, [[maybe_unused]] auto&& repos_data) {
-        if (!ranges::contains(isa_levels, isa_level)) {
+        if (!std::ranges::contains(isa_levels, isa_level)) {
             spdlog::warn("{} is not supported", isa_level);
             return;
         }
         spdlog::info("{} is supported", isa_level);
 
         const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
-        if (ranges::contains(repo_list, fmt::format(FMT_COMPILE("[{}]"), repo_name))) {
+        if (std::ranges::contains(repo_list, fmt::format(FMT_COMPILE("[{}]"), repo_name))) {
             spdlog::info("'{}' is already added!", repo_name);
             return;
         }
@@ -1825,7 +1817,7 @@ bool parse_config() noexcept {
 
             using namespace std::literals;
             static constexpr std::array valid_types{"root"sv, "boot"sv, "additional"sv};
-            if (!ranges::contains(valid_types, part_type)) {
+            if (!std::ranges::contains(valid_types, part_type)) {
                 fmt::print(stderr, "partition type '{}' is invalid! Valid types: {}.\n", part_type, valid_types);
                 return false;
             }
