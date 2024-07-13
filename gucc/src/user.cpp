@@ -3,30 +3,14 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>  // for find
-#include <filesystem>
+#include <algorithm>   // for find, contains
+#include <filesystem>  // for permissions
+#include <ranges>      // for ranges::*
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/algorithm/contains.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 namespace fs = std::filesystem;
 
@@ -54,7 +38,7 @@ auto set_user_password(std::string_view username, std::string_view password, std
 }
 
 auto create_new_user(const user::UserInfo& user_info, const std::vector<std::string>& default_groups, std::string_view mountpoint) noexcept -> bool {
-    if (!user_info.sudoers_group.empty() && !ranges::contains(default_groups, user_info.sudoers_group)) {
+    if (!user_info.sudoers_group.empty() && !std::ranges::contains(default_groups, user_info.sudoers_group)) {
         spdlog::error("Failed to create user {}! User default groups doesn't contain sudoers group({})", user_info.username, user_info.sudoers_group);
         return false;
     }
