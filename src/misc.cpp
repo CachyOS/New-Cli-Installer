@@ -5,6 +5,7 @@
 
 // import gucc
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 /* clang-format off */
 #include <filesystem>                              // for exists, is_directory
