@@ -1626,9 +1626,9 @@ void make_esp() noexcept {
     config_data["UEFI_PART"]  = partition;
 
     // If it is already a fat/vfat partition...
-    const auto& ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("fsck -N {} | grep fat"), partition), true);
     bool do_boot_partition{};
-    if (ret_status != "0"sv) {
+    const auto& is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), partition));
+    if (!is_fat_part) {
         const auto& content = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), partition);
         do_boot_partition   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     }
