@@ -109,7 +109,7 @@ auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) 
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 1>/dev/null"), mountpoint, command);
 
 #ifdef NDEVENV
-    return utils::exec(cmd_formatted, true) == "0"sv;
+    return utils::exec_checked(cmd_formatted);
 #else
     spdlog::info("Running with checked arch-chroot: '{}'", cmd_formatted);
     return true;

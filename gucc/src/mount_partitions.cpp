@@ -11,21 +11,21 @@ namespace gucc::mount {
 
 auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts) noexcept -> bool {
     if (!mount_opts.empty()) {
-        return utils::exec(fmt::format(FMT_COMPILE("mount -o {} {} {}"), mount_opts, partition, mount_dir)) == "0";
+        return utils::exec_checked(fmt::format(FMT_COMPILE("mount -o {} {} {}"), mount_opts, partition, mount_dir));
     }
-    return utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, mount_dir)) == "0";
+    return utils::exec_checked(fmt::format(FMT_COMPILE("mount {} {}"), partition, mount_dir));
 }
 
 auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int32_t& is_lvm, std::string& luks_name, std::string& luks_dev, std::string& luks_uuid) noexcept -> bool {
     // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    if (utils::exec(fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep -q 'crypt'"), partition), true) == "0") {
+    if (utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep -q 'crypt'"), partition))) {
         // cryptname for bootloader configuration either way
         is_luks   = true;
         luks_name = utils::exec(fmt::format(FMT_COMPILE("echo {} | sed \"s~^/dev/mapper/~~g\""), partition));
 
         const auto& check_cryptparts = [&](auto&& cryptparts, const auto& functor) {
             for (const auto& cryptpart : cryptparts) {
-                if (utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep -q '{}'"), cryptpart, luks_name)) == "0") {
+                if (utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep -q '{}'"), cryptpart, luks_name))) {
                     functor(cryptpart);
                     return true;
                 }
