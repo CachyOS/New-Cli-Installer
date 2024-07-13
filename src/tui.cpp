@@ -1094,7 +1094,7 @@ void make_swap() noexcept {
 #endif
 
     // Since a partition was used, remove that partition from the list
-    std::erase_if(partitions, [partition](std::string_view x) { return x.find(partition) != std::string_view::npos; });
+    std::erase_if(partitions, [partition](std::string_view x) { return gucc::utils::contains(x, partition); });
     number_partitions -= 1;
 }
 
@@ -1238,7 +1238,7 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
         }
 
         for (auto&& invalid_keyword : {"log", "mirror", "raidz", "raidz1", "raidz2", "spare"}) {
-            if (zfs_zpool_name.find(invalid_keyword) != std::string::npos) {
+            if (gucc::utils::contains(zfs_zpool_name, invalid_keyword)) {
                 zfs_menu_text = zfs_zpoolcvalidation2;
                 break;
             }
@@ -1851,7 +1851,7 @@ void mount_partitions() noexcept {
         mount_dev       = std::move(value);
 
         // loop while the mountpoint specified is incorrect (is only '/', is blank, or has spaces).
-        while ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || (mount_dev.find_first_of(" ") != std::string::npos)) {
+        while ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || gucc::utils::contains(mount_dev, " ")) {
             // Warn user about naming convention
             detail::msgbox_widget("\nPartition cannot be mounted due to a problem with the mountpoint name.\nA name must be given after a forward slash.\n");
             // Ask user for mountpoint again
