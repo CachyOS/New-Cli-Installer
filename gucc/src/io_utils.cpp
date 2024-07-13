@@ -89,6 +89,10 @@ auto exec(std::string_view command, bool interactive) noexcept -> std::string {
     return result;
 }
 
+auto exec_checked(std::string_view command) noexcept -> bool {
+    return utils::exec(command, true) == "0"sv;
+}
+
 void arch_chroot(std::string_view command, std::string_view mountpoint, bool interactive) noexcept {
     // TODO(vnepogodin): refactor to move output into variable and print into log
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
@@ -105,7 +109,7 @@ auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) 
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 1>/dev/null"), mountpoint, command);
 
 #ifdef NDEVENV
-    return utils::exec(cmd_formatted, true) == "0";
+    return utils::exec(cmd_formatted, true) == "0"sv;
 #else
     spdlog::info("Running with checked arch-chroot: '{}'", cmd_formatted);
     return true;
