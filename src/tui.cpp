@@ -173,7 +173,7 @@ void set_xkbmap() noexcept {
     std::string xkbmap_choice{};
     auto ok_callback = [&] {
         const auto& keymap = xkbmap_list[static_cast<std::size_t>(selected)];
-        xkbmap_choice      = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/_.*//'"), keymap));
+        xkbmap_choice      = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | sed 's/_.*//'"), keymap));
         success            = true;
         screen.ExitLoopClosure()();
     };
@@ -221,7 +221,7 @@ bool set_timezone() noexcept {
     std::string zone{};
     {
         auto screen           = ScreenInteractive::Fullscreen();
-        const auto& cmd       = gucc::utils::exec(R"(cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep "/" | sed "s/\/.*//g" | sort -ud)");
+        const auto& cmd       = gucc::utils::exec(R"(cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep '/' | sed 's/\/.*//g' | sort -ud)");
         const auto& zone_list = gucc::utils::make_multiline(cmd);
 
         std::int32_t selected{};
@@ -259,13 +259,14 @@ bool set_timezone() noexcept {
     if (subzone.empty()) { return false; }
     /* clang-format on */
 
-    const auto& content         = fmt::format(FMT_COMPILE("\nSet Time Zone: {}/{}?\n"), zone, subzone);
+    const auto& timezone        = fmt::format(FMT_COMPILE("{}/{}"), zone, subzone);
+    const auto& content         = fmt::format(FMT_COMPILE("\nSet Time Zone: {}?\n"), timezone);
     const auto& do_set_timezone = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     /* clang-format off */
     if (!do_set_timezone) { return false; }
     /* clang-format on */
 
-    utils::set_timezone(fmt::format(FMT_COMPILE("{}/{}"), zone, subzone));
+    utils::set_timezone(timezone);
 
     return true;
 }
@@ -358,7 +359,8 @@ void create_new_user() noexcept {
     // Enter password. This step will only be reached where the loop has been skipped or broken.
     std::string pass{};
     static constexpr auto user_pass_body = "Enter password for"sv;
-    if (!detail::inputbox_widget(pass, fmt::format(FMT_COMPILE("{} {}"), user_pass_body, user), size(HEIGHT, GREATER_THAN, 1), true)) {
+    const auto& user_pass_body_content   = fmt::format(FMT_COMPILE("{} {}"), user_pass_body, user);
+    if (!detail::inputbox_widget(pass, user_pass_body_content, size(HEIGHT, GREATER_THAN, 1), true)) {
         return;
     }
     std::string confirm{};
@@ -372,7 +374,7 @@ void create_new_user() noexcept {
         detail::msgbox_widget(PassErrBody);
         pass.clear();
         confirm.clear();
-        if (!detail::inputbox_widget(pass, fmt::format(FMT_COMPILE("{} {}"), user_pass_body, user), size(HEIGHT, GREATER_THAN, 1), true)) {
+        if (!detail::inputbox_widget(pass, user_pass_body_content, size(HEIGHT, GREATER_THAN, 1), true)) {
             return;
         }
         if (!detail::inputbox_widget(confirm, user_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
@@ -404,7 +406,7 @@ void install_cust_pkgs() noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
-    const auto& cmd        = (hostcache) ? "pacstrap" : "pacstrap -c";
+    const auto& cmd        = (hostcache) ? "pacstrap"sv : "pacstrap -c"sv;
     detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages)});
 #endif
 }
@@ -431,7 +433,7 @@ void chroot_interactive() noexcept {
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} bash"), mountpoint);
     gucc::utils::exec(cmd_formatted, true);
 #else
-    gucc::utils::exec("bash", true);
+    gucc::utils::exec("bash"sv, true);
 #endif
 }
 
@@ -572,11 +574,11 @@ void install_base() noexcept {
     std::string packages{};
     auto ok_callback = [&] {
         packages        = detail::from_checklist_string(available_kernels, kernels_state.get());
-        auto ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"linux\""), packages), true);
-        if (ret_status != "0") {
+        auto ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'linux'"), packages), true);
+        if (ret_status != "0"sv) {
             // Check if a kernel is already installed
             ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("ls {}/boot/*.img >/dev/null 2>&1"), mountpoint), true);
-            if (ret_status != "0") {
+            if (ret_status != "0"sv) {
                 static constexpr auto ErrNoKernel = "\nAt least one kernel must be selected.\n"sv;
                 detail::msgbox_widget(ErrNoKernel);
                 return;
@@ -717,7 +719,7 @@ void bios_bootloader() {
     if (selected_bootloader.empty()) { return; }
     /* clang-format on */
 
-    utils::remove_all(selected_bootloader, "+ ");
+    utils::remove_all(selected_bootloader, "+ "sv);
 
     /* clang-format off */
     if (!tui::select_device()) { return; }
@@ -802,7 +804,7 @@ void show_devices() noexcept {
 // Refresh pacman keys
 void refresh_pacman_keys() noexcept {
 #ifdef NDEVENV
-    utils::arch_chroot("bash -c \"pacman-key --init;pacman-key --populate archlinux cachyos;pacman-key --refresh-keys;\"");
+    utils::arch_chroot("bash -c 'pacman-key --init;pacman-key --populate archlinux cachyos;pacman-key --refresh-keys;'");
 #else
     SPDLOG_DEBUG("({}) Function is doing nothing in dev environment!", __PRETTY_FUNCTION__);
 #endif
@@ -890,7 +892,7 @@ void mount_opts(bool force) noexcept {
     const auto& fs_opts       = std::get<std::vector<std::string>>(config_data["fs_opts"]);
     const auto& partition     = std::get<std::string>(config_data["PARTITION"]);
     const auto& format_name   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), partition));
-    const auto& format_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk '/disk/ {print $1}'"));
+    const auto& format_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), format_name, "awk '/disk/ {print $1}'"));
 
     const auto& rotational_queue = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1"sv);
 
@@ -918,8 +920,8 @@ void mount_opts(bool force) noexcept {
 
     // Now clean up the file
     auto cleaup_mount_opts = [](auto& opts_info) {
-        opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed 's/ /,/g'"), opts_info));
-        opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | sed '$s/,$//'"), opts_info));
+        opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | sed 's/ /,/g'"), opts_info));
+        opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | sed '$s/,$//'"), opts_info));
     };
 
     if (force) {
@@ -934,7 +936,7 @@ void mount_opts(bool force) noexcept {
         screen.ExitLoopClosure()();
     };
 
-    const auto& file_sys_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | sed \"s/.*\\.//g;s/-.*//g\""), file_sys));
+    const auto& file_sys_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | sed 's/.*\\.//g;s/-.*//g'"), file_sys));
     const auto& fs_title           = fmt::format(FMT_COMPILE("New CLI Installer | {}"), file_sys_formatted);
     auto content_size              = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
 
@@ -1018,7 +1020,7 @@ void make_swap() noexcept {
     {
         std::vector<std::string> temp{"None -"};
         const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-        if (!(root_filesystem == "zfs" || root_filesystem == "btrfs")) {
+        if (!(root_filesystem == "zfs"sv || root_filesystem == "btrfs"sv)) {
             temp.emplace_back("Swapfile -");
         }
         const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
@@ -1054,7 +1056,7 @@ void make_swap() noexcept {
             return;
         }
 
-        while (gucc::utils::exec(fmt::format(FMT_COMPILE("echo \"{}\" | grep \"M\\|G\""), value)).empty()) {
+        while (gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | grep 'M\\|G'"), value)).empty()) {
             detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
             value = fmt::format(FMT_COMPILE("{}M"), total_memory);
             if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
@@ -1076,7 +1078,7 @@ void make_swap() noexcept {
     auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
 
     // Warn user if creating a new swap
-    const auto& swap_part = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE \"{}\" | grep -i \"swap\""), partition));
+    const auto& swap_part = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE '{}' | grep -i 'swap'"), partition));
     if (swap_part != "swap") {
         const auto& do_swap = detail::yesno_widget(fmt::format(FMT_COMPILE("\nmkswap {}\n"), partition), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
@@ -1258,10 +1260,10 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
 }
 
 bool zfs_import_pool() noexcept {
-    const auto& zlist = gucc::utils::make_multiline(gucc::utils::exec("zpool import 2>/dev/null | grep \"^[[:space:]]*pool\" | awk -F : '{print $2}' | awk '{$1=$1};1'"));
+    const auto& zlist = gucc::utils::make_multiline(gucc::utils::exec("zpool import 2>/dev/null | grep '^[[:space:]]*pool' | awk -F : '{print $2}' | awk '{$1=$1};1'"));
     if (zlist.empty()) {
         // no available datasets
-        detail::infobox_widget("\nNo pools available\"\n"sv);
+        detail::infobox_widget("\nNo pools available\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return false;
     }
@@ -1301,7 +1303,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
     const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_pools());
     if (zlist.empty()) {
         // no available datasets
-        detail::infobox_widget("\nNo pools available\"\n"sv);
+        detail::infobox_widget("\nNo pools available\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return false;
     }
@@ -1348,9 +1350,10 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
         /* clang-format on */
     }
 
-    if (zmount == "legacy") {
-        gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name), zmount);
-    } else if (zmount == "zvol") {
+    const auto& zfs_zpath = fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name);
+    if (zmount == "legacy"sv) {
+        gucc::fs::zfs_create_dataset(zfs_zpath, zmount);
+    } else if (zmount == "zvol"sv) {
         static constexpr auto zvol_size_menu_body       = "\nEnter the size of the zvol in megabytes(MB)\n"sv;
         static constexpr auto zvol_size_menu_validation = "\nYou must enter a number greater than 0\n"sv;
 
@@ -1375,7 +1378,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
             if (zfs_menu_text == zvol_size_menu_body) { break; }
             /* clang-format on */
         }
-        gucc::fs::zfs_create_zvol(zvol_size, fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name));
+        gucc::fs::zfs_create_zvol(zvol_size, zfs_zpath);
     } else {
         spdlog::error("HELLO! IMPLEMENT ME!");
         return false;
@@ -1388,7 +1391,7 @@ void zfs_set_property() noexcept {
     const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_datasets());
     if (zlist.empty()) {
         // no available datasets
-        detail::infobox_widget("\nNo datasets available\"\n"sv);
+        detail::infobox_widget("\nNo datasets available\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
     }
@@ -1443,7 +1446,7 @@ void zfs_destroy_dataset() noexcept {
     const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_datasets());
     if (zlist.empty()) {
         // no available datasets
-        detail::infobox_widget("\nNo datasets available\"\n"sv);
+        detail::infobox_widget("\nNo datasets available\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
     }
@@ -1528,10 +1531,10 @@ void zfs_menu_manual() noexcept {
             tui::zfs_new_ds();
             break;
         case 3:
-            tui::zfs_new_ds("legacy");
+            tui::zfs_new_ds("legacy"sv);
             break;
         case 4:
-            tui::zfs_new_ds("zvol");
+            tui::zfs_new_ds("zvol"sv);
             break;
         case 5:
             tui::zfs_set_property();
@@ -1594,7 +1597,7 @@ void make_esp() noexcept {
     const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
 
     /* clang-format off */
-    if (sys_info != "UEFI") { return; }
+    if (sys_info != "UEFI"sv) { return; }
     /* clang-format on */
 
     std::string answer{};
@@ -1628,7 +1631,7 @@ void make_esp() noexcept {
     // If it is already a fat/vfat partition...
     const auto& ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("fsck -N {} | grep fat"), partition), true);
     bool do_boot_partition{};
-    if (ret_status != "0") {
+    if (ret_status != "0"sv) {
         const auto& content = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), partition);
         do_boot_partition   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     }
@@ -1756,13 +1759,13 @@ void mount_partitions() noexcept {
         // get_cryptroot
         // echo "$LUKS_DEV" > /tmp/.luks_dev
         // If the root partition is btrfs, offer to create subvolumes
-        if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "btrfs") {
+        if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "btrfs"sv) {
             // Check if there are subvolumes already on the btrfs partition
-            const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mountpoint_info);
+            const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null"), mountpoint_info);
             const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
             const auto& lines_count      = utils::to_int(subvolumes_count);
             if (lines_count > 1) {
-                const auto& subvolumes_formated = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | cut -d\" \" -f9"), subvolumes));
+                const auto& subvolumes_formated = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | cut -d' ' -f9"), subvolumes));
                 const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes_formated), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
                 // Pre-existing subvolumes and user wants to mount them
                 /* clang-format off */
@@ -1829,7 +1832,7 @@ void mount_partitions() noexcept {
             /* clang-format on */
         }
 
-        if (partition == "Done") {
+        if (partition == "Done"sv) {
             tui::make_esp();
             utils::get_cryptroot();
             utils::get_cryptboot();
@@ -1869,11 +1872,12 @@ void mount_partitions() noexcept {
         // 0 = no separate boot,
         // 1 = separate non-lvm boot,
         // 2 = separate lvm boot. For Grub configuration
-        if (mount_dev == "/boot") {
-            const auto& cmd             = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"lvm\""), partition);
-            const auto& cmd_out         = gucc::utils::exec(cmd);
+        if (mount_dev == "/boot"sv) {
             config_data["LVM_SEP_BOOT"] = 1;
-            if (!cmd_out.empty()) {
+
+            const auto& cmd        = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep -q 'lvm'"), partition);
+            const bool is_boot_lvm = gucc::utils::exec(cmd, true) == "0"sv;
+            if (is_boot_lvm) {
                 config_data["LVM_SEP_BOOT"] = 2;
             }
         }
@@ -1912,8 +1916,8 @@ void configure_mirrorlist() noexcept {
 }
 
 void create_partitions() noexcept {
-    static constexpr std::string_view optwipe = "Securely Wipe Device (optional)";
-    static constexpr std::string_view optauto = "Automatic Partitioning";
+    static constexpr auto optwipe = "Securely Wipe Device (optional)"sv;
+    static constexpr auto optauto = "Automatic Partitioning"sv;
 
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
