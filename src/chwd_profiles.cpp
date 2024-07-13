@@ -5,32 +5,14 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>  // for any_of, sort, for_each
+#include <algorithm>  // for contains, sort, for_each
+#include <ranges>     // for ranges::*
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #define TOML_EXCEPTIONS 0  // disable exceptions
 #include <toml++/toml.h>
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wold-style-cast"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuseless-cast"
-#pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
-
-#include <range/v3/algorithm/any_of.hpp>
-#include <range/v3/algorithm/for_each.hpp>
-#include <range/v3/view/filter.hpp>
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 namespace detail::chwd {
 
@@ -68,9 +50,10 @@ auto get_available_profile_names(std::string_view profile_type) noexcept -> std:
     const auto& available_profile_names = gucc::utils::make_multiline(gucc::utils::exec("chwd --list -d | grep Name | awk '{print $4}'"));
 
     std::vector<std::string> filtered_profile_names{};
-    const auto& functor = [available_profile_names](auto&& profile_name) { return ranges::any_of(available_profile_names, [profile_name](auto&& available_profile) { return available_profile == profile_name; }); };
+    const auto& functor = [available_profile_names](auto&& profile_name) { return std::ranges::contains(available_profile_names, profile_name); };
 
-    ranges::for_each(all_profile_names.value() | ranges::views::filter(functor), [&](auto&& rng) { filtered_profile_names.push_back(std::forward<decltype(rng)>(rng)); });
+    const auto& for_each_functor = [&](auto&& rng) { filtered_profile_names.push_back(std::forward<decltype(rng)>(rng)); };
+    std::ranges::for_each(all_profile_names.value() | std::ranges::views::filter(functor), for_each_functor);
     return filtered_profile_names;
 }
 
