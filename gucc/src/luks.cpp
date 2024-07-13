@@ -11,12 +11,12 @@
 namespace gucc::crypto {
 
 auto luks1_open(std::string_view luks_pass, std::string_view partition, std::string_view luks_name) noexcept -> bool {
-    auto cmd = fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup open --type luks1 {} {} &>/dev/null"), luks_pass, partition, luks_name);
+    auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup open --type luks1 {} {} &>/dev/null"), luks_pass, partition, luks_name);
     return utils::exec_checked(cmd);
 }
 
 auto luks1_format(std::string_view luks_pass, std::string_view partition, std::string_view additional_flags) noexcept -> bool {
-    auto cmd = fmt::format(FMT_COMPILE("echo \"{}\" | cryptsetup -q {} --type luks1 luksFormat {} &>/dev/null"), luks_pass, additional_flags, partition);
+    auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup -q {} --type luks1 luksFormat {} &>/dev/null"), luks_pass, additional_flags, partition);
     return utils::exec_checked(cmd);
 }
 
@@ -33,9 +33,7 @@ auto luks1_setup_keyfile(std::string_view dest_file, std::string_view mountpoint
     if (!fs::exists(dest_file)) {
         // TODO(vnepogodin): refactor subprocess exit code and print stderr captured output on failure
         auto cmd = fmt::format(FMT_COMPILE("dd bs=512 count=4 if=/dev/urandom of={} iflag=fullblock &>/dev/null"), additional_flags, partition, dest_file);
-
-        const auto& ret_status = utils::exec(cmd, true);
-        if (ret_status != "0") {
+        if (!utils::exec_checked(cmd)) {
             spdlog::error("Failed to generate(dd) luks keyfile: {}!");
             return false;
         }
@@ -56,9 +54,8 @@ auto luks1_setup_keyfile(std::string_view dest_file, std::string_view mountpoint
     const auto& mkinitcpio_conf = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
 
     // TODO(vnepogodin): that should gathered from dest_file and be relative to mountpoint
-    const auto& cmd        = fmt::format(FMT_COMPILE("grep -q '/crypto_keyfile.bin' {0} || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' {0}"), mkinitcpio_conf);
-    const auto& ret_status = utils::exec(cmd, true);
-    if (ret_status != "0") {
+    const auto& cmd = fmt::format(FMT_COMPILE("grep -q '/crypto_keyfile.bin' {0} || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' {0}"), mkinitcpio_conf);
+    if (!utils::exec_checked(cmd)) {
         spdlog::error("Failed to add keyfile to {}", mkinitcpio_conf);
         return false;
     }
