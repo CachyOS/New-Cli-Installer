@@ -445,8 +445,7 @@ void install_grub_uefi() noexcept {
     /* clang-format on */
 
     std::string bootid{"cachyos"};
-    auto ret_status = gucc::utils::exec("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos", true);
-    if (ret_status == "0"sv) {
+    if (gucc::utils::exec_checked("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos")) {
         static constexpr auto bootid_content = "\nInput the name identify your grub installation. Choosing an existing name overwrites it.\n"sv;
         if (!detail::inputbox_widget(bootid, bootid_content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return;
@@ -573,12 +572,10 @@ void install_base() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     std::string packages{};
     auto ok_callback = [&] {
-        packages        = detail::from_checklist_string(available_kernels, kernels_state.get());
-        auto ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'linux'"), packages), true);
-        if (ret_status != "0"sv) {
+        packages = detail::from_checklist_string(available_kernels, kernels_state.get());
+        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'linux'"), packages))) {
             // Check if a kernel is already installed
-            ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("ls {}/boot/*.img >/dev/null 2>&1"), mountpoint), true);
-            if (ret_status != "0"sv) {
+            if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("ls {}/boot/*.img >/dev/null 2>&1"), mountpoint))) {
                 static constexpr auto ErrNoKernel = "\nAt least one kernel must be selected.\n"sv;
                 detail::msgbox_widget(ErrNoKernel);
                 return;
@@ -1056,7 +1053,7 @@ void make_swap() noexcept {
             return;
         }
 
-        while (gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | grep 'M\\|G'"), value)).empty()) {
+        while (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'M\\|G'")))) {
             detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
             value = fmt::format(FMT_COMPILE("{}M"), total_memory);
             if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
@@ -1557,7 +1554,7 @@ void zfs_menu_manual() noexcept {
 void zfs_menu() noexcept {
 #ifdef NDEVENV
     // check for zfs support
-    if (gucc::utils::exec("modprobe zfs 2>>/tmp/cachyos-install.log &>/dev/null", true) != "0"sv) {
+    if (!gucc::utils::exec_checked("modprobe zfs 2>>/tmp/cachyos-install.log &>/dev/null")) {
         detail::infobox_widget("\nThe kernel modules to support ZFS could not be found\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
         return;
@@ -1876,7 +1873,7 @@ void mount_partitions() noexcept {
             config_data["LVM_SEP_BOOT"] = 1;
 
             const auto& cmd        = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep -q 'lvm'"), partition);
-            const bool is_boot_lvm = gucc::utils::exec(cmd, true) == "0"sv;
+            const bool is_boot_lvm = gucc::utils::exec_checked(cmd);
             if (is_boot_lvm) {
                 config_data["LVM_SEP_BOOT"] = 2;
             }
