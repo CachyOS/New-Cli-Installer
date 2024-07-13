@@ -131,8 +131,8 @@ void make_esp(const std::string& part_name, std::string_view bootloader_name, bo
     config_data["UEFI_PART"]  = partition;
 
     // If it is already a fat/vfat partition...
-    const auto& ret_status = gucc::utils::exec(fmt::format(FMT_COMPILE("fsck -N {} | grep fat &>/dev/null"), partition), true);
-    if (ret_status != "0" && reformat_part) {
+    const auto& is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), partition));
+    if (!is_fat_part && reformat_part) {
 #ifdef NDEVENV
         gucc::utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
 #endif
