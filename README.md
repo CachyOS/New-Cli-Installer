@@ -9,8 +9,8 @@ Fast and smooth installer for Arch based operating system.
 
 Requirements
 ------------
-* C++20 feature required (tested with GCC 11.1.0 and Clang 13)
-Any compiler which support C++20 standard should work.
+* C++23 feature required (tested with GCC 14.1.1 and Clang 18)
+Any compiler which support C++23 standard should work.
 
 ######
 ## Installing from source
