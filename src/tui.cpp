@@ -1053,7 +1053,7 @@ void make_swap() noexcept {
             return;
         }
 
-        while (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'M\\|G'")))) {
+        while (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'M\\|G'"), value))) {
             detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
             value = fmt::format(FMT_COMPILE("{}M"), total_memory);
             if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
