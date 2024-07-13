@@ -1385,7 +1385,7 @@ void get_cryptroot() noexcept {
 
     const auto& check_cryptparts = [&luks_name](const auto& cryptparts, auto functor) {
         for (const auto& cryptpart : cryptparts) {
-            if (!gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep '{}'"), cryptpart, luks_name)).empty()) {
+            if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep -q '{}'"), cryptpart, luks_name))) {
                 functor(cryptpart);
             }
         }
@@ -1495,7 +1495,7 @@ void boot_encrypted_setting() noexcept {
     auto& fde          = std::get<std::int32_t>(config_data["fde"]);
 
     // Check if there is separate /boot partition
-    if (gucc::utils::exec("lsblk | grep '/mnt/boot$'").empty()) {
+    if (!gucc::utils::exec_checked("lsblk | grep -q '/mnt/boot$'")) {
         // There is no separate /boot parition
         const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
         const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
