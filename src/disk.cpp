@@ -98,7 +98,7 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
 void mount_existing_subvols(const disk_part& disk) noexcept {
     // Set mount options
     const auto& format_name   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), disk.part));
-    const auto& format_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e \"/{}/,/disk/p\" | {}"), format_name, "awk '/disk/ {print $1}'"sv));
+    const auto& format_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), format_name, "awk '/disk/ {print $1}'"sv));
 
     std::string fs_opts{};
     if (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational)"), format_device), true) == "1"sv) {
@@ -110,7 +110,7 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
     const auto root_mountpoint = "/mnt"sv;
 
     gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list {} 2>/dev/null | cut -d' ' -f9 > /tmp/.subvols"), root_mountpoint), true);
-    if (gucc::utils::exec(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint), true) != "0") {
+    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint))) {
         spdlog::error("Failed to unmount {}", root_mountpoint);
     }
 
