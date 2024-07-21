@@ -1095,7 +1095,8 @@ void install_refind() noexcept {
     // Set appropriate rootflags if installed on btrfs subvolume
     if (gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5")) {
         const auto& rootflag = fmt::format(FMT_COMPILE("rootflags={}"), gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g'"));
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s|\\\"$|\\ {}\\\"|g\" /mnt/boot/refind_linux.conf"), rootflag));
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$|\\ {}\"|g' /mnt/boot/refind_linux.conf"), rootflag));
+        spdlog::debug("rootflag := '{}'", rootflag);
     }
 
     // LUKS and lvm with LUKS
@@ -1111,9 +1112,9 @@ void install_refind() noexcept {
         gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
     }
     // Figure out microcode
-    const auto& rootsubvol = gucc::utils::exec(R"(findmnt -o TARGET,SOURCE | awk '/\/mnt / {print $2}' | grep -o "\[.*\]" | cut -d "[" -f2 | cut -d "]" -f1 | sed 's/^\///')");
+    const auto& rootsubvol = gucc::utils::exec(R"(findmnt -o TARGET,SOURCE | awk '/\/mnt / {print $2}' | grep -o '\[.*\]' | cut -d '[' -f2 | cut -d ']' -f1 | sed 's/^\///')");
     const auto& ucode      = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qqs ucode 2>>/tmp/cachyos-install.log"), mountpoint));
-    if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l)"), ucode))) > 1) {
+    if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l"), ucode))) > 1) {
         // set microcode
         if (gucc::utils::exec_checked("findmnt -o TARGET,SOURCE | grep -q '/mnt/boot '")) {
             // there is a separate boot, path to microcode is at partition root
