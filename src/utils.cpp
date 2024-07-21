@@ -1610,6 +1610,8 @@ void install_cachyos_repo() noexcept {
 
     const auto& isa_levels = gucc::cpu::get_isa_levels();
 
+    const auto& is_oracle_vm = gucc::utils::exec_checked("systemd-detect-virt | grep -q oracle");
+
     static constexpr auto CACHYOS_V1_REPO_STR = R"(
 [cachyos]
 Include = /etc/pacman.d/cachyos-mirrorlist
@@ -1628,6 +1630,10 @@ Include = /etc/pacman.d/cachyos-v4-mirrorlist
 )";
 
     add_arch_specific_repo("x86_64", "cachyos", isa_levels, CACHYOS_V1_REPO_STR);
+    if (is_oracle_vm) {
+        spdlog::info("Oracle VM detected. skipping ISA specific repos");
+        return;
+    }
     add_arch_specific_repo("x86_64_v3", "cachyos-v3", isa_levels, CACHYOS_V3_REPO_STR);
     add_arch_specific_repo("x86_64_v4", "cachyos-v4", isa_levels, CACHYOS_V4_REPO_STR);
 }
