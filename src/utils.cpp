@@ -1111,33 +1111,6 @@ void install_refind() noexcept {
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|root=.* |root={} |g' /mnt/boot/refind_linux.conf"), mapper_name));
         gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
     }
-    // Figure out microcode
-    const auto& rootsubvol = gucc::utils::exec(R"(findmnt -o TARGET,SOURCE | awk '/\/mnt / {print $2}' | grep -o '\[.*\]' | cut -d '[' -f2 | cut -d ']' -f1 | sed 's/^\///')");
-    const auto& ucode      = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qqs ucode 2>>/tmp/cachyos-install.log"), mountpoint));
-    if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | wc -l"), ucode))) > 1) {
-        // set microcode
-        if (gucc::utils::exec_checked("findmnt -o TARGET,SOURCE | grep -q '/mnt/boot '")) {
-            // there is a separate boot, path to microcode is at partition root
-            gucc::utils::exec(R"(sed -i 's|"$| initrd=/intel-ucode.img initrd=/amd-ucode.img initrd=/initramfs-%v.img"|g' /mnt/boot/refind_linux.conf)");
-        } else if (!rootsubvol.empty()) {
-            // Initramfs is on the root partition and root is on btrfs subvolume
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$| initrd={0}/boot/intel-ucode.img initrd={0}/boot/amd-ucode.img initrd={0}/boot/initramfs-%v.img\"|g' /mnt/boot/refind_linux.conf"), rootsubvol));
-        } else {
-            // Initramfs is on the root partition
-            gucc::utils::exec(R"(sed -i 's|"$| initrd=/boot/intel-ucode.img initrd=/boot/amd-ucode.img initrd=/boot/initramfs-%v.img"|g' /mnt/boot/refind_linux.conf)");
-        }
-    } else {
-        if (gucc::utils::exec_checked("findmnt -o TARGET,SOURCE | grep -q '/mnt/boot '")) {
-            // there is a separate boot, path to microcode is at partition root
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$| initrd=/{}.img initrd=/initramfs-%v.img\"|g' /mnt/boot/refind_linux.conf"), ucode));
-        } else if (!rootsubvol.empty()) {
-            // Initramfs is on the root partition and root is on btrfs subvolume
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$| initrd={0}/boot/{1}.img initrd={0}/boot/initramfs-%v.img\"|g' /mnt/boot/refind_linux.conf"), rootsubvol, ucode));
-        } else {
-            // Initramfs is on the root partition
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$| initrd=/boot/{}.img initrd=/boot/initramfs-%v.img\"|g' /mnt/boot/refind_linux.conf"), ucode));
-        }
-    }
 
     spdlog::info("Created rEFInd config:");
     const auto& refind_conf_content = gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), mountpoint));
