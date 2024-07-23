@@ -69,7 +69,8 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
             mount_option = mount_opts;
         }
 
-        const auto& subvolume_mountpoint = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, subvol.subvolume);
+        // mount at the actual mountpoint where subvolume is going to be mounted after install
+        const auto& subvolume_mountpoint = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, subvol.mountpoint);
 
         // TODO(vnepogodin): refactor create dir and mount into own function
         std::error_code err{};
