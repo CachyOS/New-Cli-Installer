@@ -78,8 +78,15 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
             spdlog::error("Failed to create directories for btrfs subvols mountpoint {}: {}", subvolume_mountpoint, err.message());
             return false;
         }
-        // TODO(vnepogodin): handle exit code
-        utils::exec(fmt::format(FMT_COMPILE("mount -o {} \"{}\" {}"), mount_option, device, subvolume_mountpoint));
+
+        // now mount subvolume
+        const auto& mount_cmd = fmt::format(FMT_COMPILE("mount -o {} \"{}\" {}"), mount_option, device, subvolume_mountpoint);
+
+        spdlog::debug("mounting..: {}", mount_cmd);
+        if (!utils::exec_checked(mount_cmd)) {
+            spdlog::error("Failed to mount subvolume {} mountpoint {} with: {}", subvol.subvolume, subvolume_mountpoint, mount_cmd);
+            return false;
+        }
     }
     return true;
 }
