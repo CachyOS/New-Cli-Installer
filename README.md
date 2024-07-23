@@ -15,7 +15,7 @@ Any compiler which support C++23 standard should work.
 ######
 ## Installing from source
 
-This is tested on Arch Linux, but *any* recent Linux with latest C++20 compiler should do:
+This is tested on Arch Linux, but *any* recent Linux with latest C++23 compiler should do:
 
 ```sh
 sudo pacman -Sy \
