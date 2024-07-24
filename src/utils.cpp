@@ -1088,7 +1088,7 @@ void install_refind() noexcept {
     }
 
     // Mount as rw
-    // sed -i 's/ro\ /rw\ \ /g' /mnt/boot/refind_linux.conf
+    gucc::utils::exec("sed -i 's/ro /rw /g' /mnt/boot/refind_linux.conf");
 
     // Set appropriate rootflags if installed on btrfs subvolume
     if (gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5")) {
