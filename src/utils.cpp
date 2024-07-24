@@ -1083,10 +1083,8 @@ void install_refind() noexcept {
         // Remove autodetect hook
         initcpio.remove_hook("autodetect");
         spdlog::info("'Autodetect' hook was removed");
-    } else if (luks == 1) {
-        gucc::utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
     } else {
-        gucc::utils::exec("refind-install --root /mnt --alldrivers &>>/tmp/cachyos-install.log");
+        gucc::utils::exec("refind-install --root /mnt &>>/tmp/cachyos-install.log");
     }
 
     // Mount as rw
