@@ -102,7 +102,7 @@ bool is_connected() noexcept {
 #ifdef NDEVENV
     /* clang-format off */
     auto r = cpr::Get(cpr::Url{"https://cachyos.org"},
-             cpr::Timeout{1000});
+             cpr::Timeout{15000}); // 15s
     /* clang-format on */
     return cpr::status::is_success(static_cast<std::int32_t>(r.status_code)) || cpr::status::is_redirect(static_cast<std::int32_t>(r.status_code));
 #else
