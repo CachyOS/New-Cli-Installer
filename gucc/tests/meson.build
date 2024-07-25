@@ -69,3 +69,11 @@ executable(
   link_with: [gucc_lib],
   include_directories: [include_directories('../include')],
   install: false)
+
+executable(
+  'test-kernel_params',
+  files('unit-kernel_params.cpp'),
+  dependencies: deps,
+  link_with: [gucc_lib],
+  include_directories: [include_directories('../include')],
+  install: false)

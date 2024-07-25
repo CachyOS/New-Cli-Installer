@@ -42,6 +42,7 @@ jobs:
           ./gucc/tests/test-fstab_gen
           ./gucc/tests/test-crypttab_gen
           ./gucc/tests/test-grub_config_gen
+          ./gucc/tests/test-kernel_params
           ./gucc/tests/test-fetch_file
           ./gucc/tests/test-locale
           ./gucc/tests/test-package_profiles
@@ -93,6 +94,7 @@ jobs:
           ./gucc/tests/test-fstab_gen
           ./gucc/tests/test-crypttab_gen
           ./gucc/tests/test-grub_config_gen
+          ./gucc/tests/test-kernel_params
           ./gucc/tests/test-fetch_file
           ./gucc/tests/test-locale
           ./gucc/tests/test-package_profiles
