@@ -86,7 +86,7 @@ bool exit_done() noexcept {
     return true;
 }
 
-void btrfs_subvolumes() noexcept {
+void btrfs_subvolumes(std::vector<gucc::fs::Partition>& partitions) noexcept {
     const std::vector<std::string> menu_entries = {
         "automatic",
         "manual",
@@ -104,16 +104,6 @@ void btrfs_subvolumes() noexcept {
 
     if (btrfsvols_mode.empty()) { return; }
     /* clang-format on */
-
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    const auto& root_part       = std::get<std::string>(config_data["ROOT_PART"]);
-
-    std::vector<gucc::fs::Partition> partitions{
-        gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = root_part, .mount_opts = mount_opts_info},
-    };
 
     utils::btrfs_create_subvols(partitions, btrfsvols_mode);
 }
@@ -1730,10 +1720,10 @@ void mount_partitions() noexcept {
             auto screen = ScreenInteractive::Fullscreen();
             std::int32_t selected{};
             bool success{};
-            const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+            const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
 
             auto ok_callback = [&] {
-                const auto& src          = partitions[static_cast<std::size_t>(selected)];
+                const auto& src          = partitions_lines[static_cast<std::size_t>(selected)];
                 const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
                 config_data["PARTITION"] = lines[0];
                 config_data["ROOT_PART"] = lines[0];
@@ -1742,7 +1732,7 @@ void mount_partitions() noexcept {
             };
             /* clang-format off */
             static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n"sv;
-            detail::menu_widget(partitions, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+            detail::menu_widget(partitions_lines, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
             if (!success) { return; }
             /* clang-format on */
         }
@@ -1791,7 +1781,7 @@ void mount_partitions() noexcept {
                 const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
                 /* clang-format on */
                 if (create_subvolumes) {
-                    tui::btrfs_subvolumes();
+                    tui::btrfs_subvolumes(partitions);
                 }
                 /* clang-format on */
             }
@@ -1825,10 +1815,10 @@ void mount_partitions() noexcept {
     const auto& partition         = std::get<std::string>(config_data["PARTITION"]);
     while (number_partitions > 0) {
         {
-            const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+            const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
             std::vector<std::string> temp{"Done -"};
-            temp.reserve(partitions.size());
-            std::copy(partitions.begin(), partitions.end(), std::back_inserter(temp));
+            temp.reserve(partitions_lines.size());
+            std::copy(partitions_lines.begin(), partitions_lines.end(), std::back_inserter(temp));
 
             auto screen = ScreenInteractive::Fullscreen();
             std::int32_t selected{};
@@ -1882,6 +1872,15 @@ void mount_partitions() noexcept {
         // Create directory and mount.
         tui::mount_current_partition();
         // utils::delete_partition_in_list(partition);
+
+        // TODO(vnepogodin): parse luks information
+        const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+
+        const auto& part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
+        auto part_struct    = gucc::fs::Partition{.fstype = part_fs, .mountpoint = mount_dev, .device = partition, .mount_opts = mount_opts_info};
+
+        // insert root partition
+        partitions.emplace_back(std::move(part_struct));
 
         // Determine if a separate /boot is used.
         // 0 = no separate boot,

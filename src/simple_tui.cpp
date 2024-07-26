@@ -28,6 +28,7 @@
 #include <fmt/ranges.h>
 
 using namespace ftxui;
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace {
@@ -156,6 +157,8 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
     if (ready_parts.empty()) { spdlog::error("Invalid use! ready parts empty."); return false; }
     /* clang-format on */
 
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+
     std::vector<gucc::fs::Partition> partitions{};
 
     std::string root_part{};
@@ -178,6 +181,10 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
             utils::get_cryptroot();
             utils::get_cryptboot();
             spdlog::info("boot partition: name={}", part_name);
+
+            // TODO(vnepogodin): handle boot partition mount options
+            auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = part_name, .mount_opts = "defaults"s};
+            partitions.emplace_back(std::move(part_struct));
             continue;
         } else if (part_type == "root"sv) {
             config_data["PARTITION"] = part_name;
@@ -192,7 +199,8 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
             // If the root partition is btrfs, offer to create subvolumes
             if (root_fs == "btrfs"sv) {
                 // Check if there are subvolumes already on the btrfs partition
-                const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), part_mountpoint);
+                const auto& mount_dir        = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, part_mountpoint);
+                const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mount_dir);
                 const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
                 const auto& lines_count      = utils::to_int(subvolumes_count);
 
@@ -213,6 +221,9 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
 
             utils::select_filesystem(part_fs);
             tui::mount_current_partition(true);
+
+            auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = part_name, .mount_opts = std::string{mount_opts_info}};
+            partitions.emplace_back(std::move(part_struct));
 
             // Determine if a separate /boot is used.
             // 0 = no separate boot,
