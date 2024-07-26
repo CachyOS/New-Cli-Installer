@@ -10,7 +10,10 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
-#include <filesystem>                              // for exists, is_directory
+#include <algorithm>   // for find_if
+#include <filesystem>  // for exists, is_directory
+#include <ranges>      // for ranges::*
+
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/component_options.hpp>   // for ButtonOption
 #include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
@@ -24,12 +27,39 @@ using namespace std::string_view_literals;
 using namespace std::string_literals;
 namespace fs = std::filesystem;
 
+namespace {
+
+constexpr auto is_root_btrfs_part(const gucc::fs::Partition& part) noexcept -> bool {
+    return (part.mountpoint == "/"sv) && (part.fstype == "btrfs"sv);
+}
+
+// TODO(vnepogodin): refactor that out of this file
+constexpr auto find_root_btrfs_part(auto&& parts) noexcept {
+    return std::ranges::find_if(parts,
+        [](auto&& part) { return is_root_btrfs_part(part); });
+}
+
+}  // namespace
+
 namespace utils {
 
-void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::string_view& mode, bool ignore_note) noexcept {
+void btrfs_create_subvols(std::vector<gucc::fs::Partition>& partitions, const std::string_view& mode, bool ignore_note) noexcept {
     /* clang-format off */
     if (mode.empty()) { return; }
     /* clang-format on */
+
+    const std::vector<gucc::fs::BtrfsSubvolume> default_subvolumes{
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@"s, .mountpoint = "/"s},
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@home"s, .mountpoint = "/home"s},
+        gucc::fs::BtrfsSubvolume{.subvolume = "/@cache"s, .mountpoint = "/var/cache"s},
+        // gucc::fs::BtrfsSubvolume{.subvolume = "/@snapshots"sv, .mountpoint = "/.snapshots"sv},
+    };
+
+    auto root_part = find_root_btrfs_part(partitions);
+    if (root_part == std::ranges::end(partitions)) {
+        spdlog::error("btrfs_create_subvols: unable to find btrfs root part");
+        return;
+    }
 
 #ifdef NDEVENV
     const auto root_mountpoint = "/mnt"sv;
@@ -68,8 +98,11 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
         }
 
         // Create subvolumes
-        if (!gucc::fs::btrfs_create_subvols(subvolumes, disk.root, root_mountpoint, disk.mount_opts)) {
+        if (!gucc::fs::btrfs_create_subvols(subvolumes, root_part->device, root_mountpoint, root_part->mount_opts)) {
             spdlog::error("Failed to create subvolumes");
+        }
+        if (!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes)) {
+            spdlog::error("Failed to append btrfs subvolumes into partition scheme");
         }
         return;
     }
@@ -82,35 +115,35 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
     }
 
     // Create subvolumes automatically
-    const std::vector<gucc::fs::BtrfsSubvolume> subvolumes{
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@"s, .mountpoint = "/"s},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@home"s, .mountpoint = "/home"s},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@cache"s, .mountpoint = "/var/cache"s},
-        // gucc::fs::BtrfsSubvolume{.subvolume = "/@snapshots"sv, .mountpoint = "/.snapshots"sv},
-    };
-    if (!gucc::fs::btrfs_create_subvols(subvolumes, disk.root, root_mountpoint, disk.mount_opts)) {
+    if (!gucc::fs::btrfs_create_subvols(default_subvolumes, root_part->device, root_mountpoint, root_part->mount_opts)) {
         spdlog::error("Failed to create subvolumes automatically");
     }
 
-    gucc::fs::Partition partition{};
-    partition.fstype     = "btrfs"s;
-    partition.mountpoint = subvolumes[0].mountpoint;
-    // partition.uuid_str = "";
-    partition.device     = disk.root;
-    partition.mount_opts = disk.mount_opts;
-    partition.subvolume  = std::make_optional<std::string>(subvolumes[0].subvolume);
-    spdlog::debug("partition: fs='{}';mountpoint='{}';uuid_str='{}';device='{}';mount_opts='{}';subvolume='{}'",
-        partition.fstype, partition.mountpoint, partition.uuid_str, partition.device, partition.mount_opts, *partition.subvolume);
+    if (!gucc::fs::btrfs_append_subvolumes(partitions, default_subvolumes)) {
+        spdlog::error("Failed to append btrfs subvolumes into partition scheme");
+    }
 #else
     spdlog::info("Do we ignore note? {}", ignore_note);
 #endif
+
+    // need to find it again, due to modifying the parts
+    root_part = find_root_btrfs_part(partitions);
+
+    spdlog::debug("root partition: fs='{}';mountpoint='{}';uuid_str='{}';device='{}';mount_opts='{}';subvolume='{}'",
+        root_part->fstype, root_part->mountpoint, root_part->uuid_str, root_part->device, root_part->mount_opts, *root_part->subvolume);
 }
 
-void mount_existing_subvols(const disk_part& disk) noexcept {
+void mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexcept {
+    auto root_part = find_root_btrfs_part(partitions);
+    if (root_part == std::ranges::end(partitions)) {
+        spdlog::error("mount_existing_subvols: unable to find btrfs root part");
+        return;
+    }
+
     // Set mount options
-    const auto& format_name      = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), disk.part));
-    const auto& format_device    = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), format_name, "awk '/disk/ {print $1}'"sv));
-    const auto& rotational_queue = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1"sv);
+    const auto& part_dev_name    = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), root_part->device));
+    const auto& device_name      = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), part_dev_name, "awk '/disk/ {print $1}'"sv));
+    const auto& rotational_queue = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), device_name)) == "1"sv);
 
     std::string fs_opts{};
     if (rotational_queue) {
@@ -144,9 +177,19 @@ void mount_existing_subvols(const disk_part& disk) noexcept {
     // TODO(vnepogodin): add confirmation for selected mountpoint for particular subvolume
 
     // Mount subvolumes
-    if (!gucc::fs::btrfs_mount_subvols(subvolumes, disk.root, root_mountpoint, fs_opts)) {
+    if (!gucc::fs::btrfs_mount_subvols(subvolumes, root_part->device, root_mountpoint, fs_opts)) {
         spdlog::error("Failed to mount btrfs subvolumes");
     }
+
+    if (!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes)) {
+        spdlog::error("Failed to append btrfs subvolumes into partition scheme");
+    }
+
+    // need to find it again, due to modifying the parts
+    root_part = find_root_btrfs_part(partitions);
+
+    spdlog::debug("root partition: fs='{}';mountpoint='{}';uuid_str='{}';device='{}';mount_opts='{}';subvolume='{}'",
+        root_part->fstype, root_part->mountpoint, root_part->uuid_str, root_part->device, root_part->mount_opts, *root_part->subvolume);
 #endif
 }
 

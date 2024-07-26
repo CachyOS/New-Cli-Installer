@@ -1,20 +1,16 @@
 #ifndef DISK_HPP
 #define DISK_HPP
 
+#include "gucc/partition.hpp"
+
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
 namespace utils {
 
-struct disk_part {
-    const std::string_view root{};
-    const std::string_view part{};
-    const std::string_view mount_opts{};
-};
-
-void btrfs_create_subvols(const disk_part& disk, const std::string_view& mode, bool ignore_note = false) noexcept;
-void mount_existing_subvols(const disk_part& disk) noexcept;
+void btrfs_create_subvols(std::vector<gucc::fs::Partition>& partitions, const std::string_view& mode, bool ignore_note = false) noexcept;
+void mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexcept;
 auto lvm_show_vg() noexcept -> std::vector<std::string>;
 
 // ZFS filesystem

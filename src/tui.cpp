@@ -14,6 +14,7 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/mount_partitions.hpp"
+#include "gucc/partition.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
@@ -42,6 +43,7 @@ namespace fs = std::filesystem;
 #include "follow_process_log.hpp"
 #endif
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace tui {
@@ -108,7 +110,12 @@ void btrfs_subvolumes() noexcept {
 
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
     const auto& root_part       = std::get<std::string>(config_data["ROOT_PART"]);
-    utils::btrfs_create_subvols({.root = root_part, .mount_opts = mount_opts_info}, btrfsvols_mode);
+
+    std::vector<gucc::fs::Partition> partitions{
+        gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = root_part, .mount_opts = mount_opts_info},
+    };
+
+    utils::btrfs_create_subvols(partitions, btrfsvols_mode);
 }
 
 // Function will not allow incorrect UUID type for installed system.
@@ -1710,6 +1717,8 @@ void mount_partitions() noexcept {
         utils::delete_partition_in_list(part);
     }*/
 
+    std::vector<gucc::fs::Partition> partitions{};
+
     // check to see if we already have a zfs root mounted
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "zfs"sv) {
@@ -1752,11 +1761,20 @@ void mount_partitions() noexcept {
 
         // utils::delete_partition_in_list(std::get<std::string>(config_data["ROOT_PART"]));
 
+        // TODO(vnepogodin): parse luks information
+        const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+
+        const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
+        auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/"s, .device = root_part, .mount_opts = mount_opts_info};
+
+        // insert root partition
+        partitions.emplace_back(std::move(root_part_struct));
+
         // Extra check if root is on LUKS or lvm
         // get_cryptroot
         // echo "$LUKS_DEV" > /tmp/.luks_dev
         // If the root partition is btrfs, offer to create subvolumes
-        if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "btrfs"sv) {
+        if (part_fs == "btrfs"sv) {
             // Check if there are subvolumes already on the btrfs partition
             const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null"), mountpoint_info);
             const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
@@ -1766,7 +1784,7 @@ void mount_partitions() noexcept {
                 const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes_formated), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
                 // Pre-existing subvolumes and user wants to mount them
                 /* clang-format off */
-                if (existing_subvolumes) { utils::mount_existing_subvols({root_part, part}); }
+                if (existing_subvolumes) { utils::mount_existing_subvols(partitions); }
                 /* clang-format on */
             } else {
                 // No subvolumes present. Make some new ones

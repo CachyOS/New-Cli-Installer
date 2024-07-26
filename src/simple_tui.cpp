@@ -156,6 +156,8 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
     if (ready_parts.empty()) { spdlog::error("Invalid use! ready parts empty."); return false; }
     /* clang-format on */
 
+    std::vector<gucc::fs::Partition> partitions{};
+
     std::string root_part{};
     for (auto&& ready_part : ready_parts) {
         auto part_info = gucc::utils::make_multiline(ready_part, false, '\t');
@@ -193,11 +195,14 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
                 const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), part_mountpoint);
                 const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
                 const auto& lines_count      = utils::to_int(subvolumes_count);
+
+                auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = root_part, .mount_opts = std::string{mount_opts_info}};
+                partitions.emplace_back(std::move(part_struct));
                 if (lines_count > 1) {
                     // Pre-existing subvolumes and user wants to mount them
-                    utils::mount_existing_subvols({root_part, root_part});
+                    utils::mount_existing_subvols(partitions);
                 } else {
-                    utils::btrfs_create_subvols({.root = part_name, .mount_opts = mount_opts_info}, "automatic"sv, true);
+                    utils::btrfs_create_subvols(partitions, "automatic"sv, true);
                 }
             }
             continue;
