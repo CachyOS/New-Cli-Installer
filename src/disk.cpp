@@ -6,6 +6,7 @@
 // import gucc
 #include "gucc/btrfs.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/partition.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
@@ -90,6 +91,16 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
     if (!gucc::fs::btrfs_create_subvols(subvolumes, disk.root, root_mountpoint, disk.mount_opts)) {
         spdlog::error("Failed to create subvolumes automatically");
     }
+
+    gucc::fs::Partition partition{};
+    partition.fstype     = "btrfs"s;
+    partition.mountpoint = subvolumes[0].mountpoint;
+    // partition.uuid_str = "";
+    partition.device     = disk.root;
+    partition.mount_opts = disk.mount_opts;
+    partition.subvolume  = std::make_optional<std::string>(subvolumes[0].subvolume);
+    spdlog::debug("partition: fs='{}';mountpoint='{}';uuid_str='{}';device='{}';mount_opts='{}';subvolume='{}'",
+        partition.fstype, partition.mountpoint, partition.uuid_str, partition.device, partition.mount_opts, *partition.subvolume);
 #else
     spdlog::info("Do we ignore note? {}", ignore_note);
 #endif
@@ -97,11 +108,12 @@ void btrfs_create_subvols([[maybe_unused]] const disk_part& disk, const std::str
 
 void mount_existing_subvols(const disk_part& disk) noexcept {
     // Set mount options
-    const auto& format_name   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), disk.part));
-    const auto& format_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), format_name, "awk '/disk/ {print $1}'"sv));
+    const auto& format_name      = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), disk.part));
+    const auto& format_device    = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), format_name, "awk '/disk/ {print $1}'"sv));
+    const auto& rotational_queue = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1"sv);
 
     std::string fs_opts{};
-    if (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational)"), format_device), true) == "1"sv) {
+    if (rotational_queue) {
         fs_opts = "autodefrag,compress=zlib,noatime,nossd,commit=120"sv;
     } else {
         fs_opts = "compress=lzo,noatime,space_cache,ssd,commit=120"sv;
