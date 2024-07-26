@@ -1777,6 +1777,15 @@ bool parse_config() noexcept {
         return false;
     }
 
+    if (doc.HasMember("fs_name")) {
+        assert(doc["fs_name"].IsString());
+        config_data["FILESYSTEM_NAME"] = std::string{doc["fs_name"].GetString()};
+    } else if (headless_mode) {
+        fmt::print(stderr, "'fs_name' field is required in HEADLESS mode!\n");
+        return false;
+    }
+    auto& root_fstype = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
+
     if (doc.HasMember("partitions")) {
         assert(doc["partitions"].IsArray());
 
@@ -1799,12 +1808,12 @@ bool parse_config() noexcept {
                 fmt::print(stderr, "partition type '{}' is invalid! Valid types: {}.\n", part_type, valid_types);
                 return false;
             }
-            if (!partition_map.HasMember("fs_name") && part_type == "additional"sv) {
+            if (!partition_map.HasMember("fs_name") && (part_type != "root"sv || (root_fstype.empty() && part_type == "root"sv))) {
                 fmt::print(stderr, "required field 'fs_name' is missing for partition type '{}'!\n", part_type);
                 return false;
             }
 
-            std::string part_fs_name{"-"};
+            std::string part_fs_name{root_fstype};
             if (partition_map.HasMember("fs_name")) {
                 assert(partition_map["fs_name"].IsString());
                 part_fs_name = partition_map["fs_name"].GetString();
@@ -1818,14 +1827,6 @@ bool parse_config() noexcept {
         config_data["READY_PARTITIONS"] = std::move(ready_parts);
     } else if (headless_mode) {
         fmt::print(stderr, "'partitions' field is required in HEADLESS mode!\n");
-        return false;
-    }
-
-    if (doc.HasMember("fs_name")) {
-        assert(doc["fs_name"].IsString());
-        config_data["FILESYSTEM_NAME"] = std::string{doc["fs_name"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'fs_name' field is required in HEADLESS mode!\n");
         return false;
     }
 
