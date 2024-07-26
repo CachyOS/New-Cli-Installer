@@ -77,3 +77,11 @@ executable(
   link_with: [gucc_lib],
   include_directories: [include_directories('../include')],
   install: false)
+
+executable(
+  'test-btrfs',
+  files('unit-btrfs.cpp'),
+  dependencies: deps,
+  link_with: [gucc_lib],
+  include_directories: [include_directories('../include')],
+  install: false)
