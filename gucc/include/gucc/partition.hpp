@@ -29,6 +29,8 @@ struct Partition final {
     std::optional<std::string> luks_mapper_name{};
     std::optional<std::string> luks_uuid{};
     std::optional<std::string> luks_passphrase{};
+
+    constexpr bool operator==(const Partition&) const = default;
 };
 
 }  // namespace gucc::fs
