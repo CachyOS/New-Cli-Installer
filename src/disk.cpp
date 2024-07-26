@@ -118,13 +118,13 @@ void btrfs_create_subvols(std::vector<gucc::fs::Partition>& partitions, const st
     if (!gucc::fs::btrfs_create_subvols(default_subvolumes, root_part->device, root_mountpoint, root_part->mount_opts)) {
         spdlog::error("Failed to create subvolumes automatically");
     }
+#else
+    spdlog::info("Do we ignore note? {}", ignore_note);
+#endif
 
     if (!gucc::fs::btrfs_append_subvolumes(partitions, default_subvolumes)) {
         spdlog::error("Failed to append btrfs subvolumes into partition scheme");
     }
-#else
-    spdlog::info("Do we ignore note? {}", ignore_note);
-#endif
 
     // need to find it again, due to modifying the parts
     root_part = find_root_btrfs_part(partitions);
