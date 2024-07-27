@@ -6,6 +6,7 @@
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <vector>       // for vector
 
 namespace gucc::bootloader {
 
@@ -76,6 +77,9 @@ auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_i
 
 // Installs & configures systemd-boot on system
 auto install_systemd_boot(std::string_view root_mountpoint, std::string_view efi_directory, bool is_volume_removable) noexcept -> bool;
+
+// Generate refind config into system
+auto gen_refind_config(const std::vector<std::string>& kernel_params) noexcept -> std::string;
 
 }  // namespace gucc::bootloader
 

@@ -256,4 +256,14 @@ auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_i
     return true;
 }
 
+auto gen_refind_config(const std::vector<std::string>& kernel_params) noexcept -> std::string {
+    const auto& kernel_params_str = utils::join(kernel_params, ' ');
+
+    std::string refind_config{};
+    refind_config += fmt::format(FMT_COMPILE("\"Boot with standard options\"    \"{}\"\n"), kernel_params_str);
+    refind_config += fmt::format(FMT_COMPILE("\"Boot to single-user mode\"    \"{}\" single\n"), kernel_params_str);
+
+    return refind_config;
+}
+
 }  // namespace gucc::bootloader
