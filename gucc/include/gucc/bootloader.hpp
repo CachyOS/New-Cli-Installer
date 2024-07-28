@@ -66,6 +66,14 @@ struct GrubInstallConfig final {
     std::optional<std::string> bootloader_id{};
 };
 
+struct RefindInstallConfig final {
+    bool is_removable{};
+    std::string_view root_mountpoint;
+    std::string_view boot_mountpoint;
+    const std::vector<std::string>& extra_kernel_versions;
+    const std::vector<std::string>& kernel_params;
+};
+
 // Generate grub config into string
 auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string;
 
@@ -80,6 +88,12 @@ auto install_systemd_boot(std::string_view root_mountpoint, std::string_view efi
 
 // Generate refind config into system
 auto gen_refind_config(const std::vector<std::string>& kernel_params) noexcept -> std::string;
+
+// Edit refind config with provided extra kernel strings
+auto refind_write_extra_kern_strings(std::string_view file_path, const std::vector<std::string>& extra_kernel_versions) noexcept -> bool;
+
+// Installs & configures refind on system
+auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -> bool;
 
 }  // namespace gucc::bootloader
 

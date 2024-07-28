@@ -93,3 +93,11 @@ executable(
   link_with: [gucc_lib],
   include_directories: [include_directories('../include')],
   install: false)
+
+executable(
+  'test-refind_extra_kern_strings',
+  files('unit-refind_extra_kern_strings.cpp'),
+  dependencies: deps,
+  link_with: [gucc_lib],
+  include_directories: [include_directories('../include')],
+  install: false)

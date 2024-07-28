@@ -2,6 +2,7 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/kernel_params.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <ranges>  // for ranges::*
@@ -264,6 +265,74 @@ auto gen_refind_config(const std::vector<std::string>& kernel_params) noexcept -
     refind_config += fmt::format(FMT_COMPILE("\"Boot to single-user mode\"    \"{}\" single\n"), kernel_params_str);
 
     return refind_config;
+}
+
+auto refind_write_extra_kern_strings(std::string_view file_path, const std::vector<std::string>& extra_kernel_versions) noexcept -> bool {
+    auto&& file_content = file_utils::read_whole_file(file_path);
+    if (file_content.empty() || extra_kernel_versions.empty()) {
+        return false;
+    }
+
+    std::string&& result = file_content | std::ranges::views::split('\n')
+        | std::ranges::views::transform([&](auto&& rng) {
+              /* clang-format off */
+              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
+              if (line.starts_with("#extra_kernel_version_strings"sv) || line.starts_with("extra_kernel_version_strings"sv)) {
+                  return fmt::format(FMT_COMPILE("extra_kernel_version_strings {}"), utils::join(extra_kernel_versions, ','));
+              }
+              /* clang-format on */
+              return std::string{line.data(), line.size()};
+          })
+        | std::ranges::views::join_with('\n')
+        | std::ranges::to<std::string>();
+
+    return file_utils::create_file_for_overwrite(file_path, result);
+}
+
+auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -> bool {
+    // Get refind install cmd
+    const auto& refind_install_cmd = [](auto&& root_path, bool is_removable_drive) -> std::string {
+        std::string result = fmt::format(FMT_COMPILE("refind-install --root {}"), root_path);
+        if (is_removable_drive) {
+            result += " --alldrivers --yes";
+        }
+        result += " &>>/tmp/cachyos-install.log";
+        return result;
+    }(refind_install_config.root_mountpoint, refind_install_config.is_removable);
+
+    // Install refind on the system
+    if (!utils::exec_checked(refind_install_cmd)) {
+        spdlog::error("Failed to install refind on path {} with: {}", refind_install_config.root_mountpoint, refind_install_cmd);
+        return false;
+    }
+
+    // Adjust mkinitcpio for removable drive
+    if (refind_install_config.is_removable) {
+        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), refind_install_config.root_mountpoint);
+
+        // Remove autodetect hook
+        auto initcpio = detail::Initcpio{initcpio_filename};
+        initcpio.remove_hook("autodetect");
+        spdlog::info("'Autodetect' hook was removed");
+    }
+
+    // Generate refind configuration
+    const auto& refind_config_content = bootloader::gen_refind_config(refind_install_config.kernel_params);
+
+    // Write generated config to system
+    const auto& refind_config_path = fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), refind_install_config.root_mountpoint);
+    if (!file_utils::create_file_for_overwrite(refind_config_path, refind_config_content)) {
+        spdlog::error("Failed to open refind config for writing {}", refind_config_path);
+        return false;
+    }
+
+    // handle extra kernel version strings in {efi boot partition}/EFI/refind/refind.conf
+    const auto& extra_refind_config_path = fmt::format(FMT_COMPILE("{}/EFI/refind/refind.conf"), refind_install_config.boot_mountpoint);
+    if (!bootloader::refind_write_extra_kern_strings(extra_refind_config_path, refind_install_config.extra_kernel_versions)) {
+        spdlog::error("Failed to write extra kernel strings into {}", refind_config_path);
+        return false;
+    }
+    return true;
 }
 
 }  // namespace gucc::bootloader

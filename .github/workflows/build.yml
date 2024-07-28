@@ -48,6 +48,7 @@ jobs:
           ./gucc/tests/test-package_profiles
           ./gucc/tests/test-btrfs
           ./gucc/tests/test-refind_config_gen
+          ./gucc/tests/test-refind_extra_kern_strings
         shell: bash
   build-cmake_withoutdev:
     name: Build with CMake (DEVENV OFF)
@@ -102,6 +103,7 @@ jobs:
           ./gucc/tests/test-package_profiles
           ./gucc/tests/test-btrfs
           ./gucc/tests/test-refind_config_gen
+          ./gucc/tests/test-refind_extra_kern_strings
         shell: bash
   build-meson_withoutdev:
     name: Build with Meson (DEVENV OFF)
