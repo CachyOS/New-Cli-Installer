@@ -1726,6 +1726,8 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
     const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
     root_part_struct.uuid_str  = root_part_uuid;
 
+    utils::dump_partition_to_log(root_part_struct);
+
     // insert root partition
     partitions.emplace_back(std::move(root_part_struct));
 
@@ -1891,6 +1893,8 @@ void mount_partitions() noexcept {
 
         const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
         part_struct.uuid_str  = part_uuid;
+
+        utils::dump_partition_to_log(part_struct);
 
         // insert root partition
         partitions.emplace_back(std::move(part_struct));
