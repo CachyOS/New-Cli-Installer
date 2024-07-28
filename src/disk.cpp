@@ -102,6 +102,10 @@ void btrfs_create_subvols(std::vector<gucc::fs::Partition>& partitions, const st
         if (!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes)) {
             spdlog::error("Failed to append btrfs subvolumes into partition scheme");
         }
+
+        // need to find it again, due to modifying the parts
+        root_part = find_root_btrfs_part(partitions);
+        utils::dump_partition_to_log(*root_part);
         return;
     }
     if (!ignore_note) {
@@ -126,9 +130,7 @@ void btrfs_create_subvols(std::vector<gucc::fs::Partition>& partitions, const st
 
     // need to find it again, due to modifying the parts
     root_part = find_root_btrfs_part(partitions);
-
-    spdlog::debug("root partition: fs='{}';mountpoint='{}';uuid_str='{}';device='{}';mount_opts='{}';subvolume='{}'",
-        root_part->fstype, root_part->mountpoint, root_part->uuid_str, root_part->device, root_part->mount_opts, *root_part->subvolume);
+    utils::dump_partition_to_log(*root_part);
 }
 
 void mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexcept {
@@ -185,9 +187,7 @@ void mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexce
 
     // need to find it again, due to modifying the parts
     root_part = find_root_btrfs_part(partitions);
-
-    spdlog::debug("root partition: fs='{}';mountpoint='{}';uuid_str='{}';device='{}';mount_opts='{}';subvolume='{}'",
-        root_part->fstype, root_part->mountpoint, root_part->uuid_str, root_part->device, root_part->mount_opts, *root_part->subvolume);
+    utils::dump_partition_to_log(*root_part);
 #endif
 }
 
