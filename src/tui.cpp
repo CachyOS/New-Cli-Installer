@@ -730,7 +730,7 @@ void enable_autologin() {
     const auto& content = fmt::format(FMT_COMPILE("\nThis option enables autologin using {}.\n\nProceed?\n"), dm);
     /* clang-format off */
     if (!detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75))) { return; }
-    if (gucc::utils::exec("echo /mnt/home/* | xargs -n1 | wc -l") != "1") { return; }
+    if (gucc::utils::exec("echo /mnt/home/* | xargs -n1 | wc -l") != "1"sv) { return; }
     /* clang-format on */
 
     const auto& autologin_user = gucc::utils::exec("echo /mnt/home/* | cut -d/ -f4");
@@ -1073,7 +1073,7 @@ void make_swap() noexcept {
 
     // Warn user if creating a new swap
     const auto& swap_part = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE '{}' | grep -i 'swap'"), partition));
-    if (swap_part != "swap") {
+    if (swap_part != "swap"sv) {
         const auto& do_swap = detail::yesno_widget(fmt::format(FMT_COMPILE("\nmkswap {}\n"), partition), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
         if (!do_swap) { return; }
