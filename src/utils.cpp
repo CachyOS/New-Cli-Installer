@@ -218,7 +218,7 @@ void dump_partition_to_log(const gucc::fs::Partition& partition) noexcept {
 
     spdlog::debug("[DUMP] {}: fs='{}';mountpoint='{}';uuid_str='{}';device='{}';mount_opts='{}';subvolume='{}'",
         part_tag,
-        partition.fstype, partition.mountpoint, partition.uuid_str, partition.device, partition.mount_opts, *partition.subvolume);
+        partition.fstype, partition.mountpoint, partition.uuid_str, partition.device, partition.mount_opts, (!partition.subvolume.has_value()) ? "(NONE)"sv : *partition.subvolume);
 }
 
 void dump_partitions_to_log(const std::vector<gucc::fs::Partition>& partitions) noexcept {
