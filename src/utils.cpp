@@ -15,6 +15,7 @@
 #include "gucc/hwclock.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/kernel_params.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/package_profiles.hpp"
@@ -1052,62 +1053,95 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
 void install_refind() noexcept {
     spdlog::info("Installing refind...");
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
-    const auto& luks       = std::get<std::int32_t>(config_data["LUKS"]);
-    const auto& luks_dev   = std::get<std::string>(config_data["LUKS_DEV"]);
+    auto* config_instance      = Config::instance();
+    auto& config_data          = config_instance->data();
+    const auto& mountpoint     = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount     = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    const auto& luks           = std::get<std::int32_t>(config_data["LUKS"]);
+    const auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
+    const auto& luks_uuid      = std::get<std::string>(config_data["LUKS_UUID"]);
+    const auto& luks_dev       = std::get<std::string>(config_data["LUKS_DEV"]);
 
     utils::inst_needed("refind");
+
+    // TODO(vnepogodin): make these configurable
+    static constexpr auto default_kernel_params = "quiet zswap.enabled=0 nowatchdog"sv;
+    const std::vector<std::string> extra_kernel_versions{
+        "linux-cachyos", "linux", "linux-cachyos-cfs", "linux-cachyos-bore",
+        "linux-cachyos-tt", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-lts"};
+
+    // TODO(vnepogodin): detection MUST not be done here, and installed must be carried from upper functions
+    // ---- start ---
 
     // Check if the volume is removable. If so, install all drivers
     const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
     const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
     spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
 
-    // Clean the configuration in case there is previous one because the configuration part is not idempotent
-    if (fs::exists("/mnt/boot/refind_linux.conf")) {
-        std::error_code err{};
-        fs::remove("/mnt/boot/refind_linux.conf", err);
+    std::vector<gucc::fs::Partition> partitions{};
+
+    const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint);
+    auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/", .device = fmt::format(FMT_COMPILE("/dev/{}"), root_name)};
+
+    const auto& root_part_uuid = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o UUID '{}' | awk 'NR==2'"), root_part_struct.device));
+    root_part_struct.uuid_str  = root_part_uuid;
+
+    const bool is_removable = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device)) == "1"sv);
+
+    // Set subvol field in case ROOT on btrfs subvolume
+    if ((root_part_struct.fstype == "btrfs"sv) && gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5")) {
+        const auto& root_subvol    = gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g' | sed 's/subvol=//'");
+        root_part_struct.subvolume = root_subvol;
+
+        spdlog::debug("root btrfs subvol := '{}'", *root_part_struct.subvolume);
     }
 
-    // install refind
-    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable) == 1) {
-        gucc::utils::exec("refind-install --root /mnt --alldrivers --yes &>>/tmp/cachyos-install.log");
-
-        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-        auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
-
-        // Remove autodetect hook
-        initcpio.remove_hook("autodetect");
-        spdlog::info("'Autodetect' hook was removed");
-    } else {
-        gucc::utils::exec("refind-install --root /mnt &>>/tmp/cachyos-install.log");
+    if (!luks_root_name.empty()) {
+        root_part_struct.luks_mapper_name = luks_root_name;
+        spdlog::debug("refind: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
     }
-
-    // Mount as rw
-    gucc::utils::exec("sed -i 's/ro /rw /g' /mnt/boot/refind_linux.conf");
-
-    // Set appropriate rootflags if installed on btrfs subvolume
-    if (gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5")) {
-        const auto& rootflag = fmt::format(FMT_COMPILE("rootflags={}"), gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g'"));
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|\"$|\\ {}\"|g' /mnt/boot/refind_linux.conf"), rootflag));
-        spdlog::debug("rootflag := '{}'", rootflag);
+    if (!luks_uuid.empty()) {
+        root_part_struct.luks_uuid = luks_uuid;
+        spdlog::debug("refind: luks_uuid:='{}'", *root_part_struct.luks_uuid);
+    }
+    if (!luks_dev.empty()) {
+        spdlog::debug("refind: luks_dev:='{}'. why we need that here???", luks_dev);
     }
 
     // LUKS and lvm with LUKS
     if (luks == 1) {
-        const auto& mapper_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}'");
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|root=.* |{} root={} |g' /mnt/boot/refind_linux.conf"), luks_dev, mapper_name));
-        gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
+        const auto& luks_mapper_name      = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed 's/\\/dev\\/mapper\\///'");
+        root_part_struct.luks_mapper_name = luks_mapper_name;
+        spdlog::debug("refind: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
     }
     // Lvm without LUKS
     else if (gucc::utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep '/mnt$' | awk '{print $6}'") == "lvm") {
-        const auto& mapper_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}'");
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's|root=.* |root={} |g' /mnt/boot/refind_linux.conf"), mapper_name));
-        gucc::utils::exec("sed -i '/Boot with minimal options/d' /mnt/boot/refind_linux.conf");
+        const auto& luks_mapper_name      = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed 's/\\/dev\\/mapper\\///'");
+        root_part_struct.luks_mapper_name = luks_mapper_name;
+        spdlog::debug("refind: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
+    }
+
+    // insert root partition
+    partitions.emplace_back(std::move(root_part_struct));
+    // ---- end ---
+
+    const auto& kernel_params = gucc::fs::get_kernel_params(partitions, default_kernel_params);
+    if (!kernel_params.has_value()) {
+        spdlog::error("Failed to get kernel params for partition scheme");
+        return;
+    }
+
+    // start systemd-boot install & configuration
+    const gucc::bootloader::RefindInstallConfig refind_install_config{
+        .is_removable          = is_removable,
+        .root_mountpoint       = mountpoint,
+        .boot_mountpoint       = uefi_mount,
+        .extra_kernel_versions = extra_kernel_versions,
+        .kernel_params         = *kernel_params,
+    };
+    if (!gucc::bootloader::install_refind(refind_install_config)) {
+        spdlog::error("Failed to install refind");
+        return;
     }
 
     spdlog::info("Created rEFInd config:");
