@@ -1717,7 +1717,7 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
 
     // utils::delete_partition_in_list(std::get<std::string>(config_data["ROOT_PART"]));
 
-    // TODO(vnepogodin): parse luks information
+    // get options used for mounting the current partition
     const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
 
     const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
@@ -1725,6 +1725,16 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
 
     const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
     root_part_struct.uuid_str  = root_part_uuid;
+
+    // get luks information about the current partition
+    const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
+    const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
+    if (!luks_name.empty()) {
+        root_part_struct.luks_mapper_name = luks_name;
+    }
+    if (!luks_uuid.empty()) {
+        root_part_struct.luks_uuid = luks_uuid;
+    }
 
     utils::dump_partition_to_log(root_part_struct);
 
@@ -1884,8 +1894,10 @@ void mount_partitions() noexcept {
         tui::mount_current_partition();
         // utils::delete_partition_in_list(partition);
 
-        // TODO(vnepogodin): parse luks information
+        // get mountpoint
         const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+        // get options used for mounting the current partition
         const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
 
         const auto& part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
@@ -1893,6 +1905,16 @@ void mount_partitions() noexcept {
 
         const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
         part_struct.uuid_str  = part_uuid;
+
+        // get luks information about the current partition
+        const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
+        const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
+        if (!luks_name.empty()) {
+            part_struct.luks_mapper_name = luks_name;
+        }
+        if (!luks_uuid.empty()) {
+            part_struct.luks_uuid = luks_uuid;
+        }
 
         utils::dump_partition_to_log(part_struct);
 
