@@ -1747,7 +1747,7 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
     // If the root partition is btrfs, offer to create subvolumes
     if (part_fs == "btrfs"sv) {
         // Check if there are subvolumes already on the btrfs partition
-        const auto& subvolumes = fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info);
+        const auto& subvolumes = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info));
         if (!subvolumes.empty()) {
             const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
             // Pre-existing subvolumes and user wants to mount them
