@@ -1083,7 +1083,7 @@ void install_refind() noexcept {
     const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint);
     auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/", .device = fmt::format(FMT_COMPILE("/dev/{}"), root_name)};
 
-    const auto& root_part_uuid = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o UUID '{}' | awk 'NR==2'"), root_part_struct.device));
+    const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
     root_part_struct.uuid_str  = root_part_uuid;
 
     const bool is_removable = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device)) == "1"sv);
