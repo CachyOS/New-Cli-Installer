@@ -1064,6 +1064,8 @@ void install_refind() noexcept {
 
     utils::inst_needed("refind");
 
+    const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
+
     // TODO(vnepogodin): make these configurable
     static constexpr auto default_kernel_params = "quiet zswap.enabled=0 nowatchdog"sv;
     const std::vector<std::string> extra_kernel_versions{
@@ -1135,7 +1137,7 @@ void install_refind() noexcept {
     const gucc::bootloader::RefindInstallConfig refind_install_config{
         .is_removable          = is_removable,
         .root_mountpoint       = mountpoint,
-        .boot_mountpoint       = uefi_mount,
+        .boot_mountpoint       = boot_mountpoint,
         .extra_kernel_versions = extra_kernel_versions,
         .kernel_params         = *kernel_params,
     };
