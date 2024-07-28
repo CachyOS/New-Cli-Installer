@@ -113,7 +113,7 @@ bool is_connected() noexcept {
 
 bool check_root() noexcept {
 #ifdef NDEVENV
-    return (gucc::utils::exec("whoami") == "root");
+    return (gucc::utils::exec("whoami") == "root"sv);
 #else
     return true;
 #endif
@@ -149,8 +149,8 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
         return;
     }
 
-    const bool log_exec_cmds = gucc::utils::safe_getenv("LOG_EXEC_CMDS") == "1";
-    const bool dirty_cmd_run = gucc::utils::safe_getenv("DIRTY_CMD_RUN") == "1";
+    const bool log_exec_cmds = gucc::utils::safe_getenv("LOG_EXEC_CMDS") == "1"sv;
+    const bool dirty_cmd_run = gucc::utils::safe_getenv("DIRTY_CMD_RUN") == "1"sv;
 
     if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
         spdlog::debug("[exec_follow] cmd := {}", vec);
@@ -296,15 +296,15 @@ void auto_partition() noexcept {
     const auto& part_table = gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
 
     // Create partition table if one does not already exist
-    if ((system_info == "BIOS") && (part_table != "msdos")) {
+    if ((system_info == "BIOS"sv) && (part_table != "msdos"sv)) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     }
-    if ((system_info == "UEFI") && (part_table != "gpt")) {
+    if ((system_info == "UEFI"sv) && (part_table != "gpt"sv)) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     }
 
     // Create partitions (same basic partitioning scheme for BIOS and UEFI)
-    if (system_info == "BIOS") {
+    if (system_info == "BIOS"sv) {
         gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
     } else {
         gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
@@ -541,19 +541,19 @@ void find_partitions() noexcept {
 
     // Deal with partitioning schemes appropriate to mounting, lvm, and/or luks.
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    if ((include_part == "part\\|lvm\\|crypt") && (((system_info == "UEFI") && (number_partitions < 2)) || ((system_info == "BIOS") && (number_partitions == 0)))) {
+    if ((include_part == "part\\|lvm\\|crypt"sv) && (((system_info == "UEFI"sv) && (number_partitions < 2)) || ((system_info == "BIOS"sv) && (number_partitions == 0)))) {
         // Deal with incorrect partitioning for main mounting function
         static constexpr auto PartErrBody = "\nBIOS systems require a minimum of one partition (ROOT).\n \nUEFI systems require a minimum of two partitions (ROOT and UEFI).\n";
         tui::detail::msgbox_widget(PartErrBody);
         tui::create_partitions();
         return;
-    } else if (include_part == "part\\|crypt" && (number_partitions == 0)) {
+    } else if (include_part == "part\\|crypt"sv && (number_partitions == 0)) {
         // Ensure there is at least one partition for LVM
         static constexpr auto LvmPartErrBody = "\nThere are no viable partitions available to use Logical Volume Manager.\nA minimum of one is required.\n\nIf LVM is already in use, deactivating it will allow the partition(s)\nused for its Physical Volume(s) to be used again.\n";
         tui::detail::msgbox_widget(LvmPartErrBody);
         tui::create_partitions();
         return;
-    } else if (include_part == "part\\|lvm" && (number_partitions < 2)) {
+    } else if (include_part == "part\\|lvm"sv && (number_partitions < 2)) {
         // Ensure there are at least two partitions for LUKS
         static constexpr auto LuksPartErrBody = "\nA minimum of two partitions are required for encryption:\n\n1. Root (/) - standard or lvm partition types.\n\n2. Boot (/boot or /boot/efi) - standard partition types only\n(except lvm where using BIOS Grub).\n";
         tui::detail::msgbox_widget(LuksPartErrBody);
@@ -591,9 +591,9 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optiona
     const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
 
     const auto& root_filesystem     = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-    const auto& is_root_on_zfs      = (root_filesystem == "zfs");
-    const auto& is_root_on_btrfs    = (root_filesystem == "btrfs");
-    const auto& is_root_on_bcachefs = (root_filesystem == "bcachefs");
+    const auto& is_root_on_zfs      = (root_filesystem == "zfs"sv);
+    const auto& is_root_on_btrfs    = (root_filesystem == "btrfs"sv);
+    const auto& is_root_on_bcachefs = (root_filesystem == "bcachefs"sv);
 
     auto pkg_list = gucc::utils::make_multiline(packages, false, ' ');
 
@@ -1126,7 +1126,7 @@ void install_refind() noexcept {
         spdlog::debug("refind: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
     }
     // Lvm without LUKS
-    else if (gucc::utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep '/mnt$' | awk '{print $6}'") == "lvm") {
+    else if (gucc::utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep '/mnt$' | awk '{print $6}'") == "lvm"sv) {
         const auto& luks_mapper_name      = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed 's/\\/dev\\/mapper\\///'");
         root_part_struct.luks_mapper_name = luks_mapper_name;
         spdlog::debug("refind: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
@@ -1211,11 +1211,11 @@ void uefi_bootloader(const std::string_view& bootloader) noexcept {
     }
 #endif
 
-    if (bootloader == "grub") {
+    if (bootloader == "grub"sv) {
         utils::install_grub_uefi("cachyos");
-    } else if (bootloader == "refind") {
+    } else if (bootloader == "refind"sv) {
         utils::install_refind();
-    } else if (bootloader == "systemd-boot") {
+    } else if (bootloader == "systemd-boot"sv) {
         utils::install_systemd_boot();
     } else {
         spdlog::error("Unknown bootloader!");
@@ -1268,7 +1268,7 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
         gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
 
         // zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-        if (root_part_fs == "btrfs") {
+        if (root_part_fs == "btrfs"sv) {
             grub_config_struct.savedefault = std::nullopt;
         }
 
@@ -1287,7 +1287,7 @@ pacman -S --noconfirm --needed grub os-prober
     } else {
         // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
         const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
-        if (is_root_lvm || (root_part_fs == "btrfs")) {
+        if (is_root_lvm || (root_part_fs == "btrfs"sv)) {
             grub_config_struct.savedefault = std::nullopt;
         }
 
@@ -1362,7 +1362,7 @@ void install_bootloader(const std::string_view& bootloader) noexcept {
     auto* config_instance   = Config::instance();
     auto& config_data       = config_instance->data();
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    if (system_info == "BIOS") {
+    if (system_info == "BIOS"sv) {
         utils::bios_bootloader(bootloader);
     } else {
         utils::uefi_bootloader(bootloader);
@@ -1576,7 +1576,7 @@ void id_system() noexcept {
 
     // Apple System Detection
     const auto& sys_vendor = gucc::utils::exec("cat /sys/class/dmi/id/sys_vendor");
-    if ((sys_vendor == "Apple Inc.") || (sys_vendor == "Apple Computer, Inc.")) {
+    if ((sys_vendor == "Apple Inc."sv) || (sys_vendor == "Apple Computer, Inc."sv)) {
         gucc::utils::exec("modprobe -r -q efivars || true");  // if MAC
     } else {
         gucc::utils::exec("modprobe -q efivarfs");  // all others
@@ -1599,12 +1599,12 @@ void id_system() noexcept {
     // init system
     const auto& init_sys = gucc::utils::exec("cat /proc/1/comm");
     auto& h_init         = std::get<std::string>(config_data["H_INIT"]);
-    if (init_sys == "systemd") {
+    if (init_sys == "systemd"sv) {
         h_init = "systemd";
     }
 
     // TODO(vnepogodin): Test which nw-client is available, including if the service according to $H_INIT is running
-    if (h_init == "systemd" && gucc::utils::exec("systemctl is-active NetworkManager") == "active") {
+    if (h_init == "systemd"sv && gucc::utils::exec("systemctl is-active NetworkManager") == "active"sv) {
         config_data["NW_CMD"] = "nmtui";
     }
 }
@@ -1963,7 +1963,7 @@ bool parse_config() noexcept {
         assert(doc["drivers_type"].IsString());
         drivers_type = doc["drivers_type"].GetString();
 
-        if (drivers_type != "nonfree" && drivers_type != "free") {
+        if (drivers_type != "nonfree"sv && drivers_type != "free"sv) {
             spdlog::error("Unknown value: {}!", drivers_type);
             drivers_type = "free";
         }
@@ -2011,7 +2011,7 @@ void set_lightdm_greeter() {
         const auto& temp = name.path().filename().string();
         if (!temp.starts_with("lightdm-") && !temp.ends_with("-greeter")) { continue; }
         /* clang-format on */
-        if (temp == "lightdm-gtk-greeter") {
+        if (temp == "lightdm-gtk-greeter"sv) {
             continue;
         }
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i -e 's/^.*greeter-session=.*/greeter-session={}/' {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
@@ -2086,7 +2086,7 @@ void final_check() noexcept {
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
     const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
     // Check if bootloader is installed
-    if (system_info == "BIOS") {
+    if (system_info == "BIOS"sv) {
         if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), mountpoint))) {
             checklist += "- Bootloader is not installed\n";
         }
