@@ -4,6 +4,9 @@
 #include "definitions.hpp"
 #include "subprocess.h"
 
+// import gucc
+#include "gucc/partition.hpp"
+
 #include <charconv>     // for from_chars
 #include <functional>   // for function
 #include <optional>     // for optional
@@ -59,6 +62,8 @@ void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
 void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept;
 void dump_to_log(const std::string& data) noexcept;
 void dump_settings_to_log() noexcept;
+void dump_partition_to_log(const gucc::fs::Partition& partition) noexcept;
+void dump_partitions_to_log(const std::vector<gucc::fs::Partition>& partitions) noexcept;
 [[nodiscard]] bool check_root() noexcept;
 void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;

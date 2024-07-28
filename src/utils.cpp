@@ -213,6 +213,20 @@ void dump_settings_to_log() noexcept {
     spdlog::info("Settings:\n{}", out);
 }
 
+void dump_partition_to_log(const gucc::fs::Partition& partition) noexcept {
+    const std::string_view part_tag = (partition.mountpoint == "/"sv) ? "root partition"sv : "partition"sv;
+
+    spdlog::debug("[DUMP] {}: fs='{}';mountpoint='{}';uuid_str='{}';device='{}';mount_opts='{}';subvolume='{}'",
+        part_tag,
+        partition.fstype, partition.mountpoint, partition.uuid_str, partition.device, partition.mount_opts, *partition.subvolume);
+}
+
+void dump_partitions_to_log(const std::vector<gucc::fs::Partition>& partitions) noexcept {
+    for (auto&& partition : partitions) {
+        dump_partition_to_log(partition);
+    }
+}
+
 bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
     fmt::print("{}{}{}\n", color, prompt, RESET);
 
