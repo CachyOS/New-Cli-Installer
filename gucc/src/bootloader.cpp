@@ -22,30 +22,30 @@ using namespace std::string_view_literals;
     if (line.starts_with(needle)) {             \
         return fmt::format(needle "\"{}\"", f); \
     }
-#define CONV_OPT_F(needle, f, default_val)       \
-    if (line.starts_with(needle)) {              \
-        if (f) {                                 \
-            return fmt::format(needle "{}", *f); \
-        }                                        \
-        return {"#" needle default_val};         \
+#define CONV_OPT_F(needle, f, default_val)         \
+    if (line.starts_with(needle)) {                \
+        if (f) {                                   \
+            return fmt::format(needle "{}", *(f)); \
+        }                                          \
+        return {"#" needle default_val};           \
     }
-#define CONV_OPT_F_S(needle, f, default_val)         \
-    if (line.starts_with(needle)) {                  \
-        if (f) {                                     \
-            return fmt::format(needle "\"{}\"", *f); \
-        }                                            \
-        return {"#" needle "\"" default_val "\""};   \
+#define CONV_OPT_F_S(needle, f, default_val)           \
+    if (line.starts_with(needle)) {                    \
+        if (f) {                                       \
+            return fmt::format(needle "\"{}\"", *(f)); \
+        }                                              \
+        return {"#" needle "\"" default_val "\""};     \
     }
 #define CONV_REQ_B(needle, f)                                            \
     if (line.starts_with(needle)) {                                      \
         return fmt::format(needle "{}", convert_boolean_val(needle, f)); \
     }
-#define CONV_OPT_B(needle, f, default_val)                                    \
-    if (line.starts_with(needle)) {                                           \
-        if (f) {                                                              \
-            return fmt::format(needle "{}", convert_boolean_val(needle, *f)); \
-        }                                                                     \
-        return {"#" needle default_val};                                      \
+#define CONV_OPT_B(needle, f, default_val)                                      \
+    if (line.starts_with(needle)) {                                             \
+        if (f) {                                                                \
+            return fmt::format(needle "{}", convert_boolean_val(needle, *(f))); \
+        }                                                                       \
+        return {"#" needle default_val};                                        \
     }
 
 namespace {

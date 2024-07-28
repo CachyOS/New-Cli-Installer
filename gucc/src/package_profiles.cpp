@@ -44,7 +44,7 @@ auto parse_desktop_profiles(std::string_view config_content) noexcept -> std::op
 
     std::vector<DesktopProfile> desktop_profiles{};
 
-    auto desktop_table = netprof_table["desktop"].as_table();
+    const auto* desktop_table = netprof_table["desktop"].as_table();
     for (auto&& [key, value] : *desktop_table) {
         auto value_table = *value.as_table();
         std::vector<std::string> desktop_profile_packages{};
@@ -69,7 +69,7 @@ auto parse_net_profiles(std::string_view config_content) noexcept -> std::option
     parse_toml_array(netprof_table["base-packages"]["desktop"]["packages"].as_array(), net_profiles.base_profiles.base_desktop_packages);
 
     // parse desktop
-    auto desktop_table = netprof_table["desktop"].as_table();
+    const auto* desktop_table = netprof_table["desktop"].as_table();
     for (auto&& [key, value] : *desktop_table) {
         auto value_table = *value.as_table();
         std::vector<std::string> desktop_profile_packages{};
