@@ -835,11 +835,11 @@ void install_base(const std::string_view& packages) noexcept {
 
     const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
     spdlog::info("filesystem type on '{}' := '{}'", mountpoint, filesystem_type);
-    if (filesystem_type == "btrfs") {
+    if (filesystem_type == "btrfs"sv) {
         btrfs_root = 1;
         initcpio.remove_hook("fsck");
         initcpio.append_module("btrfs");
-    } else if (filesystem_type == "zfs") {
+    } else if (filesystem_type == "zfs"sv) {
         zfs_root = 1;
         initcpio.remove_hook("fsck");
         initcpio.insert_hook("filesystems", "zfs");
@@ -956,8 +956,10 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
     grub_install_config_struct.efi_directory = uefi_mount;
     grub_install_config_struct.bootloader_id = bootid;
 
+    const auto& root_part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint);
+
     // grub config changes for zfs root
-    if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "zfs") {
+    if (root_part_fs == "zfs"sv) {
         // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
         gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
 
@@ -981,7 +983,7 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools
     } else {
         // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
         const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
-        if (is_root_lvm || (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs")) {
+        if (is_root_lvm || (root_part_fs == "btrfs"sv)) {
             grub_config_struct.savedefault = std::nullopt;
         }
 
@@ -1233,6 +1235,8 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
     grub_install_config_struct.is_efi     = false;
     grub_install_config_struct.do_recheck = true;
 
+    const auto& root_part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint);
+
     // if /boot is LVM (whether using a seperate /boot mount or not), amend grub
     if ((lvm == 1 && lvm_sep_boot == 0) || lvm_sep_boot == 2) {
         grub_config_struct.preload_modules = fmt::format(FMT_COMPILE("lvm {}"), grub_config_struct.preload_modules);
@@ -1240,7 +1244,7 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
     }
 
     // If root is on btrfs volume, amend grub
-    if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs") {
+    if (root_part_fs == "btrfs"sv) {
         grub_config_struct.savedefault = std::nullopt;
     }
 
@@ -1252,12 +1256,12 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
 
     // grub config changes for zfs root
-    if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "zfs") {
+    if (root_part_fs == "zfs"sv) {
         // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
         gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
 
         // zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-        if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs") {
+        if (root_part_fs == "btrfs") {
             grub_config_struct.savedefault = std::nullopt;
         }
 
@@ -1276,7 +1280,7 @@ pacman -S --noconfirm --needed grub os-prober
     } else {
         // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
         const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
-        if (is_root_lvm || (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs")) {
+        if (is_root_lvm || (root_part_fs == "btrfs")) {
             grub_config_struct.savedefault = std::nullopt;
         }
 
