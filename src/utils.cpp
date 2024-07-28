@@ -1070,7 +1070,7 @@ void install_refind() noexcept {
         "linux-cachyos", "linux", "linux-cachyos-cfs", "linux-cachyos-bore",
         "linux-cachyos-tt", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-lts"};
 
-    // TODO(vnepogodin): detection MUST not be done here, and installed must be carried from upper functions
+    // TODO(vnepogodin): detection MUST NOT be done here, and instead MUST be carried from upper functions
     // ---- start ---
 
     // Check if the volume is removable. If so, install all drivers
@@ -1131,7 +1131,7 @@ void install_refind() noexcept {
         return;
     }
 
-    // start systemd-boot install & configuration
+    // start refind install & configuration
     const gucc::bootloader::RefindInstallConfig refind_install_config{
         .is_removable          = is_removable,
         .root_mountpoint       = mountpoint,
