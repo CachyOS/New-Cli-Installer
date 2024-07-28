@@ -10,9 +10,8 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
-#include <algorithm>   // for find_if
-#include <filesystem>  // for exists, is_directory
-#include <ranges>      // for ranges::*
+#include <algorithm>  // for find_if
+#include <ranges>     // for ranges::*
 
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/component_options.hpp>   // for ButtonOption
@@ -25,7 +24,6 @@
 
 using namespace std::string_view_literals;
 using namespace std::string_literals;
-namespace fs = std::filesystem;
 
 namespace {
 
@@ -270,7 +268,7 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
 
     // insert zpool name into config
     auto zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
-    zfs_zpool_names.push_back(pool_name.data());
+    zfs_zpool_names.emplace_back(pool_name.data());
 
     return true;
 }
