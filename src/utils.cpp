@@ -1046,9 +1046,16 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
     if (!as_default) { return; }
     /* clang-format on */
 
-    utils::arch_chroot(fmt::format(FMT_COMPILE("mkdir -p {}/EFI/boot"), uefi_mount), false);
-    spdlog::info("Grub efi binary status:(EFI/cachyos/grubx64.efi): {}", fs::exists(fmt::format(FMT_COMPILE("{0}/EFI/cachyos/grubx64.efi"), uefi_mount)));
-    utils::arch_chroot(fmt::format(FMT_COMPILE("cp -r {0}/EFI/cachyos/grubx64.efi {0}/EFI/boot/bootx64.efi"), uefi_mount), false);
+    // create efi directories
+    const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
+    fs::create_directories(fmt::format(FMT_COMPILE("{}/EFI/boot"), boot_mountpoint), err);
+
+    const auto& efi_cachyos_grub_file = fmt::format(FMT_COMPILE("{}/EFI/cachyos/grubx64.efi"), boot_mountpoint);
+    spdlog::info("Grub efi binary status:(EFI/cachyos/grubx64.efi): {}", fs::exists(efi_cachyos_grub_file));
+
+    // copy cachyos efi as default efi
+    const auto& default_efi_grub_file = fmt::format(FMT_COMPILE("{}/EFI/boot/bootx64.efi"), boot_mountpoint);
+    fs::copy_file(efi_cachyos_grub_file, default_efi_grub_file, fs::copy_options::overwrite_existing);
 #endif
 }
 
