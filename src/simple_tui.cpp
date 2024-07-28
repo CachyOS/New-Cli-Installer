@@ -196,17 +196,31 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
             utils::select_filesystem(root_fs);
             tui::mount_current_partition(true);
 
+            auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = root_part, .mount_opts = std::string{mount_opts_info}};
+
+            const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
+            part_struct.uuid_str  = part_uuid;
+
+            // get luks information about the current partition
+            const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
+            const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
+            if (!luks_name.empty()) {
+                part_struct.luks_mapper_name = luks_name;
+            }
+            if (!luks_uuid.empty()) {
+                part_struct.luks_uuid = luks_uuid;
+            }
+
+            utils::dump_partition_to_log(part_struct);
+
+            partitions.emplace_back(std::move(part_struct));
+
             // If the root partition is btrfs, offer to create subvolumes
             if (root_fs == "btrfs"sv) {
                 // Check if there are subvolumes already on the btrfs partition
-                const auto& mount_dir        = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, part_mountpoint);
-                const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mount_dir);
-                const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
-                const auto& lines_count      = utils::to_int(subvolumes_count);
-
-                auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = root_part, .mount_opts = std::string{mount_opts_info}};
-                partitions.emplace_back(std::move(part_struct));
-                if (lines_count > 1) {
+                const auto& mount_dir  = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, part_mountpoint);
+                const auto& subvolumes = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mount_dir));
+                if (!subvolumes.empty()) {
                     // Pre-existing subvolumes and user wants to mount them
                     utils::mount_existing_subvols(partitions);
                 } else {
@@ -223,6 +237,22 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
             tui::mount_current_partition(true);
 
             auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = part_name, .mount_opts = std::string{mount_opts_info}};
+
+            const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
+            part_struct.uuid_str  = part_uuid;
+
+            // get luks information about the current partition
+            const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
+            const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
+            if (!luks_name.empty()) {
+                part_struct.luks_mapper_name = luks_name;
+            }
+            if (!luks_uuid.empty()) {
+                part_struct.luks_uuid = luks_uuid;
+            }
+
+            utils::dump_partition_to_log(part_struct);
+
             partitions.emplace_back(std::move(part_struct));
 
             // Determine if a separate /boot is used.
@@ -230,10 +260,11 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
             // 1 = separate non-lvm boot,
             // 2 = separate lvm boot. For Grub configuration
             if (part_mountpoint == "/boot"sv) {
-                const auto& cmd             = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep \"lvm\""), part_name);
-                const auto& cmd_out         = gucc::utils::exec(cmd);
                 config_data["LVM_SEP_BOOT"] = 1;
-                if (!cmd_out.empty()) {
+
+                const auto& cmd        = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep -q 'lvm'"), part_name);
+                const bool is_boot_lvm = gucc::utils::exec_checked(cmd);
+                if (is_boot_lvm) {
                     config_data["LVM_SEP_BOOT"] = 2;
                 }
             }
