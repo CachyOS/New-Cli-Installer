@@ -53,7 +53,7 @@ auto select_filesystem() noexcept -> std::string {
     bool success{};
     auto ok_callback = [&] {
         const auto& file_sys = menu_entries[static_cast<std::size_t>(selected)];
-        /*if (file_sys == "zfs") {
+        /*if (file_sys == "zfs"sv) {
             // NOTE: We don't have automatic zfs partitioning,
             // in HEADLESS mode.
             tui::zfs_auto();
@@ -404,7 +404,7 @@ void menu_simple() noexcept {
     }
 
     // If the root partition is btrfs, offer to create subvolumes
-    /*if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs") {
+    /*if (gucc::fs::utils::get_mountpoint_fs(mountpoint) == "btrfs"sv) {
         // Check if there are subvolumes already on the btrfs partition
         const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list \"{}\" 2>/dev/null"), mountpoint);
         const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
