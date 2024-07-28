@@ -1896,11 +1896,12 @@ void mount_partitions() noexcept {
 
         // get mountpoint
         const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+        const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, mount_dev);
 
         // get options used for mounting the current partition
         const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
 
-        const auto& part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
+        const auto& part_fs = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
         auto part_struct    = gucc::fs::Partition{.fstype = part_fs, .mountpoint = mount_dev, .device = partition, .mount_opts = mount_opts_info};
 
         const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
