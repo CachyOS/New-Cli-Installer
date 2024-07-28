@@ -1670,6 +1670,93 @@ void make_esp() noexcept {
     confirm_mount(path_formatted);
 }
 
+auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    // check to see if we already have a zfs root mounted
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "zfs"sv) {
+        detail::infobox_widget("\nUsing ZFS root on \'/\'\n"sv);
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return true;
+    }
+
+    // Identify and mount root
+    {
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+
+        auto ok_callback = [&] {
+            const auto& src          = partitions_lines[static_cast<std::size_t>(selected)];
+            const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
+            config_data["PARTITION"] = lines[0];
+            config_data["ROOT_PART"] = lines[0];
+            success                  = true;
+            screen.ExitLoopClosure()();
+        };
+        /* clang-format off */
+        static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n"sv;
+        detail::menu_widget(partitions_lines, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+        if (!success) { return false; }
+        /* clang-format on */
+    }
+    const auto& root_part = std::get<std::string>(config_data["ROOT_PART"]);
+    const auto& part      = std::get<std::string>(config_data["PARTITION"]);
+    spdlog::info("partition: {}", part);
+
+    // Reset the mountpoint variable, in case this is the second time through this menu and old state is still around
+    config_data["MOUNT"] = "";
+
+    // Format with FS (or skip) -> // Make the directory and mount. Also identify LUKS and/or LVM
+    /* clang-format off */
+    if (!tui::select_filesystem()) { return false; }
+    if (!tui::mount_current_partition()) { return false; }
+    /* clang-format on */
+
+    // utils::delete_partition_in_list(std::get<std::string>(config_data["ROOT_PART"]));
+
+    // TODO(vnepogodin): parse luks information
+    const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+
+    const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
+    auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/"s, .device = root_part, .mount_opts = mount_opts_info};
+
+    const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
+    root_part_struct.uuid_str  = root_part_uuid;
+
+    // insert root partition
+    partitions.emplace_back(std::move(root_part_struct));
+
+    // Extra check if root is on LUKS or lvm
+    // get_cryptroot
+    // echo "$LUKS_DEV" > /tmp/.luks_dev
+    // If the root partition is btrfs, offer to create subvolumes
+    if (part_fs == "btrfs"sv) {
+        // Check if there are subvolumes already on the btrfs partition
+        const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null"), mountpoint_info);
+        const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
+        const auto& lines_count      = utils::to_int(subvolumes_count);
+        if (lines_count > 1) {
+            const auto& subvolumes_formated = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | cut -d' ' -f9"), subvolumes));
+            const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes_formated), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+            // Pre-existing subvolumes and user wants to mount them
+            /* clang-format off */
+            if (existing_subvolumes) { utils::mount_existing_subvols(partitions); }
+            /* clang-format on */
+        } else {
+            // No subvolumes present. Make some new ones
+            const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+            /* clang-format off */
+            if (create_subvolumes) { tui::btrfs_subvolumes(partitions); }
+            /* clang-format on */
+        }
+    }
+    return true;
+}
+
 void mount_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -1709,87 +1796,10 @@ void mount_partitions() noexcept {
 
     std::vector<gucc::fs::Partition> partitions{};
 
-    // check to see if we already have a zfs root mounted
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "zfs"sv) {
-        detail::infobox_widget("\nUsing ZFS root on \'/\'\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-    } else {
-        // Identify and mount root
-        {
-            auto screen = ScreenInteractive::Fullscreen();
-            std::int32_t selected{};
-            bool success{};
-            const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-
-            auto ok_callback = [&] {
-                const auto& src          = partitions_lines[static_cast<std::size_t>(selected)];
-                const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
-                config_data["PARTITION"] = lines[0];
-                config_data["ROOT_PART"] = lines[0];
-                success                  = true;
-                screen.ExitLoopClosure()();
-            };
-            /* clang-format off */
-            static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n"sv;
-            detail::menu_widget(partitions_lines, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-            if (!success) { return; }
-            /* clang-format on */
-        }
-        const auto& root_part = std::get<std::string>(config_data["ROOT_PART"]);
-        const auto& part      = std::get<std::string>(config_data["PARTITION"]);
-        spdlog::info("partition: {}", part);
-
-        // Reset the mountpoint variable, in case this is the second time through this menu and old state is still around
-        config_data["MOUNT"] = "";
-
-        // Format with FS (or skip) -> // Make the directory and mount. Also identify LUKS and/or LVM
-        /* clang-format off */
-        if (!tui::select_filesystem()) { return; }
-        if (!tui::mount_current_partition()) { return; }
-        /* clang-format on */
-
-        // utils::delete_partition_in_list(std::get<std::string>(config_data["ROOT_PART"]));
-
-        // TODO(vnepogodin): parse luks information
-        const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-
-        const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-        auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/"s, .device = root_part, .mount_opts = mount_opts_info};
-
-        const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
-        root_part_struct.uuid_str  = root_part_uuid;
-
-        // insert root partition
-        partitions.emplace_back(std::move(root_part_struct));
-
-        // Extra check if root is on LUKS or lvm
-        // get_cryptroot
-        // echo "$LUKS_DEV" > /tmp/.luks_dev
-        // If the root partition is btrfs, offer to create subvolumes
-        if (part_fs == "btrfs"sv) {
-            // Check if there are subvolumes already on the btrfs partition
-            const auto& subvolumes       = fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null"), mountpoint_info);
-            const auto& subvolumes_count = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | wc -l"), subvolumes));
-            const auto& lines_count      = utils::to_int(subvolumes_count);
-            if (lines_count > 1) {
-                const auto& subvolumes_formated = gucc::utils::exec(fmt::format(FMT_COMPILE("{} | cut -d' ' -f9"), subvolumes));
-                const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes_formated), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-                // Pre-existing subvolumes and user wants to mount them
-                /* clang-format off */
-                if (existing_subvolumes) { utils::mount_existing_subvols(partitions); }
-                /* clang-format on */
-            } else {
-                // No subvolumes present. Make some new ones
-                const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-                /* clang-format on */
-                if (create_subvolumes) {
-                    tui::btrfs_subvolumes(partitions);
-                }
-                /* clang-format on */
-            }
-        }
-    }
+    // Let's mount ROOT partition (or skip and exit out)
+    /* clang-format off */
+    if (!tui::mount_root_partition(partitions)) { return; }
+    /* clang-format on */
 
     // We need to remove legacy zfs partitions before make_swap since they can't hold swap
     // local zlegacy
@@ -1877,6 +1887,7 @@ void mount_partitions() noexcept {
         // utils::delete_partition_in_list(partition);
 
         // TODO(vnepogodin): parse luks information
+        const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
         const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
 
         const auto& part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
