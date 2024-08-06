@@ -1,8 +1,8 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/file_utils.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/logger.hpp"
-
-#include <cassert>
 
 #include <filesystem>
 #include <fstream>
@@ -42,7 +42,8 @@ inline auto filtered_res(std::string_view content) noexcept -> std::string {
     return result + '\n';
 }
 
-int main() {
+TEST_CASE("locale test")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
@@ -56,21 +57,23 @@ int main() {
     static constexpr std::string_view dest_locale_gen{"/tmp/test-locale-unittest/etc/locale.gen"};
     static constexpr std::string_view dest_locale_conf{"/tmp/test-locale-unittest/etc/locale.conf"};
 
-    fs::create_directories(folder_path);
+    SECTION("set test locale")
+    {
+        fs::create_directories(folder_path);
+        fs::copy_file(GUCC_TEST_DIR "/files/locale.gen", dest_locale_gen, fs::copy_options::overwrite_existing);
 
-    fs::copy_file(GUCC_TEST_DIR "/files/locale.gen", dest_locale_gen, fs::copy_options::overwrite_existing);
+        REQUIRE(gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
+        auto locale_conf_content = gucc::file_utils::read_whole_file(dest_locale_conf);
+        REQUIRE_EQ(locale_conf_content, LOCALE_CONF_TEST);
 
-    // set test locale.
-    assert(gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
+        auto locale_gen_content = filtered_res(gucc::file_utils::read_whole_file(dest_locale_gen));
+        REQUIRE_EQ(locale_gen_content, LOCALE_GEN_TEST);
 
-    auto locale_conf_content = gucc::file_utils::read_whole_file(dest_locale_conf);
-    assert(locale_conf_content == LOCALE_CONF_TEST);
-
-    auto locale_gen_content = filtered_res(gucc::file_utils::read_whole_file(dest_locale_gen));
-    assert(locale_gen_content == LOCALE_GEN_TEST);
-
-    // Cleanup.
-    fs::remove_all(folder_testpath);
-
-    assert(!gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
+        // Cleanup.
+        fs::remove_all(folder_testpath);
+    }
+    SECTION("set locale at invalid file path")
+    {
+        REQUIRE(!gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
+    }
 }

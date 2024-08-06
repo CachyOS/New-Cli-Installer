@@ -1,7 +1,7 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/crypttab.hpp"
 #include "gucc/logger.hpp"
-
-#include <cassert>
 
 #include <string>
 #include <string_view>
@@ -32,7 +32,8 @@ static constexpr auto CRYPTTAB_UNENCR_BOOT_TEST = R"(# Configuration for encrypt
 luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f     none
 )"sv;
 
-int main() {
+TEST_CASE("crypttab gen test")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
@@ -44,7 +45,7 @@ int main() {
     const auto& btrfs_mountopts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s;
     const auto& xfs_mountopts   = "defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota"s;
 
-    // btrfs with subvolumes
+    SECTION("btrfs with subvolumes")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = uuid_str, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@"s},
@@ -60,18 +61,18 @@ int main() {
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s, .luks_mapper_name = "", .luks_uuid = ""},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
-        assert(crypttab_content == CRYPTTAB_EMPTY_TEST);
+        REQUIRE(crypttab_content == CRYPTTAB_EMPTY_TEST);
     }
-    // basic xfs
+    SECTION("basic xfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = xfs_mountopts, .luks_mapper_name = ""},
             gucc::fs::Partition{.fstype = "fat16"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s, .luks_uuid = ""},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
-        assert(crypttab_content == CRYPTTAB_EMPTY_TEST);
+        REQUIRE(crypttab_content == CRYPTTAB_EMPTY_TEST);
     }
-    // luks xfs
+    SECTION("luks xfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = xfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
@@ -79,9 +80,9 @@ int main() {
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
-        assert(crypttab_content == CRYPTTAB_UNENCR_BOOT_TEST);
+        REQUIRE(crypttab_content == CRYPTTAB_UNENCR_BOOT_TEST);
     }
-    // zfs
+    SECTION("zfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "zfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s},
@@ -90,9 +91,9 @@ int main() {
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
-        assert(crypttab_content == CRYPTTAB_EMPTY_TEST);
+        REQUIRE(crypttab_content == CRYPTTAB_EMPTY_TEST);
     }
-    // luks btrfs with subvolumes
+    SECTION("luks btrfs with subvolumes")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
@@ -101,9 +102,9 @@ int main() {
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
-        assert(crypttab_content == CRYPTTAB_UNENCR_BOOT_TEST);
+        REQUIRE(crypttab_content == CRYPTTAB_UNENCR_BOOT_TEST);
     }
-    // luks btrfs with subvolumes {shuffled}
+    SECTION("luks btrfs with subvolumes {shuffled}")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@home"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
@@ -112,7 +113,7 @@ int main() {
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@cache"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
-        assert(crypttab_content == CRYPTTAB_UNENCR_BOOT_TEST);
+        REQUIRE(crypttab_content == CRYPTTAB_UNENCR_BOOT_TEST);
     }
 
     /*

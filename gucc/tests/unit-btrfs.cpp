@@ -1,7 +1,7 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/btrfs.hpp"
 #include "gucc/logger.hpp"
-
-#include <cassert>
 
 #include <string>
 #include <string_view>
@@ -13,7 +13,8 @@
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
-int main() {
+TEST_CASE("BTRFS test")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
@@ -28,7 +29,7 @@ int main() {
         // gucc::fs::BtrfsSubvolume{.subvolume = "/@snapshots"sv, .mountpoint = "/.snapshots"sv},
     };
 
-    // btrfs with subvolumes
+    SECTION("btrfs with subvolumes")
     {
         const std::vector<gucc::fs::Partition> expected_partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@"s},
@@ -40,11 +41,11 @@ int main() {
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s},
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
-        assert(gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        assert(partitions.size() == 4);
-        assert(partitions == expected_partitions);
+        REQUIRE(gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
+        REQUIRE(partitions.size() == 4);
+        REQUIRE(partitions == expected_partitions);
     }
-    // invalid btrfs with subvolumes
+    SECTION("invalid btrfs with subvolumes")
     {
         const std::vector<gucc::fs::Partition> expected_partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@home"s},
@@ -56,11 +57,11 @@ int main() {
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@cache"s},
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
-        assert(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        assert(partitions.size() == 3);
-        assert(partitions == expected_partitions);
+        REQUIRE(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
+        REQUIRE(partitions.size() == 3);
+        REQUIRE(partitions == expected_partitions);
     }
-    // invalid (without root part) btrfs with subvolumes
+    SECTION("invalid (without root part) btrfs with subvolumes")
     {
         const std::vector<gucc::fs::Partition> expected_partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@home"s},
@@ -72,11 +73,11 @@ int main() {
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@cache"s},
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
-        assert(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        assert(partitions.size() == 3);
-        assert(partitions == expected_partitions);
+        REQUIRE(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
+        REQUIRE(partitions.size() == 3);
+        REQUIRE(partitions == expected_partitions);
     }
-    // btrfs without subvolumes
+    SECTION("btrfs without subvolumes")
     {
         const std::vector<gucc::fs::Partition> expected_partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s},
@@ -86,11 +87,11 @@ int main() {
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s},
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
-        assert(gucc::fs::btrfs_append_subvolumes(partitions, {}));
-        assert(partitions.size() == 2);
-        assert(partitions == expected_partitions);
+        REQUIRE(gucc::fs::btrfs_append_subvolumes(partitions, {}));
+        REQUIRE(partitions.size() == 2);
+        REQUIRE(partitions == expected_partitions);
     }
-    // luks xfs
+    SECTION("luks xfs")
     {
         const std::vector<gucc::fs::Partition> expected_partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota"s, .luks_mapper_name = "luks_device"s, .luks_uuid = "00e1b836-81b6-433f-83ca-0fd373e3cd50"s},
@@ -102,10 +103,10 @@ int main() {
             gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .uuid_str = ""s, .device = "/dev/nvme0n1p3"s, .mount_opts = "defaults,noatime"s},
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
-        assert(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        assert(partitions == expected_partitions);
+        REQUIRE(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
+        REQUIRE(partitions == expected_partitions);
     }
-    // valid zfs
+    SECTION("valid zfs")
     {
         const std::vector<gucc::fs::Partition> expected_partitions{
             gucc::fs::Partition{.fstype = "zfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s},
@@ -119,10 +120,10 @@ int main() {
             gucc::fs::Partition{.fstype = "zfs"s, .mountpoint = "/var/cache"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s},
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
-        assert(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        assert(partitions == expected_partitions);
+        REQUIRE(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
+        REQUIRE(partitions == expected_partitions);
     }
-    // luks btrfs with subvolumes
+    SECTION("luks btrfs with subvolumes")
     {
         const std::vector<gucc::fs::Partition> expected_partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
@@ -134,8 +135,8 @@ int main() {
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
-        assert(gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        assert(partitions.size() == 4);
-        assert(partitions == expected_partitions);
+        REQUIRE(gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
+        REQUIRE(partitions.size() == 4);
+        REQUIRE(partitions == expected_partitions);
     }
 }

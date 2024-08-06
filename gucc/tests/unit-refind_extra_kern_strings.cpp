@@ -1,8 +1,8 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/bootloader.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/logger.hpp"
-
-#include <cassert>
 
 #include <filesystem>
 #include <fstream>
@@ -29,7 +29,8 @@ inline auto filtered_res(std::string_view content) noexcept -> std::string {
     return result + '\n';
 }
 
-int main() {
+TEST_CASE("refind extra kern strings test")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
@@ -40,40 +41,42 @@ int main() {
     // prepare test data
     static constexpr std::string_view file_testpath{"/tmp/test-extrakernverstr-refind.conf"};
     static constexpr std::string_view file_sample_path{GUCC_TEST_DIR "/files/refind.conf-sample"};
-    fs::copy_file(file_sample_path, file_testpath, fs::copy_options::overwrite_existing);
 
-    // test valid extkernstr with valid file.
     const std::vector<std::string> extra_kernel_strings{"linux-lts", "linux", "linux-zen"};
-    assert(gucc::bootloader::refind_write_extra_kern_strings(file_testpath, extra_kernel_strings));
 
-    auto refind_conf_content = gucc::file_utils::read_whole_file(file_testpath);
-    auto filtered_content    = filtered_res(refind_conf_content);
+    SECTION("test valid extkernstr with valid file")
+    {
+        fs::copy_file(file_sample_path, file_testpath, fs::copy_options::overwrite_existing);
 
-    // Cleanup.
-    fs::remove(file_testpath);
+        REQUIRE(gucc::bootloader::refind_write_extra_kern_strings(file_testpath, extra_kernel_strings));
 
-    assert(filtered_content == REFIND_CONF_TEST);
+        auto refind_conf_content = gucc::file_utils::read_whole_file(file_testpath);
+        auto filtered_content    = filtered_res(refind_conf_content);
 
-    // test empty kernel strings with valid file.
-    fs::copy_file(file_sample_path, file_testpath, fs::copy_options::overwrite_existing);
-    assert(!gucc::bootloader::refind_write_extra_kern_strings(file_testpath, {}));
-    auto sample_conf_content = gucc::file_utils::read_whole_file(file_testpath);
-    refind_conf_content      = gucc::file_utils::read_whole_file(file_testpath);
-    assert(refind_conf_content == sample_conf_content);
+        // Cleanup.
+        fs::remove(file_testpath);
 
-    // Cleanup.
-    fs::remove(file_testpath);
+        REQUIRE_EQ(filtered_content, REFIND_CONF_TEST);
+    }
+    SECTION("test empty kernel strings with valid file")
+    {
+        fs::copy_file(file_sample_path, file_testpath, fs::copy_options::overwrite_existing);
 
-    // test empty file
-    std::ofstream test_file{file_testpath.data()};
-    assert(test_file.is_open());
+        REQUIRE(!gucc::bootloader::refind_write_extra_kern_strings(file_testpath, {}));
+        auto sample_conf_content = gucc::file_utils::read_whole_file(file_testpath);
+        auto refind_conf_content = gucc::file_utils::read_whole_file(file_testpath);
+        REQUIRE_EQ(refind_conf_content, sample_conf_content);
 
-    // setup file
-    test_file << "";
-    test_file.close();
+        // Cleanup.
+        fs::remove(file_testpath);
+    }
+    SECTION("test empty file")
+    {
+        REQUIRE(gucc::file_utils::create_file_for_overwrite(file_testpath, ""));
 
-    assert(!gucc::bootloader::refind_write_extra_kern_strings(file_testpath, extra_kernel_strings));
+        REQUIRE(!gucc::bootloader::refind_write_extra_kern_strings(file_testpath, extra_kernel_strings));
 
-    // Cleanup.
-    fs::remove(file_testpath);
+        // Cleanup.
+        fs::remove(file_testpath);
+    }
 }

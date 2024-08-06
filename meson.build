@@ -67,6 +67,7 @@ ranges = dependency('range-v3', version : ['>=0.11.0'], fallback : ['range-v3', 
 tomlplusplus = dependency('tomlplusplus', version : ['>=3.4.0'], fallback : ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['compile_library=false'])
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 cpr = dependency('cpr', version : ['>=1.10.0'], fallback : ['cpr', 'cpr_dep'])
+doctest = dependency('doctest', version : ['>=2.4.11'], fallback : ['doctest', 'doctest_dep'])
 
 src_files = files(
     'src/view.hpp',

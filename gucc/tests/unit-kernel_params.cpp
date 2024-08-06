@@ -1,7 +1,7 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/kernel_params.hpp"
 #include "gucc/logger.hpp"
-
-#include <cassert>
 
 #include <string>
 #include <string_view>
@@ -13,7 +13,8 @@
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
-int main() {
+TEST_CASE("kernel params get test")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
@@ -23,7 +24,7 @@ int main() {
 
     static constexpr auto DEFAULT_KERNEL_PARAMS = "quiet splash"sv;
 
-    // btrfs with subvolumes
+    SECTION("btrfs with subvolumes")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@"s},
@@ -32,40 +33,40 @@ int main() {
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(kernel_params.has_value());
-        assert(kernel_params->size() == 5);
-        assert((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
+        REQUIRE(kernel_params.has_value());
+        REQUIRE(kernel_params->size() == 5);
+        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
     }
-    // invalid xfs (empty uuid)
+    SECTION("invalid xfs (empty uuid)")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota"s},
             gucc::fs::Partition{.fstype = "fat16"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(!kernel_params.has_value());
+        REQUIRE(!kernel_params.has_value());
     }
-    // invalid xfs (without root partition)
+    SECTION("invalid xfs (without root partition)")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/home"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota"s},
             gucc::fs::Partition{.fstype = "fat16"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(!kernel_params.has_value());
+        REQUIRE(!kernel_params.has_value());
     }
-    // basic xfs
+    SECTION("basic xfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota"s},
             gucc::fs::Partition{.fstype = "fat16"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(kernel_params.has_value());
-        assert(kernel_params->size() == 4);
-        assert((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
+        REQUIRE(kernel_params.has_value());
+        REQUIRE(kernel_params->size() == 4);
+        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
     }
-    // swap xfs
+    SECTION("swap xfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota"s},
@@ -73,11 +74,11 @@ int main() {
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(kernel_params.has_value());
-        assert(kernel_params->size() == 5);
-        assert((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "resume=UUID=59848b1b-c6be-48f4-b3e1-48179ea72dec"}));
+        REQUIRE(kernel_params.has_value());
+        REQUIRE(kernel_params->size() == 5);
+        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "resume=UUID=59848b1b-c6be-48f4-b3e1-48179ea72dec"}));
     }
-    // luks xfs
+    SECTION("luks xfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota"s, .luks_mapper_name = "luks_device"s, .luks_uuid = "00e1b836-81b6-433f-83ca-0fd373e3cd50"s},
@@ -85,11 +86,11 @@ int main() {
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(kernel_params.has_value());
-        assert(kernel_params->size() == 5);
-        assert((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device"}));
+        REQUIRE(kernel_params.has_value());
+        REQUIRE(kernel_params->size() == 5);
+        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device"}));
     }
-    // luks swap xfs
+    SECTION("luks swap xfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,lazytime,noatime,attr2,inode64,logbsize=256k,noquota"s, .luks_mapper_name = "luks_device"s, .luks_uuid = "00e1b836-81b6-433f-83ca-0fd373e3cd50"s},
@@ -97,11 +98,11 @@ int main() {
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(kernel_params.has_value());
-        assert(kernel_params->size() == 6);
-        assert((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device", "resume=/dev/mapper/luks_swap_device"}));
+        REQUIRE(kernel_params.has_value());
+        REQUIRE(kernel_params->size() == 6);
+        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device", "resume=/dev/mapper/luks_swap_device"}));
     }
-    // invalid zfs
+    SECTION("invalid zfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "zfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s},
@@ -110,9 +111,9 @@ int main() {
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(!kernel_params.has_value());
+        REQUIRE(!kernel_params.has_value());
     }
-    // valid zfs
+    SECTION("valid zfs")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "zfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s},
@@ -121,11 +122,11 @@ int main() {
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS, "zpcachyos/ROOT");
-        assert(kernel_params.has_value());
-        assert(kernel_params->size() == 5);
-        assert((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=ZFS=zpcachyos/ROOT", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
+        REQUIRE(kernel_params.has_value());
+        REQUIRE(kernel_params->size() == 5);
+        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=ZFS=zpcachyos/ROOT", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
     }
-    // luks btrfs with subvolumes
+    SECTION("luks btrfs with subvolumes")
     {
         const std::vector<gucc::fs::Partition> partitions{
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
@@ -134,8 +135,8 @@ int main() {
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
-        assert(kernel_params.has_value());
-        assert(kernel_params->size() == 6);
-        assert((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "cryptdevice=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f:luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "root=/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
+        REQUIRE(kernel_params.has_value());
+        REQUIRE(kernel_params->size() == 6);
+        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "cryptdevice=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f:luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "root=/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
     }
 }

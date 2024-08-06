@@ -1,7 +1,8 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/file_utils.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 
-#include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -117,36 +118,39 @@ Include = /etc/pacman.d/mirrorlist
 Include = /etc/pacman.d/mirrorlist
 )";
 
-int main() {
+TEST_CASE("pacman conf test")
+{
     using namespace gucc;
 
     static constexpr std::string_view filename{"/tmp/pacman.conf"};
 
-    // Open pacmanconf file for writing.
-    std::ofstream pacmanconf_file{filename.data()};
-    assert(pacmanconf_file.is_open());
+    SECTION("get current repos")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, PACMANCONF_STR));
 
-    // Setup pacmanconf file.
-    pacmanconf_file << PACMANCONF_STR;
-    pacmanconf_file.close();
+        auto repo_list = detail::pacmanconf::get_repo_list(filename);
+        REQUIRE(!repo_list.empty());
+        REQUIRE((repo_list == std::vector<std::string>{"[core]", "[extra]", "[community]", "[multilib]"}));
 
-    // Get current repos.
-    auto repo_list = detail::pacmanconf::get_repo_list(filename);
-    assert(!repo_list.empty());
-    assert((repo_list == std::vector<std::string>{"[core]", "[extra]", "[community]", "[multilib]"}));
+        // Cleanup.
+        fs::remove(filename);
+    }
+    SECTION("push repo")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, PACMANCONF_STR));
 
-    // Push repo.
-    assert(detail::pacmanconf::push_repos_front(filename, "[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist"));
+        REQUIRE(detail::pacmanconf::push_repos_front(filename, "[cachyos]\nInclude = /etc/pacman.d/cachyos-mirrorlist"));
 
-    // Check repo list after pushing repo.
-    repo_list = detail::pacmanconf::get_repo_list(filename);
-    assert(!repo_list.empty());
-    assert((repo_list == std::vector<std::string>{"[cachyos]", "[core]", "[extra]", "[community]", "[multilib]"}));
+        // check repo list after pushing repo
+        auto repo_list = detail::pacmanconf::get_repo_list(filename);
+        REQUIRE(!repo_list.empty());
+        REQUIRE((repo_list == std::vector<std::string>{"[cachyos]", "[core]", "[extra]", "[community]", "[multilib]"}));
 
-    // Check if file is equal to test data.
-    const auto& file_content = file_utils::read_whole_file(filename);
-    assert(file_content == PACMANCONF_TEST);
+        // check if file is equal to test data
+        const auto& file_content = file_utils::read_whole_file(filename);
+        REQUIRE(file_content == PACMANCONF_TEST);
 
-    // Cleanup.
-    fs::remove(filename);
+        // Cleanup.
+        fs::remove(filename);
+    }
 }

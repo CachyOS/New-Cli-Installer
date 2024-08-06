@@ -1,8 +1,8 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/file_utils.hpp"
 #include "gucc/logger.hpp"
 #include "gucc/package_profiles.hpp"
-
-#include <cassert>
 
 #include <filesystem>
 #include <fstream>
@@ -36,7 +36,8 @@ pacages = ["ca,"da","fa"
 packaes = ["cb","db",fb"]
 )"sv;
 
-int main() {
+TEST_CASE("package profiles test")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
@@ -44,40 +45,40 @@ int main() {
     spdlog::set_default_logger(logger);
     gucc::logger::set_logger(logger);
 
-    // valid profile
+    SECTION("valid profile")
     {
         auto base_profs = gucc::profile::parse_base_profiles(VALID_PROFILE_TEST);
-        assert(base_profs);
-        assert((base_profs->base_packages == std::vector<std::string>{"a", "b"}));
-        assert((base_profs->base_desktop_packages == std::vector<std::string>{"c", "d", "f"}));
+        REQUIRE(base_profs);
+        REQUIRE((base_profs->base_packages == std::vector<std::string>{"a", "b"}));
+        REQUIRE((base_profs->base_desktop_packages == std::vector<std::string>{"c", "d", "f"}));
 
         auto base_desktop_profs = gucc::profile::parse_desktop_profiles(VALID_PROFILE_TEST);
-        assert(base_desktop_profs);
-        assert(base_desktop_profs->size() == 2);
-        assert(((*base_desktop_profs)[0].profile_name == "someprofile-1"));
-        assert(((*base_desktop_profs)[0].packages == std::vector<std::string>{"ca", "da", "fa"}));
-        assert(((*base_desktop_profs)[1].profile_name == "someprofile-2"));
-        assert(((*base_desktop_profs)[1].packages == std::vector<std::string>{"cb", "db", "fb"}));
+        REQUIRE(base_desktop_profs);
+        REQUIRE(base_desktop_profs->size() == 2);
+        REQUIRE(((*base_desktop_profs)[0].profile_name == "someprofile-1"));
+        REQUIRE(((*base_desktop_profs)[0].packages == std::vector<std::string>{"ca", "da", "fa"}));
+        REQUIRE(((*base_desktop_profs)[1].profile_name == "someprofile-2"));
+        REQUIRE(((*base_desktop_profs)[1].packages == std::vector<std::string>{"cb", "db", "fb"}));
 
         auto net_profs = gucc::profile::parse_net_profiles(VALID_PROFILE_TEST);
-        assert(net_profs);
-        assert((net_profs->base_profiles.base_packages == std::vector<std::string>{"a", "b"}));
-        assert((net_profs->base_profiles.base_desktop_packages == std::vector<std::string>{"c", "d", "f"}));
-        assert(net_profs->desktop_profiles.size() == 2);
-        assert((net_profs->desktop_profiles[0].profile_name == "someprofile-1"));
-        assert((net_profs->desktop_profiles[0].packages == std::vector<std::string>{"ca", "da", "fa"}));
-        assert((net_profs->desktop_profiles[1].profile_name == "someprofile-2"));
-        assert((net_profs->desktop_profiles[1].packages == std::vector<std::string>{"cb", "db", "fb"}));
+        REQUIRE(net_profs);
+        REQUIRE((net_profs->base_profiles.base_packages == std::vector<std::string>{"a", "b"}));
+        REQUIRE((net_profs->base_profiles.base_desktop_packages == std::vector<std::string>{"c", "d", "f"}));
+        REQUIRE(net_profs->desktop_profiles.size() == 2);
+        REQUIRE((net_profs->desktop_profiles[0].profile_name == "someprofile-1"));
+        REQUIRE((net_profs->desktop_profiles[0].packages == std::vector<std::string>{"ca", "da", "fa"}));
+        REQUIRE((net_profs->desktop_profiles[1].profile_name == "someprofile-2"));
+        REQUIRE((net_profs->desktop_profiles[1].packages == std::vector<std::string>{"cb", "db", "fb"}));
     }
-    // invalid profile
+    SECTION("invalid profile")
     {
         auto base_profs = gucc::profile::parse_base_profiles(INVALID_PROFILE_TEST);
-        assert(!base_profs);
+        REQUIRE(!base_profs);
 
         auto base_desktop_profs = gucc::profile::parse_desktop_profiles(INVALID_PROFILE_TEST);
-        assert(!base_desktop_profs);
+        REQUIRE(!base_desktop_profs);
 
         auto net_profs = gucc::profile::parse_net_profiles(INVALID_PROFILE_TEST);
-        assert(!net_profs);
+        REQUIRE(!net_profs);
     }
 }

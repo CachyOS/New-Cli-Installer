@@ -77,6 +77,12 @@ CPMAddPackage(
   GIT_TAG v3.9.0
   EXCLUDE_FROM_ALL YES
 )
+CPMAddPackage(
+   NAME doctest
+   GITHUB_REPOSITORY doctest/doctest
+   GIT_TAG v2.4.11
+   EXCLUDE_FROM_ALL YES
+)
 
 ##
 ## CONFIGURATION

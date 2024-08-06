@@ -1,7 +1,7 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/bootloader.hpp"
 #include "gucc/logger.hpp"
-
-#include <cassert>
 
 #include <algorithm>
 #include <ranges>
@@ -114,7 +114,8 @@ inline auto filtered_res(std::string_view content) noexcept -> std::string {
     return result + '\n';
 }
 
-int main() {
+TEST_CASE("grub config gen test")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
@@ -122,13 +123,13 @@ int main() {
     spdlog::set_default_logger(logger);
     gucc::logger::set_logger(logger);
 
-    // default config
+    SECTION("default config")
     {
         const gucc::bootloader::GrubConfig grub_config{};
         const auto& grub_config_content = gucc::bootloader::gen_grub_config(grub_config);
-        assert(grub_config_content == GRUB_DEFAULTS_TEST);
+        REQUIRE(grub_config_content == GRUB_DEFAULTS_TEST);
     }
-    // optionals set
+    SECTION("optionals set")
     {
         const gucc::bootloader::GrubConfig grub_config{
             .default_entry         = "saved"s,
@@ -155,6 +156,6 @@ int main() {
             .disable_os_prober     = false,
         };
         const auto& grub_config_content = filtered_res(gucc::bootloader::gen_grub_config(grub_config));
-        assert(grub_config_content == GRUB_OPTIONALS_TEST);
+        REQUIRE(grub_config_content == GRUB_OPTIONALS_TEST);
     }
 }

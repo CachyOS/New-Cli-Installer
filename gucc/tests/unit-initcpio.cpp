@@ -1,8 +1,9 @@
+#include "doctest_compatibility.h"
+
 #include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/logger.hpp"
 
-#include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -26,6 +27,20 @@ FILES=()
 
 # HOOKS
 HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)
+)";
+
+static constexpr auto MKINITCPIO_MODIFY_STR = R"(
+# MODULES
+MODULES=(radeon crc32c-intel)
+
+# BINARIES
+BINARIES=()
+
+# FILES
+FILES=()
+
+# HOOKS
+HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs usr lvm2 zfs)
 )";
 
 static constexpr auto MKINITCPIO_INVALID_TEST = R"(
@@ -58,7 +73,8 @@ FILES=()
 HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs usr lvm2 zfs)
 )";
 
-int main() {
+TEST_CASE("initcpio test")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
     });
@@ -70,80 +86,108 @@ int main() {
 
     static constexpr std::string_view filename{"/tmp/mkinitcpio.conf"};
 
-    // Open mkinitcpio file for writing.
-    std::ofstream mkinitcpio_file{filename.data()};
-    assert(mkinitcpio_file.is_open());
+    SECTION("parse file")
+    {
+        // setup data.
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
 
-    // Setup mkinitcpio file.
-    mkinitcpio_file << MKINITCPIO_STR;
-    mkinitcpio_file.close();
+        auto initcpio = detail::Initcpio{filename};
+        REQUIRE(initcpio.parse_file());
 
-    auto initcpio = detail::Initcpio{filename};
+        const std::vector<std::string> default_hooks{
+            "base", "udev", "autodetect", "modconf", "block", "filesystems", "keyboard", "fsck"};
 
-    // Insert data.
-    initcpio.append_module("radeon");
-    initcpio.append_hook("btrfs");
-    initcpio.append_module("crc32c-intel");
-    initcpio.append_hooks({"usr", "lvm2", "zfs"});
+        REQUIRE_EQ(initcpio.hooks.size(), default_hooks.size());
+        REQUIRE_EQ(initcpio.hooks, default_hooks);
+        REQUIRE(initcpio.modules.empty());
+        REQUIRE(initcpio.files.empty());
+    }
+    SECTION("insert data")
+    {
+        // setup data.
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
 
-    // Write data.
-    assert(initcpio.write());
+        auto initcpio = detail::Initcpio{filename};
+        REQUIRE(initcpio.append_module("radeon"));
+        REQUIRE(initcpio.append_hook("btrfs"));
+        REQUIRE(initcpio.append_module("crc32c-intel"));
+        REQUIRE(initcpio.append_hooks({"usr", "lvm2", "zfs"}));
 
-    // Checking insertion of equal items
-    assert(!initcpio.append_module("radeon"));
-    assert(!initcpio.append_hook("btrfs"));
-    assert(!initcpio.append_module("crc32c-intel"));
-    assert(!initcpio.insert_hook("btrfs", {"usr", "lvm2", "zfs"}));
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "modconf", "block", "filesystems", "keyboard", "fsck", "btrfs", "usr", "lvm2", "zfs"};
 
-    // Write data.
-    assert(initcpio.write());
+        const std::vector<std::string> expected_modules{
+            "radeon", "crc32c-intel"};
 
-    // Check if file is equal to test data.
-    // "\n# MODULES\nMODULES=(crc32c-intel)\n\n# BINARIES\nBINARIES=()\n\n# FILES\nFILES=()\n\n# HOOKS\nHOOKS=(base usr lvm2 zfs)"\n
-    const auto& file_content = file_utils::read_whole_file(filename);
-    assert(file_content == MKINITCPIO_TEST);
+        REQUIRE_EQ(initcpio.hooks.size(), expected_hooks.size());
+        REQUIRE_EQ(initcpio.hooks, expected_hooks);
+        REQUIRE_EQ(initcpio.modules.size(), expected_modules.size());
+        REQUIRE_EQ(initcpio.modules, expected_modules);
+        REQUIRE(initcpio.files.empty());
 
-    // Cleanup.
-    fs::remove(filename);
+        // Write data.
+        REQUIRE(initcpio.write());
+    }
+    SECTION("checking insertion of equal items")
+    {
+        // setup data.
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_MODIFY_STR));
 
-    // check invalid file
-    mkinitcpio_file = std::ofstream{filename.data()};
-    assert(mkinitcpio_file.is_open());
+        auto initcpio = detail::Initcpio{filename};
+        REQUIRE(initcpio.parse_file());
 
-    mkinitcpio_file << MKINITCPIO_INVALID_TEST;
-    mkinitcpio_file.close();
+        REQUIRE(!initcpio.append_module("radeon"));
+        REQUIRE(!initcpio.append_hook("btrfs"));
+        REQUIRE(!initcpio.append_module("crc32c-intel"));
+        REQUIRE(!initcpio.insert_hook("btrfs", {"usr", "lvm2", "zfs"}));
 
-    initcpio = detail::Initcpio{filename};
-    assert(initcpio.parse_file());
+        // Write data.
+        REQUIRE(initcpio.write());
+    }
+    SECTION("check if file is equal to test data")
+    {
+        // setup data.
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_MODIFY_STR));
 
-    assert(initcpio.modules.empty());
-    assert(initcpio.files.empty());
-    assert(initcpio.hooks.empty());
+        // "\n# MODULES\nMODULES=(crc32c-intel)\n\n# BINARIES\nBINARIES=()\n\n# FILES\nFILES=()\n\n# HOOKS\nHOOKS=(base usr lvm2 zfs)"\n
+        const auto& file_content = file_utils::read_whole_file(filename);
+        REQUIRE_EQ(file_content, MKINITCPIO_TEST);
+    }
+    SECTION("check invalid file")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_INVALID_TEST));
 
-    // Cleanup.
-    fs::remove(filename);
+        auto initcpio = detail::Initcpio{filename};
+        REQUIRE(initcpio.parse_file());
 
-    // check empty file
-    mkinitcpio_file = std::ofstream{filename.data()};
-    assert(mkinitcpio_file.is_open());
+        REQUIRE(initcpio.modules.empty());
+        REQUIRE(initcpio.files.empty());
+        REQUIRE(initcpio.hooks.empty());
 
-    mkinitcpio_file << "";
-    mkinitcpio_file.close();
+        // Cleanup.
+        fs::remove(filename);
+    }
+    SECTION("check empty file")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, ""));
 
-    initcpio = detail::Initcpio{filename};
-    assert(!initcpio.parse_file());
-    assert(!initcpio.write());
+        auto initcpio = detail::Initcpio{filename};
+        REQUIRE(!initcpio.parse_file());
+        REQUIRE(!initcpio.write());
 
-    // Cleanup.
-    fs::remove(filename);
-
-    // check write to nonexistent file
-    initcpio = detail::Initcpio{"/path/to/non/exist_file.conf"};
-    assert(!initcpio.parse_file());
-    assert(!initcpio.write());
-
-    // check write to root file
-    initcpio = detail::Initcpio{"/etc/mtab"};
-    assert(!initcpio.parse_file());
-    assert(!initcpio.write());
+        // Cleanup.
+        fs::remove(filename);
+    }
+    SECTION("check write to nonexistent file")
+    {
+        auto initcpio = detail::Initcpio{"/path/to/non/exist_file.conf"};
+        REQUIRE(!initcpio.parse_file());
+        REQUIRE(!initcpio.write());
+    }
+    SECTION("check write to root file")
+    {
+        auto initcpio = detail::Initcpio{"/etc/mtab"};
+        REQUIRE(!initcpio.parse_file());
+        REQUIRE(!initcpio.write());
+    }
 }
