@@ -34,8 +34,8 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
         REQUIRE(kernel_params.has_value());
-        REQUIRE(kernel_params->size() == 5);
-        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
+        REQUIRE_EQ(kernel_params->size(), 5);
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"});
     }
     SECTION("invalid xfs (empty uuid)")
     {
@@ -63,8 +63,8 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
         REQUIRE(kernel_params.has_value());
-        REQUIRE(kernel_params->size() == 4);
-        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
+        REQUIRE_EQ(kernel_params->size(), 4);
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"});
     }
     SECTION("swap xfs")
     {
@@ -75,8 +75,8 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
         REQUIRE(kernel_params.has_value());
-        REQUIRE(kernel_params->size() == 5);
-        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "resume=UUID=59848b1b-c6be-48f4-b3e1-48179ea72dec"}));
+        REQUIRE_EQ(kernel_params->size(), 5);
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "resume=UUID=59848b1b-c6be-48f4-b3e1-48179ea72dec"});
     }
     SECTION("luks xfs")
     {
@@ -87,8 +87,8 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
         REQUIRE(kernel_params.has_value());
-        REQUIRE(kernel_params->size() == 5);
-        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device"}));
+        REQUIRE_EQ(kernel_params->size(), 5);
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device"});
     }
     SECTION("luks swap xfs")
     {
@@ -99,8 +99,8 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
         REQUIRE(kernel_params.has_value());
-        REQUIRE(kernel_params->size() == 6);
-        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device", "resume=/dev/mapper/luks_swap_device"}));
+        REQUIRE_EQ(kernel_params->size(), 6);
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device", "resume=/dev/mapper/luks_swap_device"});
     }
     SECTION("invalid zfs")
     {
@@ -123,8 +123,8 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS, "zpcachyos/ROOT");
         REQUIRE(kernel_params.has_value());
-        REQUIRE(kernel_params->size() == 5);
-        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "root=ZFS=zpcachyos/ROOT", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
+        REQUIRE_EQ(kernel_params->size(), 5);
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "root=ZFS=zpcachyos/ROOT", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"});
     }
     SECTION("luks btrfs with subvolumes")
     {
@@ -136,7 +136,7 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS);
         REQUIRE(kernel_params.has_value());
-        REQUIRE(kernel_params->size() == 6);
-        REQUIRE((*kernel_params == std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "cryptdevice=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f:luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "root=/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"}));
+        REQUIRE_EQ(kernel_params->size(), 6);
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "cryptdevice=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f:luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "root=/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"});
     }
 }

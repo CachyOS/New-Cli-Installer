@@ -49,26 +49,26 @@ TEST_CASE("package profiles test")
     {
         auto base_profs = gucc::profile::parse_base_profiles(VALID_PROFILE_TEST);
         REQUIRE(base_profs);
-        REQUIRE((base_profs->base_packages == std::vector<std::string>{"a", "b"}));
-        REQUIRE((base_profs->base_desktop_packages == std::vector<std::string>{"c", "d", "f"}));
+        REQUIRE_EQ(base_profs->base_packages, std::vector<std::string>{"a", "b"});
+        REQUIRE_EQ(base_profs->base_desktop_packages, std::vector<std::string>{"c", "d", "f"});
 
         auto base_desktop_profs = gucc::profile::parse_desktop_profiles(VALID_PROFILE_TEST);
         REQUIRE(base_desktop_profs);
-        REQUIRE(base_desktop_profs->size() == 2);
-        REQUIRE(((*base_desktop_profs)[0].profile_name == "someprofile-1"));
-        REQUIRE(((*base_desktop_profs)[0].packages == std::vector<std::string>{"ca", "da", "fa"}));
-        REQUIRE(((*base_desktop_profs)[1].profile_name == "someprofile-2"));
-        REQUIRE(((*base_desktop_profs)[1].packages == std::vector<std::string>{"cb", "db", "fb"}));
+        REQUIRE_EQ(base_desktop_profs->size(), 2);
+        REQUIRE_EQ((*base_desktop_profs)[0].profile_name, "someprofile-1");
+        REQUIRE_EQ((*base_desktop_profs)[0].packages, std::vector<std::string>{"ca", "da", "fa"});
+        REQUIRE_EQ((*base_desktop_profs)[1].profile_name, "someprofile-2");
+        REQUIRE_EQ((*base_desktop_profs)[1].packages, std::vector<std::string>{"cb", "db", "fb"});
 
         auto net_profs = gucc::profile::parse_net_profiles(VALID_PROFILE_TEST);
         REQUIRE(net_profs);
-        REQUIRE((net_profs->base_profiles.base_packages == std::vector<std::string>{"a", "b"}));
-        REQUIRE((net_profs->base_profiles.base_desktop_packages == std::vector<std::string>{"c", "d", "f"}));
-        REQUIRE(net_profs->desktop_profiles.size() == 2);
-        REQUIRE((net_profs->desktop_profiles[0].profile_name == "someprofile-1"));
-        REQUIRE((net_profs->desktop_profiles[0].packages == std::vector<std::string>{"ca", "da", "fa"}));
-        REQUIRE((net_profs->desktop_profiles[1].profile_name == "someprofile-2"));
-        REQUIRE((net_profs->desktop_profiles[1].packages == std::vector<std::string>{"cb", "db", "fb"}));
+        REQUIRE_EQ(net_profs->base_profiles.base_packages, std::vector<std::string>{"a", "b"});
+        REQUIRE_EQ(net_profs->base_profiles.base_desktop_packages, std::vector<std::string>{"c", "d", "f"});
+        REQUIRE_EQ(net_profs->desktop_profiles.size(), 2);
+        REQUIRE_EQ(net_profs->desktop_profiles[0].profile_name, "someprofile-1");
+        REQUIRE_EQ(net_profs->desktop_profiles[0].packages, std::vector<std::string>{"ca", "da", "fa"});
+        REQUIRE_EQ(net_profs->desktop_profiles[1].profile_name, "someprofile-2");
+        REQUIRE_EQ(net_profs->desktop_profiles[1].packages, std::vector<std::string>{"cb", "db", "fb"});
     }
     SECTION("invalid profile")
     {

@@ -42,8 +42,8 @@ TEST_CASE("BTRFS test")
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         REQUIRE(gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        REQUIRE(partitions.size() == 4);
-        REQUIRE(partitions == expected_partitions);
+        REQUIRE_EQ(partitions.size(), 4);
+        REQUIRE_EQ(partitions, expected_partitions);
     }
     SECTION("invalid btrfs with subvolumes")
     {
@@ -58,8 +58,8 @@ TEST_CASE("BTRFS test")
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         REQUIRE(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        REQUIRE(partitions.size() == 3);
-        REQUIRE(partitions == expected_partitions);
+        REQUIRE_EQ(partitions.size(), 3);
+        REQUIRE_EQ(partitions, expected_partitions);
     }
     SECTION("invalid (without root part) btrfs with subvolumes")
     {
@@ -74,8 +74,8 @@ TEST_CASE("BTRFS test")
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         REQUIRE(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        REQUIRE(partitions.size() == 3);
-        REQUIRE(partitions == expected_partitions);
+        REQUIRE_EQ(partitions.size(), 3);
+        REQUIRE_EQ(partitions, expected_partitions);
     }
     SECTION("btrfs without subvolumes")
     {
@@ -88,8 +88,8 @@ TEST_CASE("BTRFS test")
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         REQUIRE(gucc::fs::btrfs_append_subvolumes(partitions, {}));
-        REQUIRE(partitions.size() == 2);
-        REQUIRE(partitions == expected_partitions);
+        REQUIRE_EQ(partitions.size(), 2);
+        REQUIRE_EQ(partitions, expected_partitions);
     }
     SECTION("luks xfs")
     {
@@ -104,7 +104,7 @@ TEST_CASE("BTRFS test")
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         REQUIRE(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        REQUIRE(partitions == expected_partitions);
+        REQUIRE_EQ(partitions, expected_partitions);
     }
     SECTION("valid zfs")
     {
@@ -121,7 +121,7 @@ TEST_CASE("BTRFS test")
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         REQUIRE(!gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        REQUIRE(partitions == expected_partitions);
+        REQUIRE_EQ(partitions, expected_partitions);
     }
     SECTION("luks btrfs with subvolumes")
     {
@@ -136,7 +136,7 @@ TEST_CASE("BTRFS test")
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         REQUIRE(gucc::fs::btrfs_append_subvolumes(partitions, subvolumes));
-        REQUIRE(partitions.size() == 4);
-        REQUIRE(partitions == expected_partitions);
+        REQUIRE_EQ(partitions.size(), 4);
+        REQUIRE_EQ(partitions, expected_partitions);
     }
 }

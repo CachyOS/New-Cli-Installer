@@ -127,7 +127,7 @@ TEST_CASE("grub config gen test")
     {
         const gucc::bootloader::GrubConfig grub_config{};
         const auto& grub_config_content = gucc::bootloader::gen_grub_config(grub_config);
-        REQUIRE(grub_config_content == GRUB_DEFAULTS_TEST);
+        REQUIRE_EQ(grub_config_content, GRUB_DEFAULTS_TEST);
     }
     SECTION("optionals set")
     {
@@ -156,6 +156,6 @@ TEST_CASE("grub config gen test")
             .disable_os_prober     = false,
         };
         const auto& grub_config_content = filtered_res(gucc::bootloader::gen_grub_config(grub_config));
-        REQUIRE(grub_config_content == GRUB_OPTIONALS_TEST);
+        REQUIRE_EQ(grub_config_content, GRUB_OPTIONALS_TEST);
     }
 }

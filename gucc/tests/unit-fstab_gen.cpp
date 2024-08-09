@@ -100,7 +100,7 @@ TEST_CASE("fstab gen test")
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& fstab_content = gucc::fs::generate_fstab_content(partitions);
-        REQUIRE(fstab_content == FSTAB_BTRFS_TEST);
+        REQUIRE_EQ(fstab_content, FSTAB_BTRFS_TEST);
     }
     SECTION("basic xfs")
     {
@@ -109,7 +109,7 @@ TEST_CASE("fstab gen test")
             gucc::fs::Partition{.fstype = "fat16"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& fstab_content = gucc::fs::generate_fstab_content(partitions);
-        REQUIRE(fstab_content == FSTAB_XFS_TEST);
+        REQUIRE_EQ(fstab_content, FSTAB_XFS_TEST);
     }
     SECTION("luks xfs")
     {
@@ -119,7 +119,7 @@ TEST_CASE("fstab gen test")
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& fstab_content = gucc::fs::generate_fstab_content(partitions);
-        REQUIRE(fstab_content == FSTAB_LUKS_XFS_TEST);
+        REQUIRE_EQ(fstab_content, FSTAB_LUKS_XFS_TEST);
     }
     SECTION("zfs")
     {
@@ -130,7 +130,7 @@ TEST_CASE("fstab gen test")
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& fstab_content = gucc::fs::generate_fstab_content(partitions);
-        REQUIRE(fstab_content == FSTAB_ZFS_TEST);
+        REQUIRE_EQ(fstab_content, FSTAB_ZFS_TEST);
     }
     SECTION("luks btrfs with subvolumes")
     {
@@ -141,6 +141,6 @@ TEST_CASE("fstab gen test")
             gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
         };
         const auto& fstab_content = gucc::fs::generate_fstab_content(partitions);
-        REQUIRE(fstab_content == FSTAB_LUKS_BTRFS_TEST);
+        REQUIRE_EQ(fstab_content, FSTAB_LUKS_BTRFS_TEST);
     }
 }

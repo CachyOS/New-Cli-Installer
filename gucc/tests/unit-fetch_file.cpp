@@ -24,7 +24,7 @@ TEST_CASE("fetch file test")
         REQUIRE(!file_content->empty());
 
         const auto& expected_file_content = gucc::file_utils::read_whole_file(LICENSE_PATH);
-        REQUIRE(file_content == expected_file_content);
+        REQUIRE_EQ(file_content, expected_file_content);
     }
     SECTION("non existent remote url, existing fallback url")
     {
@@ -35,7 +35,7 @@ TEST_CASE("fetch file test")
         REQUIRE(!file_content->empty());
 
         const auto& expected_file_content = gucc::file_utils::read_whole_file(LICENSE_PATH);
-        REQUIRE(file_content == expected_file_content);
+        REQUIRE_EQ(file_content, expected_file_content);
     }
     SECTION("non existent remote url, non existent fallback url")
     {

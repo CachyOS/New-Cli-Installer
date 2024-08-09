@@ -57,48 +57,48 @@ TEST_CASE("refind config gen test")
             "quiet", "splash", "rw", "rootflags=subvol=/@", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"};
 
         const auto& refind_config_text = gucc::bootloader::gen_refind_config(kernel_params);
-        REQUIRE(refind_config_text == REFIND_CONFIG_SUBVOL_TEST);
+        REQUIRE_EQ(refind_config_text, REFIND_CONFIG_SUBVOL_TEST);
     }
     SECTION("basic xfs")
     {
         const std::vector<std::string> kernel_params{
             "quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"};
         const auto& refind_config_text = gucc::bootloader::gen_refind_config(kernel_params);
-        REQUIRE(refind_config_text == REFIND_CONFIG_TEST);
+        REQUIRE_EQ(refind_config_text, REFIND_CONFIG_TEST);
     }
     SECTION("swap xfs")
     {
         const std::vector<std::string> kernel_params{
             "quiet", "splash", "rw", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "resume=UUID=59848b1b-c6be-48f4-b3e1-48179ea72dec"};
         const auto& refind_config_text = gucc::bootloader::gen_refind_config(kernel_params);
-        REQUIRE(refind_config_text == REFIND_CONFIG_SWAP_TEST);
+        REQUIRE_EQ(refind_config_text, REFIND_CONFIG_SWAP_TEST);
     }
     SECTION("luks xfs")
     {
         const std::vector<std::string> kernel_params{
             "quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device"};
         const auto& refind_config_text = gucc::bootloader::gen_refind_config(kernel_params);
-        REQUIRE(refind_config_text == REFIND_CONFIG_LUKS_TEST);
+        REQUIRE_EQ(refind_config_text, REFIND_CONFIG_LUKS_TEST);
     }
     SECTION("luks swap xfs")
     {
         const std::vector<std::string> kernel_params{
             "quiet", "splash", "rw", "cryptdevice=UUID=00e1b836-81b6-433f-83ca-0fd373e3cd50:luks_device", "root=/dev/mapper/luks_device", "resume=/dev/mapper/luks_swap_device"};
         const auto& refind_config_text = gucc::bootloader::gen_refind_config(kernel_params);
-        REQUIRE(refind_config_text == REFIND_CONFIG_LUKS_SWAP_TEST);
+        REQUIRE_EQ(refind_config_text, REFIND_CONFIG_LUKS_SWAP_TEST);
     }
     SECTION("valid zfs")
     {
         const std::vector<std::string> kernel_params{
             "quiet", "splash", "rw", "root=ZFS=zpcachyos/ROOT", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"};
         const auto& refind_config_text = gucc::bootloader::gen_refind_config(kernel_params);
-        REQUIRE(refind_config_text == REFIND_CONFIG_ZFS_TEST);
+        REQUIRE_EQ(refind_config_text, REFIND_CONFIG_ZFS_TEST);
     }
     SECTION("luks btrfs with subvolumes")
     {
         const std::vector<std::string> kernel_params{
             "quiet", "splash", "rw", "rootflags=subvol=/@", "cryptdevice=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f:luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "root=/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"};
         const auto& refind_config_text = gucc::bootloader::gen_refind_config(kernel_params);
-        REQUIRE(refind_config_text == REFIND_CONFIG_LUKS_SUBVOL_TEST);
+        REQUIRE_EQ(refind_config_text, REFIND_CONFIG_LUKS_SUBVOL_TEST);
     }
 }

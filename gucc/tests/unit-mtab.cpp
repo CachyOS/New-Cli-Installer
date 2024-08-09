@@ -112,11 +112,11 @@ TEST_CASE("mtab test")
     SECTION("running system")
     {
         const auto& mtab_entries = gucc::mtab::parse_mtab_content(MTAB_RUNNING_SYSTEM_TEST, "/mnt"sv);
-        REQUIRE(mtab_entries.size() == 2);
-        REQUIRE(mtab_entries[0].device == "/dev/nvme0n1p3");
-        REQUIRE(mtab_entries[0].mountpoint == "/mnt");
-        REQUIRE(mtab_entries[1].device == "/dev/nvme0n1p1");
-        REQUIRE(mtab_entries[1].mountpoint == "/mnt/boot");
+        REQUIRE_EQ(mtab_entries.size(), 2);
+        REQUIRE_EQ(mtab_entries[0].device, "/dev/nvme0n1p3");
+        REQUIRE_EQ(mtab_entries[0].mountpoint, "/mnt");
+        REQUIRE_EQ(mtab_entries[1].device, "/dev/nvme0n1p1");
+        REQUIRE_EQ(mtab_entries[1].mountpoint, "/mnt/boot");
     }
     SECTION("live iso system")
     {
@@ -136,36 +136,36 @@ TEST_CASE("mtab test")
         fs::remove(filename);
 
         const auto& entries = *mtab_entries;
-        REQUIRE(entries.size() == 14);
-        REQUIRE(entries[0].device == "/dev/sda2");
-        REQUIRE(entries[0].mountpoint == "/tmp/calamares-root-q_z5rdlx");
-        REQUIRE(entries[1].device == "/dev/sda2");
-        REQUIRE(entries[1].mountpoint == "/tmp/calamares-root-q_z5rdlx/home");
-        REQUIRE(entries[2].device == "/dev/sda2");
-        REQUIRE(entries[2].mountpoint == "/tmp/calamares-root-q_z5rdlx/root");
-        REQUIRE(entries[3].device == "/dev/sda2");
-        REQUIRE(entries[3].mountpoint == "/tmp/calamares-root-q_z5rdlx/srv");
-        REQUIRE(entries[4].device == "/dev/sda2");
-        REQUIRE(entries[4].mountpoint == "/tmp/calamares-root-q_z5rdlx/var/cache");
-        REQUIRE(entries[5].device == "/dev/sda2");
-        REQUIRE(entries[5].mountpoint == "/tmp/calamares-root-q_z5rdlx/var/tmp");
-        REQUIRE(entries[6].device == "/dev/sda2");
-        REQUIRE(entries[6].mountpoint == "/tmp/calamares-root-q_z5rdlx/var/log");
-        REQUIRE(entries[7].device == "/dev/sda1");
-        REQUIRE(entries[7].mountpoint == "/tmp/calamares-root-q_z5rdlx/boot");
+        REQUIRE_EQ(entries.size(), 14);
+        REQUIRE_EQ(entries[0].device, "/dev/sda2");
+        REQUIRE_EQ(entries[0].mountpoint, "/tmp/calamares-root-q_z5rdlx");
+        REQUIRE_EQ(entries[1].device, "/dev/sda2");
+        REQUIRE_EQ(entries[1].mountpoint, "/tmp/calamares-root-q_z5rdlx/home");
+        REQUIRE_EQ(entries[2].device, "/dev/sda2");
+        REQUIRE_EQ(entries[2].mountpoint, "/tmp/calamares-root-q_z5rdlx/root");
+        REQUIRE_EQ(entries[3].device, "/dev/sda2");
+        REQUIRE_EQ(entries[3].mountpoint, "/tmp/calamares-root-q_z5rdlx/srv");
+        REQUIRE_EQ(entries[4].device, "/dev/sda2");
+        REQUIRE_EQ(entries[4].mountpoint, "/tmp/calamares-root-q_z5rdlx/var/cache");
+        REQUIRE_EQ(entries[5].device, "/dev/sda2");
+        REQUIRE_EQ(entries[5].mountpoint, "/tmp/calamares-root-q_z5rdlx/var/tmp");
+        REQUIRE_EQ(entries[6].device, "/dev/sda2");
+        REQUIRE_EQ(entries[6].mountpoint, "/tmp/calamares-root-q_z5rdlx/var/log");
+        REQUIRE_EQ(entries[7].device, "/dev/sda1");
+        REQUIRE_EQ(entries[7].mountpoint, "/tmp/calamares-root-q_z5rdlx/boot");
 
-        REQUIRE(entries[8].device == "dev");
-        REQUIRE(entries[8].mountpoint == "/tmp/calamares-root-q_z5rdlx/dev");
-        REQUIRE(entries[9].device == "proc");
-        REQUIRE(entries[9].mountpoint == "/tmp/calamares-root-q_z5rdlx/proc");
-        REQUIRE(entries[10].device == "tmpfs");
-        REQUIRE(entries[10].mountpoint == "/tmp/calamares-root-q_z5rdlx/run");
-        REQUIRE(entries[11].device == "run");
-        REQUIRE(entries[11].mountpoint == "/tmp/calamares-root-q_z5rdlx/run/udev");
-        REQUIRE(entries[12].device == "sys");
-        REQUIRE(entries[12].mountpoint == "/tmp/calamares-root-q_z5rdlx/sys");
-        REQUIRE(entries[13].device == "efivarfs");
-        REQUIRE(entries[13].mountpoint == "/tmp/calamares-root-q_z5rdlx/sys/firmware/efi/efivars");
+        REQUIRE_EQ(entries[8].device, "dev");
+        REQUIRE_EQ(entries[8].mountpoint, "/tmp/calamares-root-q_z5rdlx/dev");
+        REQUIRE_EQ(entries[9].device, "proc");
+        REQUIRE_EQ(entries[9].mountpoint, "/tmp/calamares-root-q_z5rdlx/proc");
+        REQUIRE_EQ(entries[10].device, "tmpfs");
+        REQUIRE_EQ(entries[10].mountpoint, "/tmp/calamares-root-q_z5rdlx/run");
+        REQUIRE_EQ(entries[11].device, "run");
+        REQUIRE_EQ(entries[11].mountpoint, "/tmp/calamares-root-q_z5rdlx/run/udev");
+        REQUIRE_EQ(entries[12].device, "sys");
+        REQUIRE_EQ(entries[12].mountpoint, "/tmp/calamares-root-q_z5rdlx/sys");
+        REQUIRE_EQ(entries[13].device, "efivarfs");
+        REQUIRE_EQ(entries[13].mountpoint, "/tmp/calamares-root-q_z5rdlx/sys/firmware/efi/efivars");
     }
     SECTION("empty file")
     {
