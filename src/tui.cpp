@@ -1585,7 +1585,7 @@ void zfs_menu() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
 }
 
-void make_esp() noexcept {
+void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
@@ -1596,13 +1596,13 @@ void make_esp() noexcept {
 
     std::string answer{};
     {
-        const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+        const auto& partitions_list = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
 
         auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
         bool success{};
         auto ok_callback = [&] {
-            const auto& src   = partitions[static_cast<std::size_t>(selected)];
+            const auto& src   = partitions_list[static_cast<std::size_t>(selected)];
             const auto& lines = gucc::utils::make_multiline(src, false, ' ');
             answer            = lines[0];
             success           = true;
@@ -1611,7 +1611,7 @@ void make_esp() noexcept {
 
         /* clang-format off */
         static constexpr auto esp_part_body = "\nSelect BOOT partition.\n"sv;
-        detail::menu_widget(partitions, ok_callback, &selected, &screen, esp_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+        detail::menu_widget(partitions_list, ok_callback, &selected, &screen, esp_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
         if (!success) { return; }
         /* clang-format on */
     }
@@ -1662,12 +1662,27 @@ void make_esp() noexcept {
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     auto& uefi_mount            = std::get<std::string>(config_data["UEFI_MOUNT"]);
     uefi_mount                  = answer;
-    const auto& path_formatted  = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
+
+    const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
 #ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), path_formatted));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, path_formatted));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), part_mountpoint));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, part_mountpoint));
 #endif
-    confirm_mount(path_formatted);
+    confirm_mount(part_mountpoint);
+
+    // TODO(vnepogodin): handle boot partition mount options
+    const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
+    auto boot_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = uefi_mount, .device = partition, .mount_opts = "defaults"s};
+
+    const auto& part_uuid     = gucc::fs::utils::get_device_uuid(boot_part_struct.device);
+    boot_part_struct.uuid_str = part_uuid;
+
+    // TODO(vnepogodin): handle luks information
+
+    utils::dump_partition_to_log(boot_part_struct);
+
+    // insert boot partition
+    partitions.emplace_back(std::move(boot_part_struct));
 }
 
 auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
@@ -1859,9 +1874,11 @@ void mount_partitions() noexcept {
         }
 
         if (partition == "Done"sv) {
-            tui::make_esp();
+            tui::make_esp(partitions);
             utils::get_cryptroot();
             utils::get_cryptboot();
+
+            utils::dump_partitions_to_log(partitions);
             return;
         }
         config_data["MOUNT"] = "";
