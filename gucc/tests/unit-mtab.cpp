@@ -1,9 +1,9 @@
 #include "doctest_compatibility.h"
 
+#include "gucc/file_utils.hpp"
 #include "gucc/mtab.hpp"
 
 #include <filesystem>
-#include <fstream>
 #include <string_view>
 
 #include <fmt/core.h>
@@ -121,13 +121,7 @@ TEST_CASE("mtab test")
     SECTION("live iso system")
     {
         static constexpr std::string_view filename{"/tmp/mtab.conf"};
-        // Open mtab file for writing.
-        std::ofstream mtab_file{filename.data()};
-        REQUIRE(mtab_file.is_open());
-
-        // Setup mtab file.
-        mtab_file << MTAB_LIVE_ISO_TEST;
-        mtab_file.close();
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MTAB_LIVE_ISO_TEST));
 
         const auto& mtab_entries = gucc::mtab::parse_mtab("/tmp/calamares-root-q_z5rdlx"sv, filename);
         REQUIRE(mtab_entries.has_value());
@@ -170,13 +164,7 @@ TEST_CASE("mtab test")
     SECTION("empty file")
     {
         static constexpr std::string_view filename{"/tmp/mtab.conf"};
-        // Open mtab file for writing.
-        std::ofstream mtab_file{filename.data()};
-        REQUIRE(mtab_file.is_open());
-
-        // Setup mtab file.
-        mtab_file << "";
-        mtab_file.close();
+        REQUIRE(file_utils::create_file_for_overwrite(filename, ""));
 
         const auto& mtab_entries = gucc::mtab::parse_mtab("/tmp/calamares-root-q_z5rdlx"sv, filename);
         REQUIRE(!mtab_entries.has_value());

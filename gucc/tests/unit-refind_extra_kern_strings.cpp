@@ -5,7 +5,6 @@
 #include "gucc/logger.hpp"
 
 #include <filesystem>
-#include <fstream>
 #include <ranges>
 #include <string_view>
 

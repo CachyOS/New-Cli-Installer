@@ -4,7 +4,6 @@
 #include "gucc/pacmanconf_repo.hpp"
 
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <string_view>
 #include <vector>

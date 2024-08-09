@@ -5,7 +5,6 @@
 #include "gucc/package_profiles.hpp"
 
 #include <filesystem>
-#include <fstream>
 #include <string_view>
 
 #include <spdlog/sinks/callback_sink.h>
