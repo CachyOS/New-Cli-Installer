@@ -115,7 +115,7 @@ auto select_bootloader() noexcept -> std::string {
     return selected_bootloader;
 }
 
-void make_esp(const std::string& part_name, std::string_view bootloader_name, bool reformat_part = true, std::string_view boot_part_mountpoint = {"(empty)"}) noexcept {
+void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view part_name, std::string_view bootloader_name, bool reformat_part = true, std::string_view boot_part_mountpoint = "(empty)"sv) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
@@ -125,7 +125,7 @@ void make_esp(const std::string& part_name, std::string_view bootloader_name, bo
     /* clang-format on */
 
     auto& partition = std::get<std::string>(config_data["PARTITION"]);
-    partition       = part_name;
+    partition       = std::string{part_name};
 
     const auto& uefi_mount    = (boot_part_mountpoint == "(empty)"sv) ? utils::bootloader_default_mount(bootloader_name, sys_info) : boot_part_mountpoint;
     config_data["UEFI_MOUNT"] = std::string{uefi_mount};
@@ -140,13 +140,26 @@ void make_esp(const std::string& part_name, std::string_view bootloader_name, bo
         spdlog::debug("Formating boot partition with fat/vfat!");
     }
 
-#ifdef NDEVENV
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& path_formatted  = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
-
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), path_formatted));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, path_formatted));
+    const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
+#ifdef NDEVENV
+    gucc::utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), part_mountpoint));
+    gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, part_mountpoint));
 #endif
+
+    // TODO(vnepogodin): handle boot partition mount options
+    const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
+    auto boot_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = std::string{uefi_mount}, .device = partition, .mount_opts = "defaults"s};
+
+    const auto& part_uuid     = gucc::fs::utils::get_device_uuid(boot_part_struct.device);
+    boot_part_struct.uuid_str = part_uuid;
+
+    // TODO(vnepogodin): handle luks information
+
+    utils::dump_partition_to_log(boot_part_struct);
+
+    // insert boot partition
+    partitions.emplace_back(std::move(boot_part_struct));
 }
 
 auto make_partitions_prepared(std::string_view bootloader, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts) -> bool {
@@ -177,14 +190,10 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
         if (part_type == "boot"sv) {
             config_data["UEFI_MOUNT"] = part_mountpoint;
             config_data["UEFI_PART"]  = part_name;
-            make_esp(part_name, bootloader, true, part_mountpoint);
+            make_esp(partitions, part_name, bootloader, true, part_mountpoint);
             utils::get_cryptroot();
             utils::get_cryptboot();
             spdlog::info("boot partition: name={}", part_name);
-
-            // TODO(vnepogodin): handle boot partition mount options
-            auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = part_name, .mount_opts = "defaults"s};
-            partitions.emplace_back(std::move(part_struct));
             continue;
         } else if (part_type == "root"sv) {
             config_data["PARTITION"] = part_name;
@@ -271,6 +280,8 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
             continue;
         }
     }
+
+    utils::dump_partitions_to_log(partitions);
     return true;
 }
 
