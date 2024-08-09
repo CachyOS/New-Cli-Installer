@@ -121,7 +121,7 @@ TEST_CASE("mtab test")
     SECTION("live iso system")
     {
         static constexpr std::string_view filename{"/tmp/mtab.conf"};
-        REQUIRE(file_utils::create_file_for_overwrite(filename, MTAB_LIVE_ISO_TEST));
+        REQUIRE(gucc::file_utils::create_file_for_overwrite(filename, MTAB_LIVE_ISO_TEST));
 
         const auto& mtab_entries = gucc::mtab::parse_mtab("/tmp/calamares-root-q_z5rdlx"sv, filename);
         REQUIRE(mtab_entries.has_value());
@@ -164,7 +164,7 @@ TEST_CASE("mtab test")
     SECTION("empty file")
     {
         static constexpr std::string_view filename{"/tmp/mtab.conf"};
-        REQUIRE(file_utils::create_file_for_overwrite(filename, ""));
+        REQUIRE(gucc::file_utils::create_file_for_overwrite(filename, ""));
 
         const auto& mtab_entries = gucc::mtab::parse_mtab("/tmp/calamares-root-q_z5rdlx"sv, filename);
         REQUIRE(!mtab_entries.has_value());
