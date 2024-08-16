@@ -26,7 +26,6 @@ constexpr auto modify_initcpio_line(std::string_view line, std::string_view modu
 constexpr auto modify_initcpio_fields(std::string_view file_content, std::string_view modules, std::string_view files, std::string_view hooks) noexcept -> std::string {
     return file_content | std::ranges::views::split('\n')
         | std::ranges::views::transform([&](auto&& rng) {
-              /* clang-format off */
               auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
               return modify_initcpio_line(line, modules, files, hooks);
           })
@@ -45,8 +44,8 @@ bool Initcpio::write() const noexcept {
         return false;
     }
     const auto& formatted_modules = utils::join(modules, ' ');
-    const auto& formatted_files = utils::join(files, ' ');
-    const auto& formatted_hooks = utils::join(hooks, ' ');
+    const auto& formatted_files   = utils::join(files, ' ');
+    const auto& formatted_hooks   = utils::join(hooks, ' ');
 
     auto result = modify_initcpio_fields(file_content, formatted_modules, formatted_files, formatted_hooks);
     return file_utils::create_file_for_overwrite(m_file_path, result);
