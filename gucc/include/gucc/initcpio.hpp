@@ -99,7 +99,7 @@ class Initcpio final {
         return this->write();
     }
 
-    bool write() const noexcept;
+    [[nodiscard]] bool write() const noexcept;
 
     std::vector<std::string> modules{};
     std::vector<std::string> files{};
