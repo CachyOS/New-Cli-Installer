@@ -74,7 +74,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME ctre
   GITHUB_REPOSITORY hanickadot/compile-time-regular-expressions
-  GIT_TAG v3.9.0
+  GIT_TAG acb2f4de2e24a06280088377e47534137c0bc759
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
