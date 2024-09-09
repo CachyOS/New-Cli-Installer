@@ -101,7 +101,6 @@ namespace tui {
 void install_drivers_menu() noexcept {
     const std::vector<std::string> menu_entries = {
         "Install Display Driver",
-        //"Install Network Drivers",
         "Back",
     };
 
@@ -112,9 +111,6 @@ void install_drivers_menu() noexcept {
         case 0:
             install_graphics_menu();
             break;
-        /*case 1:
-            setup_network_drivers();
-            break;*/
         default:
             screen.ExitLoopClosure()();
             break;
