@@ -68,8 +68,7 @@ void install_graphics_menu() noexcept {
     [[maybe_unused]] const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
     const std::vector<std::string> menu_entries = {
-        "Auto-install free drivers",
-        "Auto-install proprietary drivers",
+        "Auto-install drivers",
         "Select Display Driver",
         "Back",
     };
@@ -80,15 +79,11 @@ void install_graphics_menu() noexcept {
         switch (selected) {
 #ifdef NDEVENV
         case 0:
-            utils::arch_chroot("chwd -a pci free 0300"sv);
-            std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};  // NOLINT
-            break;
-        case 1:
-            utils::arch_chroot("chwd -a pci nonfree 0300"sv);
+            utils::arch_chroot("chwd --autoconfigure"sv);
             std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};  // NOLINT
             break;
 #endif
-        case 2:
+        case 1:
             setup_graphics_card();
             break;
         default:
