@@ -1,150 +1,673 @@
 [base-packages]
 # should be equal to pacstrap module in GUI installer
 packages = [
-"amd-ucode",
-"intel-ucode",
-"base", "base-devel", "linux-firmware", "mkinitcpio", "vim", "wget", "micro", "nano", "networkmanager", "openssh", "ripgrep", "sed", "rsync", "pacman-contrib", "paru", "btop",
-"man-db", "less",
-"cachyos-mirrorlist", "cachyos-v3-mirrorlist", "cachyos-v4-mirrorlist", "cachyos-keyring"]
+  # from "CPU specific Microcode update packages" in netinstall
+  "amd-ucode",
+  "intel-ucode",
+
+  # from pacstrap
+  "base",
+  "base-devel",
+  "btrfs-progs",
+  "cachyos-fish-config",
+  "cachyos-hooks",
+  "cachyos-keyring",
+  "cachyos-mirrorlist",
+  "cachyos-v4-mirrorlist",
+  "cachyos-v3-mirrorlist",
+  "cachyos-rate-mirrors",
+  "cachyos-settings",
+  "cryptsetup",
+  "device-mapper",
+  "diffutils",
+  "dosfstools",
+  "e2fsprogs",
+  "efibootmgr",
+  "exfatprogs",
+  "f2fs-tools",
+  "inetutils",
+  "iptables-nft",
+  "jfsutils",
+  "less",
+  "linux-firmware",
+  "logrotate",
+  "lsb-release",
+  "lvm2",
+  "man-db",
+  "man-pages",
+  "mdadm",
+  "chwd",
+  "mkinitcpio",
+  "netctl",
+  "perl",
+  "python",
+  "s-nail",
+  "sudo",
+  "sysfsutils",
+  "texinfo",
+  "usbutils",
+  "which",
+  "systemd-boot-manager",
+  "xfsprogs",
+  "plymouth",
+  "cachyos-plymouth-theme",
+
+  # we use networkmanager
+  "networkmanager",
+
+  # some useful apps which we want to have
+  "btop",
+  "duf",
+  "rsync",
+  "vi",
+  "wget",
+  "ripgrep",
+  "micro",
+  "nano",
+  "vim",
+  "openssh"
+]
 
 [base-packages.desktop]
+# TODO(vnepogodin): refactor "subcategories" into recursive table, e.g [base-packages.desktop.fonts] etc
 # should be equal to base in netinstall module in GUI installer
 packages = [
-"alacritty", "cachy-browser", "cachyos-fish-config", "cachyos-ananicy-rules", "cachyos-hello", "cachyos-hooks", "cachyos-kernel-manager",
-"cachyos-rate-mirrors", "cachyos-packageinstaller", "cachyos-settings", "cachyos-zsh-config", "chwd",
-"bluez", "bluez-hid2hci", "bluez-libs", "bluez-utils",
-"ufw",
-"adobe-source-han-sans-cn-fonts", "adobe-source-han-sans-jp-fonts", "adobe-source-han-sans-kr-fonts", "awesome-terminal-fonts", "noto-fonts-emoji",
-"noto-color-emoji-fontconfig", "cantarell-fonts", "noto-fonts", "ttf-bitstream-vera", "ttf-dejavu", "ttf-opensans", "ttf-meslo-nerd", "noto-fonts-cjk",
-"alsa-firmware", "alsa-plugins", "alsa-utils", "pavucontrol", "pipewire-pulse", "wireplumber", "pipewire-alsa", "pipewire-jack", "rtkit",
-"cpupower", "power-profiles-daemon", "upower",
-"duf", "fsarchiver", "hwinfo", "inxi", "fastfetch"]
+  # from "CachyOS Packages"
+  "cachy-browser",
+  "cachyos-fish-config",
+  "cachyos-ananicy-rules",
+  "cachyos-hello",
+  "cachyos-kernel-manager",
+  "cachyos-packageinstaller",
+  "cachyos-settings",
+  "cachyos-zsh-config",
+  "cachyos-micro-settings",
+  "cachyos-wallpapers",
+
+  # from "Network"
+  "dhclient",
+  "dnsmasq",
+  "dnsutils",
+  "ethtool",
+  "iwd",
+  "modemmanager",
+  "networkmanager",
+  "networkmanager-openvpn",
+  "nss-mdns",
+  "usb_modeswitch",
+  "wpa_supplicant",
+  "xl2tpd",
+
+  # from "firewall"
+  "ufw",
+
+  # from "bluetooth"
+  "bluez", "bluez-hid2hci", "bluez-libs", "bluez-utils",
+
+  # from "packages management"
+  "pacman-contrib",
+  "pkgfile",
+  "rebuild-detector",
+  "reflector",
+  "paru",
+  "octopi",
+
+  # from "desktop integration"
+  "accountsservice",
+  "bash-completion",
+  "ffmpegthumbnailer",
+  "gst-libav",
+  "gst-plugin-pipewire",
+  "gst-plugins-bad",
+  "gst-plugins-ugly",
+  "libdvdcss",
+  "libgsf",
+  "libopenraw",
+  "mlocate",
+  "poppler-glib",
+  "xdg-user-dirs",
+  "xdg-utils",
+
+  # from "filesystem"
+  "efitools",
+  "haveged",
+  "nfs-utils",
+  "nilfs-utils",
+  "ntp",
+  "smartmontools",
+  "unrar",
+  "unzip",
+  "xz",
+
+  # from "fonts"
+  "adobe-source-han-sans-cn-fonts",
+  "adobe-source-han-sans-jp-fonts",
+  "adobe-source-han-sans-kr-fonts",
+  "awesome-terminal-fonts",
+  "noto-fonts-emoji",
+  "noto-color-emoji-fontconfig",
+  "cantarell-fonts",
+  "freetype2",
+  "noto-fonts",
+  "opendesktop-fonts",
+  "ttf-bitstream-vera",
+  "ttf-dejavu",
+  "ttf-liberation",
+  "ttf-opensans",
+  "ttf-meslo-nerd",
+  "noto-fonts-cjk",
+
+  # from "audio"
+  "alsa-firmware",
+  "alsa-plugins",
+  "alsa-utils",
+  "pavucontrol",
+  "pipewire-pulse",
+  "wireplumber",
+  "pipewire-alsa",
+  "rtkit",
+
+  # from "hardware"
+  "dmidecode",
+  "dmraid",
+  "hdparm",
+  "hwdetect",
+  "lsscsi",
+  "mtools",
+  "sg3_utils",
+  "sof-firmware",
+  "linux-firmware",
+
+  # from "power"
+  "cpupower", "power-profiles-daemon", "upower",
+
+  # from "Some applications selection"
+  "alacritty",
+  "btop",
+  "duf",
+  "findutils",
+  "fsarchiver",
+  "git",
+  "glances",
+  "hwinfo",
+  "inxi",
+  "meld",
+  "nano-syntax-highlighting",
+  "fastfetch",
+  "pv",
+  "python-defusedxml",
+  "python-packaging",
+  "rsync",
+  "sed",
+  "vi",
+  "wget",
+  "ripgrep",
+  "micro",
+  "nano",
+  "vim",
+  "openssh"
+]
 
 [desktop.kde]
 # should be equal to netinstall KDE section group in GUI installer
 packages = [
-"ark", "bluedevil", "breeze-gtk",
-"cachyos-nord-kde-theme-git", "cachyos-iridescent-kde", "cachyos-emerald-kde-theme-git",
-"cachyos-kde-settings", "cachyos-themes-sddm", "cachyos-wallpapers", "char-white", "dolphin", "egl-wayland", "gwenview",
-"konsole", "kate", "kdeconnect", "kscreen", "kde-gtk-config", "khotkeys", "kinfocenter",
-"kinit", "kwallet-pam", "kwalletmanager", "plasma-wayland-protocols", "plasma-wayland-session",
-"plasma-desktop", "plasma-framework5", "plasma-nm", "plasma-pa", "plasma-workspace", "plasma-integration",
-"plasma-firewall", "plasma-browser-integration", "plasma-systemmonitor", "plasma-thunderbolt",
-"powerdevil", "ksysguard", "spectacle", "sddm", "sddm-kcm", "xsettingsd", "xdg-desktop-portal", "xdg-desktop-portal-kde", "phonon-qt5-vlc"]
+  "cachyos-iridescent-kde",
+  "cachyos-emerald-kde-theme-git",
+  "cachyos-kde-settings",
+  "cachyos-themes-sddm",
+  "ark",
+  "bluedevil",
+  "breeze-gtk",
+  "char-white",
+  "dolphin",
+  "egl-wayland",
+  "gwenview",
+  "konsole",
+  "kate",
+  "kdeconnect",
+  "kde-gtk-config",
+  "kdegraphics-thumbnailers",
+  "ffmpegthumbs",
+  "kinfocenter",
+  "kinit",
+  "kscreen",
+  "kwallet-pam",
+  "kwalletmanager",
+  "plasma-desktop",
+  "libplasma",
+  "plasma-nm",
+  "plasma-pa",
+  "plasma-workspace",
+  "plasma-integration",
+  "plasma-firewall",
+  "plasma-browser-integration",
+  "plasma-systemmonitor",
+  "plasma-thunderbolt",
+  "powerdevil",
+  "spectacle",
+  "sddm",
+  "sddm-kcm",
+  "qt6-wayland",
+  "xsettingsd",
+  "xdg-desktop-portal",
+  "xdg-desktop-portal-kde",
+  "phonon-qt6-vlc",
+  "xwaylandvideobridge"
+]
 
 [desktop.xfce]
 # should be equal to netinstall xfce section group in GUI installer
 packages = [
-"cachyos-xfce-settings", "blueman", "file-roller", "galculator",
-"gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
-"lightdm", "lightdm-gtk-greeter", "lightdm-gtk-greeter-settings",
-"network-manager-applet", "parole", "ristretto", "thunar-archive-plugin", "thunar-media-tags-plugin",
-"xdg-user-dirs-gtk", "xed", "xfce4", "xfce4-battery-plugin", "xfce4-datetime-plugin", "xfce4-mount-plugin",
-"xfce4-netload-plugin", "xfce4-notifyd", "xfce4-pulseaudio-plugin", "xfce4-screensaver", "xfce4-screenshooter",
-"xfce4-taskmanager", "xfce4-wavelan-plugin", "xfce4-weather-plugin", "xfce4-whiskermenu-plugin", "xfce4-xkb-plugin"]
+  "cachyos-xfce-settings",
+  "blueman",
+  "file-roller",
+  "galculator",
+  "gvfs",
+  "gvfs-afc",
+  "gvfs-gphoto2",
+  "gvfs-mtp",
+  "gvfs-nfs",
+  "gvfs-smb",
+  "lightdm",
+  "lightdm-gtk-greeter",
+  "lightdm-gtk-greeter-settings",
+  "network-manager-applet",
+  "parole",
+  "ristretto",
+  "thunar-archive-plugin",
+  "thunar-media-tags-plugin",
+  "xdg-user-dirs-gtk",
+  "xed",
+  "xfce4",
+  "xfce4-battery-plugin",
+  "xfce4-datetime-plugin",
+  "xfce4-mount-plugin",
+  "xfce4-netload-plugin",
+  "xfce4-notifyd",
+  "xfce4-pulseaudio-plugin",
+  "xfce4-screensaver",
+  "xfce4-screenshooter",
+  "xfce4-taskmanager",
+  "xfce4-wavelan-plugin",
+  "xfce4-weather-plugin",
+  "xfce4-whiskermenu-plugin",
+  "xfce4-xkb-plugin"
+]
 
 [desktop.sway]
 # should be equal to netinstall sway section group in GUI installer
 packages = [
-"sway", "waybar", "wl-clipboard", "egl-wayland", "wayland-protocols", "wofi", "ly", "xorg-xwayland", "xdg-desktop-portal", "xdg-desktop-portal-wlr"]
+  "sway",
+  "waybar",
+  "wl-clipboard",
+  "egl-wayland",
+  "wayland-protocols",
+  "wofi",
+  "foot",
+  "wmenu",
+  "ly",
+  "xorg-xwayland",
+  "xdg-desktop-portal",
+  "xdg-desktop-portal-wlr"
+]
 
 [desktop.wayfire]
 # should be equal to netinstall wayfire section group in GUI installer
 packages = [
-"cachyos-wayfire-settings", "wayfire-desktop-git", "egl-wayland", "wayland-protocols", "wofi", "ly", "xorg-xhost", "xorg-xwayland"]
+  "cachyos-wayfire-settings",
+  "wayfire-desktop-git",
+  "egl-wayland",
+  "wayland-protocols",
+  "wofi",
+  "ly",
+  "xorg-xhost",
+  "xorg-xwayland"
+]
 
 [desktop.i3wm]
 # should be equal to netinstall i3wm section group in GUI installer
 packages = [
-"i3-wm", "i3blocks", "i3lock-color", "i3status", "rofi", "polybar", "ly", "cachyos-picom-config", "dunst", "cachyos-i3wm-settings"]
+  "cachyos-i3wm-settings",
+  "cachyos-picom-config",
+  "i3-wm",
+  "i3blocks",
+  "i3lock-color",
+  "i3status",
+  "rofi",
+  "polybar",
+  "ly",
+  "dunst"
+]
 
 [desktop.gnome]
 # should be equal to netinstall gnome section group in GUI installer
 packages = [
-"adwaita-icon-theme", "cachyos-gnome-settings",
-"cachyos-nord-gtk-theme-git", "eog", "evince", "file-roller", "gdm", "gedit", "gnome-calculator",
-"gnome-control-center", "gnome-disk-utility", "gnome-keyring", "gnome-nettool", "gnome-power-manager",
-"gnome-screenshot", "gnome-shell", "gnome-terminal", "gnome-themes-extra", "gnome-tweaks",
-"gnome-usage", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
-"nautilus", "nautilus-sendto", "sushi", "totem", "qt6-wayland", "xdg-user-dirs-gtk", "xdg-desktop-portal-gnome"]
+  "adwaita-icon-theme",
+  "eog",
+  "evince",
+  "file-roller",
+  "gdm",
+  "gedit",
+  "gnome-backgrounds",
+  "gnome-calculator",
+  "gnome-control-center",
+  "gnome-disk-utility",
+  "gnome-keyring",
+  "gnome-nettool",
+  "gnome-power-manager",
+  "gnome-screenshot",
+  "gnome-shell",
+  "gnome-terminal",
+  "gnome-themes-extra",
+  "gnome-tweaks",
+  "gnome-usage",
+  "malcontent",
+  "libnma",
+  "gvfs",
+  "gvfs-afc",
+  "gvfs-gphoto2",
+  "gvfs-mtp",
+  "gvfs-nfs",
+  "gvfs-smb",
+  "nautilus",
+  "sushi",
+  "totem",
+  "qt6-wayland",
+  "xdg-user-dirs-gtk",
+  "xdg-desktop-portal-gnome"
+]
 
 [desktop.openbox]
 # should be equal to netinstall openbox section group in GUI installer
 packages = [
-"cachyos-openbox-settings", "obconf", "libwnck3", "acpi", "arandr",
-"archlinux-xdg-menu", "dex", "dmenu", "dunst", "feh", "gtk-engine-murrine", "gvfs", "gvfs-afc", "gvfs-gphoto2",
-"gvfs-mtp", "gvfs-nfs", "gvfs-smb", "jgmenu", "jq", "lightdm", "lightdm-slick-greeter",
-"lxappearance-gtk3", "mpv", "network-manager-applet", "nitrogen", "obconf", "openbox",
-"pasystray", "picom", "polkit-gnome", "rofi", "scrot", "slock", "sysstat", "thunar",
-"thunar-archive-plugin", "thunar-media-tags-plugin", "thunar-volman", "tint2",
-"ttf-nerd-fonts-symbols", "tumbler", "xbindkeys", "xcursor-neutral",
-"xdg-user-dirs-gtk", "xed", "xfce4-terminal"]
+  "cachyos-openbox-settings",
+  "obconf",
+  "libwnck3",
+  "acpi",
+  "arandr",
+  "archlinux-xdg-menu",
+  "dex",
+  "dmenu",
+  "dunst",
+  "feh",
+  "gtk-engine-murrine",
+  "gvfs",
+  "gvfs-afc",
+  "gvfs-gphoto2",
+  "gvfs-mtp",
+  "gvfs-nfs",
+  "gvfs-smb",
+  "jgmenu",
+  "jq",
+  "lightdm",
+  "lightdm-slick-greeter",
+  "lxappearance-gtk3",
+  "mpv",
+  "network-manager-applet",
+  "nitrogen",
+  "obconf",
+  "openbox",
+  "pasystray",
+  "picom",
+  "polkit-gnome",
+  "rofi",
+  "scrot",
+  "slock",
+  "sysstat",
+  "thunar",
+  "thunar-archive-plugin",
+  "thunar-media-tags-plugin",
+  "thunar-volman",
+  "tint2",
+  "ttf-nerd-fonts-symbols",
+  "tumbler",
+  "xbindkeys",
+  "xcursor-neutral",
+  "xdg-user-dirs-gtk",
+  "xed",
+  "xfce4-terminal"
+]
 
 [desktop.bspwm]
 # should be equal to netinstall bspwm section group in GUI installer
 packages = [
-"bspwm", "sxhkd", "polybar", "lightdm", "cachyos-picom-config"]
+  "cachyos-picom-config",
+  "bspwm",
+  "sxhkd",
+  "polybar",
+  "ly",
+  "alacritty",
+  "openssh"
+]
 
 [desktop.lxqt]
 # should be equal to netinstall lxqt section group in GUI installer
 packages = [
-"audiocd-kio", "baka-mplayer", "breeze", "breeze-gtk",
-"featherpad", "gvfs", "gvfs-mtp", "kio-fuse", "libstatgrab", "libsysstat", "lm_sensors",
-"lxqt", "lxqt-archiver", "network-manager-applet", "oxygen-icons", "pavucontrol-qt",
-"print-manager", "qt5-translations", "sddm", "xdg-utils", "xscreensaver", "xsettingsd"]
+  "audiocd-kio",
+  "baka-mplayer",
+  "breeze",
+  "breeze-gtk",
+  "featherpad",
+  "gvfs",
+  "gvfs-mtp",
+  "kio-fuse",
+  "libstatgrab",
+  "libsysstat",
+  "lm_sensors",
+  "lxqt",
+  "lxqt-archiver",
+  "network-manager-applet",
+  "oxygen-icons",
+  "pavucontrol-qt",
+  "print-manager",
+  "qt5-translations",
+  "sddm",
+  "xdg-utils",
+  "xscreensaver",
+  "xsettingsd"
+]
 
 [desktop.cinnamon]
 # should be equal to netinstall lxqt section group in GUI installer
 packages = [
-"cinnamon", "system-config-printer", "gnome-keyring", "gnome-terminal", "blueberry", "metacity", "lightdm", "lightdm-gtk-greeter"]
+  "cinnamon",
+  "system-config-printer",
+  "gnome-keyring",
+  "gnome-terminal",
+  "blueberry",
+  "metacity",
+  "lightdm",
+  "lightdm-gtk-greeter"
+]
 
 [desktop.ukui]
 # should be equal to netinstall ukui section group in GUI installer
 packages = [
-"sddm", "thunar", "thunar-archive-plugin", "thunar-volman", "peony", "xfce4-terminal", "ukui", "mate-terminal",
-"mate-system-monitor", "mate-control-center", "redshift", "gnome-screenshot", "accountsservice", "gvfs", "qt5-quickcontrols"]
+  "sddm",
+  "thunar",
+  "thunar-archive-plugin",
+  "thunar-volman",
+  "peony",
+  "xfce4-terminal",
+  "qt5-ukui-platformtheme",
+  "ukui-biometric-auth",
+  "ukui-control-center",
+  "ukui-interface",
+  "ukui-media",
+  "ukui-menu",
+  "ukui-menus",
+  "ukui-notebook",
+  "ukui-panel",
+  "ukui-power-manager",
+  "ukui-screensaver",
+  "ukui-session-manager",
+  "ukui-settings-daemon",
+  "ukui-sidebar",
+  "ukui-system-monitor",
+  "ukui-themes",
+  "ukui-wallpapers",
+  "ukui-window-switch",
+  "mate-terminal",
+  "mate-system-monitor",
+  "mate-control-center",
+  "redshift",
+  "gnome-screenshot",
+  "accountsservice",
+  "gvfs",
+  "qt5-quickcontrols"
+]
 
 [desktop.qtile]
 # should be equal to netinstall qtile section group in GUI installer
 packages = [
-"ttf-nerd-fonts-symbols", "qtile", "ttf-cascadia-code", "cachyos-qtile-settings",
-"wired", "rofi", "thunar", "polkit-gnome", "qt5ct", "noto-fonts", "flameshot",
-"gnome-themes-extra", "ttf-jetbrains-mono", "ttf-font-awesome", "picom", "ly"]
+  "cachyos-qtile-settings",
+  "ttf-nerd-fonts-symbols",
+  "qtile",
+  "ttf-cascadia-code",
+  "wired",
+  "rofi",
+  "thunar",
+  "polkit-gnome",
+  "qt5ct",
+  "noto-fonts",
+  "flameshot",
+  "gnome-themes-extra",
+  "ttf-jetbrains-mono",
+  "ttf-font-awesome",
+  "picom",
+  "ly"
+]
 
 [desktop.mate]
 # should be equal to netinstall mate section group in GUI installer
 packages = [
-"celluloid", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb",
-"lightdm", "lightdm-gtk-greeter", "mate", "mate-extra", "network-manager-applet", "xdg-user-dirs-gtk"]
+  "celluloid",
+  "gvfs",
+  "gvfs-afc",
+  "gvfs-gphoto2",
+  "gvfs-mtp",
+  "gvfs-nfs",
+  "gvfs-smb",
+  "lightdm",
+  "lightdm-slick-greeter",
+  "mate",
+  "mate-extra",
+  "network-manager-applet",
+  "xdg-user-dirs-gtk"
+]
 
 [desktop.lxde]
 # should be equal to netinstall lxde section group in GUI installer
 packages = [
-"celluloid", "file-roller", "galculator", "gnome-screenshot", "gpicview",
-"gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "lxappearance-gtk3",
-"lxde-common", "lxde-icon-theme", "lxhotkey-gtk3", "lxinput-gtk3", "lxlauncher-gtk3",
-"lxpanel-gtk3", "lxrandr-gtk3", "lxsession-gtk3", "lxtask-gtk3", "lxterminal", "ly", "notification-daemon",
-"pcmanfm-gtk3", "lxmusic", "network-manager-applet", "xdg-user-dirs-gtk", "xed"]
+  "celluloid",
+  "file-roller",
+  "galculator",
+  "gnome-screenshot",
+  "gpicview",
+  "gvfs",
+  "gvfs-afc",
+  "gvfs-gphoto2",
+  "gvfs-mtp",
+  "gvfs-nfs",
+  "gvfs-smb",
+  "lxappearance-gtk3",
+  "obconf",
+  "lxde-common",
+  "lxde-icon-theme",
+  "lxhotkey-gtk3",
+  "lxinput-gtk3",
+  "lxlauncher-gtk3",
+  "lxpanel-gtk3",
+  "lxrandr-gtk3",
+  "lxsession-gtk3",
+  "lxtask-gtk3",
+  "lxterminal",
+  "lightdm",
+  "lightdm-slick-greeter",
+  "notification-daemon",
+  "openbox",
+  "pcmanfm-gtk3",
+  "lxmusic",
+  "network-manager-applet",
+  "xdg-user-dirs-gtk",
+  "xed"
+]
 
 [desktop.hyprland]
 # should be equal to netinstall hyprland section group in GUI installer
 packages = [
-"cachyos-hyprland-settings", "hyprland-git", "kvantum", "qt5ct", "sddm",
-"swaybg", "swaylock-effects-git", "swaylock-fancy-git", "waybar-hyprland", "xdg-desktop-portal-hyprland",
-"grimblast-git", "slurp", "mako", "wob", "pamixer", "rofi", "rofi-emoji", "wofi",
-"wlogout", "swappy",  "wl-clipboard", "polkit-kde-agent", "bemenu", "bemenu-wayland", "xorg-xwayland",
-"capitaine-cursors", "cachyos-wallpapers", "kvantum-theme-nordic-git", "cachyos-nord-gtk-theme-git"]
+  "cachyos-hyprland-settings",
+  "hyprland",
+  "kvantum",
+  "qt5ct",
+  "sddm",
+  "swaybg",
+  "swaylock-effects-git",
+  "swaylock-fancy-git",
+  "waybar",
+  "xdg-desktop-portal-hyprland",
+  "grimblast-git",
+  "slurp",
+  "mako",
+  "wob",
+  "pamixer",
+  "rofi",
+  "rofi-emoji",
+  "wofi",
+  "wlogout",
+  "swappy",
+  "wl-clipboard",
+  "polkit-kde-agent",
+  "bemenu",
+  "bemenu-wayland",
+  "xorg-xwayland",
+  "capitaine-cursors",
+  "kvantum-theme-nordic-git",
+  "cachyos-nord-gtk-theme-git"
+]
 
 [desktop.budgie]
 # should be equal to netinstall budgie section group in GUI installer
 packages = [
-"budgie-control-center", "budgie-desktop", "budgie-desktop-view", "budgie-extras",
-"budgie-screensaver", "eog", "evince", "file-roller", "gedit", "gnome-keyring", "gnome-screenshot",
-"gnome-terminal", "gvfs", "gvfs-afc", "gvfs-gphoto2", "gvfs-mtp", "gvfs-nfs", "gvfs-smb", "ly",
-"nemo", "nemo-fileroller", "nemo-preview", "network-manager-applet", "sushi", "totem", "xdg-user-dirs-gtk"]
+  "budgie-control-center",
+  "budgie-desktop",
+  "budgie-desktop-view",
+  "budgie-extras",
+  "budgie-screensaver",
+  "eog",
+  "evince",
+  "file-roller",
+  "gedit",
+  "gnome-keyring",
+  "gnome-screenshot",
+  "gnome-terminal",
+  "gvfs",
+  "gvfs-afc",
+  "gvfs-gphoto2",
+  "gvfs-mtp",
+  "gvfs-nfs",
+  "gvfs-smb",
+  "lightdm",
+  "lightdm-slick-greeter",
+  "nemo",
+  "nemo-fileroller",
+  "nemo-preview",
+  "network-manager-applet",
+  "sushi",
+  "totem",
+  "xdg-user-dirs-gtk"
+]
 
 [desktop.xorg]
 # should be equal to netinstall xorg section group in GUI installer
 packages = [
-"libwnck3", "mesa-utils", "xf86-input-libinput", "xorg-xdpyinfo", "xorg-server",
-"xorg-xinit", "xorg-xinput", "xorg-xkill", "xorg-xrandr"]
+  "libwnck3",
+  "mesa-utils",
+  "xf86-input-libinput",
+  "xorg-xdpyinfo",
+  "xorg-server",
+  "xorg-xinit",
+  "xorg-xinput",
+  "xorg-xkill",
+  "xorg-xrandr"
+]
