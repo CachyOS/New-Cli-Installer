@@ -3,14 +3,23 @@
 
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <vector>       // for vector
 
 namespace gucc::fs {
+
+struct ZfsDataset final {
+    std::string zpath;
+    std::string mountpoint;
+};
 
 // Creates a zfs volume
 void zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept;
 
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
-void zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept;
+auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> bool;
+
+// Creates a zfs datasets from predefined scheme
+auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> bool;
 
 void zfs_destroy_dataset(std::string_view zdataset) noexcept;
 

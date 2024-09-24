@@ -212,12 +212,17 @@ bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zf
     }
 
     // next create the datasets including their parents
-    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), "none"sv);
-    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), "none"sv);
-    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), "/"sv);
-    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), "/home"sv);
-    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), "/var/cache"sv);
-    gucc::fs::zfs_create_dataset(fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), "/var/log"sv);
+    const std::vector<gucc::fs::ZfsDataset> default_zfs_datasets{
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), .mountpoint = "none"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), .mountpoint = "none"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), .mountpoint = "/"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), .mountpoint = "/home"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), .mountpoint = "/var/cache"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), .mountpoint = "/var/log"s},
+    };
+    if (!gucc::fs::zfs_create_datasets(default_zfs_datasets)) {
+        spdlog::error("Failed to create zfs datasets automatically");
+    }
 
 #ifdef NDEVENV
     // set the rootfs

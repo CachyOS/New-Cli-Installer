@@ -21,12 +21,24 @@ void zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept {
 }
 
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
-void zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept {
+auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> bool {
 #ifdef NDEVENV
-    utils::exec(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log"), zmount, zpath), true);
+    return utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log"), zmount, zpath));
 #else
     spdlog::debug("zfs create -o mountpoint={} {}", zmount, zpath);
+    return true;
 #endif
+}
+
+auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> bool {
+    // Create datasets
+    for (const auto& zdataset : zdatasets) {
+        if (!fs::zfs_create_dataset(zdataset.zpath, zdataset.mountpoint)) {
+            spdlog::error("Failed to create zfs dataset {} at mountpoint {}", zdataset.zpath, zdataset.mountpoint);
+            return false;
+        }
+    }
+    return true;
 }
 
 void zfs_destroy_dataset(std::string_view zdataset) noexcept {
