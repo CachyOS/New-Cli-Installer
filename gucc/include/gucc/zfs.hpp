@@ -13,7 +13,7 @@ struct ZfsDataset final {
 };
 
 // Creates a zfs volume
-void zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept;
+auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept -> bool;
 
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
 auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> bool;
@@ -21,7 +21,7 @@ auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcep
 // Creates a zfs datasets from predefined scheme
 auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> bool;
 
-void zfs_destroy_dataset(std::string_view zdataset) noexcept;
+auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> bool;
 
 // returns a list of imported zpools
 auto zfs_list_pools() noexcept -> std::string;
@@ -31,7 +31,8 @@ auto zfs_list_devs() noexcept -> std::string;
 
 auto zfs_list_datasets(std::string_view type = "none") noexcept -> std::string;
 
-void zfs_set_property(std::string_view property, std::string_view dataset) noexcept;
+// Sets zfs property
+auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> bool;
 
 }  // namespace gucc::fs
 

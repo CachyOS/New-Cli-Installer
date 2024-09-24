@@ -12,11 +12,12 @@ using namespace std::string_view_literals;
 namespace gucc::fs {
 
 // Creates a zfs volume
-void zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept {
+auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept -> bool {
 #ifdef NDEVENV
-    utils::exec(fmt::format(FMT_COMPILE("zfs create -V {}M {} 2>>/tmp/cachyos-install.log"), zsize, zpath), true);
+    return utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -V {}M {} 2>>/tmp/cachyos-install.log"), zsize, zpath));
 #else
     spdlog::debug("zfs create -V {}M {}", zsize, zpath);
+    return true;
 #endif
 }
 
@@ -41,11 +42,12 @@ auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> b
     return true;
 }
 
-void zfs_destroy_dataset(std::string_view zdataset) noexcept {
+auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> bool {
 #ifdef NDEVENV
-    utils::exec(fmt::format(FMT_COMPILE("zfs destroy -r {} 2>>/tmp/cachyos-install.log"), zdataset), true);
+    return utils::exec_checked(fmt::format(FMT_COMPILE("zfs destroy -r {} 2>>/tmp/cachyos-install.log"), zdataset));
 #else
     spdlog::debug("zfs destroy -r {}", zdataset);
+    return true;
 #endif
 }
 
@@ -87,11 +89,12 @@ auto zfs_list_datasets(std::string_view type) noexcept -> std::string {
 #endif
 }
 
-void zfs_set_property(std::string_view property, std::string_view dataset) noexcept {
+auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> bool {
 #ifdef NDEVENV
-    utils::exec(fmt::format(FMT_COMPILE("zfs set {} {} 2>>/tmp/cachyos-install.log"), property, dataset), true);
+    return utils::exec_checked(fmt::format(FMT_COMPILE("zfs set {} {} 2>>/tmp/cachyos-install.log"), property, dataset));
 #else
     spdlog::debug("zfs set {} {}", property, dataset);
+    return true;
 #endif
 }
 

@@ -1346,7 +1346,9 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
 
     const auto& zfs_zpath = fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name);
     if (zmount == "legacy"sv) {
-        gucc::fs::zfs_create_dataset(zfs_zpath, zmount);
+        if (!gucc::fs::zfs_create_dataset(zfs_zpath, zmount)) {
+            spdlog::error("Failed to create zfs dataset {} at mountpoint {}", zfs_zpath, zmount);
+        }
     } else if (zmount == "zvol"sv) {
         static constexpr auto zvol_size_menu_body       = "\nEnter the size of the zvol in megabytes(MB)\n"sv;
         static constexpr auto zvol_size_menu_validation = "\nYou must enter a number greater than 0\n"sv;
@@ -1372,7 +1374,9 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
             if (zfs_menu_text == zvol_size_menu_body) { break; }
             /* clang-format on */
         }
-        gucc::fs::zfs_create_zvol(zvol_size, zfs_zpath);
+        if (!gucc::fs::zfs_create_zvol(zvol_size, zfs_zpath)) {
+            spdlog::error("Failed to create zfs zvol {} with size {}", zfs_zpath, zvol_size);
+        }
     } else {
         spdlog::error("HELLO! IMPLEMENT ME!");
         return false;
@@ -1433,7 +1437,9 @@ void zfs_set_property() noexcept {
     }
 
     // Set the property
-    gucc::fs::zfs_set_property(zfs_property_ent, zdataset);
+    if (!gucc::fs::zfs_set_property(zfs_property_ent, zdataset)) {
+        spdlog::error("Failed to set zfs property '{}' on dataset '{}'", zfs_property_ent, zdataset);
+    }
 }
 
 void zfs_destroy_dataset() noexcept {
