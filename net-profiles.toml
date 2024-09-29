@@ -348,6 +348,7 @@ packages = [
   "file-roller",
   "gdm",
   "gedit",
+  "gnome",
   "gnome-backgrounds",
   "gnome-calculator",
   "gnome-control-center",
