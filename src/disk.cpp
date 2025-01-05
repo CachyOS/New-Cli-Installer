@@ -211,6 +211,7 @@ bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zf
         return false;
     }
 
+#ifdef NDEVENV
     // next create the datasets including their parents
     const std::vector<gucc::fs::ZfsDataset> default_zfs_datasets{
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), .mountpoint = "none"s},
@@ -222,12 +223,19 @@ bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zf
     };
     if (!gucc::fs::zfs_create_datasets(default_zfs_datasets)) {
         spdlog::error("Failed to create zfs datasets automatically");
+        return false;
     }
 
-#ifdef NDEVENV
     // set the rootfs
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set bootfs={0}/ROOT/cos/root {0} 2>>/tmp/cachyos-install.log"), zfs_zpool_name), true);
+    const auto& zpool_property = fmt::format(FMT_COMPILE("bootfs={}/ROOT/cos/root"), zfs_zpool_name);
+    if (!gucc::fs::zpool_set_property(zpool_property, zfs_zpool_name)) {
+        spdlog::error("Failed to set zfs pool property");
+        return false;
+    }
+#else
+    spdlog::info("Created ZFS automatically");
 #endif
+
     return true;
 }
 
