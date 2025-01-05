@@ -239,22 +239,17 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
     static constexpr auto zpool_options{"-f -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O atime=off -O relatime=off -O normalization=formD -O xattr=sa -O mountpoint=none"sv};
 
 #ifdef NDEVENV
-    std::int32_t ret_code{};
+    std::string device_path{partition};
 
     // Find the UUID of the partition
     const auto& partuuid = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"sv), false);
 
     // See if the partition has a partuuid, if not use the device name
-    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool create {} {}"), zpool_options, pool_name);
     if (!partuuid.empty()) {
-        ret_code = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partuuid), true));
-        spdlog::info("Creating zpool {} on device {} using partuuid {}", pool_name, partition, partuuid);
-    } else {
-        ret_code = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("{} {} 2>>/tmp/cachyos-install.log"), zfs_zpool_cmd, partition), true));
-        spdlog::info("Creating zpool {} on device {}", pool_name, partition);
+        device_path = partuuid;
     }
 
-    if (ret_code != 0) {
+    if (!gucc::fs::zfs_create_zpool(device_path, pool_name, zpool_options)) {
         spdlog::error("Failed to create zpool!");
         return false;
     }
