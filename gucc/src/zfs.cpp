@@ -98,6 +98,17 @@ auto zfs_set_property(std::string_view property, std::string_view dataset) noexc
 #endif
 }
 
+auto zpool_set_property(std::string_view property, std::string_view pool_name) noexcept -> bool {
+    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool set {} {} 2>>/tmp/cachyos-install.log"), property, pool_name);
+
+    spdlog::debug("setting zfs zpool property with: {}", zfs_zpool_cmd);
+    if (!utils::exec_checked(zfs_zpool_cmd)) {
+        spdlog::error("Failed to set zfs zpool property with: {}", zfs_zpool_cmd);
+        return false;
+    }
+    return true;
+}
+
 auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase) noexcept -> bool {
     const auto& zfs_zpool_cmd = [&]() {
         auto cmd = fmt::format(FMT_COMPILE("zpool create {}"), pool_options);

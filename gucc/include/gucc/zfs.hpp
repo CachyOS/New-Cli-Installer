@@ -35,6 +35,9 @@ auto zfs_list_datasets(std::string_view type = "none") noexcept -> std::string;
 // Sets zfs property
 auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> bool;
 
+// Sets zfs pool property
+auto zpool_set_property(std::string_view property, std::string_view pool_name) noexcept -> bool;
+
 /// @brief Creates a zpool with the specified arguments.
 /// @param device_path The full path to the device to create on.
 /// @param pool_name The name of the pool.
