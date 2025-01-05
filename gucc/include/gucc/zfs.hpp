@@ -1,6 +1,7 @@
 #ifndef ZFS_HPP
 #define ZFS_HPP
 
+#include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -33,6 +34,14 @@ auto zfs_list_datasets(std::string_view type = "none") noexcept -> std::string;
 
 // Sets zfs property
 auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> bool;
+
+/// @brief Creates a zpool with the specified arguments.
+/// @param device_path The full path to the device to create on.
+/// @param pool_name The name of the pool.
+/// @param pool_options The options of the pool.
+/// @param passphrase The optional password for the pool, in case the password specified zpool is created with encryption.
+/// @return True if the creation was successful, false otherwise.
+auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase = std::nullopt) noexcept -> bool;
 
 }  // namespace gucc::fs
 

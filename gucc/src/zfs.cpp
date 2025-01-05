@@ -98,4 +98,26 @@ auto zfs_set_property(std::string_view property, std::string_view dataset) noexc
 #endif
 }
 
+auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase) noexcept -> bool {
+    const auto& zfs_zpool_cmd = [&]() {
+        auto cmd = fmt::format(FMT_COMPILE("zpool create {}"), pool_options);
+        if (passphrase.has_value()) {
+            cmd += "-O encryption=aes-256-gcm -O keyformat=passphrase"sv;
+        }
+        cmd += fmt::format(FMT_COMPILE("'{}' '{}' 2>>/tmp/cachyos-install.log"), pool_name, device_path);
+
+        if (passphrase.has_value()) {
+            return fmt::format(FMT_COMPILE("echo '{}' | {}"), *passphrase, cmd);
+        }
+        return cmd;
+    }();
+
+    spdlog::debug("creating zfs zpool with: {}", zfs_zpool_cmd);
+    if (!utils::exec_checked(zfs_zpool_cmd)) {
+        spdlog::error("Failed to create zfs zpool with: {}", zfs_zpool_cmd);
+        return false;
+    }
+    return true;
+}
+
 }  // namespace gucc::fs
