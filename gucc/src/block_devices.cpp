@@ -88,6 +88,19 @@ auto find_device_by_name(const std::vector<BlockDevice>& devices, std::string_vi
     return std::nullopt;
 }
 
+auto find_device_by_pkname(const std::vector<BlockDevice>& devices, std::string_view pkname) -> std::optional<BlockDevice> {
+    auto it = std::ranges::find_if(devices, [pkname](auto&& dev) {
+        if (dev.pkname) {
+            return *dev.pkname == pkname;
+        }
+        return false;
+    });
+    if (it != std::ranges::end(devices)) {
+        return std::make_optional<BlockDevice>(std::move(*it));
+    }
+    return std::nullopt;
+}
+
 auto list_block_devices() -> std::optional<std::vector<BlockDevice>> {
     const auto& lsblk_output = utils::exec(R"(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINT,MODEL -b -p -a -J -Q "type=='part' || type=='crypt' && fstype")");
     if (lsblk_output.empty()) {

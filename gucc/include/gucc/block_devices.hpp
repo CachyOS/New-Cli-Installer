@@ -46,6 +46,12 @@ auto list_block_devices() -> std::optional<std::vector<BlockDevice>>;
 /// @return An optional BlockDevice object if found, std::nullopt otherwise.
 auto find_device_by_name(const std::vector<BlockDevice>& devices, std::string_view device_name) -> std::optional<BlockDevice>;
 
+/// @brief Finds a block device by matching its parent kernel name (pkname).
+/// @param devices A vector of BlockDevice objects.
+/// @param pkname A string view representing the parent kernel name to search for.
+/// @return An optional BlockDevice object if found, std::nullopt otherwise.
+auto find_device_by_pkname(const std::vector<BlockDevice>& devices, std::string_view pkname) -> std::optional<BlockDevice>;
+
 }  // namespace gucc::disk
 
 #endif  // BLOCK_DEVICES_HPP
