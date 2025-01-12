@@ -12,6 +12,10 @@ struct Partition final {
     std::string uuid_str{};
     std::string device{};
 
+    // partition size,
+    // e.g 2G, 512G
+    std::string size{};
+
     // mount points that will be written in fstab,
     // excluding subvol={subvol name}
     // if device is ssd, mount options for ssd should be appended
