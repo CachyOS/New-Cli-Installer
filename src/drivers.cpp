@@ -54,11 +54,11 @@ void setup_graphics_card() noexcept {
     const auto& cachepath  = std::get<std::string>(config_data["cachepath"]);
 
 #ifdef NDEVENV
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("chwd --pmcachedir \"{}\" --pmroot {} -f -i pci {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("chwd --pmcachedir \"{}\" --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
     tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
     std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
 #else
-    spdlog::debug("chwd --pmcachedir \"{}\" --pmroot {} -f -i pci {} 2>>/tmp/cachyos-install.log 2>&1", cachepath, mountpoint, driver);
+    spdlog::debug("chwd --pmcachedir \"{}\" --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1", cachepath, mountpoint, driver);
 #endif
 }
 
@@ -79,7 +79,7 @@ void install_graphics_menu() noexcept {
         switch (selected) {
 #ifdef NDEVENV
         case 0:
-            utils::arch_chroot("chwd --autoconfigure"sv);
+            utils::arch_chroot("chwd -a"sv);
             std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};  // NOLINT
             break;
 #endif

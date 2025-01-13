@@ -70,10 +70,10 @@ Vagrant.configure("2") do |config|
 
     # Display the VirtualBox GUI when booting the machine
     vb.gui = false
-  
+
     # Customize the amount of CPUs on the VM:
     vb.cpus = "4"
-    
+
     # Customize the amount of memory on the VM:
     vb.memory = "6144"
 
@@ -102,9 +102,9 @@ Vagrant.configure("2") do |config|
     export NM=llvm-nm
     export RANLIB=llvm-ranlib
 
-    wget https://raw.githubusercontent.com/CachyOS/CachyOS-CLI-ISO/master/archiso/airootfs/etc/pacman-more.conf
-    mv pacman-more.conf /etc/
- 
+    #wget https://raw.githubusercontent.com/CachyOS/CachyOS-CLI-ISO/master/archiso/airootfs/etc/pacman-more.conf
+    #mv pacman-more.conf /etc/
+
     cat << EOF > settings.json
     {
       "menus": 1,
@@ -121,8 +121,7 @@ Vagrant.configure("2") do |config|
       "root_pass": "secure",
       "kernel": "linux-cachyos",
       "desktop": "kde",
-      "bootloader": "systemd-boot",
-      "drivers_type": "free"
+      "bootloader": "systemd-boot"
     }
     EOF
 

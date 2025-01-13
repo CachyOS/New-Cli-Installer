@@ -321,21 +321,6 @@ Example configuration:
 "bootloader": "systemd-boot"
 ```
 ---
-### `drivers_type`
-
-This will detect drivers automatically and install them.
-
-Valid types:
-* `nonfree`
-* `free`
-
-Defaults to `free`.
-
-Example configuration:
-```json
-"drivers_type": "free"
-```
----
 ### `post_install`
 
 This will be launched after install is done.

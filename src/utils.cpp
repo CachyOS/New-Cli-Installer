@@ -1972,19 +1972,6 @@ bool parse_config() noexcept {
         return false;
     }
 
-    std::string drivers_type{"free"};
-    if (doc.HasMember("drivers_type")) {
-        assert(doc["drivers_type"].IsString());
-        drivers_type = doc["drivers_type"].GetString();
-
-        if (drivers_type != "nonfree"sv && drivers_type != "free"sv) {
-            spdlog::error("Unknown value: {}!", drivers_type);
-            drivers_type = "free";
-        }
-    }
-
-    config_data["DRIVERS_TYPE"] = drivers_type;
-
     if (doc.HasMember("post_install")) {
         assert(doc["post_install"].IsString());
         config_data["POST_INSTALL"] = std::string{doc["post_install"].GetString()};

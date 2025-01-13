@@ -28,6 +28,5 @@
     "root_pass": "secure",
     "kernel": "linux-cachyos",
     "desktop": "kde",
-    "bootloader": "systemd-boot",
-    "drivers_type": "free"
+    "bootloader": "systemd-boot"
 }

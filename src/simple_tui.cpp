@@ -50,7 +50,6 @@ struct UserSelections {
     std::string root_pass;
     std::string kernel;
     std::string desktop;
-    std::string drivers_type;
     std::string post_install;
     std::string mount_options;
     std::vector<std::string> ready_partitions;
@@ -401,7 +400,6 @@ UserSelections gather_user_selections() noexcept {
     const auto& kernel       = std::get<std::string>(config_data["KERNEL"]);
     const auto& desktop      = std::get<std::string>(config_data["DE"]);
     auto& bootloader         = std::get<std::string>(config_data["BOOTLOADER"]);
-    const auto& drivers_type = std::get<std::string>(config_data["DRIVERS_TYPE"]);
     const auto& post_install = std::get<std::string>(config_data["POST_INSTALL"]);
     const auto& server_mode  = std::get<std::int32_t>(config_data["SERVER_MODE"]);
 
@@ -474,7 +472,6 @@ UserSelections gather_user_selections() noexcept {
 
     selections.kernel        = kernel;
     selections.desktop       = desktop;
-    selections.drivers_type  = drivers_type;
     selections.post_install  = post_install;
     selections.server_mode   = server_mode != 0;
     selections.mount_options = mount_opts_info;
@@ -573,7 +570,7 @@ void apply_user_selections(const UserSelections& selections) noexcept {
 
 #ifdef NDEVENV
     if (!selections.server_mode) {
-        utils::arch_chroot(fmt::format(FMT_COMPILE("chwd -a pci {} 0300"), selections.drivers_type));
+        utils::arch_chroot("chwd -a");
         std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
     }
 #endif
@@ -601,16 +598,14 @@ void apply_user_selections(const UserSelections& selections) noexcept {
         fmt::format(FMT_COMPILE("Filesystem: {}"), selections.filesystem),
         fmt::format(FMT_COMPILE("Filesystem opts: {}"), selections.mount_options), 80);
 
-    fmt::print("┌{0:─^{5}}┐\n"
-               "│{1: ^{5}}│\n"
-               "│{2: ^{5}}│\n"
-               "│{3: ^{5}}│\n"
-               "│{4: ^{5}}│\n"
-               "└{0:─^{5}}┘\n",
+    fmt::print("┌{0:─^{4}}┐\n"
+               "│{1: ^{4}}│\n"
+               "│{2: ^{4}}│\n"
+               "│{3: ^{4}}│\n"
+               "└{0:─^{4}}┘\n",
         "",
         fmt::format(FMT_COMPILE("Kernel: {}"), selections.kernel),
         fmt::format(FMT_COMPILE("Desktop: {}"), (!selections.server_mode) ? selections.desktop : "---"),
-        fmt::format(FMT_COMPILE("Drivers type: {}"), selections.drivers_type),
         fmt::format(FMT_COMPILE("Bootloader: {}"), selections.bootloader), 80);
 }
 
