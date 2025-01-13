@@ -454,21 +454,16 @@ void install_grub_uefi() noexcept {
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
     utils::clear_screen();
-    utils::install_grub_uefi(bootid, false);
     // Ask if user wishes to set Grub as the default bootloader and act accordingly
     static constexpr auto set_boot_default_body  = "Some UEFI firmware may not detect the bootloader unless it is set\nas default by copying its efi stub to"sv;
     static constexpr auto set_boot_default_body2 = "and renaming it to bootx64.efi.\n\nIt is recommended to do so unless already using a default bootloader,\nor where intending to use multiple bootloaders.\n\nSet bootloader as default?"sv;
 
     const auto& do_set_default_bootloader = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{} {}/EFI/boot {}\n"), set_boot_default_body, uefi_mount, set_boot_default_body2), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+
+    utils::install_grub_uefi(bootid, do_set_default_bootloader);
     /* clang-format off */
     if (!do_set_default_bootloader) { return; }
     /* clang-format on */
-
-#ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("mkdir -p {}/EFI/boot"), uefi_mount), false);
-    spdlog::info("Grub efi binary status:(EFI/cachyos/grubx64.efi): {}", fs::exists(fmt::format(FMT_COMPILE("{0}/EFI/cachyos/grubx64.efi"), uefi_mount)));
-    utils::arch_chroot(fmt::format(FMT_COMPILE("cp -r {0}/EFI/cachyos/grubx64.efi {0}/EFI/boot/bootx64.efi"), uefi_mount), false);
-#endif
 
     detail::infobox_widget("\nGrub has been set as the default bootloader.\n"sv);
     std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -713,6 +708,7 @@ void bios_bootloader() {
     if (selected_bootloader.empty()) { return; }
     /* clang-format on */
 
+    // that will install 2 packages in case os-prober entry is selected
     utils::remove_all(selected_bootloader, "+ "sv);
 
     /* clang-format off */
