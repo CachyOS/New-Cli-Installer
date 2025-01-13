@@ -49,6 +49,7 @@ jobs:
           ./gucc/tests/test-btrfs
           ./gucc/tests/test-refind_config_gen
           ./gucc/tests/test-refind_extra_kern_strings
+          ./gucc/tests/test-partitioning_gen
         shell: bash
   build-cmake_withoutdev:
     name: Build with CMake (DEVENV OFF)
