@@ -32,9 +32,32 @@ using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace {
+
+// Structure to hold all user selections
+struct UserSelections {
+    bool server_mode;
+
+    std::string device;
+    std::string filesystem;
+    std::string bootloader;
+    std::string hostname;
+    std::string locale;
+    std::string xkbmap;
+    std::string timezone;
+    std::string user_name;
+    std::string user_pass;
+    std::string user_shell;
+    std::string root_pass;
+    std::string kernel;
+    std::string desktop;
+    std::string drivers_type;
+    std::string post_install;
+    std::string mount_options;
+    std::vector<std::string> ready_partitions;
+};
+
 // Set static list of filesystems rather than on-the-fly. Partially as most require additional flags, and
 // partially because some don't seem to be viable.
-// Set static list of filesystems rather than on-the-fly.
 auto select_filesystem() noexcept -> std::string {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -74,12 +97,8 @@ auto select_filesystem() noexcept -> std::string {
     return selected_fs;
 }
 
-auto select_bootloader() noexcept -> std::string {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
-
-    const auto& menu_entries = [](const auto& bios_mode) -> std::vector<std::string> {
+auto select_bootloader(std::string_view sys_info) noexcept -> std::string {
+    const auto& menu_entries = [&sys_info](const auto& bios_mode) -> std::vector<std::string> {
         const auto& available_bootloaders = utils::available_bootloaders(bios_mode);
 
         std::vector<std::string> result{};
@@ -110,7 +129,6 @@ auto select_bootloader() noexcept -> std::string {
     }
 
     utils::remove_all(selected_bootloader, "+ "sv);
-    config_data["BOOTLOADER"] = selected_bootloader;
 
     return selected_bootloader;
 }
@@ -360,10 +378,8 @@ ready_parts.push_back();*/
 
 namespace tui {
 
-void menu_simple() noexcept {
-    // Prepare
-    utils::umount_partitions();
-
+UserSelections gather_user_selections() noexcept {
+    UserSelections selections;
     auto* config_instance       = Config::instance();
     auto& config_data           = config_instance->data();
     const auto& mountpoint      = std::get<std::string>(config_data["MOUNTPOINT"]);
@@ -391,10 +407,12 @@ void menu_simple() noexcept {
 
     if (device_info.empty()) {
         tui::select_device();
+        selections.device = std::get<std::string>(config_data["DEVICE"]);
+    } else {
+        selections.device = device_info;
     }
 
     utils::auto_partition();
-
     // LVM Detection. If detected, activate.
     utils::lvm_detect();
 
@@ -415,15 +433,23 @@ void menu_simple() noexcept {
 
     // We must have bootloader before running partitioning step
     if (bootloader.empty()) {
-        bootloader = select_bootloader();
+        const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
+        selections.bootloader = select_bootloader(sys_info);
+        bootloader            = selections.bootloader;
+    } else {
+        selections.bootloader = bootloader;
     }
 
     // Target FS
     if (fs_name.empty()) {
-        fs_name = select_filesystem();
+        selections.filesystem = select_filesystem();
+        fs_name               = selections.filesystem;
+    } else {
+        selections.filesystem = fs_name;
     }
+
     if (ready_parts.empty()) {
-        utils::select_filesystem(fs_name);
+        utils::select_filesystem(selections.filesystem);
     }
 
     // tui::mount_current_partition(true);
@@ -432,15 +458,39 @@ void menu_simple() noexcept {
     if (ready_parts.empty()) {
         spdlog::info("TODO: auto make layout(ready parts)!");
         // ready_parts = auto_make_partitions(device_info, fs_name, mount_opts_info);
-        return;
+    } else {
+        selections.ready_partitions = ready_parts;
     }
 
-    const auto root_ready_part = *std::find_if(ready_parts.begin(), ready_parts.end(), [](const std::string_view& ready_part) {
-        const auto part_type = gucc::utils::make_multiline(ready_part, false, '\t')[4];
-        return part_type == "root"sv;
-    });
-    auto root_part             = gucc::utils::make_multiline(root_ready_part, false, '\t')[0];
-    if (!make_partitions_prepared(bootloader, fs_name, mount_opts_info, ready_parts)) {
+    selections.hostname = hostname;
+    selections.locale   = locale;
+    selections.xkbmap   = xkbmap;
+    selections.timezone = timezone;
+
+    selections.user_name  = user_name;
+    selections.user_pass  = user_pass;
+    selections.user_shell = user_shell;
+    selections.root_pass  = root_pass;
+
+    selections.kernel        = kernel;
+    selections.desktop       = desktop;
+    selections.drivers_type  = drivers_type;
+    selections.post_install  = post_install;
+    selections.server_mode   = server_mode != 0;
+    selections.mount_options = mount_opts_info;
+
+    return selections;
+}
+
+void apply_user_selections(const UserSelections& selections) noexcept {
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
+    utils::umount_partitions();
+
+    if (!make_partitions_prepared(selections.bootloader, selections.filesystem, selections.mount_options, selections.ready_partitions)) {
         utils::umount_partitions();
         return;
     }
@@ -462,79 +512,79 @@ void menu_simple() noexcept {
     // at this point we should have everything already mounted
     utils::generate_fstab();
 
-    if (hostname.empty()) {
+    if (selections.hostname.empty()) {
         tui::set_hostname();
     } else {
-        utils::set_hostname(hostname);
+        utils::set_hostname(selections.hostname);
     }
 
-    if (locale.empty()) {
+    if (selections.locale.empty()) {
         tui::set_locale();
     } else {
-        utils::set_locale(locale);
+        utils::set_locale(selections.locale);
     }
 
-    if (xkbmap.empty()) {
+    if (selections.xkbmap.empty()) {
         tui::set_xkbmap();
     } else {
-        utils::set_xkbmap(xkbmap);
+        utils::set_xkbmap(selections.xkbmap);
     }
 
-    if (timezone.empty()) {
+    if (selections.timezone.empty()) {
         tui::set_timezone();
     } else {
-        utils::set_timezone(timezone);
+        utils::set_timezone(selections.timezone);
     }
 
     utils::set_hw_clock("utc"sv);
 
-    if (root_pass.empty()) {
+    if (selections.root_pass.empty()) {
         tui::set_root_password();
     } else {
-        utils::set_root_password(root_pass);
+        utils::set_root_password(selections.root_pass);
     }
 
-    if (user_name.empty()) {
+    if (selections.user_name.empty()) {
         tui::create_new_user();
     } else {
-        utils::create_new_user(user_name, user_pass, user_shell);
+        utils::create_new_user(selections.user_name, selections.user_pass, selections.user_shell);
     }
 
     // Install process
-    if (kernel.empty()) {
+    if (selections.kernel.empty()) {
         tui::install_base();
     } else {
-        utils::install_base(kernel);
+        utils::install_base(selections.kernel);
     }
 
-    if (server_mode == 0) {
-        if (desktop.empty()) {
+    if (!selections.server_mode) {
+        if (selections.desktop.empty()) {
             tui::install_desktop();
         } else {
-            utils::install_desktop(desktop);
+            utils::install_desktop(selections.desktop);
         }
     }
 
-    if (bootloader.empty()) {
+    if (selections.bootloader.empty()) {
         tui::install_bootloader();
     } else {
-        utils::install_bootloader(bootloader);
+        utils::install_bootloader(selections.bootloader);
     }
 
 #ifdef NDEVENV
-    if (server_mode == 0) {
-        utils::arch_chroot(fmt::format(FMT_COMPILE("chwd -a pci {} 0300"), drivers_type));
+    if (!selections.server_mode) {
+        utils::arch_chroot(fmt::format(FMT_COMPILE("chwd -a pci {} 0300"), selections.drivers_type));
         std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
     }
 #endif
 
-    if (!post_install.empty()) {
+    if (!selections.post_install.empty()) {
         spdlog::info("Running post-install script...");
         // Flush before executing post-install script,
         // so that output will be synchronized.
         auto logger = spdlog::get("cachyos_logger");
         logger->flush();
-        gucc::utils::exec(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), post_install), true);
+        gucc::utils::exec(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), selections.post_install), true);
     }
 
     tui::exit_done();
@@ -547,9 +597,9 @@ void menu_simple() noexcept {
                "└{0:─^{5}}┘\n",
         "",
         fmt::format(FMT_COMPILE("Mountpoint: {}"), mountpoint),
-        fmt::format(FMT_COMPILE("Your device: {}"), device_info),
-        fmt::format(FMT_COMPILE("Filesystem: {}"), fs_name),
-        fmt::format(FMT_COMPILE("Filesystem opts: {}"), mount_opts_info), 80);
+        fmt::format(FMT_COMPILE("Your device: {}"), selections.device),
+        fmt::format(FMT_COMPILE("Filesystem: {}"), selections.filesystem),
+        fmt::format(FMT_COMPILE("Filesystem opts: {}"), selections.mount_options), 80);
 
     fmt::print("┌{0:─^{5}}┐\n"
                "│{1: ^{5}}│\n"
@@ -558,10 +608,15 @@ void menu_simple() noexcept {
                "│{4: ^{5}}│\n"
                "└{0:─^{5}}┘\n",
         "",
-        fmt::format(FMT_COMPILE("Kernel: {}"), kernel),
-        fmt::format(FMT_COMPILE("Desktop: {}"), (server_mode == 0) ? desktop : "---"),
-        fmt::format(FMT_COMPILE("Drivers type: {}"), drivers_type),
-        fmt::format(FMT_COMPILE("Bootloader: {}"), bootloader), 80);
+        fmt::format(FMT_COMPILE("Kernel: {}"), selections.kernel),
+        fmt::format(FMT_COMPILE("Desktop: {}"), (!selections.server_mode) ? selections.desktop : "---"),
+        fmt::format(FMT_COMPILE("Drivers type: {}"), selections.drivers_type),
+        fmt::format(FMT_COMPILE("Bootloader: {}"), selections.bootloader), 80);
+}
+
+void menu_simple() noexcept {
+    auto selections = gather_user_selections();
+    apply_user_selections(selections);
 }
 
 }  // namespace tui
