@@ -258,7 +258,6 @@ packages = [
 [desktop.xfce]
 # should be equal to netinstall xfce section group in GUI installer
 packages = [
-  "cachyos-xfce-settings",
   "blueman",
   "file-roller",
   "galculator",
