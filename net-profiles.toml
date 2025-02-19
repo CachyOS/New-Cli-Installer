@@ -251,8 +251,7 @@ packages = [
   "xsettingsd",
   "xdg-desktop-portal",
   "xdg-desktop-portal-kde",
-  "phonon-qt6-vlc",
-  "xwaylandvideobridge"
+  "phonon-qt6-vlc"
 ]
 
 [desktop.xfce]
