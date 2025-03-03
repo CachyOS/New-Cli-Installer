@@ -38,7 +38,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME fmt
   GITHUB_REPOSITORY fmtlib/fmt
-  GIT_TAG 11.0.0
+  GIT_TAG 11.1.4
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -50,19 +50,19 @@ CPMAddPackage(
 CPMAddPackage(
   NAME spdlog
   GITHUB_REPOSITORY gabime/spdlog
-  GIT_TAG eeb22c13bb65f342434c991641b80ecf4821e9b9
+  GIT_TAG 3335c380a08c5e0f5117a66622df6afdb3d74959
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME rapidjson
   GITHUB_REPOSITORY Tencent/rapidjson
-  GIT_TAG ab1842a2dae061284c0a62dca1cc6d5e7e37e346
+  GIT_TAG 24b5e7a8b27f42fa16b96fc70aade9106cf7102f
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME cpr
   GITHUB_REPOSITORY libcpr/cpr
-  GIT_TAG b5a21decc0cf25773fb5d742101da6b72639aa51
+  GIT_TAG 1.11.2
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -74,7 +74,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME ctre
   GITHUB_REPOSITORY hanickadot/compile-time-regular-expressions
-  GIT_TAG acb2f4de2e24a06280088377e47534137c0bc759
+  GIT_TAG e0f36500bc941fe447718ab625490728790c933f
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
