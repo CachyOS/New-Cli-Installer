@@ -9,6 +9,9 @@
 
 namespace gucc::disk {
 
+// Erases disk
+auto erase_disk(std::string_view device) noexcept -> bool;
+
 // Generates sfdisk commands from Partition scheme
 auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> std::string;
 

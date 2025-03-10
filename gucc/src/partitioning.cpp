@@ -101,4 +101,27 @@ auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcep
     return true;
 }
 
+auto erase_disk(std::string_view device) noexcept -> bool {
+    // 1. write zeros
+    const auto& dd_cmd = fmt::format(FMT_COMPILE("dd if=/dev/zero of='{}' bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device);
+    if (!utils::exec_checked(dd_cmd)) {
+        spdlog::error("Failed to run dd on disk: {}", dd_cmd);
+        return false;
+    }
+    // 2. run wipefs on disk
+    const auto&& wipe_cmd = fmt::format(FMT_COMPILE("wipefs -af '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device);
+    if (!utils::exec_checked(wipe_cmd)) {
+        spdlog::error("Failed to run wipefs on disk: {}", wipe_cmd);
+        return false;
+    }
+    // 3. clear all data and destroy GPT data structures
+    const auto&& sgdisk_cmd = fmt::format(FMT_COMPILE("sgdisk -Zo '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device);
+    if (!utils::exec_checked(sgdisk_cmd)) {
+        spdlog::error("Failed to run sgdisk on disk: {}", sgdisk_cmd);
+        return false;
+    }
+
+    return true;
+}
+
 }  // namespace gucc::disk
