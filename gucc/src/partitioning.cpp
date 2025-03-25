@@ -132,6 +132,7 @@ auto generate_default_partition_schema(std::string_view device, std::string_view
         .mountpoint = "/"s,
         // currently doesn't matter, will be assigned much after during FS partitioning
         .uuid_str = {},
+        // at this moment the device is only used for sorting for sfdisk command gen
         .device = fmt::format(FMT_COMPILE("{}1"), device),
         // use remaining space
         .size = {},
@@ -154,6 +155,21 @@ auto generate_default_partition_schema(std::string_view device, std::string_view
         return {std::move(efi_partition), std::move(root_partition)};
     }
     return {std::move(root_partition)};
+}
+
+auto make_clean_partschema(std::string_view device, const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> bool {
+    // clear disk
+    if (!erase_disk(device)) {
+        spdlog::error("Failed to erase disk: {}", device);
+        return false;
+    }
+    // apply schema
+    const auto& sfdisk_commands = gucc::disk::gen_sfdisk_command(partitions, is_efi);
+    if (!run_sfdisk_part(sfdisk_commands, device)) {
+        spdlog::error("Failed to apply partition schema with sfdisk");
+        return false;
+    }
+    return true;
 }
 
 }  // namespace gucc::disk
