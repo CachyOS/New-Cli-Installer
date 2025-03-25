@@ -29,6 +29,15 @@ static constexpr auto PART_SWAP_TEST = R"(label: gpt
 ,type=S,size=16G
 )"sv;
 
+static constexpr auto PART_DEFAULT_TEST = R"(label: gpt
+,type=U,size=2GiB,bootable
+,type=L
+)"sv;
+
+static constexpr auto PART_DEFAULT_BIOS_TEST = R"(label: msdos
+,type=L
+)"sv;
+
 TEST_CASE("partitioning gen test")
 {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
@@ -87,6 +96,18 @@ TEST_CASE("partitioning gen test")
         };
         const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
         REQUIRE_EQ(sfdisk_content, PART_TEST);
+    }
+    SECTION("default partition schema")
+    {
+        const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1p", "/boot", true);
+        const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
+        REQUIRE_EQ(sfdisk_content, PART_DEFAULT_TEST);
+    }
+    SECTION("default partition schema bios")
+    {
+        const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1p", "/boot", false);
+        const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, false);
+        REQUIRE_EQ(sfdisk_content, PART_DEFAULT_BIOS_TEST);
     }
     // TODO(vnepogodin): add tests for raid and lvm
 }

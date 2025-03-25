@@ -124,4 +124,36 @@ auto erase_disk(std::string_view device) noexcept -> bool {
     return true;
 }
 
+auto generate_default_partition_schema(std::string_view device, std::string_view boot_mountpoint, bool is_efi) noexcept -> std::vector<fs::Partition> {
+    // TODO(vnepogodin): make whole default partition scheme customizable from config/code
+    fs::Partition root_partition{
+        // TODO(vnepogodin): currently doesn't matter which FS is used here for sgdisk, make customizable for future use
+        .fstype = "btrfs"s,
+        .mountpoint = "/"s,
+        // currently doesn't matter, will be assigned much after during FS partitioning
+        .uuid_str = {},
+        .device = fmt::format(FMT_COMPILE("{}1"), device),
+        // use remaining space
+        .size = {},
+        .mount_opts = {}
+    };
+    if (is_efi) {
+        // For UEFI systems create ESP:
+        //  - FAT32, 2GB
+        fs::Partition efi_partition{
+            .fstype = "vfat"s,
+            .mountpoint = std::string{boot_mountpoint},
+            // currently doesn't matter, will be assigned much after during FS partitioning
+            .uuid_str = {},
+            .device = root_partition.device,
+            .size = "2GiB"s,
+            .mount_opts = {}
+        };
+        // root part is the last to use all left space after boot partition
+        root_partition.device = fmt::format(FMT_COMPILE("{}2"), device);
+        return {std::move(efi_partition), std::move(root_partition)};
+    }
+    return {std::move(root_partition)};
+}
+
 }  // namespace gucc::disk
