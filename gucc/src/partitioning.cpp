@@ -109,13 +109,13 @@ auto erase_disk(std::string_view device) noexcept -> bool {
         return false;
     }
     // 2. run wipefs on disk
-    const auto&& wipe_cmd = fmt::format(FMT_COMPILE("wipefs -af '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device);
+    const auto& wipe_cmd = fmt::format(FMT_COMPILE("wipefs -af '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device);
     if (!utils::exec_checked(wipe_cmd)) {
         spdlog::error("Failed to run wipefs on disk: {}", wipe_cmd);
         return false;
     }
     // 3. clear all data and destroy GPT data structures
-    const auto&& sgdisk_cmd = fmt::format(FMT_COMPILE("sgdisk -Zo '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device);
+    const auto& sgdisk_cmd = fmt::format(FMT_COMPILE("sgdisk -Zo '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device);
     if (!utils::exec_checked(sgdisk_cmd)) {
         spdlog::error("Failed to run sgdisk on disk: {}", sgdisk_cmd);
         return false;
