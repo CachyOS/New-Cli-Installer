@@ -20,6 +20,7 @@
 #include "gucc/luks.hpp"
 #include "gucc/package_profiles.hpp"
 #include "gucc/pacmanconf_repo.hpp"
+#include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
 #include "gucc/umount_partitions.hpp"
@@ -290,42 +291,29 @@ void auto_partition() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& device_info                  = std::get<std::string>(config_data["DEVICE"]);
-    [[maybe_unused]] const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    const auto& bootloader  = std::get<std::string>(config_data["BOOTLOADER"]);
+
+    const auto& boot_mountpoint = utils::bootloader_default_mount(bootloader, system_info);
+    if (boot_mountpoint == "unknown bootloader"sv) {
+        spdlog::error("Unknown bootloader: {}", bootloader);
+        return;
+    }
 
 #ifdef NDEVENV
-    // Find existing partitions (if any) to remove
-    const auto& parts     = gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} print | {}"), device_info, "awk '/^ / {print $1}'"));
-    const auto& del_parts = gucc::utils::make_multiline(parts);
-    for (const auto& del_part : del_parts) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} rm {} 2>>/tmp/cachyos-install.log &>/dev/null"), device_info, del_part));
+    // Create default partitioning for clean disk
+    const auto& is_system_efi = (system_info == "UEFI"sv);
+    const auto& partitions    = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
+    if (partitions.empty()) {
+        spdlog::error("Failed to generate default partition schema: it cannot be empty");
+        return;
     }
-
-    // Clear disk
-    gucc::utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of='{}' bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("wipefs -af '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("sgdisk -Zo '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-
-    // Identify the partition table
-    const auto& part_table = gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} print 2>/dev/null | grep -i 'partition table' | {}"), device_info, "awk '{print $3}'"));
-
-    // Create partition table if one does not already exist
-    if ((system_info == "BIOS"sv) && (part_table != "msdos"sv)) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel msdos 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
+    // Clear disk and perform partitioning
+    if (!gucc::disk::make_clean_partschema(device_info, partitions, is_system_efi)) {
+        spdlog::error("Failed to perform automatic partitioning");
+        return;
     }
-    if ((system_info == "UEFI"sv) && (part_table != "gpt"sv)) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mklabel gpt 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    }
-
-    // Create partitions (same basic partitioning scheme for BIOS and UEFI)
-    if (system_info == "BIOS"sv) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    } else {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart ESP fat32 1MiB 513MiB 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    }
-
-    gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} set 1 boot on 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("parted -s {} mkpart primary ext3 513MiB 100% 2>>/tmp/cachyos-install.log &>/dev/null"), device_info));
 #else
     spdlog::info("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info);
 #endif
