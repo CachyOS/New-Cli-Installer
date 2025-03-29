@@ -11,14 +11,17 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
+#include <cstdlib>      // for setenv
+#include <sys/mount.h>  // for mount
+
+#include <algorithm>   // for copy
+#include <filesystem>  // for exists, is_directory
+#include <fstream>     // for ofstream
+#include <ranges>      // for ranges::*
+#include <string>      // for basic_string
+#include <thread>      // for thread
+
 /* clang-format off */
-#include <cstdlib>                                 // for setenv
-#include <sys/mount.h>                             // for mount
-#include <fstream>                                 // for ofstream
-#include <algorithm>                               // for copy
-#include <thread>                                  // for thread
-#include <filesystem>                              // for exists, is_directory
-#include <string>                                  // for basic_string
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
 #include <ftxui/dom/elements.hpp>                  // for operator|, size
@@ -97,13 +100,13 @@ auto select_filesystem() noexcept -> std::string {
 }
 
 auto select_bootloader(std::string_view sys_info) noexcept -> std::string {
-    const auto& menu_entries = [&sys_info](const auto& bios_mode) -> std::vector<std::string> {
+    const auto& menu_entries = [](const auto& bios_mode) -> std::vector<std::string> {
         const auto& available_bootloaders = utils::available_bootloaders(bios_mode);
 
         std::vector<std::string> result{};
         result.reserve(available_bootloaders.size());
 
-        std::transform(available_bootloaders.cbegin(), available_bootloaders.cend(), std::back_inserter(result),
+        std::ranges::transform(available_bootloaders, std::back_inserter(result),
             [=](const std::string_view& entry) -> std::string { return std::string(entry); });
         return result;
     }(sys_info);
@@ -320,8 +323,8 @@ auto get_root_part(std::string_view device_info) noexcept -> std::string {
             continue;
         }
 
-        const auto& size_end_pos = std::find_if(part_size.begin(), part_size.end(), [](auto&& ch) { return std::isalpha(ch); });
-        const auto& number_len   = std::distance(part_size.begin(), size_end_pos);
+        const auto& size_end_pos = std::ranges::find_if(part_size, [](auto&& ch) { return std::isalpha(ch); });
+        const auto& number_len   = std::ranges::distance(part_size.begin(), size_end_pos);
         const std::string_view number_str{part_size.data(), static_cast<std::size_t>(number_len)};
         const std::string_view unit{part_size.data() + number_len, part_size.size() - static_cast<std::size_t>(number_len)};
 
