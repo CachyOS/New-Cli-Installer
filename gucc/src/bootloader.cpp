@@ -238,6 +238,11 @@ auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_i
         if (grub_install_config.is_efi && grub_install_config.bootloader_id) {
             result += fmt::format(FMT_COMPILE(" --bootloader-id={}"), *grub_install_config.bootloader_id);
         }
+
+        // in bios/mbr mode
+        if (!grub_install_config.is_efi && grub_install_config.device) {
+            result += fmt::format(FMT_COMPILE(" {}"), *grub_install_config.device);
+        }
         return result;
     }(grub_install_config);
 

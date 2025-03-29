@@ -62,6 +62,7 @@ struct GrubInstallConfig final {
     bool do_recheck{};
     bool is_removable{};
     bool is_root_on_zfs{};
+    std::optional<std::string> device{};
     std::optional<std::string> efi_directory{};
     std::optional<std::string> bootloader_id{};
 };
