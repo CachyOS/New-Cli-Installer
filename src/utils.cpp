@@ -1243,7 +1243,7 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
 
     grub_install_config_struct.is_efi     = false;
     grub_install_config_struct.do_recheck = true;
-    grub_config_struct.device             = device_info;
+    grub_install_config_struct.device     = device_info;
 
     const auto& root_part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint);
 
