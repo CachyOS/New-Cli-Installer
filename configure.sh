@@ -43,6 +43,7 @@ _buildpath="build"
 _prefix="/usr/local"
 _libdir="lib"
 _buildtype="RelWithDebInfo"
+_external_flags=false
 _use_clang=true
 _sanitizer_address=OFF
 _sanitizer_UB=OFF
@@ -81,8 +82,17 @@ for i in "$@"; do
       _sanitizer_leak=ON
       shift # past argument=value
       ;;
+    --)
+      _external_flags=true
+      shift # past argument=value
+      ;;
     *)
       # unknown option
+      if [ "${_external_flags}" = false ]; then
+          echo "Unknown option [$i]"
+          exit 255
+      fi
+      # option to be passed to the build system
       ;;
   esac
 done
@@ -103,6 +113,10 @@ if command -v mold &> /dev/null; then
   _configure_flags+=('-DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=mold"')
 fi
 
+if ${_external_flags}; then
+  _configure_flags+=("${@}")
+fi
+
 cmake -S . -B ${_buildpath}/${_buildtype} \
     -DENABLE_SANITIZER_ADDRESS=${_sanitizer_address} \
     -DENABLE_SANITIZER_UNDEFINED_BEHAVIOR=${_sanitizer_UB} \
@@ -110,6 +124,7 @@ cmake -S . -B ${_buildpath}/${_buildtype} \
     -DCMAKE_BUILD_TYPE=${_buildtype} \
     -DCMAKE_INSTALL_PREFIX=${_prefix} \
     -DCMAKE_INSTALL_LIBDIR=${_libdir} \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     "${_configure_flags[@]}"
 
 cat > build.sh <<EOF
