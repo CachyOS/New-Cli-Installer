@@ -1,5 +1,5 @@
 project('cachyos-installer', 'cpp',
-        version: '0.9.0',
+        version: '0.9.1',
         license: 'GPLv3',
         meson_version: '>=0.55.0',
         default_options: ['cpp_std=c++23',
