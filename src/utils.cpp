@@ -8,7 +8,6 @@
 // import gucc
 #include "gucc/autologin.hpp"
 #include "gucc/bootloader.hpp"
-#include "gucc/cpu.hpp"
 #include "gucc/fetch_file.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
@@ -21,6 +20,7 @@
 #include "gucc/package_profiles.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/partitioning.hpp"
+#include "gucc/repos.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
 #include "gucc/umount_partitions.hpp"
@@ -1613,77 +1613,15 @@ void id_system() noexcept {
 }
 
 void install_cachyos_repo() noexcept {
-    const auto& add_arch_specific_repo = [](auto&& isa_level, auto&& repo_name, const auto& isa_levels, [[maybe_unused]] auto&& repos_data) {
-        if (!std::ranges::contains(isa_levels, isa_level)) {
-            spdlog::warn("{} is not supported", isa_level);
-            return;
-        }
-        spdlog::info("{} is supported", isa_level);
-
-        const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
-        if (std::ranges::contains(repo_list, fmt::format(FMT_COMPILE("[{}]"), repo_name))) {
-            spdlog::info("'{}' is already added!", repo_name);
-            return;
-        }
-
-#ifdef NDEVENV
-        static constexpr auto pacman_conf             = "/etc/pacman.conf";
-        static constexpr auto pacman_conf_cachyos     = "./pacman.conf";
-        static constexpr auto pacman_conf_path_backup = "/etc/pacman.conf.bak";
-        std::error_code err{};
-
-        if (!fs::copy_file(pacman_conf, pacman_conf_cachyos, err)) {
-            spdlog::error("Failed to copy pacman config [{}]", err.message());
-            return;
-        }
-
-        gucc::detail::pacmanconf::push_repos_front(pacman_conf_cachyos, repos_data);
-
-        spdlog::info("backup old config");
-        fs::rename(pacman_conf, pacman_conf_path_backup, err);
-
-        spdlog::info("CachyOS {} Repo changed", repo_name);
-        fs::rename(pacman_conf_cachyos, pacman_conf, err);
-#endif
-    };
-
     // Check if it's already been applied
     const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
     spdlog::info("install_cachyos_repo: repo_list := '{}'", repo_list);
 
 #ifdef NDEVENV
-    gucc::utils::exec("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com", true);
-    gucc::utils::exec("pacman-key --lsign-key F3B607488DB35A47", true);
-#endif
-
-    const auto& isa_levels = gucc::cpu::get_isa_levels();
-
-    const auto& is_oracle_vm = gucc::utils::exec_checked("systemd-detect-virt | grep -q oracle");
-
-    static constexpr auto CACHYOS_V1_REPO_STR = R"(
-[cachyos]
-Include = /etc/pacman.d/cachyos-mirrorlist
-)";
-    static constexpr auto CACHYOS_V3_REPO_STR = R"(
-[cachyos-v3]
-Include = /etc/pacman.d/cachyos-v3-mirrorlist
-[cachyos-core-v3]
-Include = /etc/pacman.d/cachyos-v3-mirrorlist
-[cachyos-extra-v3]
-Include = /etc/pacman.d/cachyos-v3-mirrorlist
-)";
-    static constexpr auto CACHYOS_V4_REPO_STR = R"(
-[cachyos-v4]
-Include = /etc/pacman.d/cachyos-v4-mirrorlist
-)";
-
-    add_arch_specific_repo("x86_64", "cachyos", isa_levels, CACHYOS_V1_REPO_STR);
-    if (is_oracle_vm) {
-        spdlog::info("Oracle VM detected. skipping ISA specific repos");
-        return;
+    if (!gucc::repos::install_cachyos_repos()) {
+        spdlog::error("Failed to install cachyos repos");
     }
-    add_arch_specific_repo("x86_64_v3", "cachyos-v3", isa_levels, CACHYOS_V3_REPO_STR);
-    add_arch_specific_repo("x86_64_v4", "cachyos-v4", isa_levels, CACHYOS_V4_REPO_STR);
+#endif
 }
 
 bool handle_connection() noexcept {
