@@ -33,6 +33,9 @@ set(CPR_USE_SYSTEM_CURL ON CACHE INTERNAL "" FORCE)
 # for some reason CTRE doesnt respect CMAKE_CXX_STANDARD
 set(CTRE_CXX_STANDARD 23 CACHE INTERNAL "" FORCE)
 
+# fix rapidjson
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE INTERNAL "" FORCE)
+
 # Generate compile_commands.json to make it easier to work with clang based tools
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
