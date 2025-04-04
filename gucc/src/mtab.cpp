@@ -2,7 +2,38 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/string_utils.hpp"
 
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
 using namespace std::string_view_literals;
+namespace fs = std::filesystem;
+
+namespace {
+
+auto read_mtab(std::string_view mtab_path) noexcept -> std::optional<std::string> {
+    // mtab file size is reported as zero bytes
+    // so just read line by line until EOF
+    std::ifstream file(fs::path{mtab_path}, std::ios::binary);
+    if (!file.is_open()) {
+        return std::nullopt;
+    }
+
+    std::vector<std::string> lines{};
+    while (file) {
+        std::string line{};
+        std::getline(file, line);
+        lines.push_back(std::move(line));
+    }
+
+    auto&& mtab_content = gucc::utils::join(lines);
+    return std::make_optional<std::string>(std::move(mtab_content));
+}
+
+}  // namespace
 
 namespace gucc::mtab {
 
@@ -29,11 +60,17 @@ auto parse_mtab_content(std::string_view mtab_content, std::string_view root_mou
 }
 
 auto parse_mtab(std::string_view root_mountpoint, std::string_view mtab_path) noexcept -> std::optional<std::vector<MTabEntry>> {
-    auto&& file_content = file_utils::read_whole_file(mtab_path);
-    if (file_content.empty()) {
+    // mountpoint and mtab paths cannot be empty
+    if (root_mountpoint.empty() || mtab_path.empty()) {
         return std::nullopt;
     }
-    return mtab::parse_mtab_content(file_content, root_mountpoint);
+
+    // use "non-standard" read due to reported zero size
+    auto&& file_content = read_mtab(mtab_path);
+    if (!file_content || file_content->empty()) {
+        return std::nullopt;
+    }
+    return mtab::parse_mtab_content(*file_content, root_mountpoint);
 }
 
 }  // namespace gucc::mtab
