@@ -93,7 +93,7 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
 }
 
 auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcept -> bool {
-    const auto& sfdisk_cmd = fmt::format(FMT_COMPILE("echo -e '{}' | sfdisk '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), commands, device);
+    const auto& sfdisk_cmd = fmt::format(FMT_COMPILE("echo -e '{}' | sfdisk -w always '{}' &>>/tmp/cachyos-install.log &>/dev/null"), commands, device);
     if (!utils::exec_checked(sfdisk_cmd)) {
         spdlog::error("Failed to run partitioning with sfdisk: {}", sfdisk_cmd);
         return false;
