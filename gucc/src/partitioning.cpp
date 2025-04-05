@@ -41,7 +41,7 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
     // sfdisk does not create partition table without partitions by default. The lines with partitions are expected in the script by default.
     std::string sfdisk_commands{"label: gpt\n"s};
     if (!is_efi) {
-        sfdisk_commands = "label: msdos\n"s;
+        sfdisk_commands = "label: dos\n"s;
     }
 
     // sort by mountpoint & device
