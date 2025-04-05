@@ -14,28 +14,28 @@ using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 static constexpr auto PART_TEST = R"(label: gpt
-,type=L
-,type=U,size=2G,bootable
+type=L
+type=U,size=2G,bootable
 )"sv;
 
 static constexpr auto PART_BIOS_TEST = R"(label: dos
-,type=L
-,type=L,size=2G
+type=L
+type=L,size=2G
 )"sv;
 
 static constexpr auto PART_SWAP_TEST = R"(label: gpt
-,type=L
-,type=U,size=2G,bootable
-,type=S,size=16G
+type=L
+type=U,size=2G,bootable
+type=S,size=16G
 )"sv;
 
 static constexpr auto PART_DEFAULT_TEST = R"(label: gpt
-,type=U,size=2GiB,bootable
-,type=L
+type=U,size=2GiB,bootable
+type=L
 )"sv;
 
 static constexpr auto PART_DEFAULT_BIOS_TEST = R"(label: dos
-,type=L
+type=L
 )"sv;
 
 TEST_CASE("partitioning gen test")

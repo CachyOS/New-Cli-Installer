@@ -62,7 +62,7 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
 
         // L - alias 'linux'. Linux
         // U - alias 'uefi'. EFI System partition
-        sfdisk_commands += fmt::format(FMT_COMPILE(",type={}"), fs_alias);
+        sfdisk_commands += fmt::format(FMT_COMPILE("type={}"), fs_alias);
 
         // The field size= support '+' and '-' in the same way as Unnamed-fields
         // format. The default value of size indicates "as much as possible";
