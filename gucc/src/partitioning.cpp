@@ -49,6 +49,9 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
     std::ranges::sort(partitions_sorted, {}, &fs::Partition::mountpoint);
     std::ranges::sort(partitions_sorted, {}, &fs::Partition::device);
 
+    // sort by size(empty sized parts must be at the end)
+    std::ranges::sort(partitions_sorted, std::ranges::greater(), &fs::Partition::size);
+
     // filter duplicates
     std::vector<fs::Partition> partitions_filtered{};
     std::ranges::unique_copy(
