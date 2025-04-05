@@ -18,7 +18,7 @@ static constexpr auto PART_TEST = R"(label: gpt
 ,type=U,size=2G,bootable
 )"sv;
 
-static constexpr auto PART_BIOS_TEST = R"(label: msdos
+static constexpr auto PART_BIOS_TEST = R"(label: dos
 ,type=L
 ,type=L,size=2G
 )"sv;
@@ -34,7 +34,7 @@ static constexpr auto PART_DEFAULT_TEST = R"(label: gpt
 ,type=L
 )"sv;
 
-static constexpr auto PART_DEFAULT_BIOS_TEST = R"(label: msdos
+static constexpr auto PART_DEFAULT_BIOS_TEST = R"(label: dos
 ,type=L
 )"sv;
 
