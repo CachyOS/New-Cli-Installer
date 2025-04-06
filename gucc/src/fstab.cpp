@@ -1,6 +1,7 @@
 #include "gucc/fstab.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <cctype>  // for tolower
 
@@ -120,6 +121,41 @@ auto generate_fstab(const std::vector<Partition>& partitions, std::string_view r
     if (!file_utils::create_file_for_overwrite(fstab_filepath, fstab_content)) {
         spdlog::error("Failed to open fstab for writing {}", fstab_filepath);
         return false;
+    }
+    return true;
+}
+
+auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> bool {
+    const auto& fstab_filepath = fmt::format(FMT_COMPILE("{}/etc/fstab"), root_mountpoint);
+
+    // run command to generate fstab
+    const auto& fstab_cmd = fmt::format(FMT_COMPILE("genfstab -U -p {} > {}"), root_mountpoint, fstab_filepath);
+    if (!utils::exec_checked(fstab_cmd)) {
+        spdlog::error("Failed to run genfstab: {}", fstab_cmd);
+        return false;
+    }
+
+    // dump generated fstab file into the log
+    const auto& fstab_content = file_utils::read_whole_file(fstab_filepath);
+    spdlog::info("Created fstab file:\n{}", fstab_content);
+
+    // append swapfile in case it was detected
+    const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), root_mountpoint);
+    if (::fs::exists(swap_file) && ::fs::is_regular_file(swap_file)) {
+        spdlog::info("Appending swapfile to the fstab..");
+        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {1}"), root_mountpoint, fstab_filepath));
+    }
+
+    // Edit fstab in case of btrfs subvolumes
+    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/subvolid=.*,subvol=\\/.*,//g' {}"), fstab_filepath));
+
+    // remove any zfs datasets that are mounted by zfs
+    const auto& query_zfs_cmd = fmt::format(FMT_COMPILE("cat {} | grep '^[a-z,A-Z]' | {}"), fstab_filepath, "awk '{print $1}'");
+    const auto& msource_list  = utils::make_multiline(utils::exec(query_zfs_cmd));
+    for (const auto& msource : msource_list) {
+        if (utils::exec_checked(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep '^/' | {} | grep -q '^{}$'"), "awk '{print $2}'", msource))) {
+            utils::exec(fmt::format(FMT_COMPILE("sed -e '\\|^{}[[:space:]]| s/^#*/#/' -i {}"), msource, fstab_filepath));
+        }
     }
     return true;
 }
