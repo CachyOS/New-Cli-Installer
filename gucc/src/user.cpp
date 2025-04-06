@@ -22,7 +22,9 @@ auto create_group(std::string_view group, std::string_view mountpoint, bool is_s
     // TODO(vnepogodin):
     // 1. add parameter to check if the group was already created
     // 2. add parameter if the group should be --system group
-    const auto& cmd = fmt::format(FMT_COMPILE("groupadd {}{}"), is_system ? "--system"sv : ""sv, group);
+
+    // --force is used to exit successfully if the group already exists
+    const auto& cmd = fmt::format(FMT_COMPILE("groupadd --force {}{}"), is_system ? "--system"sv : ""sv, group);
     return utils::arch_chroot_checked(cmd, mountpoint);
 }
 
