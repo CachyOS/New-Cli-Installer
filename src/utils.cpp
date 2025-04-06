@@ -11,6 +11,7 @@
 #include "gucc/fetch_file.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
+#include "gucc/fstab.hpp"
 #include "gucc/hwclock.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
@@ -342,34 +343,14 @@ void secure_wipe() noexcept {
 }
 
 void generate_fstab() noexcept {
-    static constexpr auto fstab_cmd = "genfstab -U -p"sv;
-    spdlog::info("Generating with fstab '{}'", fstab_cmd);
-
-#ifdef NDEVENV
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    gucc::utils::exec(fmt::format(FMT_COMPILE("{0} {1} > {1}/etc/fstab"), fstab_cmd, mountpoint));
-    spdlog::info("Created fstab file:");
+    spdlog::info("Generating fstab on {}", mountpoint);
 
-    const auto& fstab_content = gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/fstab"), mountpoint));
-    utils::dump_to_log(fstab_content);
-
-    const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
-    if (fs::exists(swap_file) && fs::is_regular_file(swap_file)) {
-        spdlog::info("appending swapfile to the fstab..");
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {0}/etc/fstab"), mountpoint));
-    }
-
-    // Edit fstab in case of btrfs subvolumes
-    gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i 's/subvolid=.*,subvol=\\/.*,//g' {}/etc/fstab"), mountpoint));
-
-    // remove any zfs datasets that are mounted by zfs
-    const auto& msource_list = gucc::utils::make_multiline(gucc::utils::exec(fmt::format(FMT_COMPILE("cat {}/etc/fstab | grep '^[a-z,A-Z]' | {}"), mountpoint, "awk '{print $1}'")));
-    for (const auto& msource : msource_list) {
-        if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep '^/' | {} | grep -q '^{}$'"), "awk '{print $2}'", msource))) {
-            gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e '\\|^{}[[:space:]]| s/^#*/#/' -i {}/etc/fstab"), msource, mountpoint));
-        }
+#ifdef NDEVENV
+    if (!gucc::fs::run_genfstab_on_mount(mountpoint)) {
+        spdlog::error("Failed to generate fstab");
     }
 #endif
 }
