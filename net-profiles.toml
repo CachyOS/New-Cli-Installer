@@ -47,7 +47,6 @@ packages = [
   "texinfo",
   "usbutils",
   "which",
-  "systemd-boot-manager",
   "xfsprogs",
   "plymouth",
   "cachyos-plymouth-theme",
