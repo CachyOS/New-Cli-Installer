@@ -106,7 +106,6 @@ add_executable(${PROJECT_NAME}
    src/definitions.hpp
    src/config.cpp src/config.hpp
    src/utils.cpp src/utils.hpp
-   src/chwd_profiles.cpp src/chwd_profiles.hpp
    src/disk.cpp src/disk.hpp
    src/drivers.cpp src/drivers.hpp
    src/widgets.cpp src/widgets.hpp

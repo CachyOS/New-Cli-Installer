@@ -1,7 +1,6 @@
 list(APPEND test_SOURCES
         ${CMAKE_SOURCE_DIR}/src/config.cpp
         ${CMAKE_SOURCE_DIR}/src/utils.cpp
-        ${CMAKE_SOURCE_DIR}/src/chwd_profiles.cpp
         ${CMAKE_SOURCE_DIR}/src/disk.cpp
         ${CMAKE_SOURCE_DIR}/src/drivers.cpp
         ${CMAKE_SOURCE_DIR}/src/widgets.cpp

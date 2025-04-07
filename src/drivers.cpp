@@ -1,8 +1,10 @@
 #include "drivers.hpp"
-#include "chwd_profiles.hpp"
 #include "config.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
+
+// import gucc
+#include "gucc/chwd.hpp"
 
 /* clang-format off */
 #include <fstream>                                 // for ofstream
@@ -29,12 +31,12 @@ void setup_graphics_card() noexcept {
     /// TODO(vnepogodin): parse toml DBs
     {
         static constexpr auto use_spacebar = "\nUse [Spacebar] to de/select options listed.\n"sv;
-        const auto& profile_names          = ::detail::chwd::get_available_profile_names("graphic_drivers"sv);
-        if (!profile_names.has_value()) {
+        const auto& profile_names          = gucc::chwd::get_available_profile_names();
+        if (profile_names.empty()) {
             spdlog::error("failed to get profile names");
             return;
         }
-        const auto& radiobox_list = profile_names.value();
+        const auto& radiobox_list = profile_names;
 
         auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
@@ -54,11 +56,27 @@ void setup_graphics_card() noexcept {
     const auto& cachepath  = std::get<std::string>(config_data["cachepath"]);
 
 #ifdef NDEVENV
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("chwd --pmcachedir \"{}\" --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("chwd --pmcachedir '{}' --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
     tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
     std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
 #else
     spdlog::debug("chwd --pmcachedir \"{}\" --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1", cachepath, mountpoint, driver);
+#endif
+}
+
+void auto_install_drivers() noexcept {
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+#ifdef NDEVENV
+    if (!gucc::chwd::install_available_profiles(mountpoint)) {
+        spdlog::error("Failed to install drivers");
+        return;
+    }
+    std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};  // NOLINT
+#else
+    spdlog::debug("arch-chroot {} chwd -f -i &>>/tmp/cachyos-install.log", mountpoint);
 #endif
 }
 
@@ -77,12 +95,9 @@ void install_graphics_menu() noexcept {
     std::int32_t selected{};
     auto ok_callback = [&] {
         switch (selected) {
-#ifdef NDEVENV
         case 0:
-            utils::arch_chroot("chwd -a"sv);
-            std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};  // NOLINT
+            auto_install_drivers();
             break;
-#endif
         case 1:
             setup_graphics_card();
             break;
