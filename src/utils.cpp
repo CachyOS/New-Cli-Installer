@@ -8,6 +8,7 @@
 // import gucc
 #include "gucc/autologin.hpp"
 #include "gucc/bootloader.hpp"
+#include "gucc/chwd.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
@@ -702,6 +703,11 @@ void install_base(const std::string_view& packages) noexcept {
     // we also need create the cachefile
     gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
     gucc::utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
+
+    // install drivers for hardware
+    if (!gucc::chwd::install_available_profiles(mountpoint)) {
+        spdlog::error("Failed to install chwd drivers");
+    }
 #endif
 }
 
