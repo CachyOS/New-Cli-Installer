@@ -42,6 +42,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/hwclock.cpp include/gucc/hwclock.hpp
    src/package_profiles.cpp include/gucc/package_profiles.hpp
    src/fetch_file.cpp include/gucc/fetch_file.hpp
+   src/package_list.cpp include/gucc/package_list.hpp
    src/kernel_params.cpp include/gucc/kernel_params.hpp
    src/chwd.cpp include/gucc/chwd.hpp
    ${GUCC_LOGGER_FILES}
