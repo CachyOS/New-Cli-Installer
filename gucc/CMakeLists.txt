@@ -43,8 +43,8 @@ add_library(${PROJECT_NAME} #SHARED
    src/package_profiles.cpp include/gucc/package_profiles.hpp
    src/fetch_file.cpp include/gucc/fetch_file.hpp
    src/kernel_params.cpp include/gucc/kernel_params.hpp
+   src/chwd.cpp include/gucc/chwd.hpp
    ${GUCC_LOGGER_FILES}
-   #src/chwd_profiles.cpp src/chwd_profiles.hpp
    #src/disk.cpp src/disk.hpp
    )
 

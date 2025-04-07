@@ -28,6 +28,7 @@ gucc_lib = library('gucc',
         'src/logger.cpp',
         'src/fetch_file.cpp',
         'src/kernel_params.cpp',
+        'src/chwd.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps
