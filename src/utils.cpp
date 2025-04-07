@@ -8,7 +8,6 @@
 // import gucc
 #include "gucc/autologin.hpp"
 #include "gucc/bootloader.hpp"
-#include "gucc/fetch_file.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
@@ -18,7 +17,7 @@
 #include "gucc/kernel_params.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/luks.hpp"
-#include "gucc/package_profiles.hpp"
+#include "gucc/package_list.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/repos.hpp"
@@ -33,7 +32,7 @@
 #include <cstdlib>      // for exit, WIFEXITED, WIFSIGNALED
 #include <sys/mount.h>  // for mount
 
-#include <algorithm>      // for transform, find, search
+#include <algorithm>      // for transform, search
 #include <array>          // for array
 #include <bit>            // for bit_cast
 #include <chrono>         // for filesystem, seconds
@@ -573,52 +572,10 @@ auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optiona
     const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
     const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
 
-    const auto& root_filesystem     = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-    const auto& is_root_on_zfs      = (root_filesystem == "zfs"sv);
-    const auto& is_root_on_btrfs    = (root_filesystem == "btrfs"sv);
-    const auto& is_root_on_bcachefs = (root_filesystem == "bcachefs"sv);
+    const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
 
-    auto pkg_list = gucc::utils::make_multiline(packages, false, ' ');
-
-    const auto pkg_count = pkg_list.size();
-    for (std::size_t i = 0; i < pkg_count; ++i) {
-        const auto& pkg = pkg_list[i];
-        pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
-        if (is_root_on_zfs && pkg.starts_with("linux-cachyos")) {
-            pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-zfs"), pkg));
-        }
-    }
-    if (is_root_on_zfs) {
-        pkg_list.insert(pkg_list.cend(), {"zfs-utils"});
-    }
-    if (is_root_on_bcachefs) {
-        pkg_list.insert(pkg_list.cend(), {"bcachefs-tools"});
-    }
-
-    auto net_profs_content = gucc::fetch::fetch_file_from_url(net_profs_url, net_profs_fallback_url);
-    if (!net_profs_content) {
-        spdlog::error("Failed to get net profiles content");
-        return std::nullopt;
-    }
-    auto base_net_profs = gucc::profile::parse_base_profiles(*net_profs_content);
-    if (!base_net_profs.has_value()) {
-        spdlog::error("Failed to parse net profiles");
-        return std::nullopt;
-    }
-
-    if (server_mode == 0) {
-        if (is_root_on_btrfs) {
-            pkg_list.insert(pkg_list.cend(), {"snapper", "btrfs-assistant-git"});
-        }
-        pkg_list.insert(pkg_list.cend(),
-            base_net_profs->base_desktop_packages.begin(),
-            base_net_profs->base_desktop_packages.end());
-    }
-    pkg_list.insert(pkg_list.cend(),
-        base_net_profs->base_packages.begin(),
-        base_net_profs->base_packages.end());
-
-    return std::make_optional<std::vector<std::string>>(pkg_list);
+    auto net_profs_info = gucc::package::NetProfileInfo{.net_profs_url = net_profs_url, .net_profs_fallback_url = net_profs_fallback_url};
+    return gucc::package::get_pkglist_base(packages, root_filesystem, server_mode, net_profs_info);
 }
 
 auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::optional<std::vector<std::string>> {
@@ -627,137 +584,8 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::o
     const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
     const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
 
-    auto net_profs_content = gucc::fetch::fetch_file_from_url(net_profs_url, net_profs_fallback_url);
-    if (!net_profs_content) {
-        spdlog::error("Failed to get net profiles content");
-        return std::nullopt;
-    }
-    auto desktop_net_profs = gucc::profile::parse_desktop_profiles(*net_profs_content);
-    if (!desktop_net_profs.has_value()) {
-        spdlog::error("Failed to parse net profiles");
-        return std::nullopt;
-    }
-
-    std::vector<std::string> pkg_list{};
-
-    constexpr std::string_view kde{"kde"};
-    constexpr std::string_view xfce{"xfce"};
-    constexpr std::string_view sway{"sway"};
-    constexpr std::string_view wayfire{"wayfire"};
-    constexpr std::string_view i3wm{"i3wm"};
-    constexpr std::string_view gnome{"gnome"};
-    constexpr std::string_view openbox{"openbox"};
-    constexpr std::string_view bspwm{"bspwm"};
-    constexpr std::string_view lxqt{"lxqt"};
-    constexpr std::string_view cinnamon{"cinnamon"};
-    constexpr std::string_view ukui{"ukui"};
-    constexpr std::string_view qtile{"qtile"};
-    constexpr std::string_view mate{"mate"};
-    constexpr std::string_view lxde{"lxde"};
-    constexpr std::string_view hyprland{"hyprland"};
-    constexpr std::string_view budgie{"budgie"};
-
-    bool needed_xorg{};
-    auto found = std::ranges::search(desktop_env, i3wm);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, i3wm, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, sway);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, sway, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-    }
-    found = std::ranges::search(desktop_env, kde);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, kde, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, xfce);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, xfce, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, gnome);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, gnome, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, wayfire);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, wayfire, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-    }
-    found = std::ranges::search(desktop_env, openbox);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, openbox, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, lxqt);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, lxqt, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, bspwm);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, bspwm, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, cinnamon);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, cinnamon, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, ukui);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, ukui, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, qtile);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, qtile, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, mate);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, mate, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, lxde);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, lxde, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, hyprland);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, hyprland, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-    }
-    found = std::ranges::search(desktop_env, budgie);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, budgie, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-
-    if (needed_xorg) {
-        auto profile = std::ranges::find(*desktop_net_profs, "xorg"sv, &gucc::profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-    }
-
-    return std::make_optional<std::vector<std::string>>(pkg_list);
+    auto net_profs_info = gucc::package::NetProfileInfo{.net_profs_url = net_profs_url, .net_profs_fallback_url = net_profs_fallback_url};
+    return gucc::package::get_pkglist_desktop(desktop_env, net_profs_info);
 }
 
 void install_from_pkglist(const std::string_view& packages) noexcept {
