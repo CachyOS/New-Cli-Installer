@@ -2,13 +2,14 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <fstream>  // for ofstream
+#include <filesystem>  // for exists
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -38,6 +39,11 @@ constexpr auto modify_initcpio_fields(std::string_view file_content, std::string
 namespace gucc::detail {
 
 bool Initcpio::write() const noexcept {
+    if (!fs::exists(m_file_path)) {
+        spdlog::error("[INITCPIO] '{}' file doesn't exist!", m_file_path);
+        return false;
+    }
+
     auto&& file_content = file_utils::read_whole_file(m_file_path);
     if (file_content.empty()) {
         spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
@@ -52,6 +58,11 @@ bool Initcpio::write() const noexcept {
 }
 
 bool Initcpio::parse_file() noexcept {
+    if (!fs::exists(m_file_path)) {
+        spdlog::error("[INITCPIO] '{}' file doesn't exist!", m_file_path);
+        return false;
+    }
+
     auto&& file_content = file_utils::read_whole_file(m_file_path);
     if (file_content.empty()) {
         spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
