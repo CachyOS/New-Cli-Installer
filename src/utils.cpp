@@ -691,6 +691,11 @@ void install_base(const std::string_view& packages) noexcept {
 
     utils::generate_fstab();
 
+    // install drivers for hardware
+    if (!gucc::chwd::install_available_profiles(mountpoint)) {
+        spdlog::error("Failed to install chwd drivers");
+    }
+
     /* clang-format off */
     if (zfs == 0) { return; }
     /* clang-format on */
@@ -703,11 +708,6 @@ void install_base(const std::string_view& packages) noexcept {
     // we also need create the cachefile
     gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
     gucc::utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
-
-    // install drivers for hardware
-    if (!gucc::chwd::install_available_profiles(mountpoint)) {
-        spdlog::error("Failed to install chwd drivers");
-    }
 #endif
 }
 
