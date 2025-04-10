@@ -590,9 +590,15 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
     }
 
 #ifdef NDEVENV
-    gucc::utils::exec("modprobe dm-mod");
-    gucc::utils::exec("vgscan >/dev/null 2>&1");
-    gucc::utils::exec("vgchange -ay >/dev/null 2>&1");
+    if (!gucc::utils::exec_checked("modprobe -v dm-mod &>>/tmp/cachyos-install.log")) {
+        spdlog::error("Failed to add module");
+    }
+    if (!gucc::utils::exec_checked("vgscan -v 1>/dev/null 2>>/tmp/cachyos-install.log")) {
+        spdlog::error("Failed to search for all volume group");
+    }
+    if (!gucc::utils::exec_checked("vgchange -ay -v 1>/dev/null 2>>/tmp/cachyos-install.log")) {
+        spdlog::error("Failed to activate LVs");
+    }
 #endif
 }
 
