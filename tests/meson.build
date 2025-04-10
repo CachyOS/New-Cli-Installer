@@ -4,7 +4,6 @@ test_libreq = shared_library('test_libreq',
     sources : [
         source_path + 'config.cpp',
         source_path + 'utils.cpp',
-        source_path + 'chwd_profiles.cpp',
         source_path + 'disk.cpp',
         source_path + 'drivers.cpp',
         source_path + 'widgets.cpp',
