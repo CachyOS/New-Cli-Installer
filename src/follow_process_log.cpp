@@ -6,9 +6,10 @@
 // import gucc
 #include "gucc/string_utils.hpp"
 
-#include <chrono>  // for operator""s, chrono_literals
+#include <atomic>  // for atomic_bool
+#include <chrono>  // for chrono_literals
 #include <string>  // for string, operator<<, to_string
-#include <thread>
+#include <thread>  // for this_thread, thread
 
 #include <ftxui/component/component.hpp>          // for Renderer, Button
 #include <ftxui/component/component_options.hpp>  // for ButtonOption, Inpu...
@@ -20,7 +21,7 @@ using namespace ftxui;
 
 namespace tui::detail {
 
-void follow_process_log_widget(const std::vector<std::string>& vec, Decorator box_size) noexcept {
+auto follow_process_log_widget(const std::vector<std::string>& vec, Decorator box_size) noexcept -> bool {
     using namespace std::chrono_literals;
 
     std::vector<std::string> cmd_args(vec.begin(), vec.end());
@@ -33,12 +34,18 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
         }
     }
 
-    bool running{true};
+    std::atomic_bool running{true};
+    std::atomic_bool proc_status{true};
     std::string process_log{};
     subprocess_s child{};
     auto execute_thread = [&]() {
         while (running) {
-            utils::exec_follow(cmd_args, process_log, running, child);
+            bool local_running{running};
+            if (!utils::exec_follow(cmd_args, process_log, local_running, child)) {
+                spdlog::error("[follow_process_log] Failed to exec proc");
+                proc_status = false;
+            }
+            running = false;
             std::this_thread::sleep_for(0.05s);
         }
     };
@@ -84,6 +91,7 @@ void follow_process_log_widget(const std::vector<std::string>& vec, Decorator bo
     if (t.joinable()) {
         t.join();
     }
+    return proc_status;
 }
 
 }  // namespace tui::detail

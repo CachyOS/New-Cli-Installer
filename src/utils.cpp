@@ -133,22 +133,29 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
 
+#ifdef NDEVENV
     const bool follow_headless = follow && headless_mode;
     if (!follow || follow_headless) {
-        gucc::utils::arch_chroot(command, mountpoint, follow_headless);
+        if (!gucc::utils::arch_chroot_checked(command, mountpoint)) {
+            spdlog::error("Failed to run in arch-chroot: {}", command);
+        }
+        return;
     }
-#ifdef NDEVENV
-    else {
-        const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
+    if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
+        spdlog::error("Failed to run in arch-chroot: {}", command);
     }
+#else
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
+    spdlog::info("[arch_chroot] Running command {}", cmd_formatted);
 #endif
 }
 
-void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async) noexcept {
+auto exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async) noexcept -> bool {
     if (!async) {
         spdlog::error("Implement me!");
-        return;
+        return false;
     }
 
     const bool log_exec_cmds = gucc::utils::safe_getenv("LOG_EXEC_CMDS") == "1"sv;
@@ -158,7 +165,7 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
         spdlog::debug("[exec_follow] cmd := {}", vec);
     }
     if (dirty_cmd_run) {
-        return;
+        return true;
     }
 
     std::vector<char*> args;
@@ -170,13 +177,13 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
     static std::mutex s_mutex{};
     std::memset(data.data(), 0, data.size());
 
-    int32_t ret{-1};
+    int32_t ret{0};
     subprocess_s process{};
     char** command                             = args.data();
     static constexpr const char* environment[] = {"PATH=/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin", nullptr};
     if ((ret = subprocess_create_ex(command, subprocess_option_enable_async | subprocess_option_combined_stdout_stderr, environment, &process)) != 0) {
         running = false;
-        return;
+        return false;
     }
 
     child = process;
@@ -193,10 +200,17 @@ void exec_follow(const std::vector<std::string>& vec, std::string& process_log, 
         process_log = data.data();
     } while (bytes_read != 0);
 
-    subprocess_join(&process, &ret);
-    subprocess_destroy(&process);
+    if (subprocess_join(&process, &ret) != 0) {
+        spdlog::error("[exec_follow] Failed to join process: return code {}", ret);
+        return false;
+    }
+    if (subprocess_destroy(&process) != 0) {
+        spdlog::error("[exec_follow] Failed to destroy process");
+        return false;
+    }
     child   = process;
     running = false;
+    return true;
 }
 
 void dump_to_log(const std::string& data) noexcept {
@@ -257,9 +271,13 @@ void inst_needed(const std::string_view& pkg) noexcept {
         auto& config_data         = config_instance->data();
         const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
         if (headless_mode) {
-            gucc::utils::exec(cmd_formatted, true);
+            if (!gucc::utils::exec_checked(cmd_formatted)) {
+                spdlog::error("Failed to install needed: {}", pkg);
+            }
         } else {
-            tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+            if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
+                spdlog::error("Failed to install needed: {}", pkg);
+            }
         }
         // gucc::utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg));
 #else
@@ -332,9 +350,13 @@ void secure_wipe() noexcept {
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info);
     if (headless_mode) {
-        gucc::utils::exec(cmd_formatted, true);
+        if (!gucc::utils::exec_checked(cmd_formatted)) {
+            spdlog::error("Failed to wipe device: {}", device_info);
+        }
     } else {
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+        if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
+            spdlog::error("Failed to wipe device: {}", device_info);
+        }
     }
     // gucc::utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info));
 #else
@@ -447,9 +469,13 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
         const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
         const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
         if (headless_mode) {
-            gucc::utils::exec(cmd_formatted, true);
+            if (!gucc::utils::exec_checked(cmd_formatted)) {
+                spdlog::error("Failed to install shell settings: {}", packages);
+            }
         } else {
-            tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+            if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
+                spdlog::error("Failed to install shell settings: {}", packages);
+            }
         }
     }
 
@@ -589,7 +615,7 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::o
     return gucc::package::get_pkglist_desktop(desktop_env, net_profs_info);
 }
 
-void install_from_pkglist(const std::string_view& packages) noexcept {
+auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
     auto* config_instance     = Config::instance();
     auto& config_data         = config_instance->data();
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
@@ -600,9 +626,13 @@ void install_from_pkglist(const std::string_view& packages) noexcept {
 #ifdef NDEVENV
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     if (headless_mode) {
-        gucc::utils::exec(cmd_formatted, true);
+        if (!gucc::utils::exec_checked(cmd_formatted)) {
+            spdlog::error("Failed to install from pkglist: {}", packages);
+        }
     } else {
-        tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+        if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
+            spdlog::error("Failed to install from pkglist: {}", packages);
+        }
     }
 #else
     spdlog::info("Installing from pkglist: '{}'", cmd_formatted);

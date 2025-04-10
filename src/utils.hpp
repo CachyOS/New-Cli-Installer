@@ -42,7 +42,7 @@ void find_partitions() noexcept;
 
 [[nodiscard]] auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>>;
 [[nodiscard]] auto get_pkglist_desktop(const std::string_view& desktop) noexcept -> std::optional<std::vector<std::string>>;
-void install_from_pkglist(const std::string_view& packages) noexcept;
+auto install_from_pkglist(const std::string_view& packages) noexcept -> bool;
 void install_base(const std::string_view& packages) noexcept;
 void install_desktop(const std::string_view& desktop) noexcept;
 void remove_pkgs(const std::string_view& packages) noexcept;
@@ -59,7 +59,7 @@ void boot_encrypted_setting() noexcept;
 void recheck_luks() noexcept;
 
 void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
-void exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept;
+auto exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept -> bool;
 void dump_to_log(const std::string& data) noexcept;
 void dump_settings_to_log() noexcept;
 void dump_partition_to_log(const gucc::fs::Partition& partition) noexcept;
