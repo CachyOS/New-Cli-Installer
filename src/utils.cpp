@@ -293,15 +293,20 @@ void umount_partitions() noexcept {
 
     const auto& mountpoint      = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
+    const auto& swap_device     = std::get<std::string>(config_data["SWAP_DEVICE"]);
 #ifdef NDEVENV
 
-    gucc::utils::exec("swapoff -a");
+    // disable swap it was created
+    if (!swap_device.empty() && !gucc::utils::exec_checked(fmt::format(FMT_COMPILE("swapoff {}"), swap_device))) {
+        spdlog::error("Failed to disable swap on {}", swap_device);
+    }
 
+    // unmount all detected paritions on mountpoint
     if (!gucc::umount::umount_partitions(mountpoint, zfs_zpool_names)) {
         spdlog::error("Failed to umount partitions");
     }
 #else
-    spdlog::info("Unmounting partitions on {}, zfs zpool names {}", mountpoint, zfs_zpool_names);
+    spdlog::info("Unmounting partitions on {}, zfs zpool names {}, swap_device {}", mountpoint, zfs_zpool_names, swap_device);
 #endif
 }
 
