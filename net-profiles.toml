@@ -379,7 +379,7 @@ packages = [
 # should be equal to netinstall openbox section group in GUI installer
 packages = [
   "cachyos-openbox-settings",
-  "obconf",
+  "obconf-qt",
   "libwnck3",
   "acpi",
   "arandr",
@@ -403,7 +403,6 @@ packages = [
   "mpv",
   "network-manager-applet",
   "nitrogen",
-  "obconf",
   "openbox",
   "pasystray",
   "picom",
@@ -569,7 +568,7 @@ packages = [
   "gvfs-nfs",
   "gvfs-smb",
   "lxappearance-gtk3",
-  "obconf",
+  "obconf-qt",
   "lxde-common",
   "lxde-icon-theme",
   "lxhotkey-gtk3",
