@@ -39,6 +39,9 @@ bool Config::initialize() noexcept {
         s_config->m_data["READY_PARTITIONS"] = std::vector<std::string>{};
         s_config->m_data["ZFS_ZPOOL_NAMES"]  = std::vector<std::string>{};
 
+        // used for swapon/swapoff
+        s_config->m_data["SWAP_DEVICE"] = "";
+
         // URLs to fetch net profiles
         s_config->m_data["NET_PROFILES_URL"]          = "https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/net-profiles.toml";
         s_config->m_data["NET_PROFILES_FALLBACK_URL"] = "file:///var/lib/cachyos-installer/net-profiles.toml";

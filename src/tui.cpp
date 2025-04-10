@@ -18,17 +18,19 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
+#include <algorithm>    // for copy
+#include <cstdlib>      // for setenv
+#include <filesystem>   // for exists, is_directory
+#include <fstream>      // for ofstream
+#include <string>       // for basic_string
+#include <sys/mount.h>  // for mount
+
 #include <fmt/compile.h>
 #include <fmt/format.h>
+#include <spdlog/spdlog.h>
 
 /* clang-format off */
-#include <cstdlib>                                 // for setenv
-#include <sys/mount.h>                             // for mount
-#include <fstream>                                 // for ofstream
-#include <algorithm>                               // for copy
 #include <ctre.hpp>                                // for ctre::match
-#include <filesystem>                              // for exists, is_directory
-#include <string>                                  // for basic_string
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
 #include <ftxui/dom/elements.hpp>                  // for operator|, size
@@ -1060,6 +1062,8 @@ void make_swap() noexcept {
         gucc::utils::exec(fmt::format(FMT_COMPILE("chmod 600 {} 2>>/tmp/cachyos-install.log"), swapfile_path));
         gucc::utils::exec(fmt::format(FMT_COMPILE("mkswap {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
         gucc::utils::exec(fmt::format(FMT_COMPILE("swapon {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
+
+        config_data["SWAP_DEVICE"] = swapfile_path;
 #endif
         return;
     }
@@ -1076,14 +1080,19 @@ void make_swap() noexcept {
         /* clang-format on */
 
 #ifdef NDEVENV
-        gucc::utils::exec(fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), partition));
+        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), partition))) {
+            spdlog::error("Failed to make swap partition: {}", partition);
+        }
 #endif
         spdlog::info("mkswap.{}", partition);
     }
 
 #ifdef NDEVENV
     // Whether existing to newly created, activate swap
-    gucc::utils::exec(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), partition));
+    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), partition))) {
+        spdlog::error("Failed to swapon partition {}", partition);
+    }
+    config_data["SWAP_DEVICE"] = partition;
 #endif
 
     // Since a partition was used, remove that partition from the list
