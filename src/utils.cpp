@@ -639,15 +639,18 @@ auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
     if (headless_mode) {
         if (!gucc::utils::exec_checked(cmd_formatted)) {
             spdlog::error("Failed to install from pkglist: {}", packages);
+            return false;
         }
     } else {
         if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
             spdlog::error("Failed to install from pkglist: {}", packages);
+            return false;
         }
     }
 #else
     spdlog::info("Installing from pkglist: '{}'", cmd_formatted);
 #endif
+    return true;
 }
 
 void install_base(const std::string_view& packages) noexcept {
