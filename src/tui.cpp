@@ -1250,6 +1250,9 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
         /* clang-format on */
     }
 
+    // save zpool name
+    config_data["ZFS_ZPOOL_NAME"] = zfs_zpool_name;
+
     /* clang-format off */
     if (!do_create_zpool) { return true; }
     /* clang-format on */
@@ -1492,17 +1495,15 @@ void zfs_auto() noexcept {
         return;
     }
 
-    auto* config_instance       = Config::instance();
-    auto& config_data           = config_instance->data();
-    const auto& partition       = std::get<std::string>(config_data["PARTITION"]);
-    const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
+    auto* config_instance      = Config::instance();
+    auto& config_data          = config_instance->data();
+    const auto& partition      = std::get<std::string>(config_data["PARTITION"]);
+    const auto& zfs_zpool_name = std::get<std::string>(config_data["ZFS_ZPOOL_NAME"]);
 
-    for (auto&& zfs_zpool_name : zfs_zpool_names) {
-        if (!utils::zfs_auto_pres(partition, zfs_zpool_name)) {
-            detail::infobox_widget("\nOperation failed\n"sv);
-            std::this_thread::sleep_for(std::chrono::seconds(3));
-            return;
-        }
+    if (!utils::zfs_auto_pres(partition, zfs_zpool_name)) {
+        detail::infobox_widget("\nOperation failed\n"sv);
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        return;
     }
 
     // provide confirmation to the user
