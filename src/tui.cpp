@@ -1488,18 +1488,12 @@ void zfs_destroy_dataset() noexcept {
 
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
 void zfs_auto() noexcept {
-    // first we need to create a zpool to hold the datasets/zvols
-    if (!tui::zfs_create_zpool(false)) {
-        detail::infobox_widget("\nOperation cancelled\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-        return;
-    }
-
     auto* config_instance      = Config::instance();
     auto& config_data          = config_instance->data();
     const auto& partition      = std::get<std::string>(config_data["PARTITION"]);
     const auto& zfs_zpool_name = std::get<std::string>(config_data["ZFS_ZPOOL_NAME"]);
 
+    // it creates using our preset, so don't ask for zpool name
     if (!utils::zfs_auto_pres(partition, zfs_zpool_name)) {
         detail::infobox_widget("\nOperation failed\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
