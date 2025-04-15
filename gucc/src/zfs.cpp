@@ -131,4 +131,33 @@ auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, 
     return true;
 }
 
+auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConfig& zfs_config) noexcept -> bool {
+    // first we need to create a zpool to hold the datasets/zvols
+    if (!fs::zfs_create_zpool(device_path, zfs_config.zpool_name, zfs_config.zpool_options, zfs_config.passphrase)) {
+        spdlog::error("Failed to create zfs pool");
+        return false;
+    }
+
+    // next create the datasets including their parents
+    if (!fs::zfs_create_datasets(zfs_config.datasets)) {
+        spdlog::error("Failed to create zfs datasets");
+        return false;
+    }
+
+    // find rootfs in zfs datasets
+    auto rootfs = std::ranges::find(zfs_config.datasets, "/", &fs::ZfsDataset::mountpoint);
+    if (rootfs == std::ranges::end(zfs_config.datasets)) {
+        spdlog::info("Skipping setting bootfs flag. Was not able to find rootfs in zfs datasets");
+        return true;
+    }
+
+    // set bootfs flag used by zfsbootmenu
+    const auto& zpool_property = fmt::format(FMT_COMPILE("bootfs={}"), rootfs->zpath);
+    if (!fs::zpool_set_property(zpool_property, zfs_config.zpool_name)) {
+        spdlog::error("Failed to set zfs pool property");
+        return false;
+    }
+    return true;
+}
+
 }  // namespace gucc::fs
