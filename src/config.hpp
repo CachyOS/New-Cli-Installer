@@ -1,6 +1,9 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
+// import zfs
+#include "gucc/zfs_types.hpp"
+
 #include <cstdint>        // for int32_t
 #include <string>         // for string
 #include <string_view>    // for string_view, hash
@@ -10,7 +13,7 @@
 
 class Config final {
  public:
-    using value_type      = std::unordered_map<std::string_view, std::variant<std::string, std::int32_t, std::vector<std::string>>>;
+    using value_type      = std::unordered_map<std::string_view, std::variant<std::string, std::int32_t, std::vector<std::string>, gucc::fs::ZfsSetupConfig>>;
     using reference       = value_type&;
     using const_reference = const value_type&;
 

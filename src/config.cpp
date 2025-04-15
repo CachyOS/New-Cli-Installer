@@ -38,6 +38,7 @@ bool Config::initialize() noexcept {
         s_config->m_data["LVM_SEP_BOOT"]     = 0;
         s_config->m_data["READY_PARTITIONS"] = std::vector<std::string>{};
         s_config->m_data["ZFS_ZPOOL_NAMES"]  = std::vector<std::string>{};
+        s_config->m_data["ZFS_SETUP_CONFIG"] = gucc::fs::ZfsSetupConfig{};
 
         // used for swapon/swapoff
         s_config->m_data["SWAP_DEVICE"] = "";

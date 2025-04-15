@@ -206,12 +206,8 @@ std::vector<std::string> lvm_show_vg() noexcept {
 
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
 bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zfs_zpool_name) noexcept {
-    // first we need to create a zpool to hold the datasets/zvols
-    if (!utils::zfs_create_zpool(partition, zfs_zpool_name)) {
-        return false;
-    }
+    static constexpr auto zpool_options{"-f -o ashift=12 -o autotrim=on -O mountpoint=none -O acltype=posixacl -O atime=off -O relatime=off -O xattr=sa -O normalization=formD -O dnodesize=auto"sv};
 
-#ifdef NDEVENV
     // next create the datasets including their parents
     const std::vector<gucc::fs::ZfsDataset> default_zfs_datasets{
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), .mountpoint = "none"s},
@@ -221,20 +217,28 @@ bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zf
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), .mountpoint = "/var/cache"s},
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), .mountpoint = "/var/log"s},
     };
-    if (!gucc::fs::zfs_create_datasets(default_zfs_datasets)) {
-        spdlog::error("Failed to create zfs datasets automatically");
-        return false;
-    }
+    // passphrase should be known at this time, e.g. passing as arg to zfs_auto_pres func
+    const gucc::fs::ZfsSetupConfig zfs_setup_config{.zpool_name = std::string(zfs_zpool_name), .zpool_options = std::string(zpool_options), .passphrase = std::nullopt, .datasets = default_zfs_datasets};
 
-    // set the rootfs
-    const auto& zpool_property = fmt::format(FMT_COMPILE("bootfs={}/ROOT/cos/root"), zfs_zpool_name);
-    if (!gucc::fs::zpool_set_property(zpool_property, zfs_zpool_name)) {
-        spdlog::error("Failed to set zfs pool property");
+#ifdef NDEVENV
+    if (!gucc::fs::zfs_create_with_config(partition, zfs_setup_config)) {
+        spdlog::error("Failed to create ZFS automatically");
         return false;
     }
 #else
-    spdlog::info("Created ZFS automatically");
+    spdlog::info("Created ZFS automatically with: {}", zfs_setup_config);
 #endif
+
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    config_data["ZFS"]    = 1;
+
+    // save setup config
+    config_data["ZFS_SETUP_CONFIG"] = zfs_setup_config;
+
+    // insert zpool name into config
+    auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
+    zfs_zpool_names.emplace_back(zfs_zpool_name);
 
     return true;
 }
@@ -244,7 +248,7 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    static constexpr auto zpool_options{"-f -o ashift=12 -o autotrim=on -O acltype=posixacl -O compression=zstd -O atime=off -O relatime=off -O normalization=formD -O xattr=sa -O mountpoint=none"sv};
+    static constexpr auto zpool_options{"-f -o ashift=12 -o autotrim=on -O mountpoint=none -O acltype=posixacl -O atime=off -O relatime=off -O xattr=sa -O normalization=formD -O dnodesize=auto"sv};
 
 #ifdef NDEVENV
     std::string device_path{partition};
@@ -275,7 +279,7 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
 #endif
 
     // insert zpool name into config
-    auto zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
+    auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
     zfs_zpool_names.emplace_back(pool_name.data());
 
     return true;
