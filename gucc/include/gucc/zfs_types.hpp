@@ -5,6 +5,8 @@
 #include <string>    // for string
 #include <vector>    // for vector
 
+#include <fmt/format.h>
+
 namespace gucc::fs {
 
 /// @brief Represents a single ZFS dataset, defining its ZFS path and mount point.
@@ -41,5 +43,25 @@ struct ZfsSetupConfig {
 };
 
 }  // namespace gucc::fs
+
+template <>
+struct fmt::formatter<gucc::fs::ZfsDataset> : fmt::formatter<std::string> {
+    // parse is inherited from fmt::formatter<std::string>.
+    template <typename FormatContext>
+    auto format(const gucc::fs::ZfsDataset& c, FormatContext& ctx) const -> decltype(ctx.out()) {
+        return fmt::format_to(ctx.out(), "(zpath:'{}', mountpoint:'{}')",
+            c.zpath, c.mountpoint);
+    }
+};
+
+template <>
+struct fmt::formatter<gucc::fs::ZfsSetupConfig> : fmt::formatter<std::string> {
+    // parse is inherited from fmt::formatter<std::string>.
+    template <typename FormatContext>
+    auto format(const gucc::fs::ZfsSetupConfig& c, FormatContext& ctx) const -> decltype(ctx.out()) {
+        return fmt::format_to(ctx.out(), "(zpool_name:'{}', zpool_options:'{}', datasets:{})",
+            c.zpool_name, c.zpool_options, c.datasets);
+    }
+};
 
 #endif  // ZFS_TYPES_HPP
