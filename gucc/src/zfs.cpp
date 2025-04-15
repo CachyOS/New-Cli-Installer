@@ -2,6 +2,9 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
+#include <algorithm>  // for find
+#include <ranges>     // for ranges::*
+
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
@@ -146,15 +149,19 @@ auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConf
 
     // find rootfs in zfs datasets
     auto rootfs = std::ranges::find(zfs_config.datasets, "/", &fs::ZfsDataset::mountpoint);
-    if (rootfs == std::ranges::end(zfs_config.datasets)) {
-        spdlog::info("Skipping setting bootfs flag. Was not able to find rootfs in zfs datasets");
-        return true;
+    if (rootfs != std::ranges::end(zfs_config.datasets)) {
+        // set bootfs flag used by zfsbootmenu
+        const auto& zpool_property = fmt::format(FMT_COMPILE("bootfs={}"), rootfs->zpath);
+        if (!fs::zpool_set_property(zpool_property, zfs_config.zpool_name)) {
+            spdlog::error("Failed to set zfs pool property");
+            return false;
+        }
     }
 
-    // set bootfs flag used by zfsbootmenu
-    const auto& zpool_property = fmt::format(FMT_COMPILE("bootfs={}"), rootfs->zpath);
-    if (!fs::zpool_set_property(zpool_property, zfs_config.zpool_name)) {
-        spdlog::error("Failed to set zfs pool property");
+    // export zpool to import it later
+    const auto& zfs_export_cmd = fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), zfs_config.zpool_name);
+    if (!utils::exec_checked(zfs_export_cmd)) {
+        spdlog::error("Failed to export zfs zpool with: {}", zfs_export_cmd);
         return false;
     }
     return true;
