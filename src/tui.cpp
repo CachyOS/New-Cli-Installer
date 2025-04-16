@@ -1017,7 +1017,7 @@ void make_swap() noexcept {
         }
         const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
         temp.reserve(partitions.size());
-        std::copy(partitions.begin(), partitions.end(), std::back_inserter(temp));
+        std::ranges::copy(partitions, std::back_inserter(temp));
 
         auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
@@ -1860,7 +1860,7 @@ void mount_partitions() noexcept {
             const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
             std::vector<std::string> temp{"Done -"};
             temp.reserve(partitions_lines.size());
-            std::copy(partitions_lines.begin(), partitions_lines.end(), std::back_inserter(temp));
+            std::ranges::copy(partitions_lines, std::back_inserter(temp));
 
             auto screen = ScreenInteractive::Fullscreen();
             std::int32_t selected{};
