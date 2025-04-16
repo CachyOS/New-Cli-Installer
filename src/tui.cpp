@@ -999,7 +999,7 @@ bool mount_current_partition(bool force) noexcept {
     return true;
 }
 
-void make_swap() noexcept {
+void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
     static constexpr auto sel_swap_body = "\nSelect SWAP Partition.\nIf using a Swapfile, it will initially set the same size as your RAM.\n"sv;
     static constexpr auto sel_swap_none = "None"sv;
     static constexpr auto sel_swap_file = "Swapfile"sv;
@@ -1094,6 +1094,20 @@ void make_swap() noexcept {
     }
     config_data["SWAP_DEVICE"] = partition;
 #endif
+
+
+    // TODO(vnepogodin): handle swap partition mount options?
+    auto swap_partition = gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = partition, .mount_opts = "defaults"s};
+
+    const auto& part_uuid     = gucc::fs::utils::get_device_uuid(partition);
+    swap_partition.uuid_str = part_uuid;
+
+    // TODO(vnepogodin): handle luks information
+
+    utils::dump_partition_to_log(swap_partition);
+
+    // insert boot partition
+    partition_schema.emplace_back(std::move(swap_partition));
 
     // Since a partition was used, remove that partition from the list
     std::erase_if(partitions, [partition](std::string_view x) { return gucc::utils::contains(x, partition); });
@@ -1837,7 +1851,7 @@ void mount_partitions() noexcept {
     // done
 
     // Identify and create swap, if applicable
-    tui::make_swap();
+    tui::make_swap(partitions);
 
     // Now that swap is done we put the legacy partitions back, unless they are already mounted
     /*for i in $(zfs_list_datasets "legacy"); do
