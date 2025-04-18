@@ -67,6 +67,13 @@ struct GrubInstallConfig final {
     std::optional<std::string> bootloader_id{};
 };
 
+struct LimineInstallConfig final {
+    bool is_removable{};
+    std::string_view root_mountpoint;
+    std::string_view boot_mountpoint;
+    const std::vector<std::string>& kernel_params;
+};
+
 struct RefindInstallConfig final {
     bool is_removable{};
     std::string_view root_mountpoint;
@@ -95,6 +102,9 @@ auto refind_write_extra_kern_strings(std::string_view file_path, const std::vect
 
 // Installs & configures refind on system
 auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -> bool;
+
+// Installs & configures limine on system
+auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> bool;
 
 }  // namespace gucc::bootloader
 

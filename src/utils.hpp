@@ -40,6 +40,8 @@ void lvm_detect(std::optional<std::function<void()>> func_callback = std::nullop
 void umount_partitions() noexcept;
 void find_partitions() noexcept;
 
+[[nodiscard]] auto get_kernel_params() noexcept;
+[[nodiscard]] auto is_volume_removable() noexcept;
 [[nodiscard]] auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>>;
 [[nodiscard]] auto get_pkglist_desktop(const std::string_view& desktop) noexcept -> std::optional<std::vector<std::string>>;
 auto install_from_pkglist(const std::string_view& packages) noexcept -> bool;
@@ -49,6 +51,7 @@ void remove_pkgs(const std::string_view& packages) noexcept;
 void install_grub_uefi(const std::string_view& bootid, bool as_default = true) noexcept;
 void install_refind() noexcept;
 void install_systemd_boot() noexcept;
+void install_limine() noexcept;
 void uefi_bootloader(const std::string_view& bootloader) noexcept;
 void bios_bootloader(const std::string_view& bootloader) noexcept;
 void install_bootloader(const std::string_view& bootloader) noexcept;
@@ -133,7 +136,7 @@ inline std::size_t remove_all(std::string& inout, std::string_view what) noexcep
 constexpr inline auto bootloader_default_mount(std::string_view bootloader, std::string_view bios_mode) noexcept -> std::string_view {
     using namespace std::string_view_literals;
 
-    if (bootloader == "systemd-boot"sv || bios_mode == "BIOS"sv) {
+    if (bootloader == "systemd-boot"sv || bootloader == "limine"sv || bios_mode == "BIOS"sv) {
         return "/boot"sv;
     } else if (bootloader == "grub"sv || bootloader == "refind"sv) {
         return "/boot/efi"sv;
@@ -148,7 +151,7 @@ constexpr inline auto available_bootloaders(std::string_view bios_mode) noexcept
     if (bios_mode == "BIOS"sv) {
         return {"grub"sv};
     }
-    return {"systemd-boot"sv, "refind"sv, "grub"sv};
+    return {"systemd-boot"sv, "refind"sv, "grub"sv, "limine"sv};
 }
 
 }  // namespace utils

@@ -485,6 +485,19 @@ void install_refind() noexcept {
     std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
+void install_limine() noexcept {
+    static constexpr auto content = "\nThis installs Limine and configures it for Btrfs support.\nNo support for encrypted /boot.\n"sv;
+    const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_install_uefi) { return; }
+    /* clang-format on */
+
+    utils::install_limine();
+
+    detail::infobox_widget("\nLimine was succesfully installed\n");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+}
+
 void install_systemd_boot() noexcept {
     static constexpr auto content = "\nThis installs systemd-boot and generates boot entries\nfor the currently installed kernels.\nThis bootloader requires your kernels to be on the UEFI partition.\nThis is achieved by mounting the UEFI partition to /boot.\n"sv;
     const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
@@ -512,11 +525,12 @@ void uefi_bootloader() noexcept {
     }
 #endif
 
-    static constexpr auto bootloaderInfo        = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting."sv;
+    static constexpr auto bootloaderInfo        = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.\nLimine is lightweight bootloader with Btrfs snapshots loading support."sv;
     const std::vector<std::string> menu_entries = {
         "grub",
         "refind",
         "systemd-boot",
+        "limine"
     };
 
     auto screen = ScreenInteractive::Fullscreen();
@@ -536,6 +550,9 @@ void uefi_bootloader() noexcept {
             break;
         case 2:
             tui::install_systemd_boot();
+            break;
+        case 3:
+            tui::install_limine();
             break;
         }
         screen.ExitLoopClosure()();

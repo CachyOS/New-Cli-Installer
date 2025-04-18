@@ -11,6 +11,7 @@
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
+#include <string>
 
 using namespace std::string_view_literals;
 
@@ -114,6 +115,22 @@ GRUB_DISABLE_RECOVERY=true
 # functionality install os-prober and uncomment to detect and include other
 # operating systems.
 #GRUB_DISABLE_OS_PROBER=false
+)"sv;
+// NOLINTNEXTLINE
+static constexpr auto LIMINE_DEFAULT_CONFIG = R"(# Limine boot loader configuration
+timeout: 5
+remember_last_entry: yes
+
+# CachyOS Limine theme
+# Author: diegons490 (https://github.com/diegons490/cachyos-limine-theme)
+term_palette: 1e1e2e;f38ba8;a6e3a1;f9e2af;89b4fa;f5c2e7;94e2d5;cdd6f4
+term_palette_bright: 585b70;f38ba8;a6e3a1;f9e2af;89b4fa;f5c2e7;94e2d5;cdd6f4
+term_background: ffffffff
+term_foreground: cdd6f4
+term_background_bright: ffffffff
+term_foreground_bright: cdd6f4
+interface_branding:
+wallpaper: boot():/limine-splash.png
 )"sv;
 
 constexpr auto convert_boolean_val(std::string_view needle, bool value) noexcept -> std::string_view {
@@ -337,6 +354,39 @@ auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -
         spdlog::error("Failed to write extra kernel strings into {}", refind_config_path);
         return false;
     }
+    return true;
+}
+
+auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> bool {
+    // Write generated config to system
+    const auto& limine_config_path = fmt::format(FMT_COMPILE("{}/limine.conf"), limine_install_config.boot_mountpoint);
+    if (!file_utils::create_file_for_overwrite(limine_config_path, LIMINE_DEFAULT_CONFIG)) {
+        spdlog::error("Failed to open limine config for writing {}", limine_config_path);
+        return false;
+    }
+
+    // Write limine-entry-tool config to system
+    const auto& kernel_params_str = utils::join(limine_install_config.kernel_params, ' ');
+    std::string limine_config_content = fmt::format(FMT_COMPILE("KERNEL_CMDLINE[default]=\"{}\"\n"), kernel_params_str);
+    const auto& limine_entry_tool_config_path = fmt::format(FMT_COMPILE("{}/etc/default/limine"), limine_install_config.root_mountpoint);
+
+    if (!file_utils::create_file_for_overwrite(limine_entry_tool_config_path, limine_config_content)) {
+        spdlog::error("Failed to open limine-entry-tool config for writing {}", limine_entry_tool_config_path);
+        return false;
+    }
+
+    // Install Limine onto EFI
+    if (!utils::arch_chroot_checked("limine-install"sv, limine_install_config.root_mountpoint)) {
+        spdlog::error("Failed to run limine-install on path {}", limine_install_config.root_mountpoint);
+        return false;
+    }
+
+    // Add kernel entries
+    if (!utils::arch_chroot_checked("limine-mkinitcpio"sv, limine_install_config.root_mountpoint)) {
+        spdlog::error("Failed to run limine-mkinitcpio on path {}", limine_install_config.root_mountpoint);
+        return false;
+    }
+
     return true;
 }
 
