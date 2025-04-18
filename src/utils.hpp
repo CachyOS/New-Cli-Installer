@@ -40,6 +40,8 @@ void lvm_detect(std::optional<std::function<void()>> func_callback = std::nullop
 void umount_partitions() noexcept;
 void find_partitions() noexcept;
 
+[[nodiscard]] auto get_kernel_params() noexcept;
+[[nodiscard]] auto is_volume_removable() noexcept;
 [[nodiscard]] auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>>;
 [[nodiscard]] auto get_pkglist_desktop(const std::string_view& desktop) noexcept -> std::optional<std::vector<std::string>>;
 auto install_from_pkglist(const std::string_view& packages) noexcept -> bool;
@@ -49,6 +51,7 @@ void remove_pkgs(const std::string_view& packages) noexcept;
 void install_grub_uefi(const std::string_view& bootid, bool as_default = true) noexcept;
 void install_refind() noexcept;
 void install_systemd_boot() noexcept;
+void install_limine() noexcept;
 void uefi_bootloader(const std::string_view& bootloader) noexcept;
 void bios_bootloader(const std::string_view& bootloader) noexcept;
 void install_bootloader(const std::string_view& bootloader) noexcept;

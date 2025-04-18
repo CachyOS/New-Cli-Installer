@@ -920,36 +920,30 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
 #endif
 }
 
-void install_refind() noexcept {
-    spdlog::info("Installing refind...");
-#ifdef NDEVENV
+// Check if the volume is removable
+auto is_volume_removable() noexcept {
+    // NOTE: for /mnt on /dev/mapper/cryptroot `root_name` will be cryptroot
+    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+
+    // NOTE: for /mnt on /dev/mapper/cryptroot on /dev/sda2 with `root_name`=cryptroot, `root_device` will be sda
+    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
+    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
+    const auto& removable          = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
+    return utils::to_int(removable) == 1;
+}
+
+auto get_kernel_params() noexcept {
     auto* config_instance      = Config::instance();
     auto& config_data          = config_instance->data();
     const auto& mountpoint     = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& uefi_mount     = std::get<std::string>(config_data["UEFI_MOUNT"]);
     const auto& luks           = std::get<std::int32_t>(config_data["LUKS"]);
     const auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
     const auto& luks_uuid      = std::get<std::string>(config_data["LUKS_UUID"]);
     const auto& luks_dev       = std::get<std::string>(config_data["LUKS_DEV"]);
 
-    utils::inst_needed("refind");
-
-    const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
-
-    // TODO(vnepogodin): make these configurable
-    static constexpr auto default_kernel_params = "quiet zswap.enabled=0 nowatchdog"sv;
-    const std::vector<std::string> extra_kernel_versions{
-        "linux-cachyos", "linux", "linux-cachyos-cfs", "linux-cachyos-bore",
-        "linux-cachyos-tt", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-lts"};
-
-    // TODO(vnepogodin): detection MUST NOT be done here, and instead MUST be carried from upper functions
-    // ---- start ---
-
     // Check if the volume is removable. If so, install all drivers
     const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
     const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
-    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-
     std::vector<gucc::fs::Partition> partitions{};
 
     const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint);
@@ -958,7 +952,6 @@ void install_refind() noexcept {
     const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
     root_part_struct.uuid_str  = root_part_uuid;
 
-    const bool is_removable = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device)) == "1"sv);
 
     // Set subvol field in case ROOT on btrfs subvolume
     if ((root_part_struct.fstype == "btrfs"sv) && gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5")) {
@@ -970,34 +963,56 @@ void install_refind() noexcept {
 
     if (!luks_root_name.empty()) {
         root_part_struct.luks_mapper_name = luks_root_name;
-        spdlog::debug("refind: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
+        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
     }
     if (!luks_uuid.empty()) {
         root_part_struct.luks_uuid = luks_uuid;
-        spdlog::debug("refind: luks_uuid:='{}'", *root_part_struct.luks_uuid);
+        spdlog::debug("kernel_params: luks_uuid:='{}'", *root_part_struct.luks_uuid);
     }
     if (!luks_dev.empty()) {
-        spdlog::debug("refind: luks_dev:='{}'. why we need that here???", luks_dev);
+        spdlog::debug("kernel_params: luks_dev:='{}'. why we need that here???", luks_dev);
     }
 
     // LUKS and lvm with LUKS
     if (luks == 1) {
         const auto& luks_mapper_name      = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed 's/\\/dev\\/mapper\\///'");
         root_part_struct.luks_mapper_name = luks_mapper_name;
-        spdlog::debug("refind: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
+        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
     }
     // Lvm without LUKS
     else if (gucc::utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep '/mnt$' | awk '{print $6}'") == "lvm"sv) {
         const auto& luks_mapper_name      = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed 's/\\/dev\\/mapper\\///'");
         root_part_struct.luks_mapper_name = luks_mapper_name;
-        spdlog::debug("refind: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
+        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
     }
 
     // insert root partition
     partitions.emplace_back(std::move(root_part_struct));
-    // ---- end ---
+
+    // TODO(vnepogodin): make these configurable
+    static constexpr auto default_kernel_params = "quiet zswap.enabled=0 nowatchdog"sv;
 
     const auto& kernel_params = gucc::fs::get_kernel_params(partitions, default_kernel_params);
+
+    return kernel_params;
+}
+
+void install_refind() noexcept {
+    spdlog::info("Installing refind...");
+#ifdef NDEVENV
+    auto* config_instance      = Config::instance();
+    auto& config_data          = config_instance->data();
+    const auto& mountpoint     = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount     = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
+
+    utils::inst_needed("refind");
+
+    const std::vector<std::string> extra_kernel_versions{
+        "linux-cachyos", "linux", "linux-cachyos-cfs", "linux-cachyos-bore",
+        "linux-cachyos-tt", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-lts"};
+
+    const auto& kernel_params = utils::get_kernel_params();
     if (!kernel_params.has_value()) {
         spdlog::error("Failed to get kernel params for partition scheme");
         return;
@@ -1005,12 +1020,14 @@ void install_refind() noexcept {
 
     // start refind install & configuration
     const gucc::bootloader::RefindInstallConfig refind_install_config{
-        .is_removable          = is_removable,
+        .is_removable          = utils::is_volume_removable(),
         .root_mountpoint       = mountpoint,
         .boot_mountpoint       = boot_mountpoint,
         .extra_kernel_versions = extra_kernel_versions,
         .kernel_params         = *kernel_params,
     };
+
+
     if (!gucc::bootloader::install_refind(refind_install_config)) {
         spdlog::error("Failed to install refind");
         return;
@@ -1036,24 +1053,61 @@ void install_systemd_boot() noexcept {
     // preinstall systemd-boot-manager. it has to be installed
     utils::install_from_pkglist("systemd-boot-manager");
 
-    // Check if the volume is removable
-
-    // NOTE: for /mnt on /dev/mapper/cryptroot `root_name` will be cryptroot
-    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-
-    // NOTE: for /mnt on /dev/mapper/cryptroot on /dev/sda2 with `root_name`=cryptroot, `root_device` will be sda
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
-    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-    const auto& removable          = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    const bool is_volume_removable = (utils::to_int(removable) == 1);
-
     // start systemd-boot install & configuration
-    if (!gucc::bootloader::install_systemd_boot(mountpoint, uefi_mount, is_volume_removable)) {
+    if (!gucc::bootloader::install_systemd_boot(mountpoint, uefi_mount, utils::is_volume_removable())) {
         spdlog::error("Failed to install systemd-boot");
         return;
     }
 #endif
     spdlog::info("Systemd-boot was installed");
+}
+
+void install_limine() noexcept {
+    spdlog::info("Installing Limine...");
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+
+    const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
+
+    const auto& kernel_params = utils::get_kernel_params();
+    if (!kernel_params.has_value()) {
+        spdlog::error("Failed to get kernel params for partition scheme");
+        return;
+    }
+
+    const gucc::bootloader::LimineInstallConfig limine_install_config{
+        .is_removable          = utils::is_volume_removable(),
+        .root_mountpoint       = mountpoint,
+        .boot_mountpoint       = boot_mountpoint,
+        .kernel_params         = *kernel_params,
+    };
+
+    // Preinstall limine-entry-tool
+    utils::install_from_pkglist("limine-mkinitcpio-hook");
+
+    // Install splash screen
+    utils::inst_needed("cachyos-wallpapers");
+
+    // Copy cachyos splash screen
+    const auto& limine_splash_file = fmt::format(FMT_COMPILE("{}/limine-splash.png"), boot_mountpoint);
+    fs::copy_file("/usr/share/wallpapers/cachyos-wallpapers/limine-splash.png", limine_splash_file, fs::copy_options::overwrite_existing);
+
+    // Start limine install & configuration
+    if (!gucc::bootloader::install_limine(limine_install_config)) {
+        spdlog::error("Failed to install Limine");
+        return;
+    }
+
+    // Intergrate Snapper support
+    const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
+    if (filesystem_type == "btrfs"sv) {
+        utils::install_from_pkglist("cachyos-snapper-support limine-snapper-sync");
+    }
+#endif
+    spdlog::info("Limine was installed");
 }
 
 void uefi_bootloader(const std::string_view& bootloader) noexcept {
@@ -1078,6 +1132,8 @@ void uefi_bootloader(const std::string_view& bootloader) noexcept {
         utils::install_refind();
     } else if (bootloader == "systemd-boot"sv) {
         utils::install_systemd_boot();
+    } else if (bootloader == "limine"sv) {
+        utils::install_limine();
     } else {
         spdlog::error("Unknown bootloader!");
     }
