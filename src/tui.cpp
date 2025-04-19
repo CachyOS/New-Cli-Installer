@@ -16,6 +16,7 @@
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/swap.hpp"
 #include "gucc/zfs.hpp"
 
 #include <algorithm>    // for copy
@@ -1058,10 +1059,10 @@ void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
 
 #ifdef NDEVENV
         const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint_info);
-        gucc::utils::exec(fmt::format(FMT_COMPILE("fallocate -l {} {} 2>>/tmp/cachyos-install.log &>/dev/null"), value, swapfile_path));
-        gucc::utils::exec(fmt::format(FMT_COMPILE("chmod 600 {} 2>>/tmp/cachyos-install.log"), swapfile_path));
-        gucc::utils::exec(fmt::format(FMT_COMPILE("mkswap {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
-        gucc::utils::exec(fmt::format(FMT_COMPILE("swapon {} 2>>/tmp/cachyos-install.log &>/dev/null"), swapfile_path));
+        if (!gucc::swap::make_swapfile(mountpoint_info, value)) {
+            spdlog::error("Failed to create swapfile: {}", swapfile_path);
+            return;
+        }
 
         config_data["SWAP_DEVICE"] = swapfile_path;
 #endif
@@ -1071,6 +1072,9 @@ void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
     auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
     auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
 
+    // TODO(vnepogodin): handle swap partition mount options?
+    auto swap_partition = gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = partition, .mount_opts = "defaults"s};
+
     // Warn user if creating a new swap
     const auto& swap_part = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE '{}' | grep -i 'swap'"), partition));
     if (swap_part != "swap"sv) {
@@ -1078,35 +1082,24 @@ void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
         /* clang-format off */
         if (!do_swap) { return; }
         /* clang-format on */
-
-#ifdef NDEVENV
-        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), partition))) {
-            spdlog::error("Failed to make swap partition: {}", partition);
-        }
-#endif
-        spdlog::info("mkswap.{}", partition);
     }
 
 #ifdef NDEVENV
-    // Whether existing to newly created, activate swap
-    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), partition))) {
-        spdlog::error("Failed to swapon partition {}", partition);
+    if (!gucc::swap::make_swap_partition(swap_partition)) {
+        spdlog::error("Failed to create swap parition");
+        return;
     }
     config_data["SWAP_DEVICE"] = partition;
 #endif
 
-
-    // TODO(vnepogodin): handle swap partition mount options?
-    auto swap_partition = gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = partition, .mount_opts = "defaults"s};
-
-    const auto& part_uuid     = gucc::fs::utils::get_device_uuid(partition);
+    const auto& part_uuid   = gucc::fs::utils::get_device_uuid(partition);
     swap_partition.uuid_str = part_uuid;
 
     // TODO(vnepogodin): handle luks information
 
     utils::dump_partition_to_log(swap_partition);
 
-    // insert boot partition
+    // insert swap partition
     partition_schema.emplace_back(std::move(swap_partition));
 
     // Since a partition was used, remove that partition from the list
@@ -1708,6 +1701,8 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
 auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
+
+    // if zfs disk was configured, we need to run zfs import -N -R {mountpoint} {zpool_name} and exit
 
     // check to see if we already have a zfs root mounted
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
