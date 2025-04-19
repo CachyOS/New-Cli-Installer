@@ -1696,10 +1696,22 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
+    // TODO(vnepogodin): we should only gather info about root partition and pass to GUCC to create,mount parition
+
     // if zfs disk was configured, we need to run zfs import -N -R {mountpoint} {zpool_name} and exit
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
+    if (!zfs_zpool_names.empty()) {
+        // NOTE: assuming we only support single zpool
+        const auto& zfs_zpool_name = zfs_zpool_names[0];
+        const auto& zfs_import_cmd = fmt::format(FMT_COMPILE("zfs import -N -R {} {} &>>/tmp/cachyos-install.log"), mountpoint_info, zfs_zpool_name);
+        if (!gucc::utils::exec_checked(zfs_import_cmd)) {
+            spdlog::error("Failed to import zpool: {}", zfs_import_cmd);
+            return false;
+        }
+    }
 
     // check to see if we already have a zfs root mounted
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "zfs"sv) {
         detail::infobox_widget("\nUsing ZFS root on \'/\'\n"sv);
         std::this_thread::sleep_for(std::chrono::seconds(3));
