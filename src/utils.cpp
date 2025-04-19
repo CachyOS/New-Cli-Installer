@@ -1122,6 +1122,9 @@ void bios_bootloader(const std::string_view& bootloader) noexcept {
         grub_config_struct.savedefault = std::nullopt;
     }
 
+    // enable os-prober
+    grub_config_struct.disable_os_prober = false;
+
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
 
     // grub config changes for zfs root
@@ -1179,13 +1182,6 @@ pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
     if (fde == 1) {
         spdlog::info("Full disk encryption enabled");
         grub_config_struct.enable_cryptodisk = true;
-    }
-
-    // Remove os-prober if not selected
-    constexpr std::string_view needle{"os-prober"};
-    const auto& found = std::ranges::search(bootloader, needle);
-    if (found.empty()) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ os-prober//g' -i {}"), grub_installer_path));
     }
 
     std::error_code err{};

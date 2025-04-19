@@ -127,10 +127,8 @@ auto select_bootloader(std::string_view sys_info) noexcept -> std::string {
 
     if (!success) {
         // default bootloaders
-        selected_bootloader = (sys_info == "UEFI"sv) ? "systemd-boot"sv : "grub + os-prober"sv;
+        selected_bootloader = (sys_info == "UEFI"sv) ? "systemd-boot"sv : "grub"sv;
     }
-
-    utils::remove_all(selected_bootloader, "+ "sv);
 
     return selected_bootloader;
 }

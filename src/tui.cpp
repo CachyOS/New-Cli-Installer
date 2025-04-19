@@ -692,10 +692,9 @@ void config_base_menu() noexcept {
 
 // Grub auto-detects installed kernel
 void bios_bootloader() {
-    static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step.\n \nos-prober is needed for automatic detection of already installed\nsystems on other partitions."sv;
+    static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step."sv;
     const std::vector<std::string> menu_entries = {
         "grub",
-        "grub + os-prober",
     };
 
     auto screen = ScreenInteractive::Fullscreen();
@@ -709,14 +708,9 @@ void bios_bootloader() {
 
     /* clang-format off */
     if (selected_bootloader.empty()) { return; }
-    /* clang-format on */
-
-    // that will install 2 packages in case os-prober entry is selected
-    utils::remove_all(selected_bootloader, "+ "sv);
-
-    /* clang-format off */
     if (!tui::select_device()) { return; }
     /* clang-format on */
+
     auto* config_instance     = Config::instance();
     auto& config_data         = config_instance->data();
     config_data["BOOTLOADER"] = selected_bootloader;

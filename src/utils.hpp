@@ -146,7 +146,7 @@ constexpr inline auto available_bootloaders(std::string_view bios_mode) noexcept
     using namespace std::string_view_literals;
 
     if (bios_mode == "BIOS"sv) {
-        return {"grub"sv, "grub + os-prober"sv};
+        return {"grub"sv};
     }
     return {"systemd-boot"sv, "refind"sv, "grub"sv};
 }

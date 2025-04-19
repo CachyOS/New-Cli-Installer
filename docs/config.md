@@ -312,7 +312,6 @@ Valid `bootloader` for UEFI system:
 
 Valid `bootloader` for BIOS system:
 * `grub`
-* `grub + os-prober`
 
 There is no default for this option.
 
