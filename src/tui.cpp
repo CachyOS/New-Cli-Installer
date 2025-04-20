@@ -820,6 +820,39 @@ bool select_device() noexcept {
     return success;
 }
 
+// Helper function to select filesystem
+auto select_fs_and_cmd() noexcept -> std::optional<std::pair<std::string, std::string>> {
+    using FsCmdPair = std::pair<std::string, std::string>;
+
+    const std::vector<FsCmdPair> menu_entries = {
+        {"skip", "Do not format -"},
+        {"btrfs", "btrfs mkfs.btrfs -f"},
+        {"ext4", "ext4 mkfs.ext4 -q"},
+        {"f2fs", "f2fs mkfs.f2fs -q"},
+        {"xfs", "xfs mkfs.xfs -f"},
+    };
+
+    std::vector<std::string> menu_display_entries;
+    menu_display_entries.reserve(menu_entries.size());
+    for (const auto& entry : menu_entries) {
+        menu_display_entries.push_back(entry.second);
+    }
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    std::optional<FsCmdPair> result{};
+    auto ok_callback = [&] {
+        const auto& [fstype, mkfs_command] = menu_entries[static_cast<std::size_t>(selected)];
+
+        result = {{fstype, (fstype == "skip"sv) ? ""s : mkfs_command}};
+        screen.ExitLoopClosure()();
+    };
+    detail::menu_widget(menu_display_entries, ok_callback, &selected, &screen);
+
+    return result;
+}
+
+
 // Set static list of filesystems rather than on-the-fly. Partially as most require additional flags, and
 // partially because some don't seem to be viable.
 bool select_filesystem() noexcept {
@@ -828,31 +861,17 @@ bool select_filesystem() noexcept {
     // prep variables
     config_data["fs_opts"] = std::vector<std::string>{};
 
-    const std::vector<std::string> menu_entries = {
-        "Do not format -",
-        "btrfs mkfs.btrfs -f",
-        "ext4 mkfs.ext4 -q",
-        "f2fs mkfs.f2fs -q",
-        "xfs mkfs.xfs -f",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    bool success{};
-    auto ok_callback = [&] {
-        const auto& src      = menu_entries[static_cast<std::size_t>(selected)];
-        const auto& lines    = gucc::utils::make_multiline(src, false, ' ');
-        const auto& file_sys = lines[0];
-        utils::select_filesystem(file_sys);
-        success = true;
-        screen.ExitLoopClosure()();
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
-
+    // 1. Select filesystem type and format command (or skip)
+    auto fs_selection = select_fs_and_cmd();
     /* clang-format off */
-    if (!success) { return false; }
-    if (selected == 0) { return success; }
+    if (!fs_selection) { return false; }
+    if (fs_selection->first == "skip"sv) { return true; }
     /* clang-format on */
+
+    // 2. Take actions
+
+    // set all variables
+    utils::select_filesystem(fs_selection->first);
 
     // Warn about formatting!
     const auto& file_sys  = std::get<std::string>(config_data["FILESYSTEM"]);
@@ -866,7 +885,7 @@ bool select_filesystem() noexcept {
         spdlog::info("mount.{} {}", partition, file_sys);
     }
 
-    return success;
+    return true;
 }
 
 // This subfunction allows for special mounting options to be applied for relevant fs's.
