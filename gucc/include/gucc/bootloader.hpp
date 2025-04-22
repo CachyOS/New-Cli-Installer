@@ -103,8 +103,11 @@ auto refind_write_extra_kern_strings(std::string_view file_path, const std::vect
 // Installs & configures refind on system
 auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -> bool;
 
-// Installs & configures limine on system
+// Installs Limine on system
 auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> bool;
+
+// Generate Limine config into system
+auto gen_limine_config(const std::vector<std::string>& kernel_params) noexcept -> std::string;
 
 }  // namespace gucc::bootloader
 

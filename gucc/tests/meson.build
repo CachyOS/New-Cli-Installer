@@ -103,6 +103,14 @@ executable(
   install: false)
 
 executable(
+  'test-limine_config_gen',
+  files('unit-limine_config_gen.cpp'),
+  dependencies: [deps, doctest],
+  link_with: [gucc_lib, doctest_main_lib],
+  include_directories: [include_directories('../include')],
+  install: false)
+
+executable(
   'test-refind_extra_kern_strings',
   files('unit-refind_extra_kern_strings.cpp'),
   dependencies: [deps, doctest],
