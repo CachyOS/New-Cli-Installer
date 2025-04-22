@@ -357,6 +357,15 @@ auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -
     return true;
 }
 
+auto gen_limine_config(const std::vector<std::string>& kernel_params) noexcept -> std::string {
+    const auto& kernel_params_str = utils::join(kernel_params, ' ');
+
+    std::string limine_config{};
+    limine_config += fmt::format(FMT_COMPILE("KERNEL_CMDLINE[default]=\"{}\"\n"), kernel_params_str);
+
+    return limine_config;
+}
+
 auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> bool {
     // Write generated config to system
     const auto& limine_config_path = fmt::format(FMT_COMPILE("{}/limine.conf"), limine_install_config.boot_mountpoint);
@@ -366,10 +375,9 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
     }
 
     // Write limine-entry-tool config to system
-    const auto& kernel_params_str = utils::join(limine_install_config.kernel_params, ' ');
-    std::string limine_config_content = fmt::format(FMT_COMPILE("KERNEL_CMDLINE[default]=\"{}\"\n"), kernel_params_str);
     const auto& limine_entry_tool_config_path = fmt::format(FMT_COMPILE("{}/etc/default/limine"), limine_install_config.root_mountpoint);
 
+    const auto& limine_config_content = bootloader::gen_limine_config(limine_install_config.kernel_params);
     if (!file_utils::create_file_for_overwrite(limine_entry_tool_config_path, limine_config_content)) {
         spdlog::error("Failed to open limine-entry-tool config for writing {}", limine_entry_tool_config_path);
         return false;
