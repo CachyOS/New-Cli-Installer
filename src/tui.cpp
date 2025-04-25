@@ -869,7 +869,6 @@ auto select_fs_and_cmd() noexcept -> std::optional<std::pair<std::string, std::s
     return result;
 }
 
-
 // Set static list of filesystems rather than on-the-fly. Partially as most require additional flags, and
 // partially because some don't seem to be viable.
 bool select_filesystem() noexcept {
@@ -905,18 +904,25 @@ bool select_filesystem() noexcept {
     return true;
 }
 
-// This subfunction allows for special mounting options to be applied for relevant fs's.
-// Separate subfunction for neatness.
-void mount_opts(bool force) noexcept {
+// Refactored mount_opts to take partition and return options string
+auto select_mount_opts(std::string_view partition, std::string_view fstype, bool force = false) noexcept -> std::string {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& file_sys      = std::get<std::string>(config_data["FILESYSTEM"]);
-    const auto& fs_opts       = std::get<std::vector<std::string>>(config_data["fs_opts"]);
-    const auto& partition     = std::get<std::string>(config_data["PARTITION"]);
-    const auto& format_name   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), partition));
-    const auto& format_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), format_name, "awk '/disk/ {print $1}'"));
+    // reset
+    // config_data["fs_opts"] = std::vector<std::string>{};
+    // populate mount opts
+    // utils::select_filesystem(fstype);
 
+    // check populated options
+    const auto& fs_opts = std::get<std::vector<std::string>>(config_data["fs_opts"]);
+    if (fs_opts.empty()) {
+        // no options available or failed
+        return "";
+    }
+
+    const auto& format_name      = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), partition));
+    const auto& format_device    = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), format_name, "awk '/disk/ {print $1}'"));
     const auto& rotational_queue = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1"sv);
 
     std::unique_ptr<bool[]> fs_opts_state{new bool[fs_opts.size()]{false}};
@@ -939,18 +945,18 @@ void mount_opts(bool force) noexcept {
         /* clang-format on */
     }
 
-    auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+    std::string mount_opts_info{};
 
     // Now clean up the file
-    auto cleaup_mount_opts = [](auto& opts_info) {
+    auto cleanup_mount_opts = [](auto& opts_info) {
         opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | sed 's/ /,/g'"), opts_info));
         opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | sed '$s/,$//'"), opts_info));
     };
 
     if (force) {
         mount_opts_info = detail::from_checklist_string(fs_opts, fs_opts_state.get());
-        cleaup_mount_opts(mount_opts_info);
-        return;
+        cleanup_mount_opts(mount_opts_info);
+        return mount_opts_info;
     }
 
     auto screen      = ScreenInteractive::Fullscreen();
@@ -959,13 +965,13 @@ void mount_opts(bool force) noexcept {
         screen.ExitLoopClosure()();
     };
 
-    const auto& file_sys_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | sed 's/.*\\.//g;s/-.*//g'"), file_sys));
+    const auto& file_sys_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | sed 's/.*\\.//g;s/-.*//g'"), fstype));
     const auto& fs_title           = fmt::format(FMT_COMPILE("New CLI Installer | {}"), file_sys_formatted);
     auto content_size              = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
 
     static constexpr auto mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n"sv;
     detail::checklist_widget(fs_opts, ok_callback, fs_opts_state.get(), &screen, mount_options_body, fs_title, {std::move(content_size), nothing});
-    cleaup_mount_opts(mount_opts_info);
+    cleanup_mount_opts(mount_opts_info);
 
     // If mount options selected, confirm choice
     if (!mount_opts_info.empty()) {
@@ -978,6 +984,22 @@ void mount_opts(bool force) noexcept {
         if (!do_mount) { mount_opts_info = ""; }
         /* clang-format on */
     }
+    return mount_opts_info;
+}
+
+// This subfunction allows for special mounting options to be applied for relevant fs's.
+// Separate subfunction for neatness.
+void mount_opts(bool force) noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& file_sys  = std::get<std::string>(config_data["FILESYSTEM"]);
+    const auto& fs_opts   = std::get<std::vector<std::string>>(config_data["fs_opts"]);
+    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
+
+    // select mount opts
+    auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
+    mount_opts_info       = select_mount_opts(partition, file_sys, force);
 }
 
 bool mount_current_partition(bool force) noexcept {
