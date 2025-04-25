@@ -23,6 +23,9 @@ void select_filesystem(const std::string_view& file_sys) noexcept;
 // Mounts and queries device setup
 auto mount_partition(std::string_view partition, std::string_view mountpoint, std::string_view mount_dev, std::string_view mount_opts) noexcept -> bool;
 
+// Check if the volume is removable
+auto is_volume_removable() noexcept -> bool;
+
 }  // namespace utils
 
 #endif  // DISK_HPP

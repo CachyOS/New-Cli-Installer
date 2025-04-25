@@ -1,6 +1,7 @@
 #include "utils.hpp"
 #include "config.hpp"
 #include "definitions.hpp"
+#include "disk.hpp"
 #include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
@@ -920,18 +921,6 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
 #endif
 }
 
-// Check if the volume is removable
-auto is_volume_removable() noexcept {
-    // NOTE: for /mnt on /dev/mapper/cryptroot `root_name` will be cryptroot
-    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-
-    // NOTE: for /mnt on /dev/mapper/cryptroot on /dev/sda2 with `root_name`=cryptroot, `root_device` will be sda
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
-    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-    const auto& removable          = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    return utils::to_int(removable) == 1;
-}
-
 auto get_kernel_params() noexcept {
     auto* config_instance      = Config::instance();
     auto& config_data          = config_instance->data();
@@ -951,7 +940,6 @@ auto get_kernel_params() noexcept {
 
     const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
     root_part_struct.uuid_str  = root_part_uuid;
-
 
     // Set subvol field in case ROOT on btrfs subvolume
     if ((root_part_struct.fstype == "btrfs"sv) && gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5")) {
@@ -1000,10 +988,10 @@ auto get_kernel_params() noexcept {
 void install_refind() noexcept {
     spdlog::info("Installing refind...");
 #ifdef NDEVENV
-    auto* config_instance      = Config::instance();
-    auto& config_data          = config_instance->data();
-    const auto& mountpoint     = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& uefi_mount     = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    auto* config_instance       = Config::instance();
+    auto& config_data           = config_instance->data();
+    const auto& mountpoint      = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount      = std::get<std::string>(config_data["UEFI_MOUNT"]);
     const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
 
     utils::inst_needed("refind");
@@ -1026,7 +1014,6 @@ void install_refind() noexcept {
         .extra_kernel_versions = extra_kernel_versions,
         .kernel_params         = *kernel_params,
     };
-
 
     if (!gucc::bootloader::install_refind(refind_install_config)) {
         spdlog::error("Failed to install refind");
@@ -1079,10 +1066,10 @@ void install_limine() noexcept {
     }
 
     const gucc::bootloader::LimineInstallConfig limine_install_config{
-        .is_removable          = utils::is_volume_removable(),
-        .root_mountpoint       = mountpoint,
-        .boot_mountpoint       = boot_mountpoint,
-        .kernel_params         = *kernel_params,
+        .is_removable    = utils::is_volume_removable(),
+        .root_mountpoint = mountpoint,
+        .boot_mountpoint = boot_mountpoint,
+        .kernel_params   = *kernel_params,
     };
 
     // Preinstall limine-entry-tool

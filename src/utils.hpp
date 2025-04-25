@@ -41,7 +41,6 @@ void umount_partitions() noexcept;
 void find_partitions() noexcept;
 
 [[nodiscard]] auto get_kernel_params() noexcept;
-[[nodiscard]] auto is_volume_removable() noexcept;
 [[nodiscard]] auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>>;
 [[nodiscard]] auto get_pkglist_desktop(const std::string_view& desktop) noexcept -> std::optional<std::vector<std::string>>;
 auto install_from_pkglist(const std::string_view& packages) noexcept -> bool;

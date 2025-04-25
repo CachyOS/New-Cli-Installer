@@ -363,4 +363,15 @@ auto mount_partition(std::string_view partition, std::string_view mountpoint, st
     return true;
 }
 
+auto is_volume_removable() noexcept -> bool {
+    // NOTE: for /mnt on /dev/mapper/cryptroot `root_name` will be cryptroot
+    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+
+    // NOTE: for /mnt on /dev/mapper/cryptroot on /dev/sda2 with `root_name`=cryptroot, `root_device` will be sda
+    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
+    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
+    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
+    return utils::to_int(removable) == 1;
+}
+
 }  // namespace utils
