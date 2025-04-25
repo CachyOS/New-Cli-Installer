@@ -6,12 +6,14 @@
 // import gucc
 #include "gucc/btrfs.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/mount_partitions.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
-#include <algorithm>  // for find_if
-#include <ranges>     // for ranges::*
+#include <algorithm>   // for find_if
+#include <filesystem>  // for create_directories
+#include <ranges>      // for ranges::*
 
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/component_options.hpp>   // for ButtonOption
@@ -24,6 +26,8 @@
 
 using namespace std::string_view_literals;
 using namespace std::string_literals;
+
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -313,6 +317,50 @@ void select_filesystem(const std::string_view& file_sys) noexcept {
     } else if (file_sys != "zfs"sv) {
         spdlog::error("Invalid filesystem ('{}')!", file_sys);
     }
+}
+
+auto mount_partition(std::string_view partition, std::string_view mountpoint, std::string_view mount_dev, std::string_view mount_opts) noexcept -> bool {
+    // Make the mount directory
+    const auto& mount_dir = fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev);
+#ifdef NDEVENV
+    std::error_code err{};
+    ::fs::create_directories(mount_dir, err);
+    if (err) {
+        spdlog::error("Failed to make directory {}: {}", mount_dev, err.message());
+        return false;
+    }
+#endif
+
+    // TODO(vnepogodin): use libmount instead.
+    // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
+#ifdef NDEVENV
+    if (!gucc::mount::mount_partition(partition, mount_dir, mount_opts)) {
+        spdlog::error("Failed to mount partition {} at {} with {}", partition, mount_dir, mount_opts);
+        return false;
+    }
+#else
+    spdlog::info("[DRY-RUN] Would mount {} at {} with options '{}'", partition, mount_dir, mount_opts);
+#endif
+
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    auto& luks_name       = std::get<std::string>(config_data["LUKS_NAME"]);
+    auto& luks_dev        = std::get<std::string>(config_data["LUKS_DEV"]);
+    auto& luks_uuid       = std::get<std::string>(config_data["LUKS_UUID"]);
+
+    auto& is_luks = std::get<std::int32_t>(config_data["LUKS"]);
+    auto& is_lvm  = std::get<std::int32_t>(config_data["LVM"]);
+
+    // Use the actual mounted device path for querying LUKS/LVM, which might be a mapper device
+    const auto& mounted_device = gucc::utils::exec(fmt::format("findmnt -n -o SOURCE {}", mount_dir));
+    const auto& query_device   = mounted_device.empty() ? partition : mounted_device;
+    if (!gucc::mount::query_partition(query_device, is_luks, is_lvm, luks_name, luks_dev, luks_uuid)) {
+        spdlog::error("Failed to query partition: {} (queried as {})", partition, query_device);
+        return false;
+    }
+
+    spdlog::debug("partition '{}': is_luks:={};is_lvm:={};luks_name:='{}';luks_dev:='{}';luks_uuid:='{}'", partition, is_luks, is_lvm, luks_name, luks_dev, luks_uuid);
+    return true;
 }
 
 }  // namespace utils

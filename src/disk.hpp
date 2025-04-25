@@ -20,6 +20,9 @@ auto lvm_show_vg() noexcept -> std::vector<std::string>;
 // Other filesystems
 void select_filesystem(const std::string_view& file_sys) noexcept;
 
+// Mounts and queries device setup
+auto mount_partition(std::string_view partition, std::string_view mountpoint, std::string_view mount_dev, std::string_view mount_opts) noexcept -> bool;
+
 }  // namespace utils
 
 #endif  // DISK_HPP
