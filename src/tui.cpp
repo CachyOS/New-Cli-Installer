@@ -51,6 +51,19 @@ using namespace std::string_view_literals;
 
 namespace tui {
 
+// Structure to hold user selections for the root partition
+struct RootPartitionSelection {
+    std::string device;
+    // Filesystem type (e.g., "ext4", "btrfs") or empty if skipping format
+    std::string fstype;
+    // Full mkfs command (e.g., "mkfs.ext4 -q") or empty if skipping format
+    std::string mkfs_command;
+    // Comma-separated mount options
+    std::string mount_opts;
+    // Flag indicating if formatting was chosen
+    bool format_requested{};
+};
+
 bool exit_done() noexcept {
 #ifdef NDEVENV
     auto* config_instance = Config::instance();
@@ -1723,23 +1736,183 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
     partitions.emplace_back(std::move(boot_part_struct));
 }
 
+// Function to gather user choices for the root partition
+auto select_root_partition_info() noexcept -> std::optional<RootPartitionSelection> {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    RootPartitionSelection selection{};
+
+    // 1. Identify root partition device
+    {
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+
+        auto ok_callback = [&] {
+            const auto& src   = partitions_lines[static_cast<std::size_t>(selected)];
+            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
+            selection.device  = lines[0];
+            success           = true;
+            screen.ExitLoopClosure()();
+        };
+        /* clang-format off */
+        static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n"sv;
+        detail::menu_widget(partitions_lines, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+        if (!success) { return std::nullopt; }
+        /* clang-format on */
+    }
+    spdlog::info("Selected root partition device: {}", selection.device);
+
+    // NOTE: keep this for backward compatibility?
+    config_data["PARTITION"] = selection.device;
+    config_data["ROOT_PART"] = selection.device;
+    // Reset the mountpoint variable, in case this is the second time through this menu and old state is still around
+    config_data["MOUNT"] = "";
+
+    // 2. Select filesystem type and format command (or skip)
+    auto fs_selection = select_fs_and_cmd();
+    if (!fs_selection) {
+        return std::nullopt;
+    }
+
+    auto [fstype, mkfs_cmd]    = std::move(*fs_selection);
+    selection.fstype           = std::move(fstype);
+    selection.mkfs_command     = std::move(mkfs_cmd);
+    selection.format_requested = !selection.mkfs_command.empty();
+
+    spdlog::info("Selected filesystem type: {}, Format requested: {}",
+        selection.fstype == "skip"sv ? "(skipped)"sv : selection.fstype, selection.format_requested);
+
+    // 3. Select mount options if a filesystem was chosen
+    if (selection.fstype != "skip"sv) {
+        selection.mount_opts = select_mount_opts(selection.device, selection.fstype);
+        spdlog::info("Selected mount options: '{}'", selection.mount_opts.empty() ? "(defaults)" : selection.mount_opts);
+    } else {
+        selection.mount_opts = "defaults";
+        spdlog::info("Using default mount options for existing filesystem.");
+    }
+
+    return selection;
+}
+
+// Function to apply formatting, mounting, and post-mount actions
+auto apply_root_partition_actions(const RootPartitionSelection& selection, std::vector<gucc::fs::Partition>& partition_schema) noexcept -> bool {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    // 1. Format the partition if requested
+    if (selection.format_requested) {
+        const auto& content   = fmt::format(FMT_COMPILE("\nFormat {} with {}?\n \n! WARNING: Data on {} will be lost !\n"), selection.device, selection.fstype, selection.device);
+        const auto& do_format = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        /* clang-format off */
+        if (!do_format) { return false; }
+        /* clang-format on */
+
+#ifdef NDEVENV
+        const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
+        if (!gucc::utils::exec_checked(mkfs_cmd)) {
+            spdlog::error("Failed to format partition {} with command: {}", selection.device, selection.mkfs_command);
+            return false;
+        }
+        spdlog::info("Formatted {} with {}", selection.device, selection.mkfs_command);
+#else
+        spdlog::info("[DRY-RUN] Would format {} with command: {}", selection.device, selection.mkfs_command);
+#endif
+    }
+
+    // 2. Mount and query the partition
+    // NOTE: This still uses global state. Refactoring query_partition to return
+    // a struct would be cleaner but requires changes in many places right now.
+    auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
+    auto& luks_dev  = std::get<std::string>(config_data["LUKS_DEV"]);
+    auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
+    auto& is_luks   = std::get<std::int32_t>(config_data["LUKS"]);
+    auto& is_lvm    = std::get<std::int32_t>(config_data["LVM"]);
+
+    // Reset before query
+    luks_name = "";
+    luks_dev  = "";
+    luks_uuid = "";
+    is_luks   = 0;
+    is_lvm    = 0;
+
+    if (!utils::mount_partition(selection.device, mountpoint_info, mountpoint_info, selection.mount_opts)) {
+        spdlog::error("Failed to mount root partition {}", selection.device);
+    }
+
+    // 3. Add partition info to the schema
+    const auto& mount_fstype = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
+    const auto& part_fs      = mount_fstype.empty() ? (selection.fstype == "skip"sv ? "unknown"s : selection.fstype) : mount_fstype;
+    auto root_part_struct    = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/"s, .device = selection.device, .mount_opts = selection.mount_opts};
+
+    // Get UUID of made partition
+    const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
+    root_part_struct.uuid_str  = root_part_uuid;
+
+    // Get luks information about the partition
+    if (is_luks && !luks_name.empty()) {
+        root_part_struct.luks_mapper_name = luks_name;
+    }
+    // Store the UUID of the underlying *encrypted* partition if available
+    if (is_luks && !luks_uuid.empty()) {
+        root_part_struct.luks_uuid = luks_uuid;
+    }
+
+    utils::dump_partition_to_log(root_part_struct);
+
+    // insert root partition
+    partition_schema.emplace_back(std::move(root_part_struct));
+
+    // 4. Handle BTRFS subvolumes
+
+    // If the root partition is btrfs, offer to create subvolumes
+    if (root_part_struct.fstype == "btrfs"sv) {
+        // Check if there are subvolumes already on the btrfs partition
+        const auto& subvolumes = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info));
+        if (!subvolumes.empty()) {
+            const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+            // Pre-existing subvolumes and user wants to mount them
+            /* clang-format off */
+            if (existing_subvolumes) { utils::mount_existing_subvols(partition_schema); }
+            /* clang-format on */
+        } else {
+            // No subvolumes present. Make some new ones
+            const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+            /* clang-format off */
+            if (create_subvolumes) { tui::btrfs_subvolumes(partition_schema); }
+            /* clang-format on */
+        }
+    }
+
+    return true;
+}
+
+// Formats and mounts root partition
 auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    // TODO(vnepogodin): we should only gather info about root partition and pass to GUCC to create,mount parition
-
-    // if zfs disk was configured, we need to run zfs import -N -R {mountpoint} {zpool_name} and exit
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
     if (!zfs_zpool_names.empty()) {
+#ifdef NDEVENV
         // NOTE: assuming we only support single zpool
         const auto& zfs_zpool_name = zfs_zpool_names[0];
         const auto& zfs_import_cmd = fmt::format(FMT_COMPILE("zfs import -N -R {} {} &>>/tmp/cachyos-install.log"), mountpoint_info, zfs_zpool_name);
         if (!gucc::utils::exec_checked(zfs_import_cmd)) {
             spdlog::error("Failed to import zpool: {}", zfs_import_cmd);
+            detail::msgbox_widget(fmt::format("\nFailed to import ZFS pool {}.\nCheck logs for details.\n", zfs_zpool_name));
             return false;
         }
+        spdlog::info("Imported ZFS pool {}", zfs_zpool_name);
+#else
+        spdlog::info("[DRY-RUN] Would import ZFS pool {}", zfs_zpool_name);
+#endif
+        return true;
     }
 
     // check to see if we already have a zfs root mounted
@@ -1749,86 +1922,19 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
         return true;
     }
 
-    // Identify and mount root
-    {
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-
-        auto ok_callback = [&] {
-            const auto& src          = partitions_lines[static_cast<std::size_t>(selected)];
-            const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
-            config_data["PARTITION"] = lines[0];
-            config_data["ROOT_PART"] = lines[0];
-            success                  = true;
-            screen.ExitLoopClosure()();
-        };
-        /* clang-format off */
-        static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n"sv;
-        detail::menu_widget(partitions_lines, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-        if (!success) { return false; }
-        /* clang-format on */
-    }
-    const auto& root_part = std::get<std::string>(config_data["ROOT_PART"]);
-    spdlog::info("root partition: {}", root_part);
-
-    // Reset the mountpoint variable, in case this is the second time through this menu and old state is still around
-    config_data["MOUNT"] = "";
-
-    // Format with FS (or skip) -> // Make the directory and mount. Also identify LUKS and/or LVM
-    /* clang-format off */
-    if (!tui::select_filesystem()) { return false; }
-    if (!tui::mount_current_partition()) { return false; }
-    /* clang-format on */
-
-    // utils::delete_partition_in_list(std::get<std::string>(config_data["ROOT_PART"]));
-
-    // get options used for mounting the current partition
-    const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-
-    const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-    auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/"s, .device = root_part, .mount_opts = mount_opts_info};
-
-    const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
-    root_part_struct.uuid_str  = root_part_uuid;
-
-    // get luks information about the current partition
-    const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
-    const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
-    if (!luks_name.empty()) {
-        root_part_struct.luks_mapper_name = luks_name;
-    }
-    if (!luks_uuid.empty()) {
-        root_part_struct.luks_uuid = luks_uuid;
+    // 1. Get user selections
+    auto selection_opt = select_root_partition_info();
+    if (!selection_opt) {
+        spdlog::info("Root partition selection cancelled or failed.");
+        return false;
     }
 
-    utils::dump_partition_to_log(root_part_struct);
-
-    // insert root partition
-    partitions.emplace_back(std::move(root_part_struct));
-
-    // Extra check if root is on LUKS or lvm
-    // get_cryptroot
-    // echo "$LUKS_DEV" > /tmp/.luks_dev
-    // If the root partition is btrfs, offer to create subvolumes
-    if (part_fs == "btrfs"sv) {
-        // Check if there are subvolumes already on the btrfs partition
-        const auto& subvolumes = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info));
-        if (!subvolumes.empty()) {
-            const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-            // Pre-existing subvolumes and user wants to mount them
-            /* clang-format off */
-            if (existing_subvolumes) { utils::mount_existing_subvols(partitions); }
-            /* clang-format on */
-        } else {
-            // No subvolumes present. Make some new ones
-            const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-            /* clang-format off */
-            if (create_subvolumes) { tui::btrfs_subvolumes(partitions); }
-            /* clang-format on */
-        }
+    // 2. Apply the selected actions
+    if (!apply_root_partition_actions(*selection_opt, partitions)) {
+        spdlog::error("Failed to apply root partition actions for device {}", selection_opt->device);
+        return false;
     }
+
     return true;
 }
 
