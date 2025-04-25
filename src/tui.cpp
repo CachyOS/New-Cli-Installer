@@ -1009,13 +1009,6 @@ bool mount_current_partition(bool force) noexcept {
     const auto& partition  = std::get<std::string>(config_data["PARTITION"]);
     const auto& mount_dev  = std::get<std::string>(config_data["MOUNT"]);
 
-    // Make the mount directory
-    const auto& mount_dir = fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev);
-#ifdef NDEVENV
-    std::error_code err{};
-    fs::create_directories(mount_dir, err);
-#endif
-
     config_data["MOUNT_OPTS"] = "";
     /* clang-format off */
     // Get mounting options for appropriate filesystems
@@ -1023,33 +1016,13 @@ bool mount_current_partition(bool force) noexcept {
     if (!fs_opts.empty()) { tui::mount_opts(force); }
     /* clang-format on */
 
-    // TODO(vl): use libmount instead.
-    // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
-#ifdef NDEVENV
-    const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    if (!gucc::mount::mount_partition(partition, mount_dir, mount_opts_info)) {
-        spdlog::error("Failed to mount partition {} at {} with {}", partition, mount_dir, mount_opts_info);
-    }
-#endif
-
-    /* clang-format off */
-    confirm_mount(mount_dir, force);
-    /* clang-format on */
-
-    auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
-    auto& luks_dev  = std::get<std::string>(config_data["LUKS_DEV"]);
-    auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
-
-    auto& is_luks = std::get<std::int32_t>(config_data["LUKS"]);
-    auto& is_lvm  = std::get<std::int32_t>(config_data["LVM"]);
-
-    if (!gucc::mount::query_partition(partition, is_luks, is_lvm, luks_name, luks_dev, luks_uuid)) {
-        spdlog::error("Failed to query partition: {}", partition);
-        return false;
+    const auto& mount_dir  = fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev);
+    const auto& mount_opts = std::get<std::string>(config_data["MOUNT_OPTS"]);
+    if (!utils::mount_partition(partition, mountpoint, mount_dev, mount_opts)) {
+        spdlog::error("Failed to mount current partition {}", partition);
     }
 
-    spdlog::debug("partition '{}': is_luks:={};is_lvm:={};luks_name:='{}';luks_dev:='{}';luks_uuid:='{}'", partition, is_luks, is_lvm, luks_name, luks_dev, luks_uuid);
-    return true;
+    return confirm_mount(mount_dir, force);
 }
 
 void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
