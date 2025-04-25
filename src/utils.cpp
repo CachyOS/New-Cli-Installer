@@ -862,10 +862,7 @@ pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
         fs::perm_options::add);
 
     // if the device is removable append removable to the grub-install
-    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    if (utils::to_int(removable) == 1) {
-        grub_install_config_struct.is_removable = true;
-    }
+    grub_install_config_struct.is_removable = utils::is_volume_removable();
 
     // If the root is on btrfs-subvolume, amend grub installation
     auto is_btrfs_subvol = gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5");
