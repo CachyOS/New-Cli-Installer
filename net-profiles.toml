@@ -72,7 +72,6 @@ packages = [
 # should be equal to base in netinstall module in GUI installer
 packages = [
   # from "CachyOS Packages"
-  "cachy-browser",
   "cachyos-fish-config",
   "cachyos-ananicy-rules",
   "cachyos-hello",
@@ -179,6 +178,9 @@ packages = [
 
   # from "power"
   "cpupower", "power-profiles-daemon", "upower",
+
+  # from "firefox"
+  "firefox",
 
   # from "Some applications selection"
   "alacritty",
