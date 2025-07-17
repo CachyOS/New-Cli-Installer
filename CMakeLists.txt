@@ -84,6 +84,12 @@ CPMAddPackage(
    EXCLUDE_FROM_ALL YES
 )
 
+# FIXME(vnepogodin): temp hack for ftxui
+target_compile_options(screen PRIVATE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal>
+    $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
+)
+
 ##
 ## CONFIGURATION
 ##
