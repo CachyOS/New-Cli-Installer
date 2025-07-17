@@ -1,4 +1,5 @@
 #include "gucc/user.hpp"
+#include "gucc/autologin.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
@@ -159,6 +160,42 @@ ff02::2    ip6-allrouters
 
 auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept -> bool {
     return set_user_password("root"sv, password, mountpoint);
+}
+
+auto setup_user_environment(const UserAllInfo& info, std::string_view mountpoint) noexcept -> bool {
+    spdlog::info("Starting to setup user environment");
+    if (!set_hostname(info.hostname, mountpoint)) {
+        spdlog::error("Failed to set hostname to {}", info.hostname);
+        return false;
+    }
+
+    if (!info.root_password.empty() && !set_root_password(info.root_password, mountpoint)) {
+        spdlog::error("Failed to set root password");
+        return false;
+    }
+
+    // create all users at once
+    for (auto&& user_info : info.users_info) {
+        if (!create_new_user(user_info, info.default_groups, mountpoint)) {
+            spdlog::error("Failed to create new user {}", user_info.username);
+            return false;
+        }
+    }
+
+    // only single user is supported for autologin
+    if (info.autologin && !info.display_manager.empty() && !info.users_info.empty()) {
+        const auto& user_info = info.users_info[0];
+        if (info.users_info.size() > 1) {
+            spdlog::warn("Only single user is supported for autologin! Setting autologin for {}", user_info.username);
+        }
+        if (!enable_autologin(info.display_manager, user_info.username, mountpoint)) {
+            spdlog::error("Failed to enable autologin for user {}", user_info.username);
+            return false;
+        }
+    }
+
+    spdlog::info("Finished setting up user environment");
+    return true;
 }
 
 }  // namespace gucc::user

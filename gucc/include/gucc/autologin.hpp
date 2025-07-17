@@ -5,7 +5,7 @@
 
 namespace gucc::user {
 
-// Enables autologin for user
+// Enable autologin for specified user
 auto enable_autologin(std::string_view displaymanager, std::string_view username, std::string_view root_mountpoint) noexcept -> bool;
 
 }  // namespace gucc::user

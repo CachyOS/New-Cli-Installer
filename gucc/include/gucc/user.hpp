@@ -7,11 +7,22 @@
 
 namespace gucc::user {
 
+// TODO(vnepogodin): make exposed component with name and dependencies order
+
 struct UserInfo final {
     std::string_view username;
     std::string_view password;
     std::string_view shell;
     std::string_view sudoers_group;
+};
+
+struct UserAllInfo final {
+    std::vector<UserInfo> users_info;
+    std::vector<std::string> default_groups;
+    std::string_view root_password;
+    std::string_view hostname;
+    std::string_view display_manager;
+    bool autologin = false;
 };
 
 // Create group on the system
@@ -31,6 +42,9 @@ auto set_hosts(std::string_view hostname, std::string_view mountpoint) noexcept 
 
 // Set password for root user
 auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept -> bool;
+
+// Setup user environment from provided data
+auto setup_user_environment(const UserAllInfo& info, std::string_view mountpoint) noexcept -> bool;
 
 }  // namespace gucc::user
 
