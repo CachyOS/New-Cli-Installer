@@ -6,6 +6,7 @@
 #include <vector>    // for vector
 
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 namespace gucc::fs {
 

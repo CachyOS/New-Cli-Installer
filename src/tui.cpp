@@ -923,9 +923,9 @@ auto select_mount_opts(std::string_view partition, std::string_view fstype, bool
     auto& config_data     = config_instance->data();
 
     // reset
-    // config_data["fs_opts"] = std::vector<std::string>{};
+    config_data["fs_opts"] = std::vector<std::string>{};
     // populate mount opts
-    // utils::select_filesystem(fstype);
+    utils::select_filesystem(fstype);
 
     // check populated options
     const auto& fs_opts = std::get<std::vector<std::string>>(config_data["fs_opts"]);
@@ -1757,6 +1757,12 @@ auto select_root_partition_info() noexcept -> std::optional<RootPartitionSelecti
             success           = true;
             screen.ExitLoopClosure()();
         };
+
+        spdlog::debug("PARTITIONS config contains {} entries:", partitions_lines.size());
+        for (size_t i = 0; i < partitions_lines.size(); ++i) {
+            spdlog::debug("PARTITIONS[{}]: '{}'", i, partitions_lines[i]);
+        }
+
         /* clang-format off */
         static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n"sv;
         detail::menu_widget(partitions_lines, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
@@ -1782,8 +1788,8 @@ auto select_root_partition_info() noexcept -> std::optional<RootPartitionSelecti
     selection.mkfs_command     = std::move(mkfs_cmd);
     selection.format_requested = !selection.mkfs_command.empty();
 
-    spdlog::info("Selected filesystem type: {}, Format requested: {}",
-        selection.fstype == "skip"sv ? "(skipped)"sv : selection.fstype, selection.format_requested);
+    spdlog::info("Selected filesystem type: {}, Format requested: {}, Format command: {}",
+        selection.fstype == "skip"sv ? "(skipped)"sv : selection.fstype, selection.format_requested, selection.mkfs_command);
 
     // 3. Select mount options if a filesystem was chosen
     if (selection.fstype != "skip"sv) {
@@ -1814,6 +1820,7 @@ auto apply_root_partition_actions(const RootPartitionSelection& selection, std::
 
 #ifdef NDEVENV
         const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
+        spdlog::info("Format partition command: {}", mkfs_cmd);
         if (!gucc::utils::exec_checked(mkfs_cmd)) {
             spdlog::error("Failed to format partition {} with command: {}", selection.device, selection.mkfs_command);
             return false;
@@ -1899,9 +1906,9 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
     if (!zfs_zpool_names.empty()) {
-#ifdef NDEVENV
         // NOTE: assuming we only support single zpool
         const auto& zfs_zpool_name = zfs_zpool_names[0];
+#ifdef NDEVENV
         const auto& zfs_import_cmd = fmt::format(FMT_COMPILE("zfs import -N -R {} {} &>>/tmp/cachyos-install.log"), mountpoint_info, zfs_zpool_name);
         if (!gucc::utils::exec_checked(zfs_import_cmd)) {
             spdlog::error("Failed to import zpool: {}", zfs_import_cmd);

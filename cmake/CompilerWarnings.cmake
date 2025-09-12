@@ -224,3 +224,49 @@ function(set_project_warnings project_name)
 
     target_compile_options(${project_name} INTERFACE ${PROJECT_WARNINGS})
 endfunction()
+
+# FIXME(vnepogodin,luigidematteis): temp hack for ftxui
+# Function to suppress warnings for FTXUI library targets
+# This is a temporary workaround until FTXUI is updated to fix these warnings upstream
+function(suppress_ftxui_warnings)
+    # FTXUI has three separate library targets:
+    # - screen: Low-level terminal/screen handling
+    # - dom: Document Object Model for UI elements and layout
+    # - component: Interactive UI components and event handling
+    #
+    # Suppressed warnings:
+    # - Wno-deprecated: General deprecated features
+    # - Wno-float-equal: Direct floating point comparisons
+    # - Wno-deprecated-declarations: Using deprecated functions/types
+    # - Wno-suggest-attribute=const: GCC 15+ suggests const over pure attribute
+    # - Wno-suggest-final-methods/types: GCC 15+ optimization suggestions for virtual functions
+    # - Wno-deprecated-literal-operator: C++23 deprecated spacing in operator"" _z()
+    # - Wno-error: Don't treat remaining warnings as errors for these targets
+
+    # Common warnings to suppress for all compilers except MSVC
+    set(COMMON_SUPPRESSIONS
+        -Wno-deprecated
+        -Wno-float-equal
+        -Wno-error
+        -Wno-deprecated-literal-operator
+    )
+
+    # GCC-specific suppressions
+    set(GCC_SUPPRESSIONS
+        -Wno-deprecated-declarations
+        -Wno-suggest-attribute=const
+        -Wno-suggest-final-methods
+        -Wno-suggest-final-types
+        -Wno-error
+    )
+
+    # Apply suppressions to all FTXUI targets
+    foreach(target screen dom component)
+        if(TARGET ${target})
+            target_compile_options(${target} PRIVATE
+                $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:${COMMON_SUPPRESSIONS}>
+                $<$<CXX_COMPILER_ID:GNU>:${GCC_SUPPRESSIONS}>
+            )
+        endif()
+    endforeach()
+endfunction()

@@ -35,6 +35,10 @@ CPMAddPackage(
   GIT_TAG "c++20"
   EXCLUDE_FROM_ALL YES
 )
+
+# Apply warning suppressions for FTXUI library targets
+suppress_ftxui_warnings()
+
 CPMAddPackage(
   NAME fmt
   GITHUB_REPOSITORY fmtlib/fmt
@@ -82,12 +86,6 @@ CPMAddPackage(
    GITHUB_REPOSITORY doctest/doctest
    GIT_TAG v2.4.11
    EXCLUDE_FROM_ALL YES
-)
-
-# FIXME(vnepogodin): temp hack for ftxui
-target_compile_options(screen PRIVATE
-    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal>
-    $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
 )
 
 ##
