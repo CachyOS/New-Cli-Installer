@@ -1899,9 +1899,9 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
     if (!zfs_zpool_names.empty()) {
-#ifdef NDEVENV
         // NOTE: assuming we only support single zpool
         const auto& zfs_zpool_name = zfs_zpool_names[0];
+#ifdef NDEVENV
         const auto& zfs_import_cmd = fmt::format(FMT_COMPILE("zfs import -N -R {} {} &>>/tmp/cachyos-install.log"), mountpoint_info, zfs_zpool_name);
         if (!gucc::utils::exec_checked(zfs_import_cmd)) {
             spdlog::error("Failed to import zpool: {}", zfs_import_cmd);

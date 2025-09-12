@@ -154,6 +154,7 @@ if not is_debug_build
    endif
 
    possible_cc_flags += ['-fdata-sections', '-ffunction-sections']
+   possible_link_flags = []
    if do_build_static
       possible_link_flags = ['-Wl,--gc-sections', '-static-libgcc', '-static-libstdc++']
    endif

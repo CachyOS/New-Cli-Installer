@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag_name: ${{ steps.get_version.outputs.VERSION }}
+    steps:
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          release_name: CachyOS CLI Installer ${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+
+  build-cmake-release:
+    name: Build Release Binary (CMake)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm cmake pkg-config ninja clang mold llvm git
+        shell: bash
+
+      - name: Configure CMake for static release
+        run: |
+          cmake -B ${{github.workspace}}/build \
+            -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} \
+            -DENABLE_DEVENV=OFF \
+            -DENABLE_STATIC_BUILD=ON
+
+      - name: Build
+        run: |
+          cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+
+      - name: Strip binary
+        run: |
+          strip ${{github.workspace}}/build/cachyos-installer
+
+      - name: Create archive
+        run: |
+          cd ${{github.workspace}}/build
+          tar -czf cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-cmake.tar.gz cachyos-installer
+          sha256sum cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-cmake.tar.gz > cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-cmake.tar.gz.sha256
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{github.workspace}}/build/cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-cmake.tar.gz
+          asset_name: cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-cmake.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload SHA256
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{github.workspace}}/build/cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-cmake.tar.gz.sha256
+          asset_name: cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-cmake.tar.gz.sha256
+          asset_content_type: text/plain
+
+  build-meson-release:
+    name: Build Release Binary (Meson)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    needs: create-release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm pkg-config ninja meson clang mold llvm git
+        shell: bash
+
+      - name: Configure Meson for static release
+        run: |
+          CXXFLAGS="-static-libgcc -static-libstdc++" \
+          LDFLAGS="-static-libgcc -static-libstdc++ -Wl,--gc-sections" \
+          meson setup --buildtype=${{env.BUILD_TYPE}} \
+            -Ddevenv=false \
+            -Dbuild_static=true \
+            ${{github.workspace}}/build
+
+      - name: Build
+        run: |
+          meson compile -C ${{github.workspace}}/build
+
+      - name: Strip binary
+        run: |
+          strip ${{github.workspace}}/build/cachyos-installer
+
+      - name: Create archive
+        run: |
+          cd ${{github.workspace}}/build
+          tar -czf cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-meson.tar.gz cachyos-installer
+          sha256sum cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-meson.tar.gz > cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-meson.tar.gz.sha256
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{github.workspace}}/build/cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-meson.tar.gz
+          asset_name: cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-meson.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload SHA256
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ${{github.workspace}}/build/cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-meson.tar.gz.sha256
+          asset_name: cachyos-installer-${{ needs.create-release.outputs.tag_name }}-x86_64-meson.tar.gz.sha256
+          asset_content_type: text/plain

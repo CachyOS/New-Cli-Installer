@@ -86,8 +86,35 @@ CPMAddPackage(
 
 # FIXME(vnepogodin): temp hack for ftxui
 target_compile_options(screen PRIVATE
-    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal>
-    $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal;-Wno-error>
+    $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations;-Wno-suggest-attribute=const;-Wno-suggest-final-methods;-Wno-suggest-final-types;-Wno-error>
+)
+# FIXME(luigidematteis): extend temp hack for fxtui
+# These compile options suppress warnings in the FTXUI library components that newer
+# compilers (GCC 15+, Clang 18+) treat as errors when -Werror is enabled.
+#
+# FTXUI has three separate library targets:
+# - screen: Low-level terminal/screen handling
+# - dom: Document Object Model for UI elements and layout
+# - component: Interactive UI components and event handling
+#
+# Suppressed warnings:
+# - Wno-deprecated: General deprecated features
+# - Wno-float-equal: Direct floating point comparisons
+# - Wno-deprecated-declarations: Using deprecated functions/types
+# - Wno-suggest-attribute=const: GCC 15+ suggests const over pure attribute
+# - Wno-suggest-final-methods/types: GCC 15+ optimization suggestions for virtual functions
+# - Wno-deprecated-literal-operator: C++23 deprecated spacing in operator"" _z()
+# - Wno-error: Don't treat remaining warnings as errors for these targets
+#
+# This is a temporary workaround until FTXUI is updated to fix these warnings upstream.
+target_compile_options(dom PRIVATE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal;-Wno-error;-Wno-deprecated-literal-operator>
+    $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations;-Wno-suggest-attribute=const;-Wno-suggest-final-methods;-Wno-suggest-final-types;-Wno-error>
+)
+target_compile_options(component PRIVATE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal;-Wno-error;-Wno-deprecated-literal-operator>
+    $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations;-Wno-suggest-attribute=const;-Wno-suggest-final-methods;-Wno-suggest-final-types;-Wno-error>
 )
 
 ##
@@ -158,6 +185,11 @@ option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)
    # Add for any project you want to apply unity builds for
    set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+endif()
+
+option(ENABLE_STATIC_BUILD "Enable static linking for release builds" OFF)
+if(ENABLE_STATIC_BUILD)
+   set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "-static-libgcc -static-libstdc++")
 endif()
 
 install(
