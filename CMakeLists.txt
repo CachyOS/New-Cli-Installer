@@ -32,7 +32,7 @@ include(CPM)
 CPMAddPackage(
   NAME ftxui
   GITHUB_REPOSITORY vnepogodin/ftxui
-  GIT_TAG "c++20"
+  GIT_TAG c1e0b1197b7c1825b61f8cddd5491df507769ada
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -135,11 +135,6 @@ enable_sanitizers(project_options)
 
 # Prepare RapidJSON (RapidJSON is a header-only library)
 set(RAPIDJSON_INCLUDE_DIR "${rapidjson_SOURCE_DIR}/include")
-
-# Prepare FTXUI depends
-target_link_libraries(screen PUBLIC range-v3::range-v3)
-target_link_libraries(dom PUBLIC range-v3::range-v3)
-target_link_libraries(component PUBLIC range-v3::range-v3)
 
 include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/gucc/include ${RAPIDJSON_INCLUDE_DIR})
 

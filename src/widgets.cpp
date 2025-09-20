@@ -30,15 +30,15 @@ Element centered_widget(Component& container, const std::string_view& title, con
         text(title.data()) | bold,
         filler(),
         //  -------- Center Menu --------------
-        std::move(hbox({
+        hbox({
             filler(),
-            border(std::move(vbox({
+            border(vbox({
                 widget,
                 separator(),
                 container->Render() | hcenter | size(HEIGHT, LESS_THAN, 3) | size(WIDTH, GREATER_THAN, 25),
-            }))),
+            })),
             filler(),
-        })) | center,
+        }) | center,
         filler(),
     });
 }
@@ -49,11 +49,11 @@ Element centered_widget_nocontrols(const std::string_view& title, const Element&
         text(title.data()) | bold,
         filler(),
         //  -------- Center Menu --------------
-        std::move(hbox({
+        hbox({
             filler(),
-            border(std::move(vbox({widget}))),
+            border(vbox({widget})),
             filler(),
-        })) | center,
+        }) | center,
         filler(),
     });
 }
@@ -79,13 +79,13 @@ Element centered_interative_multi(const std::string_view& title, Component& widg
         text(title.data()) | bold,
         filler(),
         //  -------- Center Menu --------------
-        std::move(hbox({
+        hbox({
             filler(),
-            border(std::move(vbox({
+            border(vbox({
                 widgets->Render(),
-            }))),
+            })),
             filler(),
-        })) | center,
+        }) | center,
         filler(),
     });
 }
@@ -95,7 +95,7 @@ Element multiline_text(std::vector<std::string>&& lines) noexcept {
 
     std::transform(std::make_move_iterator(lines.begin()), std::make_move_iterator(lines.end()), std::back_inserter(multiline),
         [=](auto&& line) -> Element { return text(std::forward<decltype(line)>(line)); });
-    return std::move(vbox(std::move(multiline))) | frame;
+    return vbox(multiline) | frame;
 }
 
 Components from_vector_checklist(const std::vector<std::string>& opts, bool* const opts_state) noexcept {
@@ -154,7 +154,7 @@ bool inputbox_widget(std::string& value, const std::string_view& content, Decora
         success = true;
         screen.ExitLoopClosure()();
     };
-    const InputOption input_option{.on_enter = ok_callback, .password = password};
+    const InputOption input_option{.password = password, .on_enter = ok_callback};
     auto input_value       = Input(&value, "", input_option);
     auto content_container = Renderer([&] {
         return multiline_text(gucc::utils::make_multiline(content)) | hcenter | boxsize;
@@ -252,8 +252,10 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
 }
 
 void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ScreenInteractive* screen, const std::string_view& text, const WidgetBoxSize widget_sizes) noexcept {
-    MenuOption menu_option{.on_enter = ok_callback};
-    auto menu    = Menu(&entries, selected, &menu_option);
+    MenuOption menu_option = MenuOption::Vertical();
+    menu_option.on_enter   = ok_callback;
+
+    auto menu    = Menu(&entries, selected, menu_option);
     auto content = Renderer(menu, [&] {
         return menu->Render() | center | widget_sizes.content_size;
     });
@@ -340,7 +342,7 @@ void checklist_widget(const std::vector<std::string>& opts, const std::function<
     Components children{};
     if (!text.empty()) {
         children = {
-            Renderer([&] { return std::move(detail::multiline_text(gucc::utils::make_multiline(text))) | widget_sizes.text_size; }),
+            Renderer([&] { return detail::multiline_text(gucc::utils::make_multiline(text)) | widget_sizes.text_size; }),
             Renderer([] { return separator(); }),
             content,
             Renderer([] { return separator(); }),

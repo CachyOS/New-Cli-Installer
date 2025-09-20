@@ -543,8 +543,7 @@ void uefi_bootloader() noexcept {
         "grub",
         "refind",
         "systemd-boot",
-        "limine"
-    };
+        "limine"};
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
@@ -2125,14 +2124,10 @@ void configure_mirrorlist() noexcept {
     auto ok_callback = [&] {
         switch (selected) {
         case 0:
-            screen.Suspend();
-            tui::edit_pacman_conf();
-            screen.Resume();
+            screen.WithRestoredIO([]() { tui::edit_pacman_conf(); });
             break;
         case 1:
-            screen.Suspend();
-            gucc::utils::exec("cachyos-rate-mirrors"sv, true);
-            screen.Resume();
+            screen.WithRestoredIO([]() { gucc::utils::exec("cachyos-rate-mirrors"sv, true); });
             break;
         default:
             screen.ExitLoopClosure()();
@@ -2166,13 +2161,13 @@ void create_partitions() noexcept {
     auto ok_callback = [&] {
         const auto& selected_entry = menu_entries[static_cast<std::size_t>(selected)];
         if (selected_entry != optwipe && selected_entry != optauto) {
-            screen.Suspend();
+            screen.WithRestoredIO([&]() {
 #ifdef NDEVENV
-            gucc::utils::exec(fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])), true);
+                gucc::utils::exec(fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])), true);
 #else
-            spdlog::debug("to be executed: {}", fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])));
+                spdlog::debug("to be executed: {}", fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])));
 #endif
-            screen.Resume();
+            });
             screen.ExitLoopClosure()();
             return;
         }
@@ -2254,9 +2249,9 @@ void install_core_menu() noexcept {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
             }
-            screen.Suspend();
-            tui::chroot_interactive();
-            screen.Resume();
+            screen.WithRestoredIO([]() {
+                tui::chroot_interactive();
+            });
 
             break;
         default:
@@ -2322,9 +2317,9 @@ void system_rescue_menu() noexcept {
             if (!utils::check_base()) {
                 screen.ExitLoopClosure()();
             }
-            screen.Suspend();
-            tui::chroot_interactive();
-            screen.Resume();
+            screen.WithRestoredIO([]() {
+                tui::chroot_interactive();
+            });
 
             break;
         case 7:

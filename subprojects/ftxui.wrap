@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/vnepogodin/ftxui.git
-revision = c++20
+revision = c1e0b1197b7c1825b61f8cddd5491df507769ada
 
 patch_directory = ftxui
 

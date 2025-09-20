@@ -41,15 +41,15 @@ void edit_mkinitcpio(ScreenInteractive& screen) noexcept {
     const std::string& mountpoint = "/";
 #endif
 
-    gucc::utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint), true);
-    screen.Resume();
+    screen.WithRestoredIO([&]() {
+        gucc::utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint), true);
+    })();
 
     static constexpr auto content = "\nRun mkinitcpio?\n"sv;
     const auto& do_run            = tui::detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
     if (do_run) {
         utils::arch_chroot("mkinitcpio -P"sv);
     }
-    screen.Suspend();
 }
 
 void edit_grub(ScreenInteractive& screen) noexcept {
@@ -61,15 +61,15 @@ void edit_grub(ScreenInteractive& screen) noexcept {
     const std::string& mountpoint = "/";
 #endif
 
-    gucc::utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint), true);
-    screen.Resume();
+    screen.WithRestoredIO([&]() {
+        gucc::utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint), true);
+    })();
 
     static constexpr auto content = "\nUpdate GRUB?\n"sv;
     const auto& do_update         = tui::detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
     if (do_update) {
         utils::grub_mkconfig();
     }
-    screen.Suspend();
 }
 }  // namespace
 
@@ -209,9 +209,9 @@ void edit_configs() noexcept {
 
     std::int32_t selected{};
     auto ok_callback = [&] {
-        screen.Suspend();
-        functions[static_cast<std::size_t>(selected)]();
-        screen.Resume();
+        screen.WithRestoredIO([&]() {
+            functions[static_cast<std::size_t>(selected)]();
+        })();
     };
     static constexpr auto seeconf_body = "\nSelect any file listed below to be reviewed or amended.\n"sv;
     const auto& content_size           = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
@@ -248,26 +248,25 @@ void logs_menu() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
-        screen.Suspend();
-        switch (selected) {
-        case 0:
-            gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} dmesg | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
-            break;
-        case 1:
-            gucc::utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/pacman.log"), mountpoint), true);
-            break;
-        case 2:
-            gucc::utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/Xorg.0.log"), mountpoint), true);
-            break;
-        case 3:
-            gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} journalctl | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
-            break;
-        default:
-            screen.Resume();
-            screen.ExitLoopClosure()();
-            return;
-        }
-        screen.Resume();
+        screen.WithRestoredIO([&]() {
+            switch (selected) {
+            case 0:
+                gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} dmesg | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
+                break;
+            case 1:
+                gucc::utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/pacman.log"), mountpoint), true);
+                break;
+            case 2:
+                gucc::utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/Xorg.0.log"), mountpoint), true);
+                break;
+            case 3:
+                gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} journalctl | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
+                break;
+            default:
+                screen.ExitLoopClosure()();
+                return;
+            }
+        })();
     };
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
 }
