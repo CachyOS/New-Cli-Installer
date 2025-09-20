@@ -66,12 +66,6 @@ CPMAddPackage(
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
-  NAME range-v3
-  GITHUB_REPOSITORY ericniebler/range-v3
-  GIT_TAG 53c40dd628450c977ee1558285ff43e0613fa7a9
-  EXCLUDE_FROM_ALL YES
-)
-CPMAddPackage(
   NAME ctre
   GITHUB_REPOSITORY hanickadot/compile-time-regular-expressions
   GIT_TAG e0f36500bc941fe447718ab625490728790c933f

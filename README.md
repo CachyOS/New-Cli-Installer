@@ -62,7 +62,6 @@ pass `-DENABLE_DEVENV=OFF` to cmake or `-Ddevenv=false` to meson when configurin
 * [Fast C++ logging library](https://github.com/gabime/spdlog) used for logging process of the installer.
 * [Parsing gigabytes of JSON per second](https://github.com/simdjson/simdjson) used for config deserialization.
 * [Curl for People](https://github.com/libcpr/cpr) used for connection check and maybe in future fetching netinstall config from github.
-* [Ranges](https://github.com/ericniebler/range-v3) used for ranges support.
 
 
 **Simple menu overview:**

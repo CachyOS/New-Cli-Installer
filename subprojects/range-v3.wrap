@@ -1,8 +1,0 @@
-[wrap-git]
-url = https://github.com/ericniebler/range-v3.git
-revision = 53c40dd628450c977ee1558285ff43e0613fa7a9
-
-patch_directory = range-v3
-
-[provide]
-range-v3 = range_dep

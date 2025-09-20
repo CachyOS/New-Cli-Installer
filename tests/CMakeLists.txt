@@ -13,7 +13,7 @@ list(APPEND test_SOURCES
 
 add_library(test_libreq STATIC ${test_SOURCES})
 target_include_directories(test_libreq PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR})
-target_link_libraries(test_libreq PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component range-v3::range-v3 ctre::ctre tomlplusplus::tomlplusplus)
+target_link_libraries(test_libreq PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(test_libreq PRIVATE cpr::cpr)
 endif()
@@ -34,7 +34,7 @@ foreach(file ${files})
         $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
     )
     target_include_directories(${testcase} PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR})
-    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component range-v3::range-v3 ctre::ctre tomlplusplus::tomlplusplus gucc::gucc)
+    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc)
     if(NOT ENABLE_DEVENV)
       target_link_libraries(${testcase} PRIVATE cpr::cpr)
     endif()
