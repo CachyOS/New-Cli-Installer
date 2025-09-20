@@ -38,7 +38,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME fmt
   GITHUB_REPOSITORY fmtlib/fmt
-  GIT_TAG 11.1.4
+  GIT_TAG 11.2.0
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -50,7 +50,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME spdlog
   GITHUB_REPOSITORY gabime/spdlog
-  GIT_TAG 3335c380a08c5e0f5117a66622df6afdb3d74959
+  GIT_TAG v1.15.3
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
