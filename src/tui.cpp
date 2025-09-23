@@ -871,7 +871,10 @@ auto select_fs_and_cmd() noexcept -> std::optional<std::pair<std::string, std::s
     std::int32_t selected{};
     std::optional<FsCmdPair> result{};
     auto ok_callback = [&] {
-        const auto& [fstype, mkfs_command] = menu_entries[static_cast<std::size_t>(selected)];
+        const auto& [fstype, cmd_entry] = menu_entries[static_cast<std::size_t>(selected)];
+
+        // strip fs name of the entry
+        const auto& mkfs_command = cmd_entry.substr(cmd_entry.find_first_of(' ') + 1, cmd_entry.size());
 
         result = {{fstype, (fstype == "skip"sv) ? ""s : mkfs_command}};
         screen.ExitLoopClosure()();
@@ -1789,6 +1792,7 @@ auto select_root_partition_info() noexcept -> std::optional<RootPartitionSelecti
         selection.mount_opts = select_mount_opts(selection.device, selection.fstype);
         spdlog::info("Selected mount options: '{}'", selection.mount_opts.empty() ? "(defaults)" : selection.mount_opts);
     } else {
+        // TODO(vnepogodin): use cachyos defaults from calamares installer
         selection.mount_opts = "defaults";
         spdlog::info("Using default mount options for existing filesystem.");
     }
