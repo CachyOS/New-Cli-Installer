@@ -296,27 +296,42 @@ void select_filesystem(const std::string_view& file_sys) noexcept {
 
     config_data["FILESYSTEM_NAME"] = std::string{file_sys.data()};
 
+    const auto& available_mount_opts = utils::get_available_mount_opts(file_sys);
     if (file_sys == "btrfs"sv) {
         config_data["FILESYSTEM"] = "mkfs.btrfs -f";
-        config_data["fs_opts"]    = std::vector<std::string>{"autodefrag", "compress=zlib", "compress=lzo", "compress=zstd", "compress=no", "compress-force=zlib", "compress-force=lzo", "compress-force=zstd", "discard", "noacl", "noatime", "nodatasum", "nospace_cache", "recovery", "skip_balance", "space_cache", "nossd", "ssd", "ssd_spread", "commit=120"};
+        config_data["fs_opts"]    = available_mount_opts;
 #ifdef NDEVENV
         gucc::utils::exec("modprobe btrfs"sv);
 #endif
     } else if (file_sys == "ext4"sv) {
         config_data["FILESYSTEM"] = "mkfs.ext4 -q";
-        config_data["fs_opts"]    = std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
+        config_data["fs_opts"]    = available_mount_opts;
     } else if (file_sys == "f2fs"sv) {
         config_data["FILESYSTEM"] = "mkfs.f2fs -q";
-        config_data["fs_opts"]    = std::vector<std::string>{"data_flush", "disable_roll_forward", "disable_ext_identify", "discard", "fastboot", "flush_merge", "inline_xattr", "inline_data", "inline_dentry", "no_heap", "noacl", "nobarrier", "noextent_cache", "noinline_data", "norecovery"};
+        config_data["fs_opts"]    = available_mount_opts;
 #ifdef NDEVENV
         gucc::utils::exec("modprobe f2fs"sv);
 #endif
     } else if (file_sys == "xfs"sv) {
         config_data["FILESYSTEM"] = "mkfs.xfs -f";
-        config_data["fs_opts"]    = std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
+        config_data["fs_opts"]    = available_mount_opts;
     } else if (file_sys != "zfs"sv) {
         spdlog::error("Invalid filesystem ('{}')!", file_sys);
     }
+}
+
+auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string> {
+    if (fstype == "btrfs"sv) {
+        return std::vector<std::string>{"autodefrag", "compress=zlib", "compress=lzo", "compress=zstd", "compress=no", "compress-force=zlib", "compress-force=lzo", "compress-force=zstd", "discard", "noacl", "noatime", "nodatasum", "nospace_cache", "recovery", "skip_balance", "space_cache", "nossd", "ssd", "ssd_spread", "commit=120"};
+    } else if (fstype == "ext4"sv) {
+        return std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
+    } else if (fstype == "f2fs"sv) {
+        return std::vector<std::string>{"data_flush", "disable_roll_forward", "disable_ext_identify", "discard", "fastboot", "flush_merge", "inline_xattr", "inline_data", "inline_dentry", "no_heap", "noacl", "nobarrier", "noextent_cache", "noinline_data", "norecovery"};
+    } else if (fstype == "xfs"sv) {
+        return std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
+    }
+
+    return {};
 }
 
 auto mount_partition(std::string_view partition, std::string_view mountpoint, std::string_view mount_dev, std::string_view mount_opts) noexcept -> bool {
