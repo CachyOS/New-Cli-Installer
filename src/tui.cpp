@@ -648,8 +648,10 @@ void install_desktop() noexcept {
         "bspwm",     // BSPWM (empty)
         "budgie",    // Budgie
         "cinnamon",  // Cinnamon
+        "cosmic",    // Cosmic
         "i3wm",      // i3 Window Manager
         "hyprland",  // Hyprland
+        "niri",      // Niri
         "lxde",      // LXDE
         "lxqt",      // LXQT
         "mate",      // Mate
