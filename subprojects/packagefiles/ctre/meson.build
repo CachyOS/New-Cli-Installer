@@ -1,4 +1,4 @@
-project('ctre', 'cpp', version: '3.9.0',
+project('ctre', 'cpp', version: '3.10.0',
         license: 'Apache-2.0')
 
 ctre_inc = include_directories('include')

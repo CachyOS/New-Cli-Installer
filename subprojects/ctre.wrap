@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/hanickadot/compile-time-regular-expressions.git
-revision = e0f36500bc941fe447718ab625490728790c933f
+revision = v3.10.0
 
 patch_directory = ctre
 
