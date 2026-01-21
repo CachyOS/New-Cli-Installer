@@ -639,8 +639,26 @@ void install_desktop() noexcept {
 #endif
 
     // Prep variables
-    const std::vector<std::string> available_des{"kde", "xfce", "sway", "wayfire", "i3wm", "gnome", "openbox",
-        "bspwm", "lxqt", "cinnamon", "ukui", "qtile", "mate", "lxde", "hyprland", "budgie"};
+
+    // TODO(vnepogodin): make available DEs configurable or fetchable from net-profiles
+    const std::vector<std::string> available_des{
+        "kde",       // KDE Plasma
+        "gnome",     // Gnome
+        "xfce",      // Xfce4
+        "bspwm",     // BSPWM (empty)
+        "budgie",    // Budgie
+        "cinnamon",  // Cinnamon
+        "i3wm",      // i3 Window Manager
+        "hyprland",  // Hyprland
+        "lxde",      // LXDE
+        "lxqt",      // LXQT
+        "mate",      // Mate
+        "openbox",   // Openbox
+        "qtile",     // Qtile
+        "sway",      // Sway
+        "ukui",      // UKUI"
+        "wayfire",   // Wayfire
+    };
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string desktop_env{};
