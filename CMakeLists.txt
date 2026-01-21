@@ -38,19 +38,19 @@ CPMAddPackage(
 CPMAddPackage(
   NAME fmt
   GITHUB_REPOSITORY fmtlib/fmt
-  GIT_TAG 11.2.0
+  GIT_TAG 12.1.0
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME tomlplusplus
   GITHUB_REPOSITORY marzer/tomlplusplus
-  GIT_TAG 1f7884e59165e517462f922e7b6de131bd9844f3
+  GIT_TAG 7807a314ad1c0c9c227d9dbd68f23f187163372e
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME spdlog
   GITHUB_REPOSITORY gabime/spdlog
-  GIT_TAG v1.15.3
+  GIT_TAG v1.17.0
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
@@ -62,19 +62,19 @@ CPMAddPackage(
 CPMAddPackage(
   NAME cpr
   GITHUB_REPOSITORY libcpr/cpr
-  GIT_TAG 1.11.2
+  GIT_TAG 1.14.1
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
   NAME ctre
   GITHUB_REPOSITORY hanickadot/compile-time-regular-expressions
-  GIT_TAG e0f36500bc941fe447718ab625490728790c933f
+  GIT_TAG v3.10.0
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
    NAME doctest
    GITHUB_REPOSITORY doctest/doctest
-   GIT_TAG v2.4.11
+   GIT_TAG v2.4.12
    EXCLUDE_FROM_ALL YES
 )
 
