@@ -5,11 +5,10 @@ packages = [
   "amd-ucode",
   "intel-ucode",
 
-  # from pacstrap
+  # from pacstrap/CachyOS Required
   "base",
   "base-devel",
   "btrfs-progs",
-  "cachyos-fish-config",
   "cachyos-hooks",
   "cachyos-keyring",
   "cachyos-mirrorlist",
@@ -49,12 +48,12 @@ packages = [
   "which",
   "xfsprogs",
   "plymouth",
-  "cachyos-plymouth-theme",
+  "cachyos-plymouth-bootanimation",
 
   # we use networkmanager
   "networkmanager",
 
-  # some useful apps which we want to have
+  # some useful apps which we want to have available in CLI base
   "btop",
   "duf",
   "rsync",
@@ -69,21 +68,19 @@ packages = [
 
 [base-packages.desktop]
 # TODO(vnepogodin): refactor "subcategories" into recursive table, e.g [base-packages.desktop.fonts] etc
-# should be equal to base in netinstall module in GUI installer
+# should be equal to "Base-devel + Common packages" and "CachyOS Packages" in netinstall module
 packages = [
-  # from "CachyOS Packages"
+  # from "CachyOS Packages" & "Shell configuration"
   "cachyos-fish-config",
-  "cachyos-ananicy-rules",
+  "cachyos-zsh-config",
   "cachyos-hello",
   "cachyos-kernel-manager",
   "cachyos-packageinstaller",
   "cachyos-settings",
-  "cachyos-zsh-config",
   "cachyos-micro-settings",
   "cachyos-wallpapers",
 
   # from "Network"
-  "dhclient",
   "dnsmasq",
   "dnsutils",
   "ethtool",
@@ -94,13 +91,14 @@ packages = [
   "nss-mdns",
   "usb_modeswitch",
   "wpa_supplicant",
+  "wireless-regdb",
   "xl2tpd",
 
   # from "firewall"
   "ufw",
 
   # from "bluetooth"
-  "bluez", "bluez-hid2hci", "bluez-libs", "bluez-utils",
+  "bluez", "bluez-hid2hci", "bluez-libs", "bluez-utils", "bluez-obex",
 
   # from "packages management"
   "pacman-contrib",
@@ -121,33 +119,25 @@ packages = [
   "libdvdcss",
   "libgsf",
   "libopenraw",
-  "mlocate",
+  "plocate",
   "poppler-glib",
+  "vlc-plugins-all",
   "xdg-user-dirs",
   "xdg-utils",
 
   # from "filesystem"
   "efitools",
-  "haveged",
   "nfs-utils",
   "nilfs-utils",
-  "ntp",
   "smartmontools",
   "unrar",
   "unzip",
-  "xz",
 
   # from "fonts"
-  "adobe-source-han-sans-cn-fonts",
-  "adobe-source-han-sans-jp-fonts",
-  "adobe-source-han-sans-kr-fonts",
   "awesome-terminal-fonts",
   "noto-fonts-emoji",
-  "noto-color-emoji-fontconfig",
   "cantarell-fonts",
-  "freetype2",
   "noto-fonts",
-  "opendesktop-fonts",
   "ttf-bitstream-vera",
   "ttf-dejavu",
   "ttf-liberation",
@@ -163,7 +153,6 @@ packages = [
   "pipewire-pulse",
   "wireplumber",
   "pipewire-alsa",
-  "rtkit",
 
   # from "hardware"
   "dmidecode",
@@ -179,19 +168,17 @@ packages = [
   # from "power"
   "cpupower", "power-profiles-daemon", "upower",
 
-  # from "firefox"
+  # from "Firefox and language package"
   "firefox",
 
   # from "Some applications selection"
   "alacritty",
   "btop",
   "duf",
-  "findutils",
   "fsarchiver",
   "git",
   "glances",
   "hwinfo",
-  "inxi",
   "meld",
   "nano-syntax-highlighting",
   "fastfetch",
@@ -199,7 +186,6 @@ packages = [
   "python-defusedxml",
   "python-packaging",
   "rsync",
-  "sed",
   "vi",
   "wget",
   "ripgrep",
@@ -212,46 +198,49 @@ packages = [
 [desktop.kde]
 # should be equal to netinstall KDE section group in GUI installer
 packages = [
-  "cachyos-iridescent-kde",
-  "cachyos-emerald-kde-theme-git",
-  "cachyos-kde-settings",
-  "cachyos-themes-sddm",
   "ark",
   "bluedevil",
   "breeze-gtk",
+  "cachyos-emerald-kde-theme-git",
+  "cachyos-iridescent-kde",
+  "cachyos-kde-settings",
+  "cachyos-nord-kde-theme-git",
+  "cachyos-themes-sddm",
   "char-white",
   "dolphin",
   "egl-wayland",
-  "gwenview",
-  "konsole",
-  "kate",
-  "kdeconnect",
-  "kde-gtk-config",
-  "kdegraphics-thumbnailers",
   "ffmpegthumbs",
+  "filelight",
+  "fwupd",
+  "gwenview",
+  "haruna",
+  "kate",
+  "kcalc",
+  "kde-gtk-config",
+  "kdeconnect",
+  "kdegraphics-thumbnailers",
+  "kdeplasma-addons",
+  "kdialog",
   "kinfocenter",
+  "kio-admin",
+  "konsole",
   "kscreen",
   "kwallet-pam",
   "kwalletmanager",
+  "partitionmanager",
+  "phonon-qt6-vlc",
+  "plasma-browser-integration",
   "plasma-desktop",
-  "libplasma",
+  "plasma-firewall",
   "plasma-nm",
   "plasma-pa",
-  "plasma-workspace",
-  "plasma-integration",
-  "plasma-firewall",
-  "plasma-browser-integration",
   "plasma-systemmonitor",
   "plasma-thunderbolt",
+  "plymouth-kcm",
   "powerdevil",
+  "plasma-login-manager",
   "spectacle",
-  "sddm",
-  "sddm-kcm",
-  "qt6-wayland",
-  "xsettingsd",
-  "xdg-desktop-portal",
-  "xdg-desktop-portal-kde",
-  "phonon-qt6-vlc"
+  "xsettingsd"
 ]
 
 [desktop.xfce]
@@ -338,42 +327,37 @@ packages = [
 ]
 
 [desktop.gnome]
-# should be equal to netinstall gnome section group in GUI installer
+# should be equal to netinstall gnome section group + gnome apps subgroup in GUI installer
 packages = [
-  "adwaita-icon-theme",
-  "eog",
-  "evince",
-  "file-roller",
+  # Core
+  "fwupd",
   "gdm",
   "gedit",
-  "gnome",
   "gnome-backgrounds",
-  "gnome-calculator",
+  "gnome-console",
   "gnome-control-center",
-  "gnome-disk-utility",
   "gnome-keyring",
-  "gnome-nettool",
-  "gnome-power-manager",
-  "gnome-screenshot",
   "gnome-shell",
-  "gnome-terminal",
-  "gnome-themes-extra",
   "gnome-tweaks",
+  "libnma",
+  "sushi",
+  # Apps Subgroup
+  "papers",
+  "loupe",
+  "file-roller",
+  "simple-scan",
+  "gnome-disk-utility",
+  "gnome-power-manager",
+  "gnome-calculator",
+  "gnome-nettool",
   "gnome-usage",
   "malcontent",
-  "libnma",
-  "gvfs",
+  "showtime",
   "gvfs-afc",
-  "gvfs-gphoto2",
-  "gvfs-mtp",
   "gvfs-nfs",
   "gvfs-smb",
-  "nautilus",
-  "sushi",
-  "totem",
-  "qt6-wayland",
-  "xdg-user-dirs-gtk",
-  "xdg-desktop-portal-gnome"
+  "gvfs-gphoto2",
+  "gvfs-mtp"
 ]
 
 [desktop.openbox]
@@ -463,9 +447,10 @@ packages = [
 ]
 
 [desktop.cinnamon]
-# should be equal to netinstall lxqt section group in GUI installer
+# should be equal to netinstall cinnamon section group in GUI installer
 packages = [
   "cinnamon",
+  "cinnamon-translations",
   "system-config-printer",
   "gnome-keyring",
   "gnome-terminal",
@@ -567,21 +552,14 @@ packages = [
   "gvfs-smb",
   "lxappearance",
   "obconf-qt",
-  "lxde-common",
+  "lxde",
   "lxde-icon-theme",
-  "lxhotkey-gtk3",
-  "lxinput-gtk3",
-  "lxlauncher-gtk3",
-  "lxpanel-gtk3",
-  "lxrandr-gtk3",
-  "lxsession-gtk3",
-  "lxtask-gtk3",
   "lxterminal",
   "lightdm",
   "lightdm-slick-greeter",
   "notification-daemon",
   "openbox",
-  "pcmanfm-gtk3",
+  "pcmanfm",
   "lxmusic",
   "network-manager-applet",
   "xdg-user-dirs-gtk",
@@ -636,12 +614,48 @@ packages = [
   "xdg-user-dirs-gtk"
 ]
 
+[desktop.cosmic]
+# should be equal to netinstall cosmic section group in GUI installer
+packages = [
+  "cosmic-app-library",
+  "cosmic-applets",
+  "cosmic-bg",
+  "cosmic-comp",
+  "cosmic-files",
+  "cosmic-greeter",
+  "cosmic-icon-theme",
+  "cosmic-launcher",
+  "cosmic-notifications",
+  "cosmic-osd",
+  "cosmic-panel",
+  "cosmic-player",
+  "cosmic-randr",
+  "cosmic-screenshot",
+  "cosmic-session",
+  "cosmic-settings",
+  "cosmic-settings-daemon",
+  "cosmic-terminal",
+  "cosmic-text-editor",
+  "cosmic-wallpapers",
+  "cosmic-workspaces",
+  "notification-daemon",
+  "cosmic-greeter",
+  "xdg-desktop-portal-cosmic",
+  "xorg-xwayland"
+]
+
+[desktop.niri]
+# should be equal to netinstall niri section group in GUI installer
+packages = [
+  "cachyos-niri-noctalia",
+  "sddm"
+]
+
 [desktop.xorg]
-# should be equal to netinstall xorg section group in GUI installer
+# should be equal to netinstall "X-system" subgroup in GUI installer
 packages = [
   "libwnck3",
   "mesa-utils",
-  "xf86-input-libinput",
   "xorg-xdpyinfo",
   "xorg-server",
   "xorg-xinit",
