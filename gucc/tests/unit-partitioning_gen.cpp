@@ -1,6 +1,7 @@
 #include "doctest_compatibility.h"
 
 #include "gucc/partitioning.hpp"
+#include "gucc/partition_config.hpp"
 #include "gucc/logger.hpp"
 
 #include <string>
@@ -111,3 +112,71 @@ TEST_CASE("partitioning gen test")
     }
     // TODO(vnepogodin): add tests for raid and lvm
 }
+
+TEST_CASE("partition config test")
+{
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
+    SECTION("filesystem type conversion")
+    {
+        REQUIRE_EQ(gucc::fs::filesystem_type_to_string(gucc::fs::FilesystemType::Btrfs), "btrfs"sv);
+        REQUIRE_EQ(gucc::fs::filesystem_type_to_string(gucc::fs::FilesystemType::Ext4), "ext4"sv);
+        REQUIRE_EQ(gucc::fs::filesystem_type_to_string(gucc::fs::FilesystemType::Xfs), "xfs"sv);
+        REQUIRE_EQ(gucc::fs::filesystem_type_to_string(gucc::fs::FilesystemType::Vfat), "vfat"sv);
+        REQUIRE_EQ(gucc::fs::filesystem_type_to_string(gucc::fs::FilesystemType::LinuxSwap), "swap"sv);
+        REQUIRE_EQ(gucc::fs::filesystem_type_to_string(gucc::fs::FilesystemType::Zfs), "zfs"sv);
+    }
+    SECTION("string to filesystem type")
+    {
+        REQUIRE_EQ(gucc::fs::string_to_filesystem_type("btrfs"sv), gucc::fs::FilesystemType::Btrfs);
+        REQUIRE_EQ(gucc::fs::string_to_filesystem_type("ext4"sv), gucc::fs::FilesystemType::Ext4);
+        REQUIRE_EQ(gucc::fs::string_to_filesystem_type("vfat"sv), gucc::fs::FilesystemType::Vfat);
+        REQUIRE_EQ(gucc::fs::string_to_filesystem_type("fat32"sv), gucc::fs::FilesystemType::Vfat);
+        REQUIRE_EQ(gucc::fs::string_to_filesystem_type("swap"sv), gucc::fs::FilesystemType::LinuxSwap);
+        REQUIRE_EQ(gucc::fs::string_to_filesystem_type("linuxswap"sv), gucc::fs::FilesystemType::LinuxSwap);
+        REQUIRE_EQ(gucc::fs::string_to_filesystem_type("invalid"sv), gucc::fs::FilesystemType::Unknown);
+    }
+    SECTION("mount options for btrfs")
+    {
+        const auto& opts = gucc::fs::get_available_mount_opts(gucc::fs::FilesystemType::Btrfs);
+        REQUIRE_FALSE(opts.empty());
+        bool has_compress = false;
+        for (const auto& opt : opts) {
+            if (opt.name == "compress=zstd"s) has_compress = true;
+        }
+        REQUIRE(has_compress);
+    }
+    SECTION("mount options for ext4")
+    {
+        const auto& opts = gucc::fs::get_available_mount_opts(gucc::fs::FilesystemType::Ext4);
+        REQUIRE_FALSE(opts.empty());
+    }
+    SECTION("default mount opts SSD vs HDD")
+    {
+        const auto& ssd_opts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::Btrfs, true);
+        const auto& hdd_opts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::Btrfs, false);
+        REQUIRE(ssd_opts.contains("zstd:1"));
+        REQUIRE(hdd_opts.contains("zstd"));
+        REQUIRE_FALSE(hdd_opts.contains("zstd:1"));
+    }
+    SECTION("mkfs commands")
+    {
+        REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Btrfs), "mkfs.btrfs -f"sv);
+        REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Ext4), "mkfs.ext4 -q"sv);
+        REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Xfs), "mkfs.xfs -f"sv);
+        REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::LinuxSwap), "mkswap"sv);
+    }
+    SECTION("sfdisk type aliases")
+    {
+        REQUIRE_EQ(gucc::fs::get_sfdisk_type_alias(gucc::fs::FilesystemType::Vfat), "U"sv);
+        REQUIRE_EQ(gucc::fs::get_sfdisk_type_alias(gucc::fs::FilesystemType::LinuxSwap), "S"sv);
+        REQUIRE_EQ(gucc::fs::get_sfdisk_type_alias(gucc::fs::FilesystemType::Btrfs), "L"sv);
+        REQUIRE_EQ(gucc::fs::get_sfdisk_type_alias(gucc::fs::FilesystemType::Ext4), "L"sv);
+    }
+}
+

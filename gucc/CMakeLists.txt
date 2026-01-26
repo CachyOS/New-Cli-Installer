@@ -25,6 +25,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/repos.cpp include/gucc/repos.hpp
    src/initcpio.cpp include/gucc/initcpio.hpp
    src/block_devices.cpp include/gucc/block_devices.hpp
+   src/partition_config.cpp include/gucc/partition_config.hpp
    src/partitioning.cpp include/gucc/partitioning.hpp
    src/swap.cpp include/gucc/swap.hpp
    src/luks.cpp include/gucc/luks.hpp
