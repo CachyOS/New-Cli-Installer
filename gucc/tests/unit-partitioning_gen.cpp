@@ -31,7 +31,7 @@ type=L
 )"sv;
 
 static constexpr auto PART_DEFAULT_TEST = R"(label: gpt
-type=U,size=2GiB,bootable
+type=U,size=4GiB,bootable
 type=L
 )"sv;
 

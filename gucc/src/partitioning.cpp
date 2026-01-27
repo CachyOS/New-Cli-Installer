@@ -130,35 +130,15 @@ auto erase_disk(std::string_view device) noexcept -> bool {
 
 auto generate_default_partition_schema(std::string_view device, std::string_view boot_mountpoint, bool is_efi) noexcept -> std::vector<fs::Partition> {
     // TODO(vnepogodin): make whole default partition scheme customizable from config/code
-    fs::Partition root_partition{
+
+    // Create 4GB ESP only for UEFI systems:
+    fs::DefaultPartitionSchemaConfig config{
         // TODO(vnepogodin): currently doesn't matter which FS is used here for sgdisk, make customizable for future use
-        .fstype = "btrfs"s,
-        .mountpoint = "/"s,
-        // currently doesn't matter, will be assigned much after during FS partitioning
-        .uuid_str = {},
-        // at this moment the device is only used for sorting for sfdisk command gen
-        .device = fmt::format(FMT_COMPILE("{}1"), device),
-        // use remaining space
-        .size = {},
-        .mount_opts = {}
+        .root_fs_type       = fs::FilesystemType::Btrfs,
+        .efi_partition_size = "4GiB"s,
+        .boot_mountpoint    = std::string{boot_mountpoint},
     };
-    if (is_efi) {
-        // For UEFI systems create ESP:
-        //  - FAT32, 2GB
-        fs::Partition efi_partition{
-            .fstype = "vfat"s,
-            .mountpoint = std::string{boot_mountpoint},
-            // currently doesn't matter, will be assigned much after during FS partitioning
-            .uuid_str = {},
-            .device = root_partition.device,
-            .size = "2GiB"s,
-            .mount_opts = {}
-        };
-        // root part is the last to use all left space after boot partition
-        root_partition.device = fmt::format(FMT_COMPILE("{}2"), device);
-        return {std::move(efi_partition), std::move(root_partition)};
-    }
-    return {std::move(root_partition)};
+    return generate_partition_schema_from_config(device, config, is_efi);
 }
 
 auto make_clean_partschema(std::string_view device, const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> bool {
@@ -189,49 +169,45 @@ auto generate_partition_schema_from_config(std::string_view device, const fs::De
     // For UEFI: create EFI partition first
     if (is_efi) {
         fs::Partition efi_partition{
-            .fstype = "vfat"s,
+            .fstype     = "vfat"s,
             .mountpoint = config.boot_mountpoint,
-            .uuid_str = {},
-            .device = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
-            .size = config.efi_partition_size,
-            .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Vfat, config.is_ssd)
-        };
+            .uuid_str   = {},
+            .device     = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .size       = config.efi_partition_size,
+            .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Vfat, config.is_ssd)};
         partitions.emplace_back(std::move(efi_partition));
     } else if (config.boot_partition_size) {
         // For BIOS with separate boot partition
         fs::Partition boot_partition{
-            .fstype = "ext4"s,
+            .fstype     = "ext4"s,
             .mountpoint = config.boot_mountpoint,
-            .uuid_str = {},
-            .device = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
-            .size = *config.boot_partition_size,
-            .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Ext4, config.is_ssd)
-        };
+            .uuid_str   = {},
+            .device     = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .size       = *config.boot_partition_size,
+            .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Ext4, config.is_ssd)};
         partitions.emplace_back(std::move(boot_partition));
     }
 
     // Create swap partition if configured
     if (config.swap_partition_size) {
         fs::Partition swap_partition{
-            .fstype = "linuxswap"s,
+            .fstype     = "linuxswap"s,
             .mountpoint = ""s,
-            .uuid_str = {},
-            .device = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
-            .size = *config.swap_partition_size,
-            .mount_opts = "defaults"s
-        };
+            .uuid_str   = {},
+            .device     = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .size       = *config.swap_partition_size,
+            .mount_opts = "defaults"s};
         partitions.emplace_back(std::move(swap_partition));
     }
 
     // Create root partition (uses remaining space)
     fs::Partition root_partition{
-        .fstype = std::string{fs::filesystem_type_to_string(config.root_fs_type)},
+        .fstype     = std::string{fs::filesystem_type_to_string(config.root_fs_type)},
         .mountpoint = "/"s,
-        .uuid_str = {},
-        .device = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
-        .size = {},
-        .mount_opts = root_mount_opts
-    };
+        .uuid_str   = {},
+        .device     = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+        .size       = {},
+        .mount_opts = root_mount_opts};
     partitions.emplace_back(std::move(root_partition));
 
     return partitions;
