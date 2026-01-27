@@ -2,6 +2,7 @@
 #define PARTITIONING_HPP
 
 #include "gucc/partition.hpp"
+#include "gucc/partition_config.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -25,6 +26,13 @@ auto generate_default_partition_schema(std::string_view device, std::string_view
 
 // Runs disk partitioning using Partition scheme and erasing device
 auto make_clean_partschema(std::string_view device, const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> bool;
+
+/// @brief Generates a partition schema from configuration
+/// @param device The target device (e.g., "/dev/sda")
+/// @param config The partition schema configuration
+/// @param is_efi Whether the system is UEFI or BIOS
+/// @return Vector of Partition objects representing the schema
+auto generate_partition_schema_from_config(std::string_view device, const fs::DefaultPartitionSchemaConfig& config, bool is_efi) noexcept -> std::vector<fs::Partition>;
 
 }  // namespace gucc::disk
 

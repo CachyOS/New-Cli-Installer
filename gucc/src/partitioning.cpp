@@ -1,5 +1,6 @@
 #include "gucc/partitioning.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/partition_config.hpp"
 
 #include <algorithm>    // for sort, unique_copy
 #include <ranges>       // for ranges::*
@@ -173,6 +174,67 @@ auto make_clean_partschema(std::string_view device, const std::vector<fs::Partit
         return false;
     }
     return true;
+}
+
+auto generate_partition_schema_from_config(std::string_view device, const fs::DefaultPartitionSchemaConfig& config, bool is_efi) noexcept -> std::vector<fs::Partition> {
+    // NOTE(vnepogodin): function partition schema assumes we will use whole drive, and ignores ZFS or BTRFS
+    std::vector<fs::Partition> partitions{};
+
+    // Get root mount opts from config or use defaults
+    const auto& root_mount_opts = config.root_mount_opts.value_or(
+        fs::get_default_mount_opts(config.root_fs_type, config.is_ssd));
+
+    // currently partition uuid doesn't matter, it will be assigned much after during FS partitioning
+
+    // For UEFI: create EFI partition first
+    if (is_efi) {
+        fs::Partition efi_partition{
+            .fstype = "vfat"s,
+            .mountpoint = config.boot_mountpoint,
+            .uuid_str = {},
+            .device = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .size = config.efi_partition_size,
+            .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Vfat, config.is_ssd)
+        };
+        partitions.emplace_back(std::move(efi_partition));
+    } else if (config.boot_partition_size) {
+        // For BIOS with separate boot partition
+        fs::Partition boot_partition{
+            .fstype = "ext4"s,
+            .mountpoint = config.boot_mountpoint,
+            .uuid_str = {},
+            .device = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .size = *config.boot_partition_size,
+            .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Ext4, config.is_ssd)
+        };
+        partitions.emplace_back(std::move(boot_partition));
+    }
+
+    // Create swap partition if configured
+    if (config.swap_partition_size) {
+        fs::Partition swap_partition{
+            .fstype = "linuxswap"s,
+            .mountpoint = ""s,
+            .uuid_str = {},
+            .device = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .size = *config.swap_partition_size,
+            .mount_opts = "defaults"s
+        };
+        partitions.emplace_back(std::move(swap_partition));
+    }
+
+    // Create root partition (uses remaining space)
+    fs::Partition root_partition{
+        .fstype = std::string{fs::filesystem_type_to_string(config.root_fs_type)},
+        .mountpoint = "/"s,
+        .uuid_str = {},
+        .device = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+        .size = {},
+        .mount_opts = root_mount_opts
+    };
+    partitions.emplace_back(std::move(root_partition));
+
+    return partitions;
 }
 
 }  // namespace gucc::disk

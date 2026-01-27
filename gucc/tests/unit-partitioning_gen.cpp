@@ -39,6 +39,12 @@ static constexpr auto PART_DEFAULT_BIOS_TEST = R"(label: dos
 type=L
 )"sv;
 
+static constexpr auto PART_CONFIG_SWAP_TEST = R"(label: gpt
+type=S,size=8GiB
+type=U,size=1GiB,bootable
+type=L
+)"sv;
+
 TEST_CASE("partitioning gen test")
 {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
@@ -177,6 +183,49 @@ TEST_CASE("partition config test")
         REQUIRE_EQ(gucc::fs::get_sfdisk_type_alias(gucc::fs::FilesystemType::LinuxSwap), "S"sv);
         REQUIRE_EQ(gucc::fs::get_sfdisk_type_alias(gucc::fs::FilesystemType::Btrfs), "L"sv);
         REQUIRE_EQ(gucc::fs::get_sfdisk_type_alias(gucc::fs::FilesystemType::Ext4), "L"sv);
+    }
+}
+
+TEST_CASE("partition schema from config test")
+{
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
+    SECTION("basic uefi config with swap")
+    {
+        gucc::fs::DefaultPartitionSchemaConfig config{
+            .root_fs_type = gucc::fs::FilesystemType::Ext4,
+            .efi_partition_size = "1GiB"s,
+            .swap_partition_size = "8GiB"s,
+            .is_ssd = true,
+            .boot_mountpoint = "/boot"s,
+        };
+        const auto& partitions = gucc::disk::generate_partition_schema_from_config("/dev/sda"sv, config, true);
+        REQUIRE_EQ(partitions.size(), 3);
+        REQUIRE_EQ(partitions[0].fstype, "vfat"sv);
+        REQUIRE_EQ(partitions[0].mountpoint, "/boot"sv);
+        REQUIRE_EQ(partitions[1].fstype, "linuxswap"sv);
+        REQUIRE_EQ(partitions[2].fstype, "ext4"sv);
+        REQUIRE_EQ(partitions[2].mountpoint, "/"sv);
+
+        const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
+        REQUIRE_EQ(sfdisk_content, PART_CONFIG_SWAP_TEST);
+    }
+    SECTION("bios config without swap")
+    {
+        gucc::fs::DefaultPartitionSchemaConfig config{
+            .root_fs_type = gucc::fs::FilesystemType::Btrfs,
+            .is_ssd = false,
+        };
+        const auto& partitions = gucc::disk::generate_partition_schema_from_config("/dev/sda"sv, config, false);
+        REQUIRE_EQ(partitions.size(), 1);
+        REQUIRE_EQ(partitions[0].fstype, "btrfs"sv);
+        REQUIRE_EQ(partitions[0].mountpoint, "/"sv);
+        REQUIRE(partitions[0].mount_opts.contains("compress=zstd"sv));
     }
 }
 

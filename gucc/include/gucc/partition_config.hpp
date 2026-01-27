@@ -26,7 +26,7 @@ struct MountOption final {
     std::string name;
     std::string description;
 
-    constexpr bool operator==(const MountOption&) const = default;
+    constexpr bool operator<=>(const MountOption&) const = default;
 };
 
 /// @brief Configuration for generating default partition schema
@@ -55,7 +55,7 @@ struct DefaultPartitionSchemaConfig final {
     /// Whether to create btrfs subvolumes (only applies when root_fs_type is Btrfs)
     bool create_btrfs_subvolumes{true};
 
-    constexpr bool operator==(const DefaultPartitionSchemaConfig&) const = default;
+    constexpr bool operator<=>(const DefaultPartitionSchemaConfig&) const = default;
 };
 
 /// @brief Convert FilesystemType enum to string representation
