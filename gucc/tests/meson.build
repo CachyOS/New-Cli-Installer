@@ -117,3 +117,11 @@ executable(
   link_with: [gucc_lib, doctest_main_lib],
   include_directories: [include_directories('../include')],
   install: false)
+
+executable(
+  'test-string_utils',
+  files('unit-string_utils.cpp'),
+  dependencies: [deps, doctest],
+  link_with: [gucc_lib, doctest_main_lib],
+  include_directories: [include_directories('../include')],
+  install: false)

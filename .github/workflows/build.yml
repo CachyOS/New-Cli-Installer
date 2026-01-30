@@ -36,6 +36,7 @@ jobs:
         run: |
           cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
           cd ${{github.workspace}}/build
+          ./gucc/tests/test-string_utils
           ./gucc/tests/test-initcpio
           ./gucc/tests/test-pacmanconf
           ./gucc/tests/test-mtab
@@ -93,6 +94,7 @@ jobs:
         run: |
           meson compile -C ${{github.workspace}}/build
           cd ${{github.workspace}}/build
+          ./gucc/tests/test-string_utils
           ./gucc/tests/test-initcpio
           ./gucc/tests/test-pacmanconf
           ./gucc/tests/test-mtab
