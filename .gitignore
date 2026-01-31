@@ -17,6 +17,7 @@ subprojects/rapidjson
 subprojects/range-v3
 subprojects/ctre
 subprojects/packagecache
+CLAUDE.md
 
 # Prerequisites
 *.d

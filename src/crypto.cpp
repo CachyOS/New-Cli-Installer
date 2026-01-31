@@ -204,12 +204,115 @@ void luks_show() noexcept {
     detail::msgbox_widget(content, size(HEIGHT, GREATER_THAN, 5));
 }
 
+bool check_tpm_available() noexcept {
+#ifdef NDEVENV
+    return gucc::crypto::tpm2_available();
+#else
+    return true;  // For testing in dev environment
+#endif
+}
+
+bool select_pcrs(std::string& pcrs) noexcept {
+    // PCR descriptions for user selection
+    static constexpr auto pcr_body = "\nSelect PCR (Platform Configuration Register) values for TPM2 binding.\n \n"
+                                     "Recommended: 0,2,4,7 (firmware, drivers, bootloader, Secure Boot)\n \n"
+                                     "PCR 0: Firmware code (BIOS/UEFI)\n"
+                                     "PCR 2: Option ROM code\n"
+                                     "PCR 4: Boot manager code\n"
+                                     "PCR 7: Secure Boot state\n"
+                                     "PCR 8: Kernel command line (optional)\n"
+                                     "PCR 9: Initrd (optional)\n";
+
+    std::string value{"0,2,4,7"};
+    if (!detail::inputbox_widget(value, pcr_body, size(HEIGHT, GREATER_THAN, 10))) {
+        return false;
+    }
+
+    pcrs = value;
+    return true;
+}
+
+bool luks_setup_with_tpm() noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+#ifdef NDEVENV
+    gucc::utils::exec("modprobe -a dm-mod dm_crypt");
+#endif
+    config_data["INCLUDE_PART"] = "part\\|lvm";
+    utils::umount_partitions();
+    utils::find_partitions();
+
+    // Select partition to encrypt
+    /* clang-format off */
+    static constexpr auto luks_encrypt_body = "Select a partition to encrypt with LUKS2 + TPM2.";
+    if (!tui::select_crypt_partition(luks_encrypt_body)) { return false; }
+    /* clang-format on */
+
+    // Enter name of the Luks partition and get password to create it
+    auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
+    auto& luks_password  = std::get<std::string>(config_data["PASSWD"]);
+    /* clang-format off */
+    if (!tui::get_cryptname(luks_root_name)) { return false; }
+    if (!tui::get_crypt_password(luks_password)) { return false; }
+    /* clang-format on */
+
+    // Get PCR values
+    std::string pcrs{};
+    if (!tui::select_pcrs(pcrs)) {
+        return false;
+    }
+    config_data["TPM2_PCRS"] = pcrs;
+
+    return true;
+}
+
+void luks_encrypt_tpm() noexcept {
+    detail::infobox_widget("\nEncrypting with LUKS2 + TPM2...\n");
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+#ifdef NDEVENV
+    auto* config_instance      = Config::instance();
+    auto& config_data          = config_instance->data();
+    const auto& partition      = std::get<std::string>(config_data["PARTITION"]);
+    const auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
+    const auto& luks_password  = std::get<std::string>(config_data["PASSWD"]);
+    const auto& tpm2_pcrs      = std::get<std::string>(config_data["TPM2_PCRS"]);
+
+    // Format with LUKS2
+    if (!gucc::crypto::luks2_format(luks_password, partition, "")) {
+        spdlog::error("Failed to format LUKS2 partition {}", partition);
+        detail::msgbox_widget("\nFailed to format LUKS2 partition\n");
+        return;
+    }
+
+    // Enroll TPM2
+    gucc::crypto::Tpm2Config tpm_config{};
+    tpm_config.pcrs = tpm2_pcrs;
+    if (!gucc::crypto::tpm2_enroll(partition, luks_password, tpm_config)) {
+        spdlog::error("Failed to enroll TPM2 for partition {}", partition);
+        detail::msgbox_widget("\nFailed to enroll TPM2. The partition is encrypted but TPM auto-unlock is not configured.\nYou can still unlock with password.\n");
+    }
+
+    // Open the encrypted partition
+    if (!gucc::crypto::luks2_open(luks_password, partition, luks_root_name)) {
+        spdlog::error("Failed to open LUKS2 partition {} with name {}", partition, luks_root_name);
+        detail::msgbox_widget("\nFailed to open LUKS2 partition\n");
+        return;
+    }
+
+    // Update config to indicate TPM enrollment
+    config_data["TPM2_ENABLED"] = 1;
+    config_data["LUKS_VERSION"] = 2;
+#endif
+}
+
 void luks_menu_advanced() noexcept {
     const std::vector<std::string> menu_entries = {
         "Open Encrypted Partition",
         "Automatic LUKS Encryption",
         "Define Key-Size and Cypher",
         "Express LUKS",
+        "LUKS2 with TPM2",
         "Back",
     };
 
@@ -245,6 +348,17 @@ void luks_menu_advanced() noexcept {
     case 3: {
         if (!tui::luks_setup()) { return; }
         tui::luks_express();
+        tui::luks_show();
+        break;
+    }
+    case 4: {
+        // LUKS2 with TPM2
+        if (!tui::check_tpm_available()) {
+            detail::msgbox_widget("\nTPM2 device not found or systemd-cryptenroll not available.\n");
+            return;
+        }
+        if (!tui::luks_setup_with_tpm()) { return; }
+        tui::luks_encrypt_tpm();
         tui::luks_show();
         break;
     }

@@ -32,6 +32,26 @@ static constexpr auto CRYPTTAB_UNENCR_BOOT_TEST = R"(# Configuration for encrypt
 luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f     none
 )"sv;
 
+static constexpr auto CRYPTTAB_TPM2_TEST = R"(# Configuration for encrypted block devices
+# See crypttab(5) for details.
+
+# NOTE: Do not list your root (/) partition here, it must be set up
+#       beforehand by the initramfs (/etc/mkinitcpio.conf).
+
+# <name>       <device>                                     <password>              <options>
+luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f     none tpm2-device=auto,tpm2-pcrs=0,2,4,7
+)"sv;
+
+static constexpr auto CRYPTTAB_TPM2_CUSTOM_PCRS_TEST = R"(# Configuration for encrypted block devices
+# See crypttab(5) for details.
+
+# NOTE: Do not list your root (/) partition here, it must be set up
+#       beforehand by the initramfs (/etc/mkinitcpio.conf).
+
+# <name>       <device>                                     <password>              <options>
+luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f     none tpm2-device=auto,tpm2-pcrs=0,7,8,9
+)"sv;
+
 TEST_CASE("crypttab gen test")
 {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
@@ -114,6 +134,33 @@ TEST_CASE("crypttab gen test")
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
         REQUIRE_EQ(crypttab_content, CRYPTTAB_UNENCR_BOOT_TEST);
+    }
+    SECTION("luks2 with tpm2 default pcrs")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = xfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_version = 2, .tpm2_enrolled = true, .tpm2_pcrs = "0,2,4,7"s},
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
+        };
+        const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
+        REQUIRE_EQ(crypttab_content, CRYPTTAB_TPM2_TEST);
+    }
+    SECTION("luks2 with tpm2 custom pcrs")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = xfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_version = 2, .tpm2_enrolled = true, .tpm2_pcrs = "0,7,8,9"s},
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
+        };
+        const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
+        REQUIRE_EQ(crypttab_content, CRYPTTAB_TPM2_CUSTOM_PCRS_TEST);
+    }
+    SECTION("luks2 with tpm2 no explicit pcrs uses default")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "xfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = xfs_mountopts, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_version = 2, .tpm2_enrolled = true},
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
+        };
+        const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
+        REQUIRE_EQ(crypttab_content, CRYPTTAB_TPM2_TEST);
     }
 
     /*

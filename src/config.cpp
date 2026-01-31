@@ -33,6 +33,9 @@ bool Config::initialize() noexcept {
         s_config->m_data["LUKS_NAME"]        = "";
         s_config->m_data["LUKS_OPT"]         = "";  // Default or user-defined?
         s_config->m_data["LUKS_UUID"]        = "";
+        s_config->m_data["LUKS_VERSION"]     = 1;   // 1 = LUKS1, 2 = LUKS2
+        s_config->m_data["TPM2_ENABLED"]     = 0;
+        s_config->m_data["TPM2_PCRS"]        = "0,2,4,7";
         s_config->m_data["LVM"]              = 0;
         s_config->m_data["LVM_LV_NAME"]      = "";  // Name of LV to create or use
         s_config->m_data["LVM_SEP_BOOT"]     = 0;

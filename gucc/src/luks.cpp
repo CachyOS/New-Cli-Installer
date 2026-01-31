@@ -65,4 +65,51 @@ auto luks1_setup_keyfile(std::string_view dest_file, std::string_view mountpoint
     return true;
 }
 
+auto luks2_open(std::string_view luks_pass, std::string_view partition, std::string_view luks_name) noexcept -> bool {
+    auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup open --type luks2 {} {} &>/dev/null"), luks_pass, partition, luks_name);
+    return utils::exec_checked(cmd);
+}
+
+auto luks2_format(std::string_view luks_pass, std::string_view partition, std::string_view additional_flags) noexcept -> bool {
+    auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup -q {} --type luks2 luksFormat {} &>/dev/null"), luks_pass, additional_flags, partition);
+    return utils::exec_checked(cmd);
+}
+
+auto luks2_add_key(std::string_view dest_file, std::string_view partition, std::string_view additional_flags) noexcept -> bool {
+    auto cmd = fmt::format(FMT_COMPILE("cryptsetup -q {} luksAddKey {} {} &>/dev/null"), additional_flags, partition, dest_file);
+    return utils::exec_checked(cmd);
+}
+
+auto tpm2_available() noexcept -> bool {
+    namespace fs = std::filesystem;
+
+    // Check for TPM device nodes
+    if (!fs::exists("/dev/tpm0") && !fs::exists("/dev/tpmrm0")) {
+        spdlog::debug("TPM device not found (/dev/tpm0 or /dev/tpmrm0)");
+        return false;
+    }
+
+    // Check if systemd-cryptenroll is available
+    if (!utils::exec_checked("command -v systemd-cryptenroll &>/dev/null")) {
+        spdlog::debug("systemd-cryptenroll not found");
+        return false;
+    }
+
+    return true;
+}
+
+auto tpm2_enroll(std::string_view partition, std::string_view passphrase, const Tpm2Config& config) noexcept -> bool {
+    // systemd-cryptenroll requires the passphrase via stdin
+    auto cmd = fmt::format(FMT_COMPILE("echo '{}' | systemd-cryptenroll --tpm2-device={} --tpm2-pcrs={} {} 2>/dev/null"),
+        passphrase, config.device, config.pcrs, partition);
+
+    if (!utils::exec_checked(cmd)) {
+        spdlog::error("Failed to enroll TPM2 for partition {}", partition);
+        return false;
+    }
+
+    spdlog::info("Successfully enrolled TPM2 for partition {}", partition);
+    return true;
+}
+
 }  // namespace gucc::crypto

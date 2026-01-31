@@ -49,6 +49,17 @@ auto gen_crypttab_entry(const Partition& partition, std::string_view crypttab_op
         crypt_options  = ""s;
     }
 
+    // Handle TPM2 enrollment
+    if (partition.tpm2_enrolled && *partition.tpm2_enrolled) {
+        crypt_password = "none"s;
+        const auto& tpm2_pcrs = partition.tpm2_pcrs.value_or("0,2,4,7");
+        if (crypt_options.empty()) {
+            crypt_options = fmt::format(FMT_COMPILE(" tpm2-device=auto,tpm2-pcrs={}"), tpm2_pcrs);
+        } else {
+            crypt_options += fmt::format(FMT_COMPILE(",tpm2-device=auto,tpm2-pcrs={}"), tpm2_pcrs);
+        }
+    }
+
     const auto& device_str = fmt::format(FMT_COMPILE("UUID={}"), *partition.luks_uuid);
     return std::make_optional<std::string>(fmt::format(FMT_COMPILE("{:21} {:<45} {}{}\n"), *partition.luks_mapper_name, device_str, crypt_password, crypt_options));
 }

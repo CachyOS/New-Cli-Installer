@@ -1,6 +1,7 @@
 #ifndef PARTITION_HPP
 #define PARTITION_HPP
 
+#include <cstdint>   // for int32_t
 #include <optional>  // for optional
 #include <string>    // for string
 
@@ -33,6 +34,13 @@ struct Partition final {
     std::optional<std::string> luks_mapper_name{};
     std::optional<std::string> luks_uuid{};
     std::optional<std::string> luks_passphrase{};
+
+    /// LUKS version (1 or 2)
+    std::optional<std::int32_t> luks_version{};
+
+    /// TPM2 data
+    std::optional<bool> tpm2_enrolled{};
+    std::optional<std::string> tpm2_pcrs{};  // e.g., "0,2,4,7"
 
     constexpr bool operator==(const Partition&) const = default;
 };
