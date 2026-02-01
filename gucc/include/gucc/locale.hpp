@@ -17,6 +17,9 @@ auto prepare_locale_set(std::string_view locale, std::string_view mountpoint) no
 // List possible locales
 auto get_possible_locales() noexcept -> std::vector<std::string>;
 
+// Set X11 keyboard layout
+auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> bool;
+
 }  // namespace gucc::locale
 
 #endif  // LOCALE_HPP

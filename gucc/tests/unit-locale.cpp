@@ -75,4 +75,36 @@ TEST_CASE("locale test")
     {
         REQUIRE(!gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
     }
+    SECTION("set xkbmap layout")
+    {
+        fs::create_directories(folder_path);
+
+        REQUIRE(gucc::locale::set_xkbmap("us"sv, folder_testpath));
+
+        const auto& keyboard_conf_path = std::string{folder_testpath} + "/etc/X11/xorg.conf.d/00-keyboard.conf";
+        REQUIRE(fs::exists(keyboard_conf_path));
+
+        auto content = gucc::file_utils::read_whole_file(keyboard_conf_path);
+        REQUIRE(content.contains("XkbLayout"));
+        REQUIRE(content.contains("us"));
+        REQUIRE(content.contains("InputClass"));
+
+        // Cleanup
+        fs::remove_all(folder_testpath);
+    }
+    SECTION("set xkbmap with variant")
+    {
+        fs::create_directories(folder_path);
+
+        REQUIRE(gucc::locale::set_xkbmap("de"sv, folder_testpath));
+
+        const auto& keyboard_conf_path = std::string{folder_testpath} + "/etc/X11/xorg.conf.d/00-keyboard.conf";
+        REQUIRE(fs::exists(keyboard_conf_path));
+
+        auto content = gucc::file_utils::read_whole_file(keyboard_conf_path);
+        REQUIRE(content.contains("de"));
+
+        // Cleanup
+        fs::remove_all(folder_testpath);
+    }
 }

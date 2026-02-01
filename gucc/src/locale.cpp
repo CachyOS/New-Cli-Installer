@@ -3,6 +3,8 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
+#include <filesystem>
+
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
@@ -63,6 +65,36 @@ auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -
 auto get_possible_locales() noexcept -> std::vector<std::string> {
     const auto& locales = utils::exec("cat /etc/locale.gen | grep -v '#  ' | sed 's/#//g' | awk '/UTF-8/ {print $1}'");
     return utils::make_multiline(locales);
+}
+
+auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> bool {
+    // TODO(vnepogodin): should use localectl instead of doing manually
+    static constexpr auto XKBMAP_CONFIG = R"(Section "InputClass"
+    Identifier "system-keyboard"
+    MatchIsKeyboard "on"
+    Option "XkbLayout" "{}"
+EndSection
+)";
+
+    const auto& xorg_conf_dir      = fmt::format(FMT_COMPILE("{}/etc/X11/xorg.conf.d"), mountpoint);
+    const auto& keyboard_conf_path = fmt::format(FMT_COMPILE("{}/00-keyboard.conf"), xorg_conf_dir);
+
+    // Create directory if it doesn't exist
+    std::error_code ec{};
+    std::filesystem::create_directories(xorg_conf_dir, ec);
+    if (ec) {
+        spdlog::error("Failed to create xorg.conf.d directory: {}", ec.message());
+        return false;
+    }
+
+    const auto& config_content = fmt::format(XKBMAP_CONFIG, xkbmap);
+    if (!file_utils::create_file_for_overwrite(keyboard_conf_path, config_content)) {
+        spdlog::error("Failed to write keyboard config to {}", keyboard_conf_path);
+        return false;
+    }
+
+    spdlog::info("X11 keyboard layout set to '{}'", xkbmap);
+    return true;
 }
 
 }  // namespace gucc::locale
