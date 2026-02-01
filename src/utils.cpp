@@ -419,7 +419,9 @@ void set_xkbmap(const std::string_view& xkbmap) noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    gucc::utils::exec(fmt::format(FMT_COMPILE("echo -e \"Section \"\\\"InputClass\"\\\"\\nIdentifier \"\\\"system-keyboard\"\\\"\\nMatchIsKeyboard \"\\\"on\"\\\"\\nOption \"\\\"XkbLayout\"\\\" \"\\\"{0}\"\\\"\\nEndSection\" > {1}/etc/X11/xorg.conf.d/00-keyboard.conf"), xkbmap, mountpoint));
+    if (!gucc::locale::set_xkbmap(xkbmap, mountpoint)) {
+        spdlog::error("Failed to set xkbmap: {}", xkbmap);
+    }
 #endif
 }
 
