@@ -51,6 +51,7 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default = true) n
 void install_refind() noexcept;
 void install_systemd_boot() noexcept;
 void install_limine() noexcept;
+void install_zfsbootmenu() noexcept;
 void uefi_bootloader(const std::string_view& bootloader) noexcept;
 void bios_bootloader(const std::string_view& bootloader) noexcept;
 void install_bootloader(const std::string_view& bootloader) noexcept;
@@ -135,7 +136,7 @@ inline std::size_t remove_all(std::string& inout, std::string_view what) noexcep
 constexpr inline auto bootloader_default_mount(std::string_view bootloader, std::string_view bios_mode) noexcept -> std::string_view {
     using namespace std::string_view_literals;
 
-    if (bootloader == "systemd-boot"sv || bootloader == "limine"sv || bios_mode == "BIOS"sv) {
+    if (bootloader == "systemd-boot"sv || bootloader == "limine"sv || bootloader == "zfsbootmenu"sv || bios_mode == "BIOS"sv) {
         return "/boot"sv;
     } else if (bootloader == "grub"sv || bootloader == "refind"sv) {
         return "/boot/efi"sv;
@@ -144,8 +145,17 @@ constexpr inline auto bootloader_default_mount(std::string_view bootloader, std:
 }
 
 // Get available bootloaders
-constexpr inline auto available_bootloaders(std::string_view bios_mode) noexcept -> std::vector<std::string_view> {
+// When is_zfs is true, only ZFSBootmenu is available (UEFI only)
+constexpr inline auto available_bootloaders(std::string_view bios_mode, bool is_zfs = false) noexcept -> std::vector<std::string_view> {
     using namespace std::string_view_literals;
+
+    if (is_zfs) {
+        // ZFSBootmenu is UEFI-only, for BIOS return empty (error case)
+        if (bios_mode == "BIOS"sv) {
+            return {};
+        }
+        return {"zfsbootmenu"sv};
+    }
 
     if (bios_mode == "BIOS"sv) {
         return {"grub"sv};

@@ -5,7 +5,8 @@
 #include "gucc/kernel_params.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <ranges>  // for ranges::*
+#include <filesystem>  // for create_directories, copy_file
+#include <ranges>      // for ranges::*
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -395,6 +396,129 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
         return false;
     }
 
+    return true;
+}
+
+auto install_zfsbootmenu(const ZfsBootMenuInstallConfig& config) noexcept -> bool {
+    const auto& mountpoint        = config.root_mountpoint;
+    const auto& efi_directory     = config.efi_directory;
+    const auto& boot_efi_path     = fmt::format(FMT_COMPILE("{}{}"), mountpoint, efi_directory);
+    const auto& zbm_config_dir    = fmt::format(FMT_COMPILE("{}/etc/zfsbootmenu"), mountpoint);
+    const auto& zbm_config_path   = fmt::format(FMT_COMPILE("{}/config.yaml"), zbm_config_dir);
+
+    // Create ZFSBootmenu configuration directory
+    std::error_code err{};
+    std::filesystem::create_directories(zbm_config_dir, err);
+    if (err) {
+        spdlog::error("Failed to create zfsbootmenu config directory {}: {}", zbm_config_dir, err.message());
+        return false;
+    }
+
+    // Generate ZFSBootmenu config.yaml
+    // Uses mkinitcpio (InitCPIO: true) as per CachyOS standard
+    const auto& zbm_config_content = fmt::format(FMT_COMPILE(R"(Global:
+  ManageImages: true
+  BootMountPoint: {}
+  InitCPIO: true
+  InitCPIOConfig: /etc/zfsbootmenu/mkinitcpio.conf
+Components:
+  Enabled: false
+EFI:
+  ImageDir: {}/EFI/zbm
+  Versions: false
+  Enabled: true
+Kernel:
+  CommandLine: zfsbootmenu quiet loglevel=0
+)"), efi_directory, efi_directory);
+
+    if (!file_utils::create_file_for_overwrite(zbm_config_path, zbm_config_content)) {
+        spdlog::error("Failed to write zfsbootmenu config to {}", zbm_config_path);
+        return false;
+    }
+
+    // Copy mkinitcpio.conf for ZFSBootmenu
+    const auto& zbm_mkinitcpio_path     = fmt::format(FMT_COMPILE("{}/etc/zfsbootmenu/mkinitcpio.conf"), mountpoint);
+    const auto& system_mkinitcpio_path  = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+
+    // Read existing mkinitcpio.conf and use it as a base for ZFSBootmenu
+    auto mkinitcpio_content = file_utils::read_whole_file(system_mkinitcpio_path);
+    if (mkinitcpio_content.empty()) {
+        // Use a default ZFS-focused mkinitcpio config
+        mkinitcpio_content = R"(# ZFSBootmenu mkinitcpio configuration
+MODULES=()
+BINARIES=()
+FILES=()
+HOOKS=(base udev autodetect modconf block keyboard zfs filesystems)
+)";
+    }
+
+    if (!file_utils::create_file_for_overwrite(zbm_mkinitcpio_path, mkinitcpio_content)) {
+        spdlog::error("Failed to write zfsbootmenu mkinitcpio config to {}", zbm_mkinitcpio_path);
+        return false;
+    }
+
+    // Create EFI directory for ZFSBootmenu images
+    const auto& zbm_efi_dir = fmt::format(FMT_COMPILE("{}/EFI/zbm"), boot_efi_path);
+    std::filesystem::create_directories(zbm_efi_dir, err);
+    if (err) {
+        spdlog::error("Failed to create ZFSBootmenu EFI directory {}: {}", zbm_efi_dir, err.message());
+        return false;
+    }
+
+    // Run generate-zbm to create the EFI image
+    if (!utils::arch_chroot_checked("generate-zbm"sv, mountpoint)) {
+        spdlog::error("Failed to run generate-zbm on mountpoint: {}", mountpoint);
+        return false;
+    }
+
+    // Create EFI boot entry using efibootmgr
+    const auto& efibootmgr_cmd = fmt::format(FMT_COMPILE("efibootmgr --create --disk /dev/$(lsblk -ndo PKNAME $(findmnt -n -o SOURCE {})) --part $(lsblk -ndo MAJ:MIN $(findmnt -n -o SOURCE {}) | cut -d: -f2) --loader '\\EFI\\zbm\\vmlinuz.EFI' --label 'ZFSBootmenu' --unicode"), efi_directory, efi_directory);
+    if (!utils::arch_chroot_checked(efibootmgr_cmd, mountpoint)) {
+        spdlog::warn("Failed to create EFI boot entry with efibootmgr - continuing anyway");
+        // Don't fail here, as the bootloader might still work
+    }
+
+    // Handle removable drive case
+    if (config.is_removable) {
+        // Create fallback boot directory
+        const auto& efi_boot_dir = fmt::format(FMT_COMPILE("{}/EFI/boot"), boot_efi_path);
+        std::filesystem::create_directories(efi_boot_dir, err);
+        if (err) {
+            spdlog::error("Failed to create EFI/boot directory {}: {}", efi_boot_dir, err.message());
+            return false;
+        }
+
+        // Copy the generated EFI image to the default boot location
+        const auto& zbm_efi_source = fmt::format(FMT_COMPILE("{}/vmlinuz.EFI"), zbm_efi_dir);
+        const auto& default_efi_path = fmt::format(FMT_COMPILE("{}/bootx64.efi"), efi_boot_dir);
+
+        std::filesystem::copy_file(zbm_efi_source, default_efi_path, std::filesystem::copy_options::overwrite_existing, err);
+        if (err) {
+            spdlog::error("Failed to copy ZFSBootmenu EFI to default location: {}", err.message());
+            return false;
+        }
+
+        // Remove autodetect hook for removable drives
+        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+        auto initcpio = detail::Initcpio{initcpio_filename};
+        initcpio.remove_hook("autodetect");
+        spdlog::info("'Autodetect' hook was removed for removable drive");
+
+        // Regenerate ZFSBootmenu image without autodetect
+        if (!utils::arch_chroot_checked("generate-zbm"sv, mountpoint)) {
+            spdlog::error("Failed to regenerate zbm after removing autodetect hook");
+            return false;
+        }
+
+        // Copy again after regeneration
+        std::filesystem::copy_file(zbm_efi_source, default_efi_path, std::filesystem::copy_options::overwrite_existing, err);
+        if (err) {
+            spdlog::error("Failed to copy regenerated ZFSBootmenu EFI: {}", err.message());
+            return false;
+        }
+    }
+
+    spdlog::info("ZFSBootmenu was successfully installed");
     return true;
 }
 

@@ -99,7 +99,19 @@ auto select_filesystem() noexcept -> std::string {
     return selected_fs;
 }
 
-auto select_bootloader(std::string_view sys_info) noexcept -> std::string {
+auto select_bootloader(std::string_view sys_info, bool is_zfs = false) noexcept -> std::string {
+    // Check for ZFS - ZFSBootmenu is the only option
+    if (is_zfs) {
+        if (sys_info == "BIOS"sv) {
+            // ZFS is not supported on BIOS - show error
+            spdlog::error("ZFS is not supported on BIOS systems. ZFSBootmenu requires UEFI.");
+            static constexpr auto error_msg = "\nZFS is not supported on BIOS systems.\nZFSBootmenu requires UEFI.\n"sv;
+            tui::detail::msgbox_widget(error_msg, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+            return {};
+        }
+        return "zfsbootmenu";
+    }
+
     const auto& menu_entries = [](const auto& bios_mode) -> std::vector<std::string> {
         const auto& available_bootloaders = utils::available_bootloaders(bios_mode);
 
@@ -432,9 +444,15 @@ UserSelections gather_user_selections() noexcept {
 
     // We must have bootloader before running partitioning step
     if (bootloader.empty()) {
-        const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
-        selections.bootloader = select_bootloader(sys_info);
-        bootloader            = selections.bootloader;
+        const auto& sys_info = std::get<std::string>(config_data["SYSTEM"]);
+        const auto& is_zfs   = std::get<std::int32_t>(config_data["ZFS"]);
+        selections.bootloader = select_bootloader(sys_info, is_zfs == 1);
+        // If bootloader selection failed (e.g., ZFS on BIOS), return empty selections
+        if (selections.bootloader.empty()) {
+            spdlog::error("Failed to select bootloader - ZFS requires UEFI");
+            return selections;
+        }
+        bootloader = selections.bootloader;
     } else {
         selections.bootloader = bootloader;
     }

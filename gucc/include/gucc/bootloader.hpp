@@ -82,6 +82,13 @@ struct RefindInstallConfig final {
     const std::vector<std::string>& kernel_params;
 };
 
+struct ZfsBootMenuInstallConfig final {
+    bool is_removable{};
+    std::string_view root_mountpoint;
+    std::string_view efi_directory;
+    std::string_view zpool_name;
+};
+
 // Generate grub config into string
 auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string;
 
@@ -108,6 +115,9 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
 
 // Generate Limine config into system
 auto gen_limine_config(const std::vector<std::string>& kernel_params) noexcept -> std::string;
+
+// Installs & configures ZFSBootmenu on system
+auto install_zfsbootmenu(const ZfsBootMenuInstallConfig& config) noexcept -> bool;
 
 }  // namespace gucc::bootloader
 

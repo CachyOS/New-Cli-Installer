@@ -1103,6 +1103,36 @@ void install_limine() noexcept {
     spdlog::info("Limine was installed");
 }
 
+void install_zfsbootmenu() noexcept {
+    spdlog::info("Installing ZFSBootmenu...");
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+
+    // Install required packages for ZFSBootmenu
+    utils::install_from_pkglist("zfsbootmenu efibootmgr");
+
+    // Get zpool name from mounted root
+    const auto& zpool_name = gucc::utils::exec("zfs list -H -o name / 2>/dev/null | cut -d'/' -f1");
+
+    const gucc::bootloader::ZfsBootMenuInstallConfig zbm_install_config{
+        .is_removable    = utils::is_volume_removable(),
+        .root_mountpoint = mountpoint,
+        .efi_directory   = uefi_mount,
+        .zpool_name      = zpool_name,
+    };
+
+    // Start ZFSBootmenu install & configuration
+    if (!gucc::bootloader::install_zfsbootmenu(zbm_install_config)) {
+        spdlog::error("Failed to install ZFSBootmenu");
+        return;
+    }
+#endif
+    spdlog::info("ZFSBootmenu was installed");
+}
+
 void uefi_bootloader(const std::string_view& bootloader) noexcept {
 #ifdef NDEVENV
     // Ensure again that efivarfs is mounted
@@ -1127,6 +1157,8 @@ void uefi_bootloader(const std::string_view& bootloader) noexcept {
         utils::install_systemd_boot();
     } else if (bootloader == "limine"sv) {
         utils::install_limine();
+    } else if (bootloader == "zfsbootmenu"sv) {
+        utils::install_zfsbootmenu();
     } else {
         spdlog::error("Unknown bootloader!");
     }

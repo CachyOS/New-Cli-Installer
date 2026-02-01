@@ -523,6 +523,20 @@ void install_systemd_boot() noexcept {
     std::this_thread::sleep_for(std::chrono::seconds(2));
 }
 
+void install_zfsbootmenu() noexcept {
+    static constexpr auto content = "\nThis installs ZFSBootmenu, a bootloader designed specifically for ZFS.\nIt uses mkinitcpio for image generation and provides boot environment selection.\n"sv;
+    const auto& do_install = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    /* clang-format off */
+    if (!do_install) { return; }
+    /* clang-format on */
+
+    detail::infobox_widget("\nInstalling ZFSBootmenu...\n"sv);
+    utils::install_zfsbootmenu();
+
+    detail::infobox_widget("\nZFSBootmenu was successfully installed\n"sv);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+}
+
 void uefi_bootloader() noexcept {
 #ifdef NDEVENV
     // Ensure again that efivarfs is mounted
@@ -537,6 +551,18 @@ void uefi_bootloader() noexcept {
     }
 #endif
 
+    // Check if ZFS is in use - only ZFSBootmenu is available for ZFS
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& is_zfs    = std::get<std::int32_t>(config_data["ZFS"]);
+
+    if (is_zfs == 1) {
+        // ZFS requires ZFSBootmenu - auto-select and install
+        config_data["BOOTLOADER"] = std::string{"zfsbootmenu"};
+        tui::install_zfsbootmenu();
+        return;
+    }
+
     static constexpr auto bootloaderInfo        = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.\nLimine is lightweight bootloader with Btrfs snapshots loading support."sv;
     const std::vector<std::string> menu_entries = {
         "grub",
@@ -547,8 +573,6 @@ void uefi_bootloader() noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
-        auto* config_instance           = Config::instance();
-        auto& config_data               = config_instance->data();
         const auto& selected_bootloader = menu_entries[static_cast<std::size_t>(selected)];
         config_data["BOOTLOADER"]       = selected_bootloader;
 
@@ -740,6 +764,18 @@ void config_base_menu() noexcept {
 
 // Grub auto-detects installed kernel
 void bios_bootloader() {
+    // Check if ZFS is in use - ZFS is not supported on BIOS
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& is_zfs    = std::get<std::int32_t>(config_data["ZFS"]);
+
+    if (is_zfs == 1) {
+        // ZFS requires UEFI for ZFSBootmenu - show error and return
+        static constexpr auto error_msg = "\nZFS is not supported on BIOS systems.\nZFSBootmenu requires UEFI.\n\nPlease reinstall with UEFI enabled.\n"sv;
+        detail::msgbox_widget(error_msg, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        return;
+    }
+
     static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step."sv;
     const std::vector<std::string> menu_entries = {
         "grub",
@@ -759,8 +795,6 @@ void bios_bootloader() {
     if (!tui::select_device()) { return; }
     /* clang-format on */
 
-    auto* config_instance     = Config::instance();
-    auto& config_data         = config_instance->data();
     config_data["BOOTLOADER"] = selected_bootloader;
     utils::bios_bootloader(selected_bootloader);
 }
