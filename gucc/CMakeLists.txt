@@ -47,6 +47,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/package_list.cpp include/gucc/package_list.hpp
    src/kernel_params.cpp include/gucc/kernel_params.hpp
    src/chwd.cpp include/gucc/chwd.hpp
+   src/timezone.cpp include/gucc/timezone.hpp
    ${GUCC_LOGGER_FILES}
    #src/disk.cpp src/disk.hpp
    )

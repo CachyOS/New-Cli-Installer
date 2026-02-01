@@ -32,6 +32,7 @@ gucc_lib = library('gucc',
         'src/package_list.cpp',
         'src/kernel_params.cpp',
         'src/chwd.cpp',
+        'src/timezone.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps
