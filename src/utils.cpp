@@ -27,6 +27,7 @@
 #include "gucc/systemd_services.hpp"
 #include "gucc/umount_partitions.hpp"
 #include "gucc/user.hpp"
+#include "gucc/timezone.hpp"
 
 #include <cerrno>       // for errno, strerror
 #include <cstdint>      // for int32_t
@@ -433,7 +434,13 @@ void set_keymap(const std::string_view& selected_keymap) noexcept {
 void set_timezone(const std::string_view& timezone) noexcept {
     spdlog::info("Timezone is set to {}", timezone);
 #ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("ln -sf /usr/share/zoneinfo/{} /etc/localtime"), timezone), false);
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    if (!gucc::timezone::set_timezone(timezone, mountpoint)) {
+        spdlog::error("Failed to set timezone: {}", timezone);
+    }
 #endif
 }
 

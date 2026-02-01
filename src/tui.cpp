@@ -17,6 +17,7 @@
 #include "gucc/partition.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/swap.hpp"
+#include "gucc/timezone.hpp"
 #include "gucc/zfs.hpp"
 
 #include <algorithm>    // for copy
@@ -234,8 +235,7 @@ bool set_timezone() noexcept {
     std::string zone{};
     {
         auto screen           = ScreenInteractive::Fullscreen();
-        const auto& cmd       = gucc::utils::exec(R"(cat /usr/share/zoneinfo/zone.tab | awk '{print $3}' | grep '/' | sed 's/\/.*//g' | sort -ud)");
-        const auto& zone_list = gucc::utils::make_multiline(cmd);
+        const auto& zone_list = gucc::timezone::get_timezone_regions();
 
         std::int32_t selected{};
         auto ok_callback = [&] {
@@ -254,8 +254,7 @@ bool set_timezone() noexcept {
     std::string subzone{};
     {
         auto screen           = ScreenInteractive::Fullscreen();
-        const auto& cmd       = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /usr/share/zoneinfo/zone.tab | {1} | grep \"{0}/\" | sed \"s/{0}\\///g\" | sort -ud"), zone, "awk '{print $3}'"));
-        const auto& city_list = gucc::utils::make_multiline(cmd);
+        const auto& city_list = gucc::timezone::get_timezone_zones(zone);
 
         std::int32_t selected{};
         auto ok_callback = [&] {
