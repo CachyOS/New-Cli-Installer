@@ -20,6 +20,9 @@ auto get_possible_locales() noexcept -> std::vector<std::string>;
 // Set X11 keyboard layout
 auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> bool;
 
+// Get available X11 keymap layouts from localectl
+auto get_x11_keymap_layouts() noexcept -> std::vector<std::string>;
+
 }  // namespace gucc::locale
 
 #endif  // LOCALE_HPP

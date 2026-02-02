@@ -155,11 +155,18 @@ void set_hostname() noexcept {
 void set_locale() noexcept {
     const auto& locales = gucc::locale::get_possible_locales();
 
+    std::int32_t selected{};
+    for (std::size_t i = 0; i < locales.size(); ++i) {
+        if (locales[i] == "en_US.UTF-8"sv) {
+            selected = static_cast<std::int32_t>(i);
+            break;
+        }
+    }
+
     // System language
     std::string locale{};
     {
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{95};
+        auto screen      = ScreenInteractive::Fullscreen();
         auto ok_callback = [&] {
             locale = locales[static_cast<std::size_t>(selected)];
             screen.ExitLoopClosure()();
@@ -178,17 +185,25 @@ void set_locale() noexcept {
 
 // Set keymap for X11
 void set_xkbmap() noexcept {
-    static constexpr auto keymaps_xkb = "af al am at az ba bd be bg br bt bw by ca cd ch cm cn cz de dk ee es et eu fi fo fr gb ge gh gn gr hr hu ie il in iq ir is it jp ke kg kh kr kz la lk lt lv ma md me mk ml mm mn mt mv ng nl no np pc ph pk pl pt ro rs ru se si sk sn sy tg th tj tm tr tw tz ua us uz vn za"sv;
-    const auto& xkbmap_list           = gucc::utils::make_multiline(keymaps_xkb, false, ' ');
+    const auto& xkbmap_list = gucc::locale::get_x11_keymap_layouts();
+    if (xkbmap_list.empty()) {
+        detail::msgbox_widget("\nUnable to get X11 keymap layouts.\n"sv);
+        return;
+    }
 
     auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{86};
+    std::int32_t selected{};
+    for (std::size_t i = 0; i < xkbmap_list.size(); ++i) {
+        if (xkbmap_list[i] == "us"sv) {
+            selected = static_cast<std::int32_t>(i);
+            break;
+        }
+    }
     bool success{};
     std::string xkbmap_choice{};
     auto ok_callback = [&] {
-        const auto& keymap = xkbmap_list[static_cast<std::size_t>(selected)];
-        xkbmap_choice      = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | sed 's/_.*//'"), keymap));
-        success            = true;
+        xkbmap_choice = xkbmap_list[static_cast<std::size_t>(selected)];
+        success       = true;
         screen.ExitLoopClosure()();
     };
 

@@ -3,7 +3,9 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <filesystem>
+#include <algorithm>   // for transform
+#include <filesystem>  // for path
+#include <ranges>      // for ranges::*
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -95,6 +97,15 @@ EndSection
 
     spdlog::info("X11 keyboard layout set to '{}'", xkbmap);
     return true;
+}
+
+auto get_x11_keymap_layouts() noexcept -> std::vector<std::string> {
+    const auto& layouts = utils::exec("localectl list-x11-keymap-layouts 2>/dev/null");
+    if (layouts.empty()) {
+        spdlog::warn("Cannot list X11 keymap layouts");
+        return {};
+    }
+    return utils::make_multiline(layouts);
 }
 
 }  // namespace gucc::locale
