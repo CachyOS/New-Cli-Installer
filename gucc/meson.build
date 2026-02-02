@@ -33,6 +33,7 @@ gucc_lib = library('gucc',
         'src/kernel_params.cpp',
         'src/chwd.cpp',
         'src/timezone.cpp',
+        'src/systemd_repart.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps

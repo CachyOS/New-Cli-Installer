@@ -125,3 +125,11 @@ executable(
   link_with: [gucc_lib, doctest_main_lib],
   include_directories: [include_directories('../include')],
   install: false)
+
+executable(
+  'test-systemd_repart',
+  files('unit-systemd_repart.cpp'),
+  dependencies: [deps, doctest],
+  link_with: [gucc_lib, doctest_main_lib],
+  include_directories: [include_directories('../include')],
+  install: false)
