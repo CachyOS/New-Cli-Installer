@@ -19,15 +19,16 @@
 #include "gucc/kernel_params.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/luks.hpp"
+#include "gucc/lvm.hpp"
 #include "gucc/package_list.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/repos.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
+#include "gucc/timezone.hpp"
 #include "gucc/umount_partitions.hpp"
 #include "gucc/user.hpp"
-#include "gucc/timezone.hpp"
 
 #include <cerrno>       // for errno, strerror
 #include <cstdint>      // for int32_t
@@ -587,11 +588,9 @@ void find_partitions() noexcept {
 }
 
 void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
-    const auto& lvm_pv = gucc::utils::exec("pvs -o pv_name --noheading 2>/dev/null");
-    const auto& lvm_vg = gucc::utils::exec("vgs -o vg_name --noheading 2>/dev/null");
-    const auto& lvm_lv = gucc::utils::exec("lvs -o vg_name,lv_name --noheading --separator - 2>/dev/null");
+    const auto& lvm_info = gucc::lvm::detect_lvm();
 
-    if (lvm_lv.empty() || lvm_vg.empty() || lvm_pv.empty()) {
+    if (!lvm_info.is_active()) {
         return;
     }
 
@@ -600,14 +599,8 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
     }
 
 #ifdef NDEVENV
-    if (!gucc::utils::exec_checked("modprobe -v dm-mod &>>/tmp/cachyos-install.log")) {
-        spdlog::error("Failed to add module");
-    }
-    if (!gucc::utils::exec_checked("vgscan -v 1>/dev/null 2>>/tmp/cachyos-install.log")) {
-        spdlog::error("Failed to search for all volume group");
-    }
-    if (!gucc::utils::exec_checked("vgchange -ay -v 1>/dev/null 2>>/tmp/cachyos-install.log")) {
-        spdlog::error("Failed to activate LVs");
+    if (!gucc::lvm::activate_lvm()) {
+        spdlog::error("Failed to activate LVM");
     }
 #endif
 }
