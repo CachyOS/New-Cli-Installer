@@ -133,3 +133,11 @@ executable(
   link_with: [gucc_lib, doctest_main_lib],
   include_directories: [include_directories('../include')],
   install: false)
+
+executable(
+  'test-lvm',
+  files('unit-lvm.cpp'),
+  dependencies: [deps, doctest],
+  link_with: [gucc_lib, doctest_main_lib],
+  include_directories: [include_directories('../include')],
+  install: false)
