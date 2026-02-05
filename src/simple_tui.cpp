@@ -8,6 +8,7 @@
 // import gucc
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
@@ -300,6 +301,9 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
     }
 
     utils::dump_partitions_to_log(partitions);
+    const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
+    const auto& sys_info    = std::get<std::string>(config_data["SYSTEM"]);
+    spdlog::info("{}\n", gucc::disk::preview_partition_schema(partitions, device_info, sys_info == "UEFI"sv));
     return true;
 }
 
