@@ -58,6 +58,13 @@ struct DefaultPartitionSchemaConfig final {
     constexpr bool operator<=>(const DefaultPartitionSchemaConfig&) const = default;
 };
 
+/// @brief Partition schema validation result
+struct PartitionSchemaValidation final {
+    bool is_valid{false};
+    std::vector<std::string> errors{};
+    std::vector<std::string> warnings{};
+};
+
 /// @brief Convert FilesystemType enum to string representation
 /// @param fs_type The filesystem type to convert
 /// @return String representation of the filesystem type

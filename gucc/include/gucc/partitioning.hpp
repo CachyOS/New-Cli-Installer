@@ -34,6 +34,20 @@ auto make_clean_partschema(std::string_view device, const std::vector<fs::Partit
 /// @return Vector of Partition objects representing the schema
 auto generate_partition_schema_from_config(std::string_view device, const fs::DefaultPartitionSchemaConfig& config, bool is_efi) noexcept -> std::vector<fs::Partition>;
 
+/// @brief Validates a partition schema without applying it
+/// @param partitions The partition schema to validate
+/// @param device The target device
+/// @param is_efi Whether the system is UEFI
+/// @return report with any errors or warnings
+auto validate_partition_schema(const std::vector<fs::Partition>& partitions, std::string_view device, bool is_efi) noexcept -> fs::PartitionSchemaValidation;
+
+/// @brief Generates a human-readable preview of the partition schema
+/// @param partitions The partition schema to preview
+/// @param device The target device
+/// @param is_efi Whether the system is UEFI
+/// @return Formatted string showing what will be created
+auto preview_partition_schema(const std::vector<fs::Partition>& partitions, std::string_view device, bool is_efi) noexcept -> std::string;
+
 }  // namespace gucc::disk
 
 #endif  // PARTITIONING_HPP

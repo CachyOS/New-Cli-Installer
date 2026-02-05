@@ -229,3 +229,97 @@ TEST_CASE("partition schema from config test")
     }
 }
 
+TEST_CASE("partition schema validation test")
+{
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
+    SECTION("valid uefi schema")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/sda1"s, .size = "512MiB"s},
+            gucc::fs::Partition{.fstype = "ext4"s, .mountpoint = "/"s, .device = "/dev/sda2"s},
+        };
+        const auto& result = gucc::disk::validate_partition_schema(partitions, "/dev/sda"sv, true);
+        REQUIRE(result.is_valid);
+        REQUIRE(result.errors.empty());
+    }
+    SECTION("valid uefi schema btrfs subvolumes")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@home"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/var/cache"s, .uuid_str = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults,noatime,compress=zstd,space_cache=v2,commit=120"s, .subvolume = "/@cache"s},
+            gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .size = "2G", .mount_opts = "defaults,noatime"s},
+        };
+        const auto& result = gucc::disk::validate_partition_schema(partitions, "/dev/nvme0n1"sv, true);
+        REQUIRE(result.is_valid);
+        REQUIRE(result.errors.empty());
+    }
+    SECTION("invalid - empty schema")
+    {
+        const std::vector<gucc::fs::Partition> partitions{};
+        const auto& result = gucc::disk::validate_partition_schema(partitions, "/dev/sda"sv, true);
+        REQUIRE_FALSE(result.is_valid);
+        REQUIRE_FALSE(result.errors.empty());
+    }
+    SECTION("invalid - no root partition")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/sda1"s},
+        };
+        const auto& result = gucc::disk::validate_partition_schema(partitions, "/dev/sda"sv, true);
+        REQUIRE_FALSE(result.is_valid);
+    }
+    SECTION("invalid - uefi without efi partition")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "ext4"s, .mountpoint = "/"s, .device = "/dev/sda1"s},
+        };
+        const auto& result = gucc::disk::validate_partition_schema(partitions, "/dev/sda"sv, true);
+        REQUIRE_FALSE(result.is_valid);
+    }
+}
+
+TEST_CASE("partition schema preview test")
+{
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
+    SECTION("preview contains device and partitions")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/sda1"s, .size = "512MiB"s},
+            gucc::fs::Partition{.fstype = "ext4"s, .mountpoint = "/"s, .device = "/dev/sda2"s},
+        };
+        const auto& preview = gucc::disk::preview_partition_schema(partitions, "/dev/sda"sv, true);
+        REQUIRE(preview.contains("/dev/sda"sv));
+        REQUIRE(preview.contains("UEFI"sv));
+        REQUIRE(preview.contains("/dev/sda1"sv));
+        REQUIRE(preview.contains("/dev/sda2"sv));
+        REQUIRE(preview.contains("vfat"sv));
+        REQUIRE(preview.contains("ext4"sv));
+        REQUIRE(preview.contains("label: gpt"sv));
+    }
+    SECTION("preview shows subvolumes")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/sda1"s, .subvolume = "/@"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/home"s, .device = "/dev/sda1"s, .subvolume = "/@home"s},
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/sda2"s, .size = "512MiB"s},
+        };
+        const auto& preview = gucc::disk::preview_partition_schema(partitions, "/dev/sda"sv, true);
+        REQUIRE(preview.contains("Subvolume"sv));
+        REQUIRE(preview.contains("/@"sv));
+        REQUIRE(preview.contains("/@home"sv));
+    }
+}
+

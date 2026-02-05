@@ -2,7 +2,7 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/partition_config.hpp"
 
-#include <algorithm>    // for sort, unique_copy
+#include <algorithm>    // for sort, unique_copy, any_of, count_if
 #include <ranges>       // for ranges::*
 #include <string_view>  // for string_view
 
@@ -211,6 +211,106 @@ auto generate_partition_schema_from_config(std::string_view device, const fs::De
     partitions.emplace_back(std::move(root_partition));
 
     return partitions;
+}
+
+auto validate_partition_schema(const std::vector<fs::Partition>& partitions, std::string_view device, bool is_efi) noexcept -> fs::PartitionSchemaValidation {
+    fs::PartitionSchemaValidation result{};
+    result.is_valid = true;
+
+    // what is that device?? where did you lose it
+    if (device.empty()) {
+        result.warnings.emplace_back("No target device specified");
+    }
+
+    if (partitions.empty()) {
+        result.is_valid = false;
+        result.errors.emplace_back("Partition schema is empty");
+        return result;
+    }
+
+    // Check for root partition
+    bool has_root = std::ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/"sv; });
+    if (!has_root) {
+        result.is_valid = false;
+        result.errors.emplace_back("No root (/) partition defined");
+    }
+
+    // Check for EFI partition on UEFI systems
+    bool has_efi = std::ranges::any_of(partitions, [](auto&& part) { return part.fstype == "vfat"sv || part.fstype == "fat32"sv || part.fstype == "fat16"sv; });
+    if (is_efi && !has_efi) {
+        result.is_valid = false;
+        result.errors.emplace_back("UEFI system requires an EFI partition (vfat/fat32)");
+    }
+
+    // Invalid partition sizes
+    auto empty_size_count = std::ranges::count_if(partitions, [](auto&& part) { return part.size.empty() && !part.subvolume; });
+    if (empty_size_count > 1) {
+        result.warnings.emplace_back("Multiple partitions without specified size - only the last will use remaining space");
+    }
+
+    return result;
+}
+
+auto preview_partition_schema(const std::vector<fs::Partition>& partitions, std::string_view device, bool is_efi) noexcept -> std::string {
+    std::string preview{};
+
+    // Header
+    preview += fmt::format(FMT_COMPILE("=== Partition Schema for {} ===\n"), device);
+    preview += fmt::format(FMT_COMPILE("Mode: {}\n\n"), is_efi ? "UEFI (GPT)" : "BIOS (MBR)");
+
+    // Partition table header
+    preview += fmt::format(FMT_COMPILE("{:<20} {:<12} {:<12} {:<15} {}\n"),
+        "Device", "Size", "Filesystem", "Mount Point", "Options");
+    preview += std::string(80, '-') + "\n";
+
+    for (const auto& part : partitions) {
+        // skip subvolumes
+        if (part.subvolume) {
+            continue;
+        }
+        const auto& size_str  = part.size.empty() ? "<remaining>" : part.size;
+        const auto& mount_str = part.mountpoint.empty() ? "-" : part.mountpoint;
+        const auto& opts_str  = part.mount_opts.empty() ? "defaults" : part.mount_opts;
+
+        // lets truncate long options..
+        const auto& display_opts = (opts_str.size() > 30) ? opts_str.substr(0, 27) + "..." : opts_str;
+
+        preview += fmt::format(FMT_COMPILE("{:<20} {:<12} {:<12} {:<15} {}\n"),
+            part.device, size_str, part.fstype, mount_str, display_opts);
+    }
+
+    // pretty-print the subvols
+    bool has_subvols = false;
+    for (const auto& part : partitions) {
+        if (!part.subvolume) {
+            continue;
+        }
+        if (!has_subvols) {
+            preview += "\nBtrfs Subvolumes:\n";
+            preview += fmt::format(FMT_COMPILE("{:<20} {:<15}\n"), "Subvolume", "Mount Point");
+            preview += std::string(40, '-') + "\n";
+            has_subvols = true;
+        }
+        preview += fmt::format(FMT_COMPILE("{:<20} {:<15}\n"),
+            *part.subvolume, part.mountpoint);
+    }
+
+    // insert informative stuff that we might want at hand
+    const auto& validation = validate_partition_schema(partitions, device, is_efi);
+    if (!validation.errors.empty() || !validation.warnings.empty()) {
+        preview += "\n";
+        for (const auto& error : validation.errors) {
+            preview += fmt::format(FMT_COMPILE("[ERROR] {}\n"), error);
+        }
+        for (const auto& warning : validation.warnings) {
+            preview += fmt::format(FMT_COMPILE("[WARNING] {}\n"), warning);
+        }
+    }
+
+    preview += "\n--- sfdisk commands ---\n";
+    preview += gen_sfdisk_command(partitions, is_efi);
+
+    return preview;
 }
 
 }  // namespace gucc::disk
