@@ -17,6 +17,7 @@
 #include "gucc/partition.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/swap.hpp"
+#include "gucc/system_query.hpp"
 #include "gucc/timezone.hpp"
 #include "gucc/zfs.hpp"
 
@@ -970,17 +971,15 @@ auto select_mount_opts(std::string_view partition, std::string_view fstype, bool
         return "";
     }
 
-    const auto& format_name      = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), partition));
-    const auto& format_device    = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), format_name, "awk '/disk/ {print $1}'"));
-    const auto& rotational_queue = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), format_device)) == "1"sv);
+    const bool is_ssd = gucc::disk::is_device_ssd(partition);
 
     std::unique_ptr<bool[]> fs_opts_state{new bool[fs_opts.size()]{false}};
     for (size_t i = 0; i < fs_opts.size(); ++i) {
         const auto& fs_opt = fs_opts[i];
         auto& fs_opt_state = fs_opts_state[i];
-        if (rotational_queue) {
+        if (!is_ssd) {
             fs_opt_state = ((fs_opt == "autodefrag"sv)
-                || (fs_opt == "compress=zlip"sv)
+                || (fs_opt == "compress=zlib"sv)
                 || (fs_opt == "nossd"sv));
         } else {
             fs_opt_state = ((fs_opt == "compress=lzo"sv)
