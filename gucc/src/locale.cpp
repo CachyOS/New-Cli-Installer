@@ -64,9 +64,37 @@ auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -
     return true;
 }
 
+auto parse_locale_gen(std::string_view content) noexcept -> std::vector<std::string> {
+    if (content.empty()) {
+        return {};
+    }
+
+    return utils::make_multiline_view(content)
+        | std::ranges::views::filter([](std::string_view line) {
+              // Skip lines that are just comments or empty
+              auto trimmed = utils::ltrim(line);
+              if (trimmed.empty() || trimmed.starts_with("#  "sv)) {
+                  return false;
+              }
+              return trimmed.contains("UTF-8"sv);
+          })
+        | std::ranges::views::transform([](std::string_view line) {
+              // Remove leading # if present and get first word
+              auto trimmed = utils::ltrim(line);
+              if (trimmed.starts_with('#')) {
+                  trimmed = utils::ltrim(trimmed.substr(1));
+              }
+              // Get first word (locale name)
+              auto space_pos = trimmed.find(' ');
+              return std::string{trimmed.substr(0, space_pos)};
+          })
+        | std::ranges::views::filter([](const auto& s) { return !s.empty(); })
+        | std::ranges::to<std::vector<std::string>>();
+}
+
 auto get_possible_locales() noexcept -> std::vector<std::string> {
-    const auto& locales = utils::exec("cat /etc/locale.gen | grep -v '#  ' | sed 's/#//g' | awk '/UTF-8/ {print $1}'");
-    return utils::make_multiline(locales);
+    const auto& locales = utils::exec("cat /etc/locale.gen 2>/dev/null");
+    return parse_locale_gen(locales);
 }
 
 auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> bool {

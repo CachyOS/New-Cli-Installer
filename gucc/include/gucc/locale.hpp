@@ -23,6 +23,11 @@ auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -
 // Get available X11 keymap layouts from localectl
 auto get_x11_keymap_layouts() noexcept -> std::vector<std::string>;
 
+/// @brief Parse locale.gen content and extract UTF-8 locales
+/// @param content Raw content of /etc/locale.gen
+/// @return vector of locale names
+auto parse_locale_gen(std::string_view content) noexcept -> std::vector<std::string>;
+
 }  // namespace gucc::locale
 
 #endif  // LOCALE_HPP

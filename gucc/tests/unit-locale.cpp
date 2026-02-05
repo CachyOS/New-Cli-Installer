@@ -108,3 +108,73 @@ TEST_CASE("locale test")
         fs::remove_all(folder_testpath);
     }
 }
+
+TEST_CASE("parse_locale_gen test")
+{
+    using gucc::locale::parse_locale_gen;
+
+    SECTION("empty input")
+    {
+        auto result = parse_locale_gen(""sv);
+        CHECK(result.empty());
+    }
+    SECTION("commented UTF-8 locales")
+    {
+        constexpr auto content = R"(#en_US.UTF-8 UTF-8
+#de_DE.UTF-8 UTF-8
+#ru_RU.UTF-8 UTF-8
+)"sv;
+        auto result = parse_locale_gen(content);
+        REQUIRE(result.size() == 3);
+        CHECK(result[0] == "en_US.UTF-8");
+        CHECK(result[1] == "de_DE.UTF-8");
+        CHECK(result[2] == "ru_RU.UTF-8");
+    }
+    SECTION("uncommented locale")
+    {
+        constexpr auto content = R"(en_US.UTF-8 UTF-8
+)"sv;
+        auto result = parse_locale_gen(content);
+        REQUIRE(result.size() == 1);
+        CHECK(result[0] == "en_US.UTF-8");
+    }
+    SECTION("filters out non UTF-8 locales")
+    {
+        constexpr auto content = R"(#en_US ISO-8859-1
+#en_US.UTF-8 UTF-8
+#de_DE ISO-8859-1
+#ru_RU UTF-8
+)"sv;
+        auto result = parse_locale_gen(content);
+        REQUIRE(result.size() == 2);
+        CHECK(result[0] == "en_US.UTF-8");
+        CHECK(result[1] == "ru_RU");
+    }
+    SECTION("skips header comments")
+    {
+        constexpr auto content = R"(# Configuration file for locale-gen
+# This is a comment line that should be skip
+#  Another comment with leading space
+#en_US.UTF-8 UTF-8
+)"sv;
+        auto result = parse_locale_gen(content);
+        REQUIRE(result.size() == 1);
+        CHECK(result[0] == "en_US.UTF-8");
+    }
+    SECTION("mixed content")
+    {
+        constexpr auto content = R"(# locale.gen header
+#  Comment line
+#aa_DJ.UTF-8 UTF-8
+#aa_DJ ISO-8859-1
+en_US.UTF-8 UTF-8
+#ru_RU.UTF-8 UTF-8
+#ru_RU ISO-8859-5
+)"sv;
+        auto result = parse_locale_gen(content);
+        REQUIRE(result.size() == 3);
+        CHECK(result[0] == "aa_DJ.UTF-8");
+        CHECK(result[1] == "en_US.UTF-8");
+        CHECK(result[2] == "ru_RU.UTF-8");
+    }
+}
