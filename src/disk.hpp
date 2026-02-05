@@ -18,7 +18,7 @@ auto lvm_show_vg() noexcept -> std::vector<std::string>;
 [[nodiscard]] bool zfs_create_zpool(const std::string_view& partition, const std::string_view& pool_name) noexcept;
 
 // Other filesystems
-void select_filesystem(const std::string_view& file_sys) noexcept;
+void select_filesystem(std::string_view file_sys) noexcept;
 
 // Available mount opts
 auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string>;

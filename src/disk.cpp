@@ -8,10 +8,12 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/system_query.hpp"
 #include "gucc/zfs.hpp"
 
-#include <algorithm>   // for find_if
+#include <algorithm>   // for find_if, transform
 #include <filesystem>  // for create_directories
 #include <ranges>      // for ranges::*
 
@@ -148,20 +150,15 @@ void mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexce
         return;
     }
 
-    // Set mount options
-    const auto& part_dev_name    = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | rev | cut -d/ -f1 | rev"), root_part->device));
-    const auto& device_name      = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), part_dev_name, "awk '/disk/ {print $1}'"sv));
-    const auto& rotational_queue = (gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/queue/rotational"), device_name)) == "1"sv);
+    const bool is_ssd   = gucc::disk::is_device_ssd(root_part->device);
+    const auto& fs_opts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::Btrfs, is_ssd);
 
-    std::string fs_opts{};
-    if (rotational_queue) {
-        fs_opts = "autodefrag,compress=zlib,noatime,nossd,commit=120"sv;
-    } else {
-        fs_opts = "compress=lzo,noatime,space_cache,ssd,commit=120"sv;
-    }
+    auto* config_instance       = Config::instance();
+    auto& config_data           = config_instance->data();
+    const auto& root_mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    spdlog::debug("mount_existing_subvols: opts:={}; ssd:={}; {}", fs_opts, is_ssd, root_mountpoint);
+
 #ifdef NDEVENV
-    const auto root_mountpoint = "/mnt"sv;
-
     gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list {} 2>/dev/null | cut -d' ' -f9 > /tmp/.subvols"), root_mountpoint), true);
     if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint))) {
         spdlog::error("Failed to unmount {}", root_mountpoint);
@@ -195,8 +192,8 @@ void mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexce
 
     // need to find it again, due to modifying the parts
     root_part = find_root_btrfs_part(partitions);
-    utils::dump_partition_to_log(*root_part);
 #endif
+    utils::dump_partition_to_log(*root_part);
 }
 
 std::vector<std::string> lvm_show_vg() noexcept {
@@ -294,48 +291,47 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
 }
 
 // Other filesystems
-void select_filesystem(const std::string_view& file_sys) noexcept {
+void select_filesystem(std::string_view file_sys) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
     config_data["FILESYSTEM_NAME"] = std::string{file_sys.data()};
 
-    const auto& available_mount_opts = utils::get_available_mount_opts(file_sys);
-    if (file_sys == "btrfs"sv) {
-        config_data["FILESYSTEM"] = "mkfs.btrfs -f";
-        config_data["fs_opts"]    = available_mount_opts;
-#ifdef NDEVENV
-        gucc::utils::exec("modprobe btrfs"sv);
-#endif
-    } else if (file_sys == "ext4"sv) {
-        config_data["FILESYSTEM"] = "mkfs.ext4 -q";
-        config_data["fs_opts"]    = available_mount_opts;
-    } else if (file_sys == "f2fs"sv) {
-        config_data["FILESYSTEM"] = "mkfs.f2fs -q";
-        config_data["fs_opts"]    = available_mount_opts;
-#ifdef NDEVENV
-        gucc::utils::exec("modprobe f2fs"sv);
-#endif
-    } else if (file_sys == "xfs"sv) {
-        config_data["FILESYSTEM"] = "mkfs.xfs -f";
-        config_data["fs_opts"]    = available_mount_opts;
-    } else if (file_sys != "zfs"sv) {
+    const auto fs_type = gucc::fs::string_to_filesystem_type(file_sys);
+    if (fs_type == gucc::fs::FilesystemType::Unknown && file_sys != "zfs"sv) {
         spdlog::error("Invalid filesystem ('{}')!", file_sys);
+        return;
     }
+
+    // Get mkfs command
+    const auto mkfs_cmd = gucc::fs::get_mkfs_command(fs_type);
+    if (!mkfs_cmd.empty()) {
+        config_data["FILESYSTEM"] = std::string{mkfs_cmd};
+    }
+
+    // Get available mount options
+    const auto& mount_opts = utils::get_available_mount_opts(file_sys);
+    config_data["fs_opts"] = mount_opts;
+
+    // Load kernel modules for specific filesystems
+#ifdef NDEVENV
+    if (fs_type == gucc::fs::FilesystemType::Btrfs) {
+        gucc::utils::exec("modprobe btrfs"sv);
+    } else if (fs_type == gucc::fs::FilesystemType::F2fs) {
+        gucc::utils::exec("modprobe f2fs"sv);
+    }
+#endif
 }
 
 auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string> {
-    if (fstype == "btrfs"sv) {
-        return std::vector<std::string>{"autodefrag", "compress=zlib", "compress=lzo", "compress=zstd", "compress=no", "compress-force=zlib", "compress-force=lzo", "compress-force=zstd", "discard", "noacl", "noatime", "nodatasum", "nospace_cache", "recovery", "skip_balance", "space_cache", "nossd", "ssd", "ssd_spread", "commit=120"};
-    } else if (fstype == "ext4"sv) {
-        return std::vector<std::string>{"data=journal", "data=writeback", "dealloc", "discard", "noacl", "noatime", "nobarrier", "nodelalloc"};
-    } else if (fstype == "f2fs"sv) {
-        return std::vector<std::string>{"data_flush", "disable_roll_forward", "disable_ext_identify", "discard", "fastboot", "flush_merge", "inline_xattr", "inline_data", "inline_dentry", "no_heap", "noacl", "nobarrier", "noextent_cache", "noinline_data", "norecovery"};
-    } else if (fstype == "xfs"sv) {
-        return std::vector<std::string>{"discard", "filestreams", "ikeep", "largeio", "noalign", "nobarrier", "norecovery", "noquota", "wsync"};
-    }
+    const auto& fs_type = gucc::fs::string_to_filesystem_type(fstype);
+    const auto& fs_opts = gucc::fs::get_available_mount_opts(fs_type);
 
-    return {};
+    std::vector<std::string> result{};
+    result.reserve(fs_opts.size());
+    std::ranges::transform(fs_opts, std::back_inserter(result),
+        [](auto&& mount_opt) -> std::string { return mount_opt.name; });
+    return result;
 }
 
 auto mount_partition(std::string_view partition, std::string_view mountpoint, std::string_view mount_dev, std::string_view mount_opts) noexcept -> bool {
