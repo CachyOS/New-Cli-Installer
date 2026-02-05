@@ -115,7 +115,7 @@ constexpr auto ltrim(std::string_view str) noexcept -> std::string_view {
 /// @param str The string to trim.
 /// @return The trimmed string view.
 constexpr auto rtrim(std::string_view str) noexcept -> std::string_view {
-    auto it       = std::ranges::find_if_not(str | std::views::reverse, [](unsigned char ch) {
+    auto it       = std::ranges::find_if_not(str | std::ranges::views::reverse, [](unsigned char ch) {
         constexpr std::array spaces_ch{' ', '\f', '\n', '\r', '\t', '\v'};
         return std::ranges::contains(spaces_ch, ch);
     });

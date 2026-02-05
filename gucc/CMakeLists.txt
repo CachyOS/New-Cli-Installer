@@ -31,6 +31,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/luks.cpp include/gucc/luks.hpp
    src/zfs.cpp include/gucc/zfs.hpp
    src/btrfs.cpp include/gucc/btrfs.hpp
+   src/system_query.cpp include/gucc/system_query.hpp
    src/user.cpp include/gucc/user.hpp
    src/locale.cpp include/gucc/locale.hpp
    src/fstab.cpp include/gucc/fstab.hpp
