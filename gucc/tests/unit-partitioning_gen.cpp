@@ -108,7 +108,7 @@ TEST_CASE("partitioning gen test")
     {
         const std::vector<gucc::fs::Partition> expected_partitions{
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/nvme0n1p1"s, .size = "4GiB", .mount_opts = "defaults,umask=0077"s},
-            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime,compress=zstd"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime,compress=zstd:1"s},
         };
         const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1", "/boot", true);
         const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);

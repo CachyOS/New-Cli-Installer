@@ -137,6 +137,7 @@ auto generate_default_partition_schema(std::string_view device, std::string_view
         // TODO(vnepogodin): currently doesn't matter which FS is used here for sgdisk, make customizable for future use
         .root_fs_type       = fs::FilesystemType::Btrfs,
         .efi_partition_size = "4GiB"s,
+        .is_ssd             = gucc::disk::is_device_ssd(device),
         .boot_mountpoint    = std::string{boot_mountpoint},
     };
     return generate_partition_schema_from_config(device, config, is_efi);
