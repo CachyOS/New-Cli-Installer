@@ -1,6 +1,7 @@
 #include "gucc/partitioning.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition_config.hpp"
+#include "gucc/system_query.hpp"
 
 #include <algorithm>    // for sort, unique_copy, any_of, count_if
 #include <ranges>       // for ranges::*
@@ -172,7 +173,7 @@ auto generate_partition_schema_from_config(std::string_view device, const fs::De
             .fstype     = "vfat"s,
             .mountpoint = config.boot_mountpoint,
             .uuid_str   = {},
-            .device     = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
             .size       = config.efi_partition_size,
             .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Vfat, config.is_ssd)};
         partitions.emplace_back(std::move(efi_partition));
@@ -182,7 +183,7 @@ auto generate_partition_schema_from_config(std::string_view device, const fs::De
             .fstype     = "ext4"s,
             .mountpoint = config.boot_mountpoint,
             .uuid_str   = {},
-            .device     = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
             .size       = *config.boot_partition_size,
             .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Ext4, config.is_ssd)};
         partitions.emplace_back(std::move(boot_partition));
@@ -194,7 +195,7 @@ auto generate_partition_schema_from_config(std::string_view device, const fs::De
             .fstype     = "linuxswap"s,
             .mountpoint = ""s,
             .uuid_str   = {},
-            .device     = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+            .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
             .size       = *config.swap_partition_size,
             .mount_opts = "defaults"s};
         partitions.emplace_back(std::move(swap_partition));
@@ -205,7 +206,7 @@ auto generate_partition_schema_from_config(std::string_view device, const fs::De
         .fstype     = std::string{fs::filesystem_type_to_string(config.root_fs_type)},
         .mountpoint = "/"s,
         .uuid_str   = {},
-        .device     = fmt::format(FMT_COMPILE("{}{}"), device, partitions.size() + 1),
+        .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
         .size       = {},
         .mount_opts = root_mount_opts};
     partitions.emplace_back(std::move(root_partition));

@@ -106,13 +106,18 @@ TEST_CASE("partitioning gen test")
     }
     SECTION("default partition schema")
     {
-        const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1p", "/boot", true);
+        const std::vector<gucc::fs::Partition> expected_partitions{
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/nvme0n1p1"s, .size = "4GiB", .mount_opts = "defaults,umask=0077"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime,compress=zstd"s},
+        };
+        const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1", "/boot", true);
         const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
         REQUIRE_EQ(sfdisk_content, PART_DEFAULT_TEST);
+        REQUIRE_EQ(partitions, expected_partitions);
     }
     SECTION("default partition schema bios")
     {
-        const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1p", "/boot", false);
+        const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1", "/boot", false);
         const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, false);
         REQUIRE_EQ(sfdisk_content, PART_DEFAULT_BIOS_TEST);
     }
@@ -226,6 +231,25 @@ TEST_CASE("partition schema from config test")
         REQUIRE_EQ(partitions[0].fstype, "btrfs"sv);
         REQUIRE_EQ(partitions[0].mountpoint, "/"sv);
         REQUIRE(partitions[0].mount_opts.contains("compress=zstd"sv));
+    }
+    SECTION("default uefi config")
+    {
+        gucc::fs::DefaultPartitionSchemaConfig config{
+            .root_fs_type = gucc::fs::FilesystemType::Btrfs,
+            .efi_partition_size = "4GiB"s,
+            .is_ssd = true,
+            .boot_mountpoint = "/boot"s,
+        };
+        const auto& partitions = gucc::disk::generate_partition_schema_from_config("/dev/nvme0n1"sv, config, true);
+        REQUIRE_EQ(partitions.size(), 2);
+        REQUIRE_EQ(partitions[0].fstype, "vfat"sv);
+        REQUIRE_EQ(partitions[0].device, "/dev/nvme0n1p1"sv);
+        REQUIRE_EQ(partitions[0].mountpoint, "/boot"sv);
+        REQUIRE_EQ(partitions[0].mount_opts, "defaults,umask=0077"sv);
+        REQUIRE_EQ(partitions[1].fstype, "btrfs"sv);
+        REQUIRE_EQ(partitions[1].device, "/dev/nvme0n1p2"sv);
+        REQUIRE_EQ(partitions[1].mountpoint, "/"sv);
+        REQUIRE_EQ(partitions[1].mount_opts, "defaults,noatime,compress=zstd:1"sv);
     }
 }
 

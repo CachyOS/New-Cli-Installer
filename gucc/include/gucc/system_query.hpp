@@ -112,6 +112,11 @@ auto parse_lsblk_disks_json(std::string_view json_output) noexcept -> std::vecto
 /// @return extracted partition number
 auto parse_partition_number(std::string_view device) noexcept -> std::uint32_t;
 
+/// @brief Changes/Inserts partition number to the device
+/// @param device The device path
+/// @return partition device path with partition number
+auto insert_partition_number(std::string_view device, std::uint32_t part_number) noexcept -> std::string;
+
 /// @brief Parses disk name(base) from device
 /// @param device The device path
 /// @return extracted disk name of the device

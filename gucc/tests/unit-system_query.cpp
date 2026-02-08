@@ -143,6 +143,37 @@ TEST_CASE("parse_partition_number test")
     }
 }
 
+TEST_CASE("insert_partition_number test")
+{
+    using gucc::disk::insert_partition_number;
+
+    SECTION("regular disk partitions")
+    {
+        REQUIRE_EQ(insert_partition_number("sda3"sv, 1), "sda1"sv);
+        REQUIRE_EQ(insert_partition_number("sda1"sv, 2), "sda2"sv);
+        REQUIRE_EQ(insert_partition_number("sdb"sv, 12), "sdb12"sv);
+        REQUIRE_EQ(insert_partition_number("vda"sv, 1), "vda1"sv);
+    }
+    SECTION("nvme partitions")
+    {
+        REQUIRE_EQ(insert_partition_number("nvme0n1"sv, 1),  "nvme0n1p1"sv);
+        REQUIRE_EQ(insert_partition_number("nvme0n1"sv, 2), "nvme0n1p2"sv);
+        REQUIRE_EQ(insert_partition_number("nvme1n1"sv, 10), "nvme1n1p10"sv);
+    }
+    SECTION("full device paths")
+    {
+        REQUIRE_EQ(insert_partition_number("/dev/sda1"sv, 1), "/dev/sda1"sv);
+        REQUIRE_EQ(insert_partition_number("/dev/nvme0n1p2"sv, 2), "/dev/nvme0n1p2"sv);
+    }
+    SECTION("mix with nvme")
+    {
+        REQUIRE_EQ(insert_partition_number("sdc12"sv, 2), "sdc2"sv);
+        REQUIRE_EQ(insert_partition_number("nvme0n1"sv, 2), "nvme0n1p2"sv);
+        REQUIRE_EQ(insert_partition_number("/dev/sda"sv, 10), "/dev/sda10");
+        REQUIRE_EQ(insert_partition_number("/dev/nvme0n1"sv, 10), "/dev/nvme0n1p10"sv);
+    }
+}
+
 TEST_CASE("get_disk_name_from_device test")
 {
     using gucc::disk::get_disk_name_from_device;

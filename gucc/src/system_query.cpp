@@ -154,6 +154,22 @@ auto parse_partition_number(std::string_view device) noexcept -> std::uint32_t {
     return result;
 }
 
+auto insert_partition_number(std::string_view device, std::uint32_t part_number) noexcept -> std::string {
+    // preserve device path
+    const auto& device_path = [device]() {
+        bool use_full_path = device.starts_with(DEV_PATH_PREFIX);
+        auto disk_name     = get_disk_name_from_device(device);
+        return use_full_path ? fmt::format(FMT_COMPILE("/dev/{}"), disk_name) : std::string{disk_name};
+    }();
+    // nvme case with partition number always after 'p'
+    if (device.contains("nvme"sv)) {
+        return fmt::format(FMT_COMPILE("{}p{}"), device_path, part_number);
+    }
+
+    // regular case
+    return fmt::format(FMT_COMPILE("{}{}"), device_path, part_number);
+}
+
 auto get_disk_name_from_device(std::string_view device) noexcept -> std::string_view {
     if (device.starts_with(DEV_PATH_PREFIX)) {
         device.remove_prefix(DEV_PATH_PREFIX.size());
