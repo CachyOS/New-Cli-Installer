@@ -18,7 +18,7 @@ class Config final {
     using const_reference = const value_type&;
 
     Config() noexcept          = default;
-    virtual ~Config() noexcept = default;
+    ~Config() noexcept = default;
 
     static bool initialize() noexcept;
     [[gnu::pure]] static Config* instance();
