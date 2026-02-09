@@ -322,13 +322,14 @@ void auto_partition() noexcept {
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
     const auto& bootloader  = std::get<std::string>(config_data["BOOTLOADER"]);
 
+    spdlog::info("Running automatic partitioning");
+
     const auto& boot_mountpoint = utils::bootloader_default_mount(bootloader, system_info);
     if (boot_mountpoint == "unknown bootloader"sv) {
         spdlog::error("Unknown bootloader: {}", bootloader);
         return;
     }
 
-#ifdef NDEVENV
     // Create default partitioning for clean disk
     const auto& is_system_efi = (system_info == "UEFI"sv);
     const auto& partitions    = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
@@ -336,6 +337,10 @@ void auto_partition() noexcept {
         spdlog::error("Failed to generate default partition schema: it cannot be empty");
         return;
     }
+
+    utils::dump_partitions_to_log(partitions);
+
+#ifdef NDEVENV
     // Clear disk and perform partitioning
     if (!gucc::disk::make_clean_partschema(device_info, partitions, is_system_efi)) {
         spdlog::error("Failed to perform automatic partitioning");
