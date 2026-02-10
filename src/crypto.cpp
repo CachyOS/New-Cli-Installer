@@ -1,5 +1,5 @@
 #include "crypto.hpp"
-#include "config.hpp"
+#include "global_storage.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 

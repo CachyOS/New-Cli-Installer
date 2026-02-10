@@ -1,4 +1,4 @@
-#include "config.hpp"
+#include "global_storage.hpp"
 #include "definitions.hpp"  // for error_inter
 
 #include <filesystem>  // for exists

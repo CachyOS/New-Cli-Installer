@@ -165,11 +165,19 @@ deps = [fmt, spdlog, ftxui, rapidjson, ctre, tomlplusplus, cpr]
 
 subdir('gucc')
 
+instconfig_lib = library('cachyos-installer-config',
+    sources : [
+        'src/installer_config.cpp',
+    ],
+    include_directories : [include_directories('src')],
+    dependencies: deps
+)
+
 executable(
   'cachyos-installer',
   src_files,
   dependencies: deps,
-  link_with: gucc_lib,
+  link_with: [gucc_lib, instconfig_lib]
   include_directories: [include_directories('src'), include_directories('gucc/include')],
   install: true)
 

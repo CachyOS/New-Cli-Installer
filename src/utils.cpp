@@ -1,7 +1,8 @@
 #include "utils.hpp"
-#include "config.hpp"
 #include "definitions.hpp"
 #include "disk.hpp"
+#include "global_storage.hpp"
+#include "installer_config.hpp"
 #include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
@@ -1606,8 +1607,6 @@ void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unuse
 }
 
 bool parse_config() noexcept {
-    using namespace rapidjson;
-
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
@@ -1617,194 +1616,111 @@ bool parse_config() noexcept {
 
     // 1. Open file for reading.
     static constexpr auto file_path = "settings.json";
-    std::ifstream ifs{file_path};
-    if (!ifs.is_open()) {
-        fmt::print(stderr, "Config not found running with defaults\n");
-        return true;
+    const auto file_content         = gucc::file_utils::read_whole_file(file_path);
+
+    // 2. Parse JSON using installer_config library.
+    auto parse_result = installer::parse_installer_config(file_content);
+    if (!parse_result) {
+        if (file_content.empty()) {
+            fmt::print(stderr, "Config not found running with defaults\n");
+            return true;
+        }
+        fmt::print(stderr, "Config error: {}\n", parse_result.error());
+        return false;
     }
 
-    IStreamWrapper isw{ifs};
+    const auto& config = *parse_result;
 
-    // 2. Parse a JSON.
-    Document doc;
-    doc.ParseStream(isw);
-
-    // Document is a JSON value represents the root of DOM. Root can be either an object or array.
-    assert(doc.IsObject());
-
-    assert(doc.HasMember("menus"));
-    assert(doc["menus"].IsInt());
-
-    config_data["menus"] = doc["menus"].GetInt();
-
-    auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
-    if (doc.HasMember("headless_mode")) {
-        assert(doc["headless_mode"].IsBool());
-        headless_mode = static_cast<std::int32_t>(doc["headless_mode"].GetBool());
+    // 3. Validate headless mode requirements.
+    if (config.headless_mode) {
+        auto validation = installer::validate_headless_config(config);
+        if (!validation) {
+            fmt::print(stderr, "{}\n", validation.error());
+            return false;
+        }
     }
 
-    if (headless_mode) {
+    // 4. Apply config to global storage.
+    config_data["menus"]         = config.menus;
+    config_data["HEADLESS_MODE"] = static_cast<std::int32_t>(config.headless_mode);
+    config_data["SERVER_MODE"]   = static_cast<std::int32_t>(config.server_mode);
+
+    if (config.headless_mode) {
         spdlog::info("Running in HEADLESS mode!");
     } else {
         spdlog::info("Running in NORMAL mode!");
     }
 
-    auto& server_mode = std::get<std::int32_t>(config_data["SERVER_MODE"]);
-    if (doc.HasMember("server_mode")) {
-        assert(doc["server_mode"].IsBool());
-        server_mode = static_cast<std::int32_t>(doc["server_mode"].GetBool());
-    }
-
-    if (server_mode) {
+    if (config.server_mode) {
         spdlog::info("Server profile enabled!");
     }
 
-    if (doc.HasMember("device")) {
-        assert(doc["device"].IsString());
-        config_data["DEVICE"] = std::string{doc["device"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'device' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.device) {
+        config_data["DEVICE"] = *config.device;
     }
 
-    if (doc.HasMember("fs_name")) {
-        assert(doc["fs_name"].IsString());
-        config_data["FILESYSTEM_NAME"] = std::string{doc["fs_name"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'fs_name' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.fs_name) {
+        config_data["FILESYSTEM_NAME"] = *config.fs_name;
     }
-    auto& root_fstype = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
 
-    if (doc.HasMember("partitions")) {
-        assert(doc["partitions"].IsArray());
-
+    // Convert partitions to ready_parts format.
+    if (!config.partitions.empty()) {
         std::vector<std::string> ready_parts{};
-        for (const auto& partition_map : doc["partitions"].GetArray()) {
-            assert(partition_map.IsObject());
-
-            const auto& part_obj = partition_map.GetObject();
-            assert(partition_map["name"].IsString());
-            assert(partition_map["mountpoint"].IsString());
-            assert(partition_map["size"].IsString());
-            assert(partition_map["type"].IsString());
-
-            // Validate partition type.
-            const auto& part_type = std::string{partition_map["type"].GetString()};
-
-            using namespace std::literals;
-            static constexpr std::array valid_types{"root"sv, "boot"sv, "additional"sv};
-            if (!std::ranges::contains(valid_types, part_type)) {
-                fmt::print(stderr, "partition type '{}' is invalid! Valid types: {}.\n", part_type, valid_types);
-                return false;
-            }
-            if (!partition_map.HasMember("fs_name") && (part_type != "root"sv || (root_fstype.empty() && part_type == "root"sv))) {
-                fmt::print(stderr, "required field 'fs_name' is missing for partition type '{}'!\n", part_type);
-                return false;
-            }
-
-            std::string part_fs_name{root_fstype};
-            if (partition_map.HasMember("fs_name")) {
-                assert(partition_map["fs_name"].IsString());
-                part_fs_name = partition_map["fs_name"].GetString();
-            }
-
-            // Just to save some space push as single string instead of a new type.
-            auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"), partition_map["name"].GetString(),
-                partition_map["mountpoint"].GetString(), partition_map["size"].GetString(), part_fs_name, part_type);
+        for (const auto& part : config.partitions) {
+            auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"),
+                part.name, part.mountpoint, part.size, part.fs_name,
+                installer::partition_type_to_string(part.type));
             ready_parts.push_back(std::move(part_data));
         }
         config_data["READY_PARTITIONS"] = std::move(ready_parts);
-    } else if (headless_mode) {
-        fmt::print(stderr, "'partitions' field is required in HEADLESS mode!\n");
-        return false;
     }
 
-    if (doc.HasMember("mount_opts")) {
-        assert(doc["mount_opts"].IsString());
-        config_data["MOUNT_OPTS"] = std::string{doc["mount_opts"].GetString()};
+    if (config.mount_opts) {
+        config_data["MOUNT_OPTS"] = *config.mount_opts;
     }
 
-    if (doc.HasMember("hostname")) {
-        assert(doc["hostname"].IsString());
-        config_data["HOSTNAME"] = std::string{doc["hostname"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'hostname' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.hostname) {
+        config_data["HOSTNAME"] = *config.hostname;
     }
 
-    if (doc.HasMember("locale")) {
-        assert(doc["locale"].IsString());
-        config_data["LOCALE"] = std::string{doc["locale"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'locale' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.locale) {
+        config_data["LOCALE"] = *config.locale;
     }
 
-    if (doc.HasMember("xkbmap")) {
-        assert(doc["xkbmap"].IsString());
-        config_data["XKBMAP"] = std::string{doc["xkbmap"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'xkbmap' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.xkbmap) {
+        config_data["XKBMAP"] = *config.xkbmap;
     }
 
-    if (doc.HasMember("timezone")) {
-        assert(doc["timezone"].IsString());
-        config_data["TIMEZONE"] = std::string{doc["timezone"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'timezone' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.timezone) {
+        config_data["TIMEZONE"] = *config.timezone;
     }
 
-    if (doc.HasMember("user_name") && doc.HasMember("user_pass") && doc.HasMember("user_shell")) {
-        assert(doc["user_name"].IsString());
-        assert(doc["user_pass"].IsString());
-        assert(doc["user_shell"].IsString());
-        config_data["USER_NAME"]  = std::string{doc["user_name"].GetString()};
-        config_data["USER_PASS"]  = std::string{doc["user_pass"].GetString()};
-        config_data["USER_SHELL"] = std::string{doc["user_shell"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'user_name', 'user_pass', 'user_shell' fields are required in HEADLESS mode!\n");
-        return false;
+    if (config.user_name && config.user_pass && config.user_shell) {
+        config_data["USER_NAME"]  = *config.user_name;
+        config_data["USER_PASS"]  = *config.user_pass;
+        config_data["USER_SHELL"] = *config.user_shell;
     }
 
-    if (doc.HasMember("root_pass")) {
-        assert(doc["root_pass"].IsString());
-        config_data["ROOT_PASS"] = std::string{doc["root_pass"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'root_pass' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.root_pass) {
+        config_data["ROOT_PASS"] = *config.root_pass;
     }
 
-    if (doc.HasMember("kernel")) {
-        assert(doc["kernel"].IsString());
-        config_data["KERNEL"] = std::string{doc["kernel"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'kernel' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.kernel) {
+        config_data["KERNEL"] = *config.kernel;
     }
 
-    if (doc.HasMember("desktop")) {
-        assert(doc["desktop"].IsString());
-        config_data["DE"] = std::string{doc["desktop"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'desktop' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.desktop) {
+        config_data["DE"] = *config.desktop;
     }
 
-    if (doc.HasMember("bootloader")) {
-        assert(doc["bootloader"].IsString());
-        config_data["BOOTLOADER"] = std::string{doc["bootloader"].GetString()};
-    } else if (headless_mode) {
-        fmt::print(stderr, "'bootloader' field is required in HEADLESS mode!\n");
-        return false;
+    if (config.bootloader) {
+        config_data["BOOTLOADER"] = *config.bootloader;
     }
 
-    if (doc.HasMember("post_install")) {
-        assert(doc["post_install"].IsString());
-        config_data["POST_INSTALL"] = std::string{doc["post_install"].GetString()};
+    if (config.post_install) {
+        config_data["POST_INSTALL"] = *config.post_install;
     }
+
     return true;
 }
 

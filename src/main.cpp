@@ -1,7 +1,7 @@
-#include "config.hpp"       // for Config
-#include "definitions.hpp"  // for error_inter
-#include "tui.hpp"          // for init
-#include "utils.hpp"        // for exec, check_root, clear_sc...
+#include "definitions.hpp"     // for error_inter
+#include "global_storage.hpp"  // for Config
+#include "tui.hpp"             // for init
+#include "utils.hpp"           // for exec, check_root, clear_sc...
 
 // import gucc
 #include "gucc/io_utils.hpp"

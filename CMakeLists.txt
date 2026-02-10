@@ -104,7 +104,7 @@ target_compile_features(project_options INTERFACE cxx_std_23)
 add_executable(${PROJECT_NAME}
    src/view.hpp
    src/definitions.hpp
-   src/config.cpp src/config.hpp
+   src/global_storage.cpp src/global_storage.hpp
    src/utils.cpp src/utils.hpp
    src/disk.cpp src/disk.hpp
    src/drivers.cpp src/drivers.hpp
@@ -115,6 +115,9 @@ add_executable(${PROJECT_NAME}
    src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
    src/main.cpp
+   )
+add_library(${PROJECT_NAME}-config
+   src/installer_config.cpp src/installer_config.hpp
    )
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
@@ -138,7 +141,8 @@ if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ${PROJECT_NAME}-config ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc)
+target_link_libraries(${PROJECT_NAME}-config PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
 endif()

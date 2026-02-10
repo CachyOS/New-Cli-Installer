@@ -1,338 +1,287 @@
-# Configuring CachyOS TUI installer
+# Configuring CachyOS TUI Installer
 
-This is intended as a guide to the "Simple Install" configuration. The behavior of a automated install can be modified
-through the many configuration settings documented here — each config option is explained,
-including what the default is, how to change the default.
-Also included is an example configuration for each setting. If you don't want to spend a lot of time
-thinking about options, the config as generated sets sensible defaults for all values. Do note however that the
-config is used only for the "Simple Install".
+## Quick Start
 
-Sample config is located at `https://github.com/cachyos/new-cli-installer/blob/master/settings.json`.
+1. Create `settings.json` in the directory where you'll run the installer (e.g., `/root/settings.json`)
+2. Copy the minimal template below and modify as needed
+3. Run the installer
 
-The config file(`settings.json`) must be placed in the current directory.
-for example: if going to launch installer in `/root`, then the config must be placed at `/root/settings.json`.
+**Minimal headless config:**
+```json
+{
+    "menus": 1,
+    "headless_mode": true,
+    "device": "/dev/nvme0n1",
+    "fs_name": "btrfs",
+    "partitions": [
+        {"name": "/dev/nvme0n1p1", "mountpoint": "/boot", "size": "4G", "fs_name": "vfat", "type": "boot"},
+        {"name": "/dev/nvme0n1p2", "mountpoint": "/", "size": "100%", "type": "root"}
+    ],
+    "hostname": "cachyos",
+    "locale": "en_US",
+    "xkbmap": "us",
+    "timezone": "America/New_York",
+    "user_name": "user",
+    "user_pass": "password",
+    "user_shell": "/bin/bash",
+    "root_pass": "rootpassword",
+    "kernel": "linux-cachyos",
+    "desktop": "kde",
+    "bootloader": "systemd-boot"
+}
+```
 
+## Configuration Reference
 
-### JSON
-The configuration file is a [JSON](https://www.json.org/json-en.html) file, which means that certain syntax rules
-apply if you want your config file to be read properly. A few helpful things to know:
-* JSON doesn’t allow comments! Everything in JSON is a key ⇒ value pair,
-  meaning that every line should be a piece of data,
-  rather than a function or a variable like in typical programming languages.
-
-## Install types ##
-
-Define your install type.
+| Option | Type | Default | Required (Headless) | Description |
+|--------|------|---------|---------------------|-------------|
+| `menus` | int | `2` | Yes | Install type: 1=Simple, 2=Advanced |
+| `headless_mode` | bool | `false` | - | Unattended installation mode |
+| `server_mode` | bool | `false` | - | Enable server profile (no DE) |
+| `device` | string | - | Yes | Target device (e.g., `/dev/nvme0n1`) |
+| `fs_name` | string | - | Yes | Root filesystem type |
+| `partitions` | array | - | Yes | Partition layout (see below) |
+| `mount_opts` | string | auto | - | Custom mount options |
+| `hostname` | string | - | Yes | Machine hostname |
+| `locale` | string | - | Yes | System locale (e.g., `en_US`) |
+| `xkbmap` | string | - | Yes | Keyboard layout (e.g., `us`) |
+| `timezone` | string | - | Yes | Timezone (e.g., `America/New_York`) |
+| `user_name` | string | - | Yes | Username to create |
+| `user_pass` | string | - | Yes | User password |
+| `user_shell` | string | - | Yes | User shell path |
+| `root_pass` | string | - | Yes | Root password |
+| `kernel` | string | - | Yes | Kernel(s) to install (space-separated) |
+| `desktop` | string | - | Yes | Desktop environment |
+| `bootloader` | string | - | Yes | Bootloader to use |
+| `post_install` | string | - | - | Path to post-install script |
 
 ---
+
+## Install Type
+
 ### `menus`
 
-This sets the installation type.
+Sets the installation type.
 
-The `1` number corresponeds to "Simple Install" (automated install).
-The `2` number corresponeds to "Advanced Install" (manual install).
-Other number will be treated as `-1`, meaning selection between "Simple Install",
-and "Advanced Install" is manual by the user.
+| Value | Meaning |
+|-------|---------|
+| `1` | Simple Install (automated) |
+| `2` | Advanced Install (manual) |
+| other | User chooses at runtime |
 
-Defaults to `2`.
+**Default:** `2`
 
-Example configuration #1:
 ```json
 "menus": 1
 ```
-Example configuration #2:
-```json
-"menus": -1
-```
----
-## Install Modes ##
-
-Define your install mode.
 
 ---
+
+## Install Modes
+
 ### `headless_mode`
 
-This set mode to `HEADLESS`.
+Enable unattended installation. When `true`, all required fields must be present.
 
+**Default:** `false`
 
-The `HEADLESS` mode forces some options to be required.
-The `headless_mode` will be reset to default value,
-if "Advanced Install" is beeing used.
-
-Defaults to `false`.
-
-Example configuration:
 ```json
 "headless_mode": true
 ```
----
-## Other options ##
 
-Define automated install options.
+### `server_mode`
+
+Enable server profile (skips desktop environment).
+
+**Default:** `false`
+
+```json
+"server_mode": true
+```
 
 ---
+
+## Device Configuration
+
 ### `device`
 
-This sets the target device.
-Required in `HEADLESS` mode!
+Target device for installation. **Warning:** This device will be wiped!
 
-The `device` will be used as a install drive, which will be wiped,
-and used to install CachyOS on.
+**Required in HEADLESS mode.**
 
-There is no default for this option.
-
-Example configuration:
 ```json
 "device": "/dev/nvme0n1"
 ```
----
+
 ### `partitions`
 
-This declares partitions map.
-Required in `HEADLESS` mode!
+Partition layout array. Each partition requires:
 
-The `partitions` provide information, which will be used
-during the partition and mount steps.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Device path (e.g., `/dev/sda1`) |
+| `mountpoint` | string | Yes | Mount point (e.g., `/`, `/boot`) |
+| `size` | string | Yes | Size (e.g., `512M`, `100G`, `100%`) |
+| `type` | string | Yes | `root`, `boot`, or `additional` |
+| `fs_name` | string | Required for non-root | Filesystem type |
 
-There is no default for this option.
+> **Note:** Root partitions inherit `fs_name` from the global setting if not specified.
 
-Example configuration:
 ```json
 "partitions": [
-    {
-        "name": "/dev/nvme0n1p3",
-        "mountpoint": "/",
-        "size": "450G",
-        "type": "root"
-    },
-    {
-        "name": "/dev/nvme0n1p1",
-        "mountpoint": "/boot",
-        "size": "512M",
-        "type": "boot"
-    }
+    {"name": "/dev/nvme0n1p1", "mountpoint": "/boot", "size": "512M", "fs_name": "vfat", "type": "boot"},
+    {"name": "/dev/nvme0n1p2", "mountpoint": "/", "size": "450G", "type": "root"}
 ]
 ```
----
+
 ### `fs_name`
 
-This sets the target device filesystem.
-Required in `HEADLESS` mode!
+Root filesystem type.
 
-The `fs_name` will be used on the `device`,
-also `mount_opts` option can be used to mount the `fs_name`.
+**Required in HEADLESS mode.**
 
-There is no default for this option.
+**Valid values:** `btrfs`, `ext4`, `xfs`, `f2fs`, `zfs`
 
-Example configuration:
 ```json
 "fs_name": "btrfs"
 ```
----
+
 ### `mount_opts`
 
-This sets the mount options to mount `device` with.
+Custom mount options. If not specified, sensible defaults are used:
 
-Default to:
-* `btrfs`: "compress=lzo,noatime,space_cache,ssd,commit=120"
-* `ext4`: "noatime"
-* `xfs`: no defaults for that filesystem
-* `zfs`: this option is invalid for ZFS
+| Filesystem | Default Options |
+|------------|-----------------|
+| btrfs | `compress=lzo,noatime,space_cache,ssd,commit=120` |
+| ext4 | `noatime` |
+| xfs | none |
+| zfs | N/A (managed by ZFS) |
 
-Example configuration:
 ```json
-"mount_opts": "compress=lzo,noatime,space_cache,ssd,commit=120"
+"mount_opts": "compress=zstd,noatime"
 ```
+
 ---
+
+## System Settings
+
 ### `hostname`
 
-This sets the machine hostname `/etc/hostname`.
-Required in `HEADLESS` mode!
+Machine hostname (written to `/etc/hostname`).
 
-Defaults to "cachyos".
+**Required in HEADLESS mode.** Default in interactive: `"cachyos"`
 
-Example configuration:
 ```json
-"hostname": "cachyos"
+"hostname": "mycomputer"
 ```
----
+
 ### `locale`
 
-This sets the machine locale.
-Required in `HEADLESS` mode!
+System locale. Must be valid from `/etc/locale.gen`.
 
-Locale must be valid for the glibc,
-any locale from `/etc/locale.gen` is valid.
+**Required in HEADLESS mode.** Default in interactive: `"en_US"`
 
-Defaults "en_US".
-
-Example configuration:
 ```json
-"locale": "en_US"
+"locale": "de_DE"
 ```
----
+
 ### `xkbmap`
 
-This sets the desktop environment keymap.
-Required in `HEADLESS` mode!
+Keyboard layout for X11/Wayland.
 
-Can be used any keymap valid for the xkbmap doc.
+**Required in HEADLESS mode.** Default in interactive: `"us"`
 
-Defaults "us".
-
-Example configuration:
 ```json
-"xkbmap": "us"
+"xkbmap": "de"
 ```
----
+
 ### `timezone`
 
-This sets the timezone of the system.
-Required in `HEADLESS` mode!
+Timezone in `Zone/City` format.
 
-Format "ZONE/CITY".
+**Required in HEADLESS mode.**
 
-There is no default for this option.
-
-Example configuration:
 ```json
-"timezone": "America/New_York"
+"timezone": "Europe/Berlin"
 ```
+
 ---
-### `user_name`
 
-This sets the user name.
-Required in `HEADLESS` mode!
+## User Settings
 
-Must be provided with `user_name`, `user_pass`, `user_shell`,
-overwise has no effect.
+### `user_name`, `user_pass`, `user_shell`
 
-There is no default for this option.
+All three must be provided together.
 
-Example configuration:
+**Required in HEADLESS mode.**
+
+**Valid shells:** `/bin/bash`, `/usr/bin/zsh`, `/usr/bin/fish`
+
 ```json
-"user_name": "admin"
+"user_name": "admin",
+"user_pass": "securepassword",
+"user_shell": "/usr/bin/zsh"
 ```
----
-### `user_pass`
 
-This sets the user password.
-Required in `HEADLESS` mode!
-
-Must be provided with `user_name`, `user_pass`, `user_shell`,
-overwise has no effect.
-
-There is no default for this option.
-
-Example configuration:
-```json
-"user_pass": "verysecurepassword"
-```
----
-### 'user_shell'
-
-This sets the user shell.
-Required in `HEADLESS` mode!
-
-Must be provided with `user_name`, `user_pass`, `user_shell`,
-overwise has no effect.
-Also `user_shell` must be valid shell for the system:
-* `/usr/bin/zsh`
-* `/bin/bash`
-* `/usr/bin/fish`
-
-There is no default for this option.
-
-Example configuration:
-```json
-"user_shell": "/bin/bash"
-```
----
 ### `root_pass`
 
-This sets the root user password.
-Required in `HEADLESS` mode!
+Root password.
 
-There is no default for this option.
+**Required in HEADLESS mode.**
 
-Example configuration:
 ```json
 "root_pass": "verysecurepassword"
 ```
+
 ---
+
+## Packages
+
 ### `kernel`
 
-This kernel/kernels will be installed on the system.
-Required in `HEADLESS` mode!
+Kernel(s) to install. Multiple kernels can be specified separated by spaces.
 
-Any kernel is valid, also can be specified multiple kernels.
-NOTE: Multiple Kernels must be splitted by SPACE.
+**Required in HEADLESS mode.**
 
-There is no default for this option.
-
-Example configuration:
 ```json
 "kernel": "linux-cachyos-bore linux-zen"
 ```
----
+
 ### `desktop`
 
-This will install desktop environment.
-Required in `HEADLESS` mode!
+Desktop environment to install.
 
-Valid `desktop`:
-* `kde`
-* `cutefish`
-* `xfce`
-* `sway`
-* `wayfire`
-* `i3wm`
-* `gnome`
-* `openbox`
-* `bspwm`
-* `Kofuku edition`
-* `lxqt`
+**Required in HEADLESS mode.**
 
-There is no default for this option.
+**Valid values:** `kde`, `gnome`, `xfce`, `sway`, `wayfire`, `i3wm`, `openbox`, `bspwm`, `lxqt`, `cutefish`, `Kofuku edition`
 
-Example configuration:
 ```json
 "desktop": "kde"
 ```
----
+
 ### `bootloader`
 
-This will specified bootloader on the system.
-Required in `HEADLESS` mode!
+Bootloader to install.
 
-Valid `bootloader` for UEFI system:
-* `systemd-boot`
-* `grub`
-* `refind`
+**Required in HEADLESS mode.**
 
-Valid `bootloader` for BIOS system:
-* `grub`
+| System | Valid Values |
+|--------|--------------|
+| UEFI | `systemd-boot`, `grub`, `refind`, `limine` |
+| BIOS | `grub` |
 
-There is no default for this option.
-
-Example configuration:
 ```json
 "bootloader": "systemd-boot"
 ```
+
 ---
+
+## Post-Install
+
 ### `post_install`
 
-This will be launched after install is done.
+Path to an executable script to run after installation completes.
 
-The `post_install` must be path to the post-install script,
-script must be executable. The path must be absolute.
-
-TODO: extend description.
-
-There is no default for this option.
-
-Example configuration:
 ```json
-"post_install": "/root/script.py"
+"post_install": "/root/my-setup-script.sh"
 ```
----

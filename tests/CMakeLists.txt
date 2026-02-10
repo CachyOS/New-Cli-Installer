@@ -1,5 +1,5 @@
 list(APPEND test_SOURCES
-        ${CMAKE_SOURCE_DIR}/src/config.cpp
+        ${CMAKE_SOURCE_DIR}/src/global_storage.cpp
         ${CMAKE_SOURCE_DIR}/src/utils.cpp
         ${CMAKE_SOURCE_DIR}/src/disk.cpp
         ${CMAKE_SOURCE_DIR}/src/drivers.cpp
@@ -8,6 +8,7 @@ list(APPEND test_SOURCES
         ${CMAKE_SOURCE_DIR}/src/crypto.cpp
         ${CMAKE_SOURCE_DIR}/src/misc.cpp
         ${CMAKE_SOURCE_DIR}/src/simple_tui.cpp
+        ${CMAKE_SOURCE_DIR}/src/installer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/tui.cpp
 )
 
@@ -33,8 +34,8 @@ foreach(file ${files})
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal>
         $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
     )
-    target_include_directories(${testcase} PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR})
-    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc)
+    target_include_directories(${testcase} PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR} ${CMAKE_SOURCE_DIR}/gucc/tests)
+    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc doctest::doctest)
     if(NOT ENABLE_DEVENV)
       target_link_libraries(${testcase} PRIVATE cpr::cpr)
     endif()

@@ -1,5 +1,5 @@
 #include "simple_tui.hpp"
-#include "config.hpp"
+#include "global_storage.hpp"
 #include "disk.hpp"
 #include "tui.hpp"
 #include "utils.hpp"

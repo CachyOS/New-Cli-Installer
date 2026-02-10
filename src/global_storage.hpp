@@ -1,5 +1,5 @@
-#ifndef CONFIG_HPP
-#define CONFIG_HPP
+#ifndef GLOBAL_STORAGE_HPP
+#define GLOBAL_STORAGE_HPP
 
 // import zfs
 #include "gucc/zfs_types.hpp"
@@ -37,4 +37,4 @@ class Config final {
     value_type m_data{};
 };
 
-#endif  // CONFIG_HPP
+#endif  // GLOBAL_STORAGE_HPP
