@@ -50,6 +50,7 @@ bool Config::initialize() noexcept {
 
         // Mounting
         s_config->m_data["MOUNTPOINT"] = "/mnt";
+        s_config->m_data["BOOTLOADER"] = "";
 
         // Installation
         s_config->m_data["HEADLESS_MODE"] = 0;

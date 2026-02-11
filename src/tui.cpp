@@ -1,9 +1,9 @@
 #include "tui.hpp"
-#include "global_storage.hpp"
 #include "crypto.hpp"
 #include "definitions.hpp"
 #include "disk.hpp"
 #include "drivers.hpp"
+#include "global_storage.hpp"
 #include "misc.hpp"
 #include "simple_tui.hpp"
 #include "utils.hpp"
@@ -21,10 +21,11 @@
 #include "gucc/timezone.hpp"
 #include "gucc/zfs.hpp"
 
-#include <algorithm>    // for copy
+#include <algorithm>    // for copy, transform
 #include <cstdlib>      // for setenv
 #include <filesystem>   // for exists, is_directory
 #include <fstream>      // for ofstream
+#include <ranges>       // for ranges::*
 #include <string>       // for basic_string
 #include <sys/mount.h>  // for mount
 
@@ -836,8 +837,42 @@ void auto_partition() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& device_info                  = std::get<std::string>(config_data["DEVICE"]);
-    [[maybe_unused]] const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+    auto& bootloader        = std::get<std::string>(config_data["BOOTLOADER"]);
+
+    // If bootloader has not been selected yet, prompt user to select one.
+    // This is needed because auto-partition uses the bootloader to determine
+    // the boot mountpoint (/boot vs /boot/efi) and partition layout.
+    if (bootloader.empty()) {
+        const auto& menu_entries = [](const auto& bios_mode) -> std::vector<std::string> {
+            const auto& available_bootloaders = utils::available_bootloaders(bios_mode);
+
+            std::vector<std::string> result{};
+            result.reserve(available_bootloaders.size());
+
+            std::ranges::transform(available_bootloaders, std::back_inserter(result),
+                [=](const std::string_view& entry) -> std::string { return std::string(entry); });
+            return result;
+        }(system_info);
+
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            bootloader = menu_entries[static_cast<std::size_t>(selected)];
+            success    = true;
+            screen.ExitLoopClosure()();
+        };
+        static constexpr auto select_bl_body = "\nSelect a bootloader for automatic partitioning.\nThis determines boot partition mountpoint and size.\n"sv;
+        detail::menu_widget(menu_entries, ok_callback, &selected, &screen, select_bl_body);
+
+        if (!success || bootloader.empty()) {
+            spdlog::info("Bootloader selection cancelled, aborting auto-partition");
+            return;
+        }
+        spdlog::info("Selected bootloader for partitioning: {}", bootloader);
+    }
 
     utils::auto_partition();
 
