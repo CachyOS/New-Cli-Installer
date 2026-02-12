@@ -1935,13 +1935,16 @@ auto apply_root_partition_actions(const RootPartitionSelection& selection, std::
 
     utils::dump_partition_to_log(root_part_struct);
 
+    // Save fstype before moving
+    const auto root_fstype = root_part_struct.fstype;
+
     // insert root partition
     partition_schema.emplace_back(std::move(root_part_struct));
 
     // 4. Handle BTRFS subvolumes
 
     // If the root partition is btrfs, offer to create subvolumes
-    if (root_part_struct.fstype == "btrfs"sv) {
+    if (root_fstype == "btrfs"sv) {
         // Check if there are subvolumes already on the btrfs partition
         const auto& subvolumes = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info));
         if (!subvolumes.empty()) {
