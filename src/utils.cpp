@@ -227,7 +227,15 @@ void dump_settings_to_log() noexcept {
 
     std::string out{};
     for (const auto& [key, value] : config_data) {
-        const auto& value_formatted = std::visit([](auto&& arg) -> std::string { return fmt::format("{}", arg); }, value);
+        const auto& value_formatted = std::visit([](auto&& arg) -> std::string {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, std::vector<gucc::fs::Partition>>) {
+                return fmt::format("<partition_schema: {} entries>", arg.size());
+            } else {
+                return fmt::format("{}", arg);
+            }
+        },
+            value);
         out += fmt::format("Option: [{}], Value: [{}]\n", key, value_formatted);
     }
     spdlog::info("Settings:\n{}", out);
@@ -315,7 +323,7 @@ void umount_partitions() noexcept {
 }
 
 // BIOS and UEFI
-void auto_partition() noexcept {
+auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
@@ -328,15 +336,15 @@ void auto_partition() noexcept {
     const auto& boot_mountpoint = utils::bootloader_default_mount(bootloader, system_info);
     if (boot_mountpoint == "unknown bootloader"sv) {
         spdlog::error("Unknown bootloader: {}", bootloader);
-        return;
+        return {};
     }
 
     // Create default partitioning for clean disk
     const auto& is_system_efi = (system_info == "UEFI"sv);
-    const auto& partitions    = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
+    auto partitions           = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
     if (partitions.empty()) {
         spdlog::error("Failed to generate default partition schema: it cannot be empty");
-        return;
+        return {};
     }
 
     utils::dump_partitions_to_log(partitions);
@@ -345,11 +353,13 @@ void auto_partition() noexcept {
     // Clear disk and perform partitioning
     if (!gucc::disk::make_clean_partschema(device_info, partitions, is_system_efi)) {
         spdlog::error("Failed to perform automatic partitioning");
-        return;
+        return {};
     }
 #else
     spdlog::info("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info);
 #endif
+
+    return partitions;
 }
 
 // Securely destroy all data on a given device.

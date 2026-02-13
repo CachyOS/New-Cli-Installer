@@ -15,6 +15,7 @@
 #include "gucc/locale.hpp"
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/swap.hpp"
 #include "gucc/system_query.hpp"
@@ -874,7 +875,16 @@ void auto_partition() noexcept {
         spdlog::info("Selected bootloader for partitioning: {}", bootloader);
     }
 
-    utils::auto_partition();
+    // Generate and apply partition schema
+    auto partitions = utils::auto_partition();
+    if (partitions.empty()) {
+        detail::msgbox_widget("\nAutomatic partitioning failed. Check the log for details.\n");
+        return;
+    }
+
+    // Save partition layout for user confirmation
+    config_data["PARTITION_SCHEMA"] = partitions;
+    spdlog::info("Auto-partition schema stored with {} entries", partitions.size());
 
     // Show created partitions
     const auto& disk_list = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk {} -o NAME,TYPE,FSTYPE,SIZE"), device_info));
@@ -989,85 +999,20 @@ bool select_filesystem() noexcept {
     return true;
 }
 
-// Refactored mount_opts to take partition and return options string
 auto select_mount_opts(std::string_view partition, std::string_view fstype, bool force = false) noexcept -> std::string {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    // reset
-    config_data["fs_opts"] = std::vector<std::string>{};
-    // FIXME: populate mount opts via global fs opts for each call
-    utils::select_filesystem(fstype);
-
-    // check populated options
-    const auto& fs_opts = std::get<std::vector<std::string>>(config_data["fs_opts"]);
-    if (fs_opts.empty()) {
-        // no options available or failed
-        return "";
-    }
-
-    const bool is_ssd = gucc::disk::is_device_ssd(partition);
-
-    std::unique_ptr<bool[]> fs_opts_state{new bool[fs_opts.size()]{false}};
-    for (size_t i = 0; i < fs_opts.size(); ++i) {
-        const auto& fs_opt = fs_opts[i];
-        auto& fs_opt_state = fs_opts_state[i];
-        if (!is_ssd) {
-            fs_opt_state = ((fs_opt == "autodefrag"sv)
-                || (fs_opt == "compress=zlib"sv)
-                || (fs_opt == "nossd"sv));
-        } else {
-            fs_opt_state = ((fs_opt == "compress=lzo"sv)
-                || (fs_opt == "space_cache"sv)
-                || (fs_opt == "commit=120"sv)
-                || (fs_opt == "ssd"sv));
-        }
-
-        /* clang-format off */
-        if (!fs_opt_state) { fs_opt_state = (fs_opt == "noatime"sv); }
-        /* clang-format on */
-    }
-
-    std::string mount_opts_info{};
-
-    // Now clean up the file
-    auto cleanup_mount_opts = [](auto& opts_info) {
-        opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | sed 's/ /,/g'"), opts_info));
-        opts_info = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | sed '$s/,$//'"), opts_info));
-    };
-
+    const bool is_ssd    = gucc::disk::is_device_ssd(partition);
+    const auto& fs_type  = gucc::fs::string_to_filesystem_type(fstype);
+    auto mount_opts_info = gucc::fs::get_default_mount_opts(fs_type, is_ssd);
     if (force) {
-        mount_opts_info = detail::from_checklist_string(fs_opts, fs_opts_state.get());
-        cleanup_mount_opts(mount_opts_info);
         return mount_opts_info;
     }
 
-    auto screen      = ScreenInteractive::Fullscreen();
-    auto ok_callback = [&] {
-        mount_opts_info = detail::from_checklist_string(fs_opts, fs_opts_state.get());
-        screen.ExitLoopClosure()();
-    };
-
-    const auto& file_sys_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo {} | sed 's/.*\\.//g;s/-.*//g'"), fstype));
-    const auto& fs_title           = fmt::format(FMT_COMPILE("New CLI Installer | {}"), file_sys_formatted);
-    auto content_size              = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-
-    static constexpr auto mount_options_body = "\nUse [Space] to de/select the desired mount\noptions and review carefully. Please do not\nselect multiple versions of the same option.\n"sv;
-    detail::checklist_widget(fs_opts, ok_callback, fs_opts_state.get(), &screen, mount_options_body, fs_title, {std::move(content_size), nothing});
-    cleanup_mount_opts(mount_opts_info);
-
-    // If mount options selected, confirm choice
-    if (!mount_opts_info.empty()) {
-        auto confirm_text    = Container::Vertical({
-            Renderer([] { return paragraphAlignLeft("Confirm the following mount options:"); }),
-            Renderer([&] { return text(mount_opts_info) | dim; }),
-        });
-        const auto& do_mount = detail::yesno_widget(confirm_text, size(HEIGHT, LESS_THAN, 10) | size(WIDTH, LESS_THAN, 75));
-        /* clang-format off */
-        if (!do_mount) { mount_opts_info = ""; }
-        /* clang-format on */
+    // Show an input box with the default mount opts pre-filled
+    static constexpr auto mount_options_body = "\nEdit mount options for the partition.\nThe defaults are pre-filled based on filesystem and device type.\n"sv;
+    if (!detail::inputbox_widget(mount_opts_info, mount_options_body, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+        return ""s;
     }
-    return mount_opts_info;
+    return std::string{gucc::utils::trim(mount_opts_info)};
 }
 
 // This subfunction allows for special mounting options to be applied for relevant fs's.
@@ -1076,13 +1021,12 @@ void mount_opts(bool force) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& file_sys  = std::get<std::string>(config_data["FILESYSTEM"]);
-    const auto& fs_opts   = std::get<std::vector<std::string>>(config_data["fs_opts"]);
+    const auto& fstype    = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
     const auto& partition = std::get<std::string>(config_data["PARTITION"]);
 
     // select mount opts
     auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    mount_opts_info       = select_mount_opts(partition, file_sys, force);
+    mount_opts_info       = select_mount_opts(partition, fstype, force);
 }
 
 bool mount_current_partition(bool force) noexcept {
@@ -1181,7 +1125,8 @@ void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
     auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
 
     // TODO(vnepogodin): handle swap partition mount options?
-    auto swap_partition = gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = partition, .mount_opts = "defaults"s};
+    auto swap_mountopts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::LinuxSwap, false);
+    auto swap_partition = gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = partition, .mount_opts = std::move(swap_mountopts)};
 
     // Warn user if creating a new swap
     const auto& swap_part = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE '{}' | grep -i 'swap'"), partition));
@@ -1791,9 +1736,11 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
 #endif
     confirm_mount(part_mountpoint);
 
-    // TODO(vnepogodin): handle boot partition mount options
-    const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
-    auto boot_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = uefi_mount, .device = partition, .mount_opts = "defaults"s};
+    // Use GUCC default mount opts for vfat
+    const auto& part_fs    = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
+    const bool is_boot_ssd = gucc::disk::is_device_ssd(partition);
+    const auto& boot_opts  = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::Vfat, is_boot_ssd);
+    auto boot_part_struct  = gucc::fs::Partition{.fstype = part_fs, .mountpoint = uefi_mount, .device = partition, .mount_opts = boot_opts};
 
     const auto& part_uuid     = gucc::fs::utils::get_device_uuid(boot_part_struct.device);
     boot_part_struct.uuid_str = part_uuid;
@@ -1860,8 +1807,7 @@ auto select_root_partition_info() noexcept -> std::optional<RootPartitionSelecti
         selection.mount_opts = select_mount_opts(selection.device, selection.fstype);
         spdlog::info("Selected mount options: '{}'", selection.mount_opts.empty() ? "(defaults)" : selection.mount_opts);
     } else {
-        // TODO(vnepogodin): use cachyos defaults from calamares installer
-        selection.mount_opts = "defaults";
+        selection.mount_opts = select_mount_opts(selection.device, selection.fstype, true);
         spdlog::info("Using default mount options for existing filesystem.");
     }
 

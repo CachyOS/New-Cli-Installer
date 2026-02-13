@@ -21,7 +21,7 @@ bool prompt_char(const char* prompt, const char* color = RESET, char* read = nul
 void clear_screen() noexcept;
 void inst_needed(const std::string_view& pkg) noexcept;
 void secure_wipe() noexcept;
-void auto_partition() noexcept;
+auto auto_partition() noexcept -> std::vector<gucc::fs::Partition>;
 void generate_fstab() noexcept;
 void set_hostname(const std::string_view& hostname) noexcept;
 void set_locale(const std::string_view& locale) noexcept;

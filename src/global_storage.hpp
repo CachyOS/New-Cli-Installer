@@ -1,7 +1,8 @@
 #ifndef GLOBAL_STORAGE_HPP
 #define GLOBAL_STORAGE_HPP
 
-// import zfs
+// import gucc types
+#include "gucc/partition.hpp"
 #include "gucc/zfs_types.hpp"
 
 #include <cstdint>        // for int32_t
@@ -13,7 +14,7 @@
 
 class Config final {
  public:
-    using value_type      = std::unordered_map<std::string_view, std::variant<std::string, std::int32_t, std::vector<std::string>, gucc::fs::ZfsSetupConfig>>;
+    using value_type      = std::unordered_map<std::string_view, std::variant<std::string, std::int32_t, std::vector<std::string>, gucc::fs::ZfsSetupConfig, std::vector<gucc::fs::Partition>>>;
     using reference       = value_type&;
     using const_reference = const value_type&;
 
