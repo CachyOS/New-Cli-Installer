@@ -36,6 +36,7 @@ gucc_lib = library('gucc',
         'src/timezone.cpp',
         'src/lvm.cpp',
         'src/systemd_repart.cpp',
+        'src/systemd_homed.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps
