@@ -2057,6 +2057,9 @@ void mount_partitions() noexcept {
             utils::get_cryptboot();
 
             utils::dump_partitions_to_log(partitions);
+
+            // Save partition schema globally for later
+            config_data["PARTITION_SCHEMA"] = partitions;
             return;
         }
         config_data["MOUNT"] = "";
