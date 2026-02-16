@@ -10,6 +10,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/btrfs.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
@@ -55,19 +56,6 @@ using namespace std::string_view_literals;
 
 namespace tui {
 
-// Structure to hold user selections for the root partition
-struct RootPartitionSelection {
-    std::string device;
-    // Filesystem type (e.g., "ext4", "btrfs") or empty if skipping format
-    std::string fstype;
-    // Full mkfs command (e.g., "mkfs.ext4 -q") or empty if skipping format
-    std::string mkfs_command;
-    // Comma-separated mount options
-    std::string mount_opts;
-    // Flag indicating if formatting was chosen
-    bool format_requested{};
-};
-
 bool exit_done() noexcept {
 #ifdef NDEVENV
     auto* config_instance = Config::instance();
@@ -104,28 +92,6 @@ bool exit_done() noexcept {
     utils::clear_screen();
 #endif
     return true;
-}
-
-void btrfs_subvolumes(std::vector<gucc::fs::Partition>& partitions) noexcept {
-    const std::vector<std::string> menu_entries = {
-        "automatic",
-        "manual",
-    };
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    std::string btrfsvols_mode{};
-    auto ok_callback = [&] {
-        btrfsvols_mode = menu_entries[static_cast<std::size_t>(selected)];
-        screen.ExitLoopClosure()();
-    };
-    static constexpr auto btrfsvols_body = "\nAutomatic mode\nis designed to allow integration\nwith snapper, non-recursive snapshots,\nseparating system and user data and\nrestoring snapshots without losing data.\n"sv;
-    /* clang-format off */
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, btrfsvols_body);
-
-    if (btrfsvols_mode.empty()) { return; }
-    /* clang-format on */
-
-    utils::btrfs_create_subvols(partitions, btrfsvols_mode);
 }
 
 // Function will not allow incorrect UUID type for installed system.
@@ -1754,11 +1720,11 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
 }
 
 // Function to gather user choices for the root partition
-auto select_root_partition_info() noexcept -> std::optional<RootPartitionSelection> {
+auto select_root_partition_info() noexcept -> std::optional<utils::RootPartitionSelection> {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    RootPartitionSelection selection{};
+    utils::RootPartitionSelection selection{};
 
     // 1. Identify root partition device
     {
@@ -1814,103 +1780,6 @@ auto select_root_partition_info() noexcept -> std::optional<RootPartitionSelecti
     return selection;
 }
 
-// Function to apply formatting, mounting, and post-mount actions
-auto apply_root_partition_actions(const RootPartitionSelection& selection, std::vector<gucc::fs::Partition>& partition_schema) noexcept -> bool {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    // 1. Format the partition if requested
-    if (selection.format_requested) {
-        const auto& content   = fmt::format(FMT_COMPILE("\nFormat {} with {}?\n \n! WARNING: Data on {} will be lost !\n"), selection.device, selection.fstype, selection.device);
-        const auto& do_format = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-        /* clang-format off */
-        if (!do_format) { return false; }
-        /* clang-format on */
-
-#ifdef NDEVENV
-        const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
-        if (!gucc::utils::exec_checked(mkfs_cmd)) {
-            spdlog::error("Failed to format partition {} with command: {}", selection.device, selection.mkfs_command);
-            return false;
-        }
-        spdlog::info("Formatted {} with {}", selection.device, selection.mkfs_command);
-#else
-        spdlog::info("[DRY-RUN] Would format {} with command: {}", selection.device, selection.mkfs_command);
-#endif
-    }
-
-    // 2. Mount and query the partition
-    // NOTE: This still uses global state. Refactoring query_partition to return
-    // a struct would be cleaner but requires changes in many places right now.
-    auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
-    auto& luks_dev  = std::get<std::string>(config_data["LUKS_DEV"]);
-    auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
-    auto& is_luks   = std::get<std::int32_t>(config_data["LUKS"]);
-    auto& is_lvm    = std::get<std::int32_t>(config_data["LVM"]);
-
-    // Reset before query
-    luks_name = "";
-    luks_dev  = "";
-    luks_uuid = "";
-    is_luks   = 0;
-    is_lvm    = 0;
-
-    if (!utils::mount_partition(selection.device, mountpoint_info, mountpoint_info, selection.mount_opts)) {
-        spdlog::error("Failed to mount root partition {}", selection.device);
-    }
-
-    // 3. Add partition info to the schema
-    const auto& mount_fstype = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-    const auto& part_fs      = mount_fstype.empty() ? (selection.fstype == "skip"sv ? "unknown"s : selection.fstype) : mount_fstype;
-    auto root_part_struct    = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/"s, .device = selection.device, .mount_opts = selection.mount_opts};
-
-    // Get UUID of made partition
-    const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
-    root_part_struct.uuid_str  = root_part_uuid;
-
-    // Get luks information about the partition
-    if (is_luks && !luks_name.empty()) {
-        root_part_struct.luks_mapper_name = luks_name;
-    }
-    // Store the UUID of the underlying *encrypted* partition if available
-    if (is_luks && !luks_uuid.empty()) {
-        root_part_struct.luks_uuid = luks_uuid;
-    }
-
-    utils::dump_partition_to_log(root_part_struct);
-
-    // Save fstype before moving
-    const auto root_fstype = root_part_struct.fstype;
-
-    // insert root partition
-    partition_schema.emplace_back(std::move(root_part_struct));
-
-    // 4. Handle BTRFS subvolumes
-
-    // If the root partition is btrfs, offer to create subvolumes
-    if (root_fstype == "btrfs"sv) {
-        // Check if there are subvolumes already on the btrfs partition
-        const auto& subvolumes = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info));
-        if (!subvolumes.empty()) {
-            const auto& existing_subvolumes = detail::yesno_widget(fmt::format(FMT_COMPILE("\nFound subvolumes {}\n \nWould you like to mount them?\n "), subvolumes), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-            // Pre-existing subvolumes and user wants to mount them
-            /* clang-format off */
-            if (existing_subvolumes) { utils::mount_existing_subvols(partition_schema); }
-            /* clang-format on */
-        } else {
-            // No subvolumes present. Make some new ones
-            const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-            /* clang-format off */
-            if (create_subvolumes) { tui::btrfs_subvolumes(partition_schema); }
-            /* clang-format on */
-        }
-    }
-
-    return true;
-}
-
 // Formats and mounts root partition
 auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
     auto* config_instance = Config::instance();
@@ -1950,7 +1819,7 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
     }
 
     // 2. Apply the selected actions
-    if (!apply_root_partition_actions(*selection_opt, partitions)) {
+    if (!utils::apply_root_partition_actions(*selection_opt, {}, partitions)) {
         spdlog::error("Failed to apply root partition actions for device {}", selection_opt->device);
         return false;
     }
@@ -1958,9 +1827,355 @@ auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept
     return true;
 }
 
+auto select_swap_info() noexcept -> std::optional<utils::SwapSelection> {
+    static constexpr auto sel_swap_body = "\nSelect SWAP Partition.\nIf using a Swapfile, it will initially set the same size as your RAM.\n"sv;
+    static constexpr auto sel_swap_file = "Swapfile"sv;
+
+    auto* config_instance       = Config::instance();
+    auto& config_data           = config_instance->data();
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    std::string answer{};
+    {
+        std::vector<std::string> temp{"None -"};
+        const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
+        if (!(root_filesystem == "zfs"sv || root_filesystem == "btrfs"sv)) {
+            temp.emplace_back("Swapfile -");
+        }
+        const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+        temp.reserve(partitions.size());
+        std::ranges::copy(partitions, std::back_inserter(temp));
+
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            const auto& src   = temp[static_cast<std::size_t>(selected)];
+            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
+            answer            = lines[0];
+            success           = true;
+            screen.ExitLoopClosure()();
+        };
+        /* clang-format off */
+        detail::menu_widget(temp, ok_callback, &selected, &screen, sel_swap_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+        if (!success) { return std::nullopt; }
+        /* clang-format on */
+    }
+
+    utils::SwapSelection selection{};
+    if (answer == "None"sv) {
+        selection.type = utils::SwapSelection::Type::None;
+        return selection;
+    }
+
+    if (answer == sel_swap_file) {
+        selection.type           = utils::SwapSelection::Type::Swapfile;
+        const auto& total_memory = gucc::utils::exec("grep MemTotal /proc/meminfo | awk '{print $2/1024}' | sed 's/\\..*//'");
+        std::string value{fmt::format(FMT_COMPILE("{}M"), total_memory)};
+        if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+            return std::nullopt;
+        }
+
+        while (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'M\\|G'"), value))) {
+            detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
+            value = fmt::format(FMT_COMPILE("{}M"), total_memory);
+            if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+                return std::nullopt;
+            }
+        }
+        selection.swapfile_size = std::move(value);
+        return selection;
+    }
+
+    // Partition swap
+    selection.type   = utils::SwapSelection::Type::Partition;
+    selection.device = answer;
+
+    // Check if partition already has swap
+    const auto& swap_part  = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE '{}' | grep -i 'swap'"), answer));
+    selection.needs_mkswap = (swap_part != "swap"sv);
+
+    if (selection.needs_mkswap) {
+        const auto& do_swap = detail::yesno_widget(fmt::format(FMT_COMPILE("\nmkswap {}\n"), answer), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        /* clang-format off */
+        if (!do_swap) { return std::nullopt; }
+        /* clang-format on */
+    }
+
+    return selection;
+}
+
+// Gather ESP selection from user without applying any changes
+auto select_esp_info() noexcept -> std::optional<utils::EspSelection> {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
+
+    /* clang-format off */
+    if (sys_info != "UEFI"sv) { return utils::EspSelection{}; }
+    /* clang-format on */
+
+    utils::EspSelection selection{};
+
+    // Select ESP partition
+    {
+        const auto& partitions_list = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            const auto& src   = partitions_list[static_cast<std::size_t>(selected)];
+            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
+            selection.device  = lines[0];
+            success           = true;
+            screen.ExitLoopClosure()();
+        };
+
+        /* clang-format off */
+        static constexpr auto esp_part_body = "\nSelect BOOT partition.\n"sv;
+        detail::menu_widget(partitions_list, ok_callback, &selected, &screen, esp_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+        if (!success) { return std::nullopt; }
+        /* clang-format on */
+    }
+
+    // Check if already fat/vfat
+    const auto& is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), selection.device));
+    if (!is_fat_part) {
+        const auto& content        = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), selection.device);
+        selection.format_requested = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    }
+
+    // Select mountpoint
+    {
+        const auto& luks                             = std::get<std::int32_t>(config_data["LUKS"]);
+        static constexpr auto MntUefiBody            = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n"sv;
+        static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption.\nEncrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n"sv;
+        const auto& MntUefiMessage                   = (luks == 0) ? MntUefiBody : MntUefiCrypt;
+        const std::vector<std::string> radiobox_list = {
+            "/boot/efi",
+            "/boot",
+        };
+
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        auto ok_callback = [&] {
+            selection.mountpoint = radiobox_list[static_cast<std::size_t>(selected)];
+            screen.ExitLoopClosure()();
+        };
+        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = MntUefiMessage}, {.text_size = nothing});
+    }
+
+    /* clang-format off */
+    if (selection.mountpoint.empty()) { return std::nullopt; }
+    /* clang-format on */
+
+    return selection;
+}
+
+auto select_additional_partition_info() noexcept -> std::optional<utils::AdditionalPartSelection> {
+    auto* config_instance   = Config::instance();
+    auto& config_data       = config_instance->data();
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+
+    utils::AdditionalPartSelection selection{};
+
+    // Select device
+    {
+        const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+        std::vector<std::string> temp{"Done -"};
+        temp.reserve(partitions_lines.size());
+        std::ranges::copy(partitions_lines, std::back_inserter(temp));
+
+        auto screen = ScreenInteractive::Fullscreen();
+        std::int32_t selected{};
+        bool success{};
+        auto ok_callback = [&] {
+            const auto& src   = temp[static_cast<std::size_t>(selected)];
+            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
+            selection.device  = lines[0];
+            success           = true;
+            screen.ExitLoopClosure()();
+        };
+        /* clang-format off */
+        static constexpr auto extra_part_body = "\nSelect additional partitions in any order, or 'Done' to finish.\n"sv;
+        detail::menu_widget(temp, ok_callback, &selected, &screen, extra_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+        if (!success) { return std::nullopt; }
+        /* clang-format on */
+    }
+
+    if (selection.device == "Done"sv) {
+        return utils::AdditionalPartSelection{.device = "Done", .mountpoint = "", .fstype = "", .mkfs_command = "", .mount_opts = "", .format_requested = false};
+    }
+
+    // Select filesystem
+    auto fs_selection = select_fs_and_cmd();
+    /* clang-format off */
+    if (!fs_selection) { return std::nullopt; }
+    /* clang-format on */
+
+    selection.fstype           = fs_selection->first;
+    selection.mkfs_command     = (selection.fstype == "skip"sv) ? ""s : fs_selection->second;
+    selection.format_requested = !selection.mkfs_command.empty();
+
+    // Select mountpoint
+    /* clang-format off */
+    // Ask user for mountpoint. Don't give /boot as an example for UEFI systems!
+    std::string_view mnt_examples = "/boot\n/home\n/var"sv;
+    if (system_info == "UEFI"sv) { mnt_examples = "/home\n/var"sv; }
+    /* clang-format on */
+
+    std::string value{"/"};
+    static constexpr auto extra_part_body1 = "Specify partition mountpoint. Ensure\nthe name begins with a forward slash (/).\nExamples include:"sv;
+    if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) {
+        return std::nullopt;
+    }
+    selection.mountpoint = std::move(value);
+
+    // Validate mountpoint
+    while ((selection.mountpoint.size() <= 1) || (selection.mountpoint[0] != '/') || gucc::utils::contains(selection.mountpoint, " ")) {
+        detail::msgbox_widget("\nPartition cannot be mounted due to a problem with the mountpoint name.\nA name must be given after a forward slash.\n");
+        selection.mountpoint = "/";
+        if (!detail::inputbox_widget(selection.mountpoint, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) {
+            return std::nullopt;
+        }
+    }
+
+    // Select mount options
+    if (selection.fstype != "skip"sv) {
+        selection.mount_opts = select_mount_opts(selection.device, selection.fstype);
+    } else {
+        selection.mount_opts = select_mount_opts(selection.device, selection.fstype, true);
+    }
+
+    return selection;
+}
+
+auto gather_mount_selections() noexcept -> std::optional<utils::MountSelections> {
+    auto* config_instance       = Config::instance();
+    auto& config_data           = config_instance->data();
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    utils::MountSelections selections{};
+
+    // 1. Root partition
+    auto root_opt = select_root_partition_info();
+    if (!root_opt) {
+        spdlog::info("Root partition selection cancelled.");
+        return std::nullopt;
+    }
+    selections.root = std::move(*root_opt);
+
+    // 2. BTRFS subvolume preferences (only relevant for btrfs root)
+    if (selections.root.fstype == "btrfs"sv) {
+        const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        if (create_subvolumes) {
+            selections.btrfs_subvolumes = utils::select_btrfs_subvolumes(mountpoint_info);
+        }
+    }
+
+    // 3. Swap
+    auto swap_opt = select_swap_info();
+    if (!swap_opt) {
+        spdlog::info("Swap selection cancelled.");
+        return std::nullopt;
+    }
+    selections.swap = std::move(*swap_opt);
+
+    // 4. Additional partitions
+    while (true) {
+        auto part_opt = select_additional_partition_info();
+        if (!part_opt) {
+            spdlog::info("Additional partition selection cancelled.");
+            return std::nullopt;
+        }
+        if (part_opt->device == "Done"sv) {
+            break;
+        }
+        selections.additional.emplace_back(std::move(*part_opt));
+    }
+
+    // 5. ESP (UEFI only)
+    auto esp_opt = select_esp_info();
+    if (!esp_opt) {
+        spdlog::info("ESP selection cancelled.");
+        return std::nullopt;
+    }
+    selections.esp = std::move(*esp_opt);
+
+    return selections;
+}
+
+auto preview_partition_schema(const utils::MountSelections& selections) noexcept -> bool {
+    std::string preview{"\n"};
+    preview += "═══ Partition Plan ═══\n\n";
+
+    // Root
+    {
+        const auto& r      = selections.root;
+        const auto& action = r.format_requested
+            ? fmt::format(FMT_COMPILE("format as {}"), r.fstype)
+            : "keep existing"s;
+        preview += fmt::format(FMT_COMPILE("  Root: {} ({})\n"), r.device, action);
+        if (!r.mount_opts.empty()) {
+            preview += fmt::format(FMT_COMPILE("        mount opts: {}\n"), r.mount_opts);
+        }
+    }
+
+    // BTRFS subvolumes
+    if (!selections.btrfs_subvolumes.empty()) {
+        preview += "        subvolumes:\n";
+        for (const auto& sv : selections.btrfs_subvolumes) {
+            preview += fmt::format(FMT_COMPILE("          {} → {}\n"), sv.subvolume, sv.mountpoint);
+        }
+    }
+
+    preview += "\n";
+
+    // ESP
+    if (!selections.esp.device.empty()) {
+        const auto& action = selections.esp.format_requested ? "format vfat"s : "keep existing"s;
+        preview += fmt::format(FMT_COMPILE("  Boot: {} ({}) → {}\n"), selections.esp.device, action, selections.esp.mountpoint);
+        preview += "\n";
+    }
+
+    // Swap
+    switch (selections.swap.type) {
+    case utils::SwapSelection::Type::Swapfile:
+        preview += fmt::format(FMT_COMPILE("  Swap: swapfile ({})\n\n"), selections.swap.swapfile_size);
+        break;
+    case utils::SwapSelection::Type::Partition: {
+        const auto& action = selections.swap.needs_mkswap ? "mkswap"s : "existing"s;
+        preview += fmt::format(FMT_COMPILE("  Swap: {} ({})\n\n"), selections.swap.device, action);
+        break;
+    }
+    case utils::SwapSelection::Type::None:
+        preview += "  Swap: none\n\n";
+        break;
+    }
+
+    // Additional
+    for (const auto& p : selections.additional) {
+        const auto& action = p.format_requested
+            ? fmt::format(FMT_COMPILE("format as {}"), p.fstype)
+            : "keep existing"s;
+        preview += fmt::format(FMT_COMPILE("  {} → {} ({})\n"), p.device, p.mountpoint, action);
+    }
+    if (!selections.additional.empty()) {
+        preview += "\n";
+    }
+
+    preview += "─────────────────────────────\n";
+    preview += "Data on formatted partitions will be lost!\n\n";
+    preview += "Proceed with these changes?\n";
+
+    return detail::yesno_widget(preview, size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40));
+}
+
 void mount_partitions() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
+
     // Warn users that they CAN mount partitions without formatting them!
     static constexpr auto content = "\nIMPORTANT: Partitions can be mounted without formatting them\nby selecting the 'Do not format' option listed at the top of\nthe file system menu.\n \nEnsure the correct choices for mounting and formatting\nare made as no warnings will be provided, with the exception of\nthe UEFI boot partition.\n"sv;
     detail::msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
@@ -1978,161 +2193,22 @@ void mount_partitions() noexcept {
     // Get list of available partitions
     utils::find_partitions();
 
-    // Add legacy zfs filesystems to the list - these can be mounted but not formatted
-    /*for i in $(zfs_list_datasets "legacy"); do
-        PARTITIONS="${PARTITIONS} ${i}"
-        PARTITIONS="${PARTITIONS} zfs"
-        NUMBER_PARTITIONS=$(( NUMBER_PARTITIONS + 1 ))
-    done*/
+    // get all mount input from user
+    auto selections = gather_mount_selections();
+    if (!selections) {
+        spdlog::info("Mount partition selection cancelled by user.");
+        return;
+    }
 
-    // Filter out partitions that have already been mounted and partitions that just contain crypt or zfs devices
-    auto ignore_part = utils::list_mounted();
-    ignore_part += gucc::fs::zfs_list_devs();
-    ignore_part += utils::list_containing_crypt();
+    // ask user to review and approve selection
+    if (!preview_partition_schema(*selections)) {
+        spdlog::info("Partition schema declined.");
+        return;
+    }
 
-    /* const auto& parts = gucc::utils::make_multiline(ignore_part);
-    for (const auto& part : parts) {
-        utils::delete_partition_in_list(part);
-    }*/
-
-    std::vector<gucc::fs::Partition> partitions{};
-
-    // Let's mount ROOT partition (or skip and exit out)
-    /* clang-format off */
-    if (!tui::mount_root_partition(partitions)) { return; }
-    /* clang-format on */
-
-    // We need to remove legacy zfs partitions before make_swap since they can't hold swap
-    // local zlegacy
-    // for zlegacy in $(zfs_list_datasets "legacy"); do
-    //    delete_partition_in_list ${zlegacy}
-    // done
-
-    // Identify and create swap, if applicable
-    tui::make_swap(partitions);
-
-    // Now that swap is done we put the legacy partitions back, unless they are already mounted
-    /*for i in $(zfs_list_datasets "legacy"); do
-        PARTITIONS="${PARTITIONS} ${i}"
-        PARTITIONS="${PARTITIONS} zfs"
-        NUMBER_PARTITIONS=$(( NUMBER_PARTITIONS + 1 ))
-    done*/
-
-    /*const auto& parts_tmp = gucc::utils::make_multiline(utils::list_mounted());
-    for (const auto& part : parts_tmp) {
-        utils::delete_partition_in_list(part);
-    }*/
-
-    // All other partitions
-    const auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
-    const auto& system_info       = std::get<std::string>(config_data["SYSTEM"]);
-    const auto& partition         = std::get<std::string>(config_data["PARTITION"]);
-    while (number_partitions > 0) {
-        {
-            const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-            std::vector<std::string> temp{"Done -"};
-            temp.reserve(partitions_lines.size());
-            std::ranges::copy(partitions_lines, std::back_inserter(temp));
-
-            auto screen = ScreenInteractive::Fullscreen();
-            std::int32_t selected{};
-            bool success{};
-            auto ok_callback = [&] {
-                const auto& src          = temp[static_cast<std::size_t>(selected)];
-                const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
-                config_data["PARTITION"] = lines[0];
-                success                  = true;
-                screen.ExitLoopClosure()();
-            };
-            /* clang-format off */
-            static constexpr auto extra_part_body = "\nSelect additional partitions in any order, or 'Done' to finish.\n"sv;
-            detail::menu_widget(temp, ok_callback, &selected, &screen, extra_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-            if (!success) { return; }
-            /* clang-format on */
-        }
-
-        if (partition == "Done"sv) {
-            tui::make_esp(partitions);
-            utils::get_cryptroot();
-            utils::get_cryptboot();
-
-            utils::dump_partitions_to_log(partitions);
-
-            // Save partition schema globally for later
-            config_data["PARTITION_SCHEMA"] = partitions;
-            return;
-        }
-        config_data["MOUNT"] = "";
-        tui::select_filesystem();
-
-        /* clang-format off */
-        // Ask user for mountpoint. Don't give /boot as an example for UEFI systems!
-        std::string_view mnt_examples = "/boot\n/home\n/var"sv;
-        if (system_info == "UEFI"sv) { mnt_examples = "/home\n/var"sv; }
-
-        std::string value{"/"};
-        static constexpr auto extra_part_body1 = "Specify partition mountpoint. Ensure\nthe name begins with a forward slash (/).\nExamples include:"sv;
-        if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) { return; }
-        /* clang-format on */
-        auto& mount_dev = std::get<std::string>(config_data["MOUNT"]);
-        mount_dev       = std::move(value);
-
-        // loop while the mountpoint specified is incorrect (is only '/', is blank, or has spaces).
-        while ((mount_dev.size() <= 1) || (mount_dev[0] != '/') || gucc::utils::contains(mount_dev, " ")) {
-            // Warn user about naming convention
-            detail::msgbox_widget("\nPartition cannot be mounted due to a problem with the mountpoint name.\nA name must be given after a forward slash.\n");
-            // Ask user for mountpoint again
-            value = "/";
-            if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) {
-                return;
-            }
-            mount_dev = std::move(value);
-        }
-        // Create directory and mount.
-        tui::mount_current_partition();
-        // utils::delete_partition_in_list(partition);
-
-        // get mountpoint
-        const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-        const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, mount_dev);
-
-        // get options used for mounting the current partition
-        const auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-
-        const auto& part_fs = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
-        auto part_struct    = gucc::fs::Partition{.fstype = part_fs, .mountpoint = mount_dev, .device = partition, .mount_opts = mount_opts_info};
-
-        const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
-        part_struct.uuid_str  = part_uuid;
-
-        // get luks information about the current partition
-        const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
-        const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
-        if (!luks_name.empty()) {
-            part_struct.luks_mapper_name = luks_name;
-        }
-        if (!luks_uuid.empty()) {
-            part_struct.luks_uuid = luks_uuid;
-        }
-
-        utils::dump_partition_to_log(part_struct);
-
-        // insert root partition
-        partitions.emplace_back(std::move(part_struct));
-
-        // Determine if a separate /boot is used.
-        // 0 = no separate boot,
-        // 1 = separate non-lvm boot,
-        // 2 = separate lvm boot. For Grub configuration
-        if (mount_dev == "/boot"sv) {
-            config_data["LVM_SEP_BOOT"] = 1;
-
-            const auto& cmd        = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep -q 'lvm'"), partition);
-            const bool is_boot_lvm = gucc::utils::exec_checked(cmd);
-            if (is_boot_lvm) {
-                config_data["LVM_SEP_BOOT"] = 2;
-            }
-        }
+    // apply changes on disk
+    if (!utils::apply_mount_selections(*selections)) {
+        detail::msgbox_widget("\nFailed to apply partition changes.\nCheck the log for details.\n");
     }
 }
 

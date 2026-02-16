@@ -1,11 +1,12 @@
 #include "simple_tui.hpp"
-#include "global_storage.hpp"
 #include "disk.hpp"
+#include "global_storage.hpp"
 #include "tui.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/btrfs.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partitioning.hpp"
@@ -250,9 +251,21 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
                 const auto& subvolumes = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mount_dir));
                 if (!subvolumes.empty()) {
                     // Pre-existing subvolumes and user wants to mount them
-                    utils::mount_existing_subvols(partitions);
+                    if (!utils::mount_existing_subvols(partitions)) {
+                        spdlog::error("Failed to mount existing btrfs subvolumes");
+                    }
                 } else {
-                    utils::btrfs_create_subvols(partitions, "automatic"sv, true);
+                    // Create default subvolumes automatically
+                    const auto& default_subvols = utils::default_btrfs_subvolumes();
+#ifdef NDEVENV
+                    gucc::utils::exec(R"(mount | grep 'on /mnt ' | grep -Po '(?<=\().*(?=\))' > /tmp/.root_mount_options)"sv);
+                    if (!gucc::fs::btrfs_create_subvols(default_subvols, root_part, mountpoint_info, mount_opts_info)) {
+                        spdlog::error("Failed to create subvolumes automatically");
+                    }
+#endif
+                    if (!gucc::fs::btrfs_append_subvolumes(partitions, default_subvols)) {
+                        spdlog::error("Failed to append btrfs subvolumes into partition scheme");
+                    }
                 }
             }
             continue;
