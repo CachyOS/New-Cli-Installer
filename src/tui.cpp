@@ -112,6 +112,7 @@ void set_hostname() noexcept {
     if (!detail::inputbox_widget(hostname, hostname_body, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
+    hostname = std::string{gucc::utils::trim(hostname)};
     // If at least one package, install.
     /* clang-format off */
     if (hostname.empty()) { return; }
@@ -310,6 +311,8 @@ void set_root_password() noexcept {
         return;
     }
 
+    pass    = std::string{gucc::utils::trim(pass)};
+    confirm = std::string{gucc::utils::trim(confirm)};
     if (pass != confirm) {
         static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n"sv;
         detail::msgbox_widget(PassErrBody);
@@ -327,12 +330,14 @@ void create_new_user() noexcept {
     }
 
     // Loop while username is blank, has spaces, or has capital letters in it.
+    user = std::string{gucc::utils::trim(user)};
     while (user.empty() || gucc::utils::contains(user, " ") || std::ranges::any_of(user, [](char ch) { return std::isupper(ch); })) {
         user.clear();
         static constexpr auto user_err_body = "An incorrect user name was entered. Please try again."sv;
         if (!detail::inputbox_widget(user, user_err_body, size(HEIGHT, GREATER_THAN, 1))) {
             return;
         }
+        user = std::string{gucc::utils::trim(user)};
     }
 
     std::string_view shell{};
@@ -379,6 +384,8 @@ void create_new_user() noexcept {
         return;
     }
 
+    pass    = std::string{gucc::utils::trim(pass)};
+    confirm = std::string{gucc::utils::trim(confirm)};
     while (pass != confirm) {
         static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n"sv;
         detail::msgbox_widget(PassErrBody);
@@ -390,6 +397,8 @@ void create_new_user() noexcept {
         if (!detail::inputbox_widget(confirm, user_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
             return;
         }
+        pass    = std::string{gucc::utils::trim(pass)};
+        confirm = std::string{gucc::utils::trim(confirm)};
     }
 
     // create new user. This step will only be reached where the password loop has been skipped or broken.
@@ -406,6 +415,7 @@ void install_cust_pkgs() noexcept {
     if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
+    packages = std::string{gucc::utils::trim(packages)};
     // If at least one package, install.
     /* clang-format off */
     if (packages.empty()) { return; }
@@ -427,6 +437,7 @@ void remove_pkgs() noexcept {
     if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
         return;
     }
+    packages = std::string{gucc::utils::trim(packages)};
     utils::remove_pkgs(packages);
 }
 
@@ -460,6 +471,7 @@ void install_grub_uefi() noexcept {
         if (!detail::inputbox_widget(bootid, bootid_content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return;
         }
+        bootid = std::string{gucc::utils::trim(bootid)};
     }
 
     auto* config_instance  = Config::instance();
@@ -1089,6 +1101,7 @@ void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
             }
         }
 
+        value = std::string{gucc::utils::trim(value)};
 #ifdef NDEVENV
         const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint_info);
         if (!gucc::swap::make_swapfile(mountpoint_info, value)) {
@@ -1275,6 +1288,7 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
         zfs_menu_text = zfs_zpool_body;
 
         // validation
+        zfs_zpool_name = std::string{gucc::utils::trim(zfs_zpool_name)};
         if (zfs_zpool_name.empty() || std::isdigit(zfs_zpool_name[0]) || (std::ranges::any_of(zfs_zpool_name, [](char ch) { return (!std::isalnum(ch)) && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
             zfs_menu_text = zfs_zpoolcvalidation1;
         }
@@ -1383,6 +1397,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
         zfs_menu_text = zfs_dataset_body;
 
         // validation
+        zfs_dataset_name = std::string{gucc::utils::trim(zfs_dataset_name)};
         if (zfs_dataset_name.empty() || std::isdigit(zfs_dataset_name[0]) || (std::ranges::any_of(zfs_dataset_name, [](char ch) { return (!std::isalnum(ch)) && (ch != '/') && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
             zfs_menu_text = zfs_zpoolcvalidation1;
         }
@@ -1413,7 +1428,7 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
             zfs_menu_text = zvol_size_menu_body;
 
             // validation
-
+            zvol_size = std::string{gucc::utils::trim(zvol_size)};
             if (zvol_size.empty() || std::ranges::any_of(zvol_size, [](char ch) { return !std::isdigit(ch); })) {
                 zfs_menu_text = zvol_size_menu_validation;
             }
@@ -1475,6 +1490,7 @@ void zfs_set_property() noexcept {
         zfs_menu_text = zfs_mountpoint_body;
 
         // validation
+        zfs_property_ent = std::string{gucc::utils::trim(zfs_property_ent)};
         if (!ctre::match<"[a-zA-Z]*=[a-zA-Z0-9]*">(zfs_property_ent)) {
             zfs_menu_text = zfs_property_invalid;
         }
@@ -1898,6 +1914,7 @@ auto select_swap_info() noexcept -> std::optional<utils::SwapSelection> {
             }
         }
         selection.swapfile_size = std::move(value);
+        selection.swapfile_size = std::string{gucc::utils::trim(selection.swapfile_size)};
         return selection;
     }
 
@@ -2047,12 +2064,14 @@ auto select_additional_partition_info() noexcept -> std::optional<utils::Additio
     selection.mountpoint = std::move(value);
 
     // Validate mountpoint
+    selection.mountpoint = std::string{gucc::utils::trim(selection.mountpoint)};
     while ((selection.mountpoint.size() <= 1) || (selection.mountpoint[0] != '/') || gucc::utils::contains(selection.mountpoint, " ")) {
         detail::msgbox_widget("\nPartition cannot be mounted due to a problem with the mountpoint name.\nA name must be given after a forward slash.\n");
-        selection.mountpoint = "/";
+        selection.mountpoint = "/"s;
         if (!detail::inputbox_widget(selection.mountpoint, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) {
             return std::nullopt;
         }
+        selection.mountpoint = std::string{gucc::utils::trim(selection.mountpoint)};
     }
 
     // Select mount options

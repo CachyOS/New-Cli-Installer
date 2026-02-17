@@ -133,6 +133,8 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
     if (!tui::detail::inputbox_widget(subvols, subvols_body, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 4))) {
         return {};
     }
+    subvols = std::string{gucc::utils::trim(subvols)};
+
     auto subvol_list = gucc::utils::make_multiline(subvols, false, ' ');
     /* clang-format off */
     if (subvol_list.empty()) { return {}; }
@@ -153,6 +155,7 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
         if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return {};
         }
+        mountpoint = std::string{gucc::utils::trim(mountpoint)};
         subvolumes.push_back(gucc::fs::BtrfsSubvolume{.subvolume = std::move(subvol), .mountpoint = std::move(mountpoint)});
     }
 
@@ -192,7 +195,7 @@ auto mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexce
         if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return true;
         }
-
+        mountpoint = std::string{gucc::utils::trim(mountpoint)};
         subvolumes.push_back(gucc::fs::BtrfsSubvolume{.subvolume = std::move(subvol), .mountpoint = std::move(mountpoint)});
     }
 

@@ -55,8 +55,7 @@ bool get_cryptname(std::string& cryptname) noexcept {
     if (!detail::inputbox_widget(value, luks_cryptname_body, size(HEIGHT, GREATER_THAN, 4))) {
         return false;
     }
-
-    cryptname = value;
+    cryptname = std::string{gucc::utils::trim(value)};
     return true;
 }
 
@@ -66,8 +65,7 @@ bool get_crypt_password(std::string& password) noexcept {
     if (!detail::inputbox_widget(value, luks_pass_body, size(HEIGHT, GREATER_THAN, 4))) {
         return false;
     }
-
-    password = value;
+    password = std::string{gucc::utils::trim(value)};
     return true;
 }
 
@@ -189,6 +187,7 @@ bool luks_key_define() noexcept {
         return false;
     }
 
+    value = std::string{gucc::utils::trim(value)};
     tui::luks_encrypt(value);
     return true;
 }
