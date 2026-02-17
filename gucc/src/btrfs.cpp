@@ -55,7 +55,7 @@ auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mount
         spdlog::error("Failed to create directories for btrfs subvolume {}: {}", subvol_dirs_path, err.message());
         return false;
     }
-    auto cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}{} 2>>/tmp/cachyos-install.log"), root_mountpoint, subvolume);
+    auto cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}{} &>>/tmp/cachyos-install.log"), root_mountpoint, subvolume);
     return utils::exec_checked(cmd);
 }
 
