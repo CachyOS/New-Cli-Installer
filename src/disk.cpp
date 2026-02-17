@@ -539,7 +539,7 @@ auto apply_root_partition_actions(const RootPartitionSelection& selection, const
     is_luks   = 0;
     is_lvm    = 0;
 
-    if (!utils::mount_partition(selection.device, mountpoint_info, mountpoint_info, selection.mount_opts)) {
+    if (!utils::mount_partition(selection.device, mountpoint_info, "/"sv, selection.mount_opts)) {
         spdlog::error("Failed to mount root partition {}", selection.device);
         return false;
     }
