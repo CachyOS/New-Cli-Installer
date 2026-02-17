@@ -690,11 +690,10 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
 
     const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-    auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
 
-    // NOTE: make sure that we have valid initcpio config,
-    // overwise we will end up here with unbootable system.
-    initcpio.append_hooks({"base", "udev", "autodetect", "modconf", "block", "filesystems", "keyboard", "fsck"});
+    // Set console keymap before running pacstrap with packages
+    const auto& keymap = std::get<std::string>(config_data["KEYMAP"]);
+    gucc::locale::set_keymap(keymap, mountpoint);
 
     // filter_packages
     utils::install_from_pkglist(base_pkgs);
@@ -704,53 +703,31 @@ void install_base(const std::string_view& packages) noexcept {
     static constexpr auto base_installed = "/mnt/.base_installed";
     std::ofstream{base_installed};  // NOLINT
 
-    // mkinitcpio handling for specific filesystems
-    std::int32_t btrfs_root = 0;
-    std::int32_t zfs_root   = 0;
-
+    // Detect filesystem type and encryption/lvm state
     const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
     spdlog::info("filesystem type on '{}' := '{}'", mountpoint, filesystem_type);
-    if (filesystem_type == "btrfs"sv) {
-        btrfs_root = 1;
-        initcpio.remove_hook("fsck");
-        initcpio.append_module("btrfs");
-    } else if (filesystem_type == "zfs"sv) {
-        zfs_root = 1;
-        initcpio.remove_hook("fsck");
-        initcpio.insert_hook("filesystems", "zfs");
-        initcpio.append_file("\"/usr/lib/libgcc_s.so.1\"");
-    }
 
     utils::recheck_luks();
 
-    // add luks and lvm hooks as needed
     const auto& lvm  = std::get<std::int32_t>(config_data["LVM"]);
     const auto& luks = std::get<std::int32_t>(config_data["LUKS"]);
     spdlog::info("LVM := {}, LUKS := {}", lvm, luks);
 
-    if (lvm == 1 && luks == 0) {
-        initcpio.insert_hook("filesystems", "lvm2");
-        spdlog::info("add lvm2 hook");
-    } else if (lvm == 0 && luks == 1) {
-        initcpio.insert_hook("keyboard", std::vector<std::string>{"consolefont", "keymap"});
-        initcpio.insert_hook("filesystems", "encrypt");
-        spdlog::info("add luks hook");
-    } else if (lvm == 1 && luks == 1) {
-        initcpio.insert_hook("keyboard", std::vector<std::string>{"consolefont", "keymap"});
-        initcpio.insert_hook("filesystems", std::vector<std::string>{"encrypt", "lvm2"});
-        spdlog::info("add lvm/luks hooks");
+    // Configure mkinitcpio.conf via GUCC
+    const auto fs_type         = gucc::fs::string_to_filesystem_type(filesystem_type);
+    const auto initcpio_config = gucc::initcpio::InitcpioConfig{
+        .filesystem_type  = fs_type,
+        .is_lvm           = (lvm == 1),
+        .is_luks          = (luks == 1),
+        .use_systemd_hook = true,
+    };
+    if (!gucc::initcpio::setup_initcpio_config(initcpio_filename, initcpio_config)) {
+        spdlog::error("Failed to setup initcpio config");
     }
 
-    // Just explicitly flush the data to file,
-    // if smth really happened between our calls.
-    if (initcpio.parse_file()) {
-        initcpio.write();
-    }
-
-    if (lvm + luks + btrfs_root + zfs_root > 0) {
-        utils::arch_chroot("mkinitcpio -P");
-        spdlog::info("re-run mkinitcpio");
-    }
+    // we need to reconfigure with luks&lvm info
+    utils::arch_chroot("mkinitcpio -P");
+    spdlog::info("re-run mkinitcpio");
 
     utils::generate_fstab();
 
