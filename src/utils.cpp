@@ -771,7 +771,7 @@ void install_desktop(const std::string_view& desktop) noexcept {
 
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
-    config_data["DE"]     = std::string{desktop.data()};
+    config_data["DE"]     = std::string{desktop};
     utils::enable_services();
 }
 
