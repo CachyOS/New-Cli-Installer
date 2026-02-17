@@ -178,3 +178,44 @@ en_US.UTF-8 UTF-8
         CHECK(result[2] == "ru_RU.UTF-8");
     }
 }
+
+TEST_CASE("set vconsole keymap test")
+{
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
+    static constexpr std::string_view folder_testpath{"/tmp/test-keymap-unittest"};
+    static constexpr std::string_view folder_path{"/tmp/test-keymap-unittest/etc"};
+    static constexpr std::string_view dest_vconsole{"/tmp/test-keymap-unittest/etc/vconsole.conf"};
+
+    SECTION("set us keymap")
+    {
+        fs::create_directories(folder_path);
+
+        REQUIRE(gucc::locale::set_keymap("us"sv, folder_testpath));
+        auto content = gucc::file_utils::read_whole_file(dest_vconsole);
+        REQUIRE_EQ(content, "KEYMAP=us\n");
+
+        // Cleanup
+        fs::remove_all(folder_testpath);
+    }
+    SECTION("set de-latin1 keymap")
+    {
+        fs::create_directories(folder_path);
+
+        REQUIRE(gucc::locale::set_keymap("de-latin1"sv, folder_testpath));
+        auto content = gucc::file_utils::read_whole_file(dest_vconsole);
+        REQUIRE_EQ(content, "KEYMAP=de-latin1\n");
+
+        // Cleanup
+        fs::remove_all(folder_testpath);
+    }
+    SECTION("fail on invalid path")
+    {
+        REQUIRE(!gucc::locale::set_keymap("us"sv, "/nonexistent/path/test-keymap"sv));
+    }
+}

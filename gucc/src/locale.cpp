@@ -136,4 +136,25 @@ auto get_x11_keymap_layouts() noexcept -> std::vector<std::string> {
     return utils::make_multiline(layouts);
 }
 
+auto set_keymap(std::string_view keymap, std::string_view mountpoint) noexcept -> bool {
+    const auto& vconsole_path = fmt::format(FMT_COMPILE("{}/etc/vconsole.conf"), mountpoint);
+    const auto& vconsole_conf = fmt::format(FMT_COMPILE("KEYMAP={}\n"), keymap);
+    if (!file_utils::create_file_for_overwrite(vconsole_path, vconsole_conf)) {
+        spdlog::error("Failed to write vconsole.conf to {}", vconsole_path);
+        return false;
+    }
+
+    spdlog::info("Console keymap set to '{}' in {}", keymap, vconsole_path);
+    return true;
+}
+
+auto get_vconsole_keymap_list() noexcept -> std::vector<std::string> {
+    const auto& keymaps = utils::exec("localectl list-keymaps 2>/dev/null");
+    if (keymaps.empty()) {
+        spdlog::warn("Cannot list console keymaps");
+        return {};
+    }
+    return utils::make_multiline(keymaps);
+}
+
 }  // namespace gucc::locale

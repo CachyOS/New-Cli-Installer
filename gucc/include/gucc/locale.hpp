@@ -28,6 +28,12 @@ auto get_x11_keymap_layouts() noexcept -> std::vector<std::string>;
 /// @return vector of locale names
 auto parse_locale_gen(std::string_view content) noexcept -> std::vector<std::string>;
 
+// Set console keymap
+auto set_keymap(std::string_view keymap, std::string_view mountpoint) noexcept -> bool;
+
+// Get available console keymaps from localectl
+auto get_vconsole_keymap_list() noexcept -> std::vector<std::string>;
+
 }  // namespace gucc::locale
 
 #endif  // LOCALE_HPP
