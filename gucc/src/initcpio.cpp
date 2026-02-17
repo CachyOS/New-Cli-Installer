@@ -39,7 +39,7 @@ constexpr auto modify_initcpio_fields(std::string_view file_content, std::string
 namespace gucc::detail {
 
 bool Initcpio::write() const noexcept {
-    if (!fs::exists(m_file_path)) {
+    if (!::fs::exists(m_file_path)) {
         spdlog::error("[INITCPIO] '{}' file doesn't exist!", m_file_path);
         return false;
     }
@@ -58,7 +58,7 @@ bool Initcpio::write() const noexcept {
 }
 
 bool Initcpio::parse_file() noexcept {
-    if (!fs::exists(m_file_path)) {
+    if (!::fs::exists(m_file_path)) {
         spdlog::error("[INITCPIO] '{}' file doesn't exist!", m_file_path);
         return false;
     }
@@ -96,3 +96,92 @@ bool Initcpio::parse_file() noexcept {
 }
 
 }  // namespace gucc::detail
+
+namespace gucc::initcpio {
+
+auto setup_initcpio_config(std::string_view initcpio_path,
+    const InitcpioConfig& config) noexcept -> bool {
+    using gucc::fs::FilesystemType;
+
+    auto initcpio = detail::Initcpio{initcpio_path};
+    if (!initcpio.parse_file()) {
+        return false;
+    }
+
+    // don't read previous/existing hooks, and instead overwrite with the ones we expect
+    std::vector<std::string> hooks;
+
+    // ZFS and bcachefs disable systemd hooks
+    const bool systemd_allowed = config.use_systemd_hook
+        && config.filesystem_type != FilesystemType::Zfs;
+
+    // keyboard should come before autodetect
+    // so the keyboard is available for passphrase entry
+    // NOTE: For systems that are booted with different hardware configurations
+    // (e.g. laptops with external keyboard vs. internal keyboard or headless
+    // systems), this hook needs to be placed before autodetect in order to be
+    // able to use the keyboard at boot time, for example to unlock an
+    // encrypted device when using the encrypt hook.
+    if (systemd_allowed) {
+        if (config.is_luks) {
+            hooks = {"base", "systemd", "keyboard", "autodetect", "microcode", "kms", "modconf", "block", "sd-vconsole"};
+        } else {
+            hooks = {"base", "systemd", "autodetect", "microcode", "kms", "modconf", "block", "keyboard", "sd-vconsole"};
+        }
+    } else {
+        if (config.is_luks) {
+            hooks = {"base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block", "keymap", "consolefont"};
+        } else {
+            hooks = {"base", "udev", "autodetect", "microcode", "kms", "modconf", "block", "keyboard", "keymap", "consolefont"};
+        }
+    }
+
+    // plymouth comes before encrypt hooks
+    if (config.has_plymouth) {
+        hooks.emplace_back("plymouth");
+    }
+
+    // encryption related
+    if (config.is_luks) {
+        if (systemd_allowed) {
+            hooks.emplace_back("sd-encrypt");
+        } else {
+            hooks.emplace_back("encrypt");
+        }
+    }
+
+    // LVM2 hook is necessary for root file system on LVM
+    if (config.is_lvm) {
+        hooks.emplace_back("lvm2");
+    }
+
+    // ZFS specific
+    if (config.filesystem_type == FilesystemType::Zfs) {
+        hooks.emplace_back("zfs");
+    }
+
+    // btrfs hook for multi-device setups
+    if (config.filesystem_type == FilesystemType::Btrfs && config.is_btrfs_multi_device) {
+        hooks.emplace_back("btrfs");
+    }
+
+    // Resume/hibernation is required only for busybox
+    // NOTE: When the default systemd-based initramfs (using the systemd hook)
+    // is used, a resume mechanism is already provided and no further hooks are
+    // required.
+    if (config.has_swap && !systemd_allowed) {
+        hooks.emplace_back("resume");
+    }
+    hooks.emplace_back("filesystems");
+
+    // fsck not needed for btrfs and zfs
+    if (config.filesystem_type != FilesystemType::Btrfs && config.filesystem_type != FilesystemType::Zfs) {
+        hooks.emplace_back("fsck");
+    }
+
+    // write/flush to disk
+    initcpio.hooks = std::move(hooks);
+    return initcpio.write();
+}
+
+}  // namespace gucc::initcpio

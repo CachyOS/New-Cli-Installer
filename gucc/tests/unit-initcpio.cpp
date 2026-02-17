@@ -164,7 +164,7 @@ TEST_CASE("initcpio test")
         REQUIRE(initcpio.hooks.empty());
 
         // Cleanup.
-        fs::remove(filename);
+        ::fs::remove(filename);
     }
     SECTION("check empty file")
     {
@@ -175,7 +175,7 @@ TEST_CASE("initcpio test")
         REQUIRE(!initcpio.write());
 
         // Cleanup.
-        fs::remove(filename);
+        ::fs::remove(filename);
     }
     SECTION("check write to nonexistent file")
     {
@@ -190,3 +190,352 @@ TEST_CASE("initcpio test")
         REQUIRE(!initcpio.write());
     }
 }
+
+TEST_CASE("setup initcpiocfg from config test")
+{
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
+    using namespace gucc;  // NOLINT
+
+    static constexpr std::string_view filename{"/tmp/mkinitcpio-setup.conf"};
+
+    SECTION("default ext4 config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("btrfs config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Btrfs,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("btrfs multi-device config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Btrfs,
+            .is_btrfs_multi_device = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "btrfs", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("zfs config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Zfs,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "zfs", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("zfs + luks config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Zfs,
+            .is_luks = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "keymap", "consolefont", "encrypt", "zfs", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("lvm only config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .is_lvm  = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "lvm2", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("luks only config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .is_luks = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "keymap", "consolefont", "encrypt", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("lvm + luks config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .is_lvm  = true,
+            .is_luks = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "keymap", "consolefont", "encrypt", "lvm2", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("btrfs + luks config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Btrfs,
+            .is_luks = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "keymap", "consolefont", "encrypt", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("ext4 with swap")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .has_swap = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "resume", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("ext4 with plymouth")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .has_plymouth = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "plymouth", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("systemd hook config")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .use_systemd_hook = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "systemd", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "sd-vconsole", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("systemd hook with luks")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .is_luks = true,
+            .use_systemd_hook = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "systemd", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "sd-vconsole", "sd-encrypt", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("systemd hook with luks + lvm + swap")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .is_lvm  = true,
+            .is_luks = true,
+            .has_swap = true,
+            .use_systemd_hook = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "systemd", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "sd-vconsole", "sd-encrypt", "lvm2", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("zfs forces non-systemd path")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Zfs,
+            .use_systemd_hook = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "zfs", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("full config: luks + lvm + plymouth + swap")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+            .is_lvm  = true,
+            .is_luks = true,
+            .has_swap = true,
+            .has_plymouth = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "keymap", "consolefont", "plymouth", "encrypt", "lvm2",
+            "resume", "filesystems", "fsck"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("nonexistent file")
+    {
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Ext4,
+        };
+        REQUIRE(!initcpio::setup_initcpio_config("/path/to/nonexistent.conf", config));
+    }
+}
+
