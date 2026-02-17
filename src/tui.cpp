@@ -203,15 +203,29 @@ void select_keymap() noexcept {
     const auto& keymaps = gucc::utils::make_multiline(gucc::utils::exec(R"(ls -R /usr/share/kbd/keymaps | grep "map.gz" | sed 's/\.map\.gz//g' | sort)"));
 
     auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{226};
+    std::int32_t selected{};
+    for (std::size_t i = 0; i < keymaps.size(); ++i) {
+        if (keymaps[i] == "us"sv) {
+            selected = static_cast<std::int32_t>(i);
+            break;
+        }
+    }
+    bool success{};
+    std::string keymap_choice{};
     auto ok_callback = [&] {
-        const auto& selected_keymap = keymaps[static_cast<std::size_t>(selected)];
-        utils::set_keymap(selected_keymap);
+        keymap_choice = keymaps[static_cast<std::size_t>(selected)];
+        success       = true;
         screen.ExitLoopClosure()();
     };
     static constexpr auto vc_keymap_body = "\nA virtual console is a shell prompt in a non-graphical environment.\nIts keymap is independent of a desktop environment / terminal.\n"sv;
     auto content_size                    = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
     detail::menu_widget(keymaps, ok_callback, &selected, &screen, vc_keymap_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
+
+    /* clang-format off */
+    if (!success) { return; }
+    /* clang-format on */
+
+    utils::set_keymap(keymap_choice);
 }
 
 // Set Zone and Sub-Zone
@@ -2459,7 +2473,6 @@ void prep_menu() noexcept {
         switch (selected) {
         case 0:
             tui::select_keymap();
-            utils::set_keymap();
             break;
         case 1:
             tui::show_devices();

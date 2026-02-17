@@ -442,12 +442,18 @@ void set_xkbmap(const std::string_view& xkbmap) noexcept {
 #endif
 }
 
-void set_keymap(const std::string_view& selected_keymap) noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    config_data["KEYMAP"] = std::string{selected_keymap};
-
+void set_keymap(std::string_view selected_keymap) noexcept {
     spdlog::info("Selected keymap: {}", selected_keymap);
+#ifdef NDEVENV
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    config_data["KEYMAP"] = std::string{selected_keymap};
+    if (!gucc::locale::set_keymap(selected_keymap, mountpoint)) {
+        spdlog::error("Failed to set keymap: {}", selected_keymap);
+    }
+#endif
 }
 
 void set_timezone(const std::string_view& timezone) noexcept {
@@ -1571,14 +1577,6 @@ void show_iwctl() noexcept {
         gucc::utils::exec("iwctl", true);
         break;
     }
-}
-
-void set_keymap() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& keymap    = std::get<std::string>(config_data["KEYMAP"]);
-
-    gucc::utils::exec(fmt::format(FMT_COMPILE("loadkeys {}"), keymap));
 }
 
 void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unused]] const std::string_view& username) noexcept {

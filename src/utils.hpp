@@ -26,7 +26,7 @@ void generate_fstab() noexcept;
 void set_hostname(const std::string_view& hostname) noexcept;
 void set_locale(const std::string_view& locale) noexcept;
 void set_xkbmap(const std::string_view& xkbmap) noexcept;
-void set_keymap(const std::string_view& keymap) noexcept;
+void set_keymap(std::string_view keymap) noexcept;
 void set_timezone(const std::string_view& timezone) noexcept;
 void set_hw_clock(const std::string_view& clock_type) noexcept;
 void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept;
@@ -71,7 +71,6 @@ void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;
 void show_iwctl() noexcept;
 
-void set_keymap() noexcept;
 void enable_autologin(const std::string_view& dm, const std::string_view& username) noexcept;
 bool parse_config() noexcept;
 void setup_luks_keyfile() noexcept;
