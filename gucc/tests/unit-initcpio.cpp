@@ -72,6 +72,20 @@ FILES=()
 HOOKS=(base udev autodetect modconf block filesystems keyboard fsck btrfs usr lvm2 zfs)
 )";
 
+static constexpr auto MKINITCPIO_BASIC_CACHYOS_TEST = R"(
+# MODULES
+MODULES=()
+
+# BINARIES
+BINARIES=()
+
+# FILES
+FILES=()
+
+# HOOKS
+HOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole plymouth filesystems)
+)";
+
 TEST_CASE("initcpio test")
 {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
@@ -527,6 +541,29 @@ TEST_CASE("setup initcpiocfg from config test")
             "keymap", "consolefont", "plymouth", "encrypt", "lvm2",
             "resume", "filesystems", "fsck"};
         REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("btrfs with systemd + plymouth")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Btrfs,
+            .has_plymouth = true,
+            .use_systemd_hook = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "systemd", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "sd-vconsole", "plymouth", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+        const auto& file_content = file_utils::read_whole_file(filename);
+        REQUIRE_EQ(file_content, MKINITCPIO_BASIC_CACHYOS_TEST);
 
         ::fs::remove(filename);
     }
