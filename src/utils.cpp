@@ -3,7 +3,6 @@
 #include "disk.hpp"
 #include "global_storage.hpp"
 #include "installer_config.hpp"
-#include "subprocess.h"
 #include "tui.hpp"
 #include "widgets.hpp"
 
@@ -154,67 +153,6 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
     spdlog::info("[arch_chroot] Running command {}", cmd_formatted);
 #endif
-}
-
-auto exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async) noexcept -> bool {
-    if (!async) {
-        spdlog::error("Implement me!");
-        return false;
-    }
-
-    const bool log_exec_cmds = gucc::utils::safe_getenv("LOG_EXEC_CMDS") == "1"sv;
-    const bool dirty_cmd_run = gucc::utils::safe_getenv("DIRTY_CMD_RUN") == "1"sv;
-
-    if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
-        spdlog::debug("[exec_follow] cmd := {}", vec);
-    }
-    if (dirty_cmd_run) {
-        return true;
-    }
-
-    std::vector<char*> args;
-    std::transform(vec.cbegin(), vec.cend(), std::back_inserter(args),
-        [=](const std::string& arg) -> char* { return std::bit_cast<char*>(arg.data()); });
-    args.push_back(nullptr);
-
-    static std::array<char, 1048576 + 1> data{};
-    static std::mutex s_mutex{};
-    std::memset(data.data(), 0, data.size());
-
-    int32_t ret{0};
-    subprocess_s process{};
-    char** command                             = args.data();
-    static constexpr const char* environment[] = {"PATH=/sbin:/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin", nullptr};
-    if ((ret = subprocess_create_ex(command, subprocess_option_enable_async | subprocess_option_combined_stdout_stderr, environment, &process)) != 0) {
-        running = false;
-        return false;
-    }
-
-    child = process;
-
-    std::uint32_t index{};
-    std::uint32_t bytes_read{};
-    do {
-        const std::lock_guard<std::mutex> lock(s_mutex);
-
-        bytes_read = subprocess_read_stdout(&process, data.data() + index,
-            static_cast<std::uint32_t>(data.size()) - 1 - index);
-
-        index += bytes_read;
-        process_log = data.data();
-    } while (bytes_read != 0);
-
-    if (subprocess_join(&process, &ret) != 0) {
-        spdlog::error("[exec_follow] Failed to join process: return code {}", ret);
-        return false;
-    }
-    if (subprocess_destroy(&process) != 0) {
-        spdlog::error("[exec_follow] Failed to destroy process");
-        return false;
-    }
-    child   = process;
-    running = false;
-    return true;
 }
 
 void dump_to_log(const std::string& data) noexcept {

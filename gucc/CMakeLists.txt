@@ -52,6 +52,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/lvm.cpp include/gucc/lvm.hpp
    src/systemd_repart.cpp include/gucc/systemd_repart.hpp
    src/systemd_homed.cpp include/gucc/systemd_homed.hpp
+   src/subprocess.cpp include/gucc/subprocess.hpp
    ${GUCC_LOGGER_FILES}
    #src/disk.cpp src/disk.hpp
    )

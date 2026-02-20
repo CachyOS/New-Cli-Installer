@@ -2,7 +2,6 @@
 #define UTILS_HPP
 
 #include "definitions.hpp"
-#include "subprocess.h"
 
 // import gucc
 #include "gucc/partition.hpp"
@@ -61,7 +60,6 @@ void boot_encrypted_setting() noexcept;
 void recheck_luks() noexcept;
 
 void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
-auto exec_follow(const std::vector<std::string>& vec, std::string& process_log, bool& running, subprocess_s& child, bool async = true) noexcept -> bool;
 void dump_to_log(const std::string& data) noexcept;
 void dump_settings_to_log() noexcept;
 void dump_partition_to_log(const gucc::fs::Partition& partition) noexcept;
