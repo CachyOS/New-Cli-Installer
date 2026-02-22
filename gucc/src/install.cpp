@@ -87,13 +87,20 @@ auto install_base(const InstallConfig& config,
         return false;
     }
 
-    // 3. Run pacstrap
+    // 3. Configure mkinitcpio
+    const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+    if (!gucc::initcpio::setup_initcpio_config(initcpio_path, config.initcpio_config)) {
+        spdlog::error("Failed to setup initcpio config");
+        return false;
+    }
+
+    // 4. Run pacstrap
     if (!gucc::utils::run_pacstrap(mountpoint, config.packages, config.hostcache, child)) {
         spdlog::error("pacstrap failed");
         return false;
     }
 
-    // 4. Copy host files into target
+    // 5. Copy host files into target
     for (const auto& [src, dst_relative] : config.host_files_to_copy) {
         const auto dst = fmt::format(FMT_COMPILE("{}{}"), mountpoint, dst_relative);
         std::error_code ec;
@@ -102,20 +109,6 @@ auto install_base(const InstallConfig& config,
             spdlog::error("Failed to copy '{}' -> '{}': {}", src, dst, ec.message());
             return false;
         }
-    }
-
-    // 5. Configure mkinitcpio
-    const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-    if (!gucc::initcpio::setup_initcpio_config(initcpio_path, config.initcpio_config)) {
-        spdlog::error("Failed to setup initcpio config");
-        return false;
-    }
-
-    // 6. Regenerate initramfs
-    spdlog::info("Running mkinitcpio -P");
-    if (!gucc::utils::arch_chroot_follow({"mkinitcpio", "-P"}, mountpoint, child)) {
-        spdlog::error("mkinitcpio failed");
-        return false;
     }
 
     // 7. Generate fstab
