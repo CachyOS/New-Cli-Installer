@@ -8,7 +8,8 @@
 #include <cstdlib>  // for WIFEXITED, WIFSIGNALED
 
 #include <algorithm>  // for transform
-#include <fstream>    // for ofstream
+#include <string>     // for string
+#include <vector>     // for vector
 
 #include <fmt/compile.h>
 #include <fmt/ranges.h>
@@ -112,6 +113,20 @@ auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) 
     return utils::exec_checked(cmd_formatted);
 #else
     spdlog::info("Running with checked arch-chroot: '{}'", cmd_formatted);
+    return true;
+#endif
+}
+
+auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache, SubProcess& child) noexcept -> bool {
+    const auto& cmd = hostcache ? "pacstrap"sv : "pacstrap -c"sv;
+    // TODO(vnepogodin): pacstrap should be more customizable and be in it's own "module"
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
+
+    spdlog::info("Running pacstrap with packages: '{}'", packages);
+#ifdef NDEVENV
+    return utils::exec_follow({"/bin/bash", "-c", cmd_formatted}, child);
+#else
+    spdlog::info("Running command: '{}'", cmd_formatted);
     return true;
 #endif
 }

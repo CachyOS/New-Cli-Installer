@@ -38,6 +38,7 @@ gucc_lib = library('gucc',
         'src/systemd_repart.cpp',
         'src/systemd_homed.cpp',
         'src/subprocess.cpp',
+        'src/install.cpp',
     ],
     include_directories : [include_directories('include')],
     dependencies: deps
