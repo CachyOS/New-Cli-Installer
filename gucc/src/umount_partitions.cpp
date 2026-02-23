@@ -21,7 +21,9 @@ auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::
         spdlog::error("Failed to umount partitions: failed to parse /etc/mtab");
         return false;
     }
-    std::ranges::sort(*mtab_entries, {}, &mtab::MTabEntry::mountpoint);
+
+    // Sort in reverse (descending) order so deepest mountpoints are unmounted first.
+    std::ranges::sort(*mtab_entries, std::ranges::greater(), &mtab::MTabEntry::mountpoint);
 
     spdlog::debug("Got {} entries from mountpoint {}", mtab_entries->size(), root_mountpoint);
     for (auto&& mtab_entry : std::move(*mtab_entries)) {
