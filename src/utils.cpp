@@ -382,14 +382,16 @@ void set_xkbmap(const std::string_view& xkbmap) noexcept {
 
 void set_keymap(std::string_view selected_keymap) noexcept {
     spdlog::info("Selected keymap: {}", selected_keymap);
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
     config_data["KEYMAP"] = std::string{selected_keymap};
-    if (!gucc::locale::set_keymap(selected_keymap, mountpoint)) {
-        spdlog::error("Failed to set keymap: {}", selected_keymap);
+
+#ifdef NDEVENV
+    // Apply keymap to the live session only.
+    // The target system's vconsole.conf is written later by GUCC base install.
+    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("localectl set-keymap {}"), selected_keymap))) {
+        spdlog::error("Failed to set live session keymap: {}", selected_keymap);
     }
 #endif
 }

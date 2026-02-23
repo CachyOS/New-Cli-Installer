@@ -188,6 +188,42 @@ void set_xkbmap() noexcept {
     utils::set_xkbmap(xkbmap_choice);
 }
 
+auto select_vconsole_keymap(std::string_view body_text) noexcept -> std::string {
+    const auto& keymaps = gucc::locale::get_vconsole_keymap_list();
+    if (keymaps.empty()) {
+        detail::msgbox_widget("\nUnable to get console keymap list.\n"sv);
+        return {};
+    }
+
+    auto* config_instance      = Config::instance();
+    auto& config_data          = config_instance->data();
+    const auto& current_keymap = std::get<std::string>(config_data["KEYMAP"]);
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    for (std::size_t i = 0; i < keymaps.size(); ++i) {
+        if (keymaps[i] == current_keymap || (current_keymap.empty() && keymaps[i] == "us"sv)) {
+            selected = static_cast<std::int32_t>(i);
+            break;
+        }
+    }
+    bool success{};
+    std::string keymap_choice{};
+    auto ok_callback = [&] {
+        keymap_choice = keymaps[static_cast<std::size_t>(selected)];
+        success       = true;
+        screen.ExitLoopClosure()();
+    };
+    auto content_size = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
+    detail::menu_widget(keymaps, ok_callback, &selected, &screen, body_text, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
+
+    /* clang-format off */
+    if (!success) { return {}; }
+    /* clang-format on */
+
+    return keymap_choice;
+}
+
 void select_keymap() noexcept {
     auto* config_instance      = Config::instance();
     auto& config_data          = config_instance->data();
@@ -201,29 +237,10 @@ void select_keymap() noexcept {
     if (!keep_default) { return; }
     /* clang-format on */
 
-    const auto& keymaps = gucc::utils::make_multiline(gucc::utils::exec(R"(ls -R /usr/share/kbd/keymaps | grep "map.gz" | sed 's/\.map\.gz//g' | sort)"));
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    for (std::size_t i = 0; i < keymaps.size(); ++i) {
-        if (keymaps[i] == "us"sv) {
-            selected = static_cast<std::int32_t>(i);
-            break;
-        }
-    }
-    bool success{};
-    std::string keymap_choice{};
-    auto ok_callback = [&] {
-        keymap_choice = keymaps[static_cast<std::size_t>(selected)];
-        success       = true;
-        screen.ExitLoopClosure()();
-    };
-    static constexpr auto vc_keymap_body = "\nA virtual console is a shell prompt in a non-graphical environment.\nIts keymap is independent of a desktop environment / terminal.\n"sv;
-    auto content_size                    = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    detail::menu_widget(keymaps, ok_callback, &selected, &screen, vc_keymap_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
-
+    static constexpr auto vc_keymap_body = "\nSelect the keymap for the current session.\nThis sets the keyboard layout for typing in the current session.\n"sv;
+    const auto& keymap_choice            = select_vconsole_keymap(vc_keymap_body);
     /* clang-format off */
-    if (!success) { return; }
+    if (keymap_choice.empty()) { return; }
     /* clang-format on */
 
     utils::set_keymap(keymap_choice);
@@ -597,6 +614,20 @@ void install_base() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    // 1. Prompt for console keymap
+    {
+        static constexpr auto vc_keymap_body = "\nSelect the console keymap for the installed system.\nThis is required for correct password input during boot (e.g. LUKS).\n"sv;
+        const auto& keymap_choice            = select_vconsole_keymap(vc_keymap_body);
+        /* clang-format off */
+        if (keymap_choice.empty()) { return; }
+        /* clang-format on */
+
+        config_data["KEYMAP"] = keymap_choice;
+        spdlog::info("Console keymap for target: {}", keymap_choice);
+    }
+
+    // 2. Select kernel(s) to install
     const std::vector<std::string> available_kernels{"linux-cachyos", "linux", "linux-zen", "linux-lts", "linux-cachyos-cacule", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-tt", "linux-cachyos-bore"};
 
     // Create the base list of packages
