@@ -35,6 +35,12 @@ struct PartitionConfig {
     PartitionType type{PartitionType::Additional};
 };
 
+/// Configuration for a single btrfs subvolume.
+struct SubvolumeConfig {
+    std::string subvolume;
+    std::string mountpoint;
+};
+
 /// Main installer configuration.
 struct InstallerConfig {
     // Install type
@@ -46,6 +52,8 @@ struct InstallerConfig {
     std::optional<std::string> device{};
     std::optional<std::string> fs_name{};
     std::vector<PartitionConfig> partitions{};
+    std::vector<SubvolumeConfig> subvolumes{};
+    bool use_default_subvolumes{true};
     std::optional<std::string> mount_opts{};
 
     // System settings

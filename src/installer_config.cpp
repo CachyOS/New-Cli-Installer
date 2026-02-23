@@ -178,6 +178,40 @@ auto parse_installer_config(std::string_view json_content) noexcept
         }
     }
 
+    // Parse subvolumes (optional)
+    if (doc.HasMember("subvolumes")) {
+        if (doc["subvolumes"].IsString()) {
+            const auto& subvols_str = std::string_view{doc["subvolumes"].GetString()};
+            if (!subvols_str.empty() && subvols_str != "default"sv) {
+                return std::unexpected(fmt::format(FMT_COMPILE("'subvolumes' string must be 'default', got '{}'"), subvols_str));
+            }
+            config.use_default_subvolumes = true;
+        } else if (doc["subvolumes"].IsArray()) {
+            config.use_default_subvolumes = false;
+            for (const auto& subvol_value : doc["subvolumes"].GetArray()) {
+                if (!subvol_value.IsObject()) {
+                    return std::unexpected("Each subvolume entry must be an object");
+                }
+
+                const auto& subvol_obj = subvol_value.GetObject();
+                if (!subvol_obj.HasMember("subvolume") || !subvol_obj["subvolume"].IsString()) {
+                    return std::unexpected("Subvolume 'subvolume' is required and must be a string");
+                }
+                if (!subvol_obj.HasMember("mountpoint") || !subvol_obj["mountpoint"].IsString()) {
+                    return std::unexpected("Subvolume 'mountpoint' is required and must be a string");
+                }
+
+                SubvolumeConfig subvol_config{
+                    .subvolume  = subvol_obj["subvolume"].GetString(),
+                    .mountpoint = subvol_obj["mountpoint"].GetString(),
+                };
+                config.subvolumes.push_back(std::move(subvol_config));
+            }
+        } else {
+            return std::unexpected("'subvolumes' must be a string (\"default\") or an array");
+        }
+    }
+
     // Parse mount_opts (optional)
     if (doc.HasMember("mount_opts")) {
         if (!doc["mount_opts"].IsString()) {

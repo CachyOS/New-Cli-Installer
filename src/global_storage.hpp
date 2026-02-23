@@ -2,6 +2,7 @@
 #define GLOBAL_STORAGE_HPP
 
 // import gucc types
+#include "gucc/btrfs.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/zfs_types.hpp"
 
@@ -14,11 +15,11 @@
 
 class Config final {
  public:
-    using value_type      = std::unordered_map<std::string_view, std::variant<std::string, std::int32_t, std::vector<std::string>, gucc::fs::ZfsSetupConfig, std::vector<gucc::fs::Partition>>>;
+    using value_type      = std::unordered_map<std::string_view, std::variant<std::string, std::int32_t, std::vector<std::string>, gucc::fs::ZfsSetupConfig, std::vector<gucc::fs::Partition>, std::vector<gucc::fs::BtrfsSubvolume>>>;
     using reference       = value_type&;
     using const_reference = const value_type&;
 
-    Config() noexcept          = default;
+    Config() noexcept  = default;
     ~Config() noexcept = default;
 
     static bool initialize() noexcept;

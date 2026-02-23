@@ -254,18 +254,26 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
                     if (!utils::mount_existing_subvols(partitions)) {
                         spdlog::error("Failed to mount existing btrfs subvolumes");
                     }
-                } else {
-                    // Create default subvolumes automatically
-                    const auto& default_subvols = utils::default_btrfs_subvolumes();
+                    continue;
+                }
+                // Get subvolumes from config or use defaults
+                const auto& use_default    = std::get<std::int32_t>(config_data["USE_DEFAULT_SUBVOLS"]);
+                const auto& config_subvols = std::get<std::vector<gucc::fs::BtrfsSubvolume>>(config_data["BTRFS_SUBVOLUMES"]);
+                const auto& btrfs_subvols  = (!config_subvols.empty()) ? config_subvols
+                     : (use_default)                                   ? utils::default_btrfs_subvolumes()
+                                                                       : std::vector<gucc::fs::BtrfsSubvolume>{};
+
+                if (btrfs_subvols.empty()) {
+                    continue;
+                }
 #ifdef NDEVENV
-                    gucc::utils::exec(R"(mount | grep 'on /mnt ' | grep -Po '(?<=\().*(?=\))' > /tmp/.root_mount_options)"sv);
-                    if (!gucc::fs::btrfs_create_subvols(default_subvols, root_part, mountpoint_info, mount_opts_info)) {
-                        spdlog::error("Failed to create subvolumes automatically");
-                    }
+                gucc::utils::exec(R"(mount | grep 'on /mnt ' | grep -Po '(?<=\().*(?=\))' > /tmp/.root_mount_options)"sv);
+                if (!gucc::fs::btrfs_create_subvols(btrfs_subvols, root_part, mountpoint_info, mount_opts_info)) {
+                    spdlog::error("Failed to create subvolumes automatically");
+                }
 #endif
-                    if (!gucc::fs::btrfs_append_subvolumes(partitions, default_subvols)) {
-                        spdlog::error("Failed to append btrfs subvolumes into partition scheme");
-                    }
+                if (!gucc::fs::btrfs_append_subvolumes(partitions, btrfs_subvols)) {
+                    spdlog::error("Failed to append btrfs subvolumes into partition scheme");
                 }
             }
             continue;

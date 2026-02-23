@@ -170,6 +170,8 @@ void dump_settings_to_log() noexcept {
             using T = std::decay_t<decltype(arg)>;
             if constexpr (std::is_same_v<T, std::vector<gucc::fs::Partition>>) {
                 return fmt::format("<partition_schema: {} entries>", arg.size());
+            } else if constexpr (std::is_same_v<T, std::vector<gucc::fs::BtrfsSubvolume>>) {
+                return fmt::format("<btrfs_subvolumes: {} entries>", arg.size());
             } else {
                 return fmt::format("{}", arg);
             }
@@ -1582,6 +1584,17 @@ bool parse_config() noexcept {
 
     if (config.mount_opts) {
         config_data["MOUNT_OPTS"] = *config.mount_opts;
+    }
+
+    // Store subvolume configuration
+    config_data["USE_DEFAULT_SUBVOLS"] = static_cast<std::int32_t>(config.use_default_subvolumes);
+    if (!config.subvolumes.empty()) {
+        std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvols{};
+        btrfs_subvols.reserve(config.subvolumes.size());
+        for (const auto& sv : config.subvolumes) {
+            btrfs_subvols.push_back(gucc::fs::BtrfsSubvolume{.subvolume = sv.subvolume, .mountpoint = sv.mountpoint});
+        }
+        config_data["BTRFS_SUBVOLUMES"] = std::move(btrfs_subvols);
     }
 
     if (config.hostname) {

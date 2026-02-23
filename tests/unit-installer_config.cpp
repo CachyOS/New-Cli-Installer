@@ -338,4 +338,96 @@ TEST_CASE("default config")
     REQUIRE(!config.device.has_value());
     REQUIRE(!config.fs_name.has_value());
     REQUIRE(config.partitions.empty());
+    REQUIRE(config.subvolumes.empty());
+    REQUIRE(config.use_default_subvolumes);
+}
+
+TEST_CASE("subvolumes config parsing")
+{
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+
+    SECTION("subvolumes 'default' string")
+    {
+        constexpr auto json = R"({
+            "menus": 2,
+            "subvolumes": "default"
+        })"sv;
+
+        auto result = installer::parse_installer_config(json);
+        REQUIRE(result.has_value());
+        REQUIRE(result->use_default_subvolumes);
+        REQUIRE(result->subvolumes.empty());
+    }
+    SECTION("subvolumes custom array")
+    {
+        constexpr auto json = R"({
+            "menus": 2,
+            "subvolumes": [
+                {"subvolume": "/@", "mountpoint": "/"},
+                {"subvolume": "/@home", "mountpoint": "/home"},
+                {"subvolume": "/@cache", "mountpoint": "/var/cache"}
+            ]
+        })"sv;
+
+        auto result = installer::parse_installer_config(json);
+        REQUIRE(result.has_value());
+        REQUIRE(!result->use_default_subvolumes);
+        REQUIRE_EQ(result->subvolumes.size(), 3);
+        REQUIRE_EQ(result->subvolumes[0].subvolume, "/@"sv);
+        REQUIRE_EQ(result->subvolumes[0].mountpoint, "/"sv);
+        REQUIRE_EQ(result->subvolumes[1].subvolume, "/@home"sv);
+        REQUIRE_EQ(result->subvolumes[1].mountpoint, "/home"sv);
+        REQUIRE_EQ(result->subvolumes[2].subvolume, "/@cache"sv);
+        REQUIRE_EQ(result->subvolumes[2].mountpoint, "/var/cache"sv);
+    }
+    SECTION("subvolumes omitted uses defaults")
+    {
+        constexpr auto json = R"({
+            "menus": 2
+        })"sv;
+
+        auto result = installer::parse_installer_config(json);
+        REQUIRE(result.has_value());
+        REQUIRE(result->use_default_subvolumes);
+        REQUIRE(result->subvolumes.empty());
+    }
+    SECTION("invalid subvolumes string returns error")
+    {
+        constexpr auto json = R"({
+            "menus": 2,
+            "subvolumes": "custom"
+        })"sv;
+
+        auto result = installer::parse_installer_config(json);
+        REQUIRE(!result.has_value());
+        REQUIRE(result.error().contains("default"sv));
+    }
+    SECTION("subvolumes wrong type returns error")
+    {
+        constexpr auto json = R"({
+            "menus": 2,
+            "subvolumes": 42
+        })"sv;
+
+        auto result = installer::parse_installer_config(json);
+        REQUIRE(!result.has_value());
+        REQUIRE(result.error().contains("subvolumes"sv));
+    }
+    SECTION("subvolume entry missing mountpoint returns error")
+    {
+        constexpr auto json = R"({
+            "menus": 2,
+            "subvolumes": [
+                {"subvolume": "/@"}
+            ]
+        })"sv;
+
+        auto result = installer::parse_installer_config(json);
+        REQUIRE(!result.has_value());
+        REQUIRE(result.error().contains("mountpoint"sv));
+    }
 }

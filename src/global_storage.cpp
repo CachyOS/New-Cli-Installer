@@ -39,23 +39,25 @@ bool Config::initialize() noexcept {
         s_config->m_data["FILESYSTEM"]        = "";
 
         // file systems
-        s_config->m_data["BTRFS"]            = 0;
-        s_config->m_data["ZFS"]              = 0;
-        s_config->m_data["LUKS"]             = 0;
-        s_config->m_data["LUKS_DEV"]         = "";
-        s_config->m_data["LUKS_NAME"]        = "";
-        s_config->m_data["LUKS_OPT"]         = "";  // Default or user-defined?
-        s_config->m_data["LUKS_UUID"]        = "";
-        s_config->m_data["LUKS_ROOT_NAME"]   = "";
-        s_config->m_data["LVM"]              = 0;
-        s_config->m_data["LVM_LV_NAME"]      = "";  // Name of LV to create or use
-        s_config->m_data["LVM_SEP_BOOT"]     = 0;
-        s_config->m_data["fde"]              = 0;
-        s_config->m_data["READY_PARTITIONS"] = std::vector<std::string>{};
-        s_config->m_data["PARTITION_SCHEMA"] = std::vector<gucc::fs::Partition>{};
-        s_config->m_data["ZFS_ZPOOL_NAMES"]  = std::vector<std::string>{};
-        s_config->m_data["ZFS_ZPOOL_NAME"]   = "zpcachyos";
-        s_config->m_data["ZFS_SETUP_CONFIG"] = gucc::fs::ZfsSetupConfig{};
+        s_config->m_data["BTRFS"]               = 0;
+        s_config->m_data["ZFS"]                 = 0;
+        s_config->m_data["LUKS"]                = 0;
+        s_config->m_data["LUKS_DEV"]            = "";
+        s_config->m_data["LUKS_NAME"]           = "";
+        s_config->m_data["LUKS_OPT"]            = "";  // Default or user-defined?
+        s_config->m_data["LUKS_UUID"]           = "";
+        s_config->m_data["LUKS_ROOT_NAME"]      = "";
+        s_config->m_data["LVM"]                 = 0;
+        s_config->m_data["LVM_LV_NAME"]         = "";  // Name of LV to create or use
+        s_config->m_data["LVM_SEP_BOOT"]        = 0;
+        s_config->m_data["fde"]                 = 0;
+        s_config->m_data["READY_PARTITIONS"]    = std::vector<std::string>{};
+        s_config->m_data["PARTITION_SCHEMA"]    = std::vector<gucc::fs::Partition>{};
+        s_config->m_data["ZFS_ZPOOL_NAMES"]     = std::vector<std::string>{};
+        s_config->m_data["ZFS_ZPOOL_NAME"]      = "zpcachyos";
+        s_config->m_data["ZFS_SETUP_CONFIG"]    = gucc::fs::ZfsSetupConfig{};
+        s_config->m_data["BTRFS_SUBVOLUMES"]    = std::vector<gucc::fs::BtrfsSubvolume>{};
+        s_config->m_data["USE_DEFAULT_SUBVOLS"] = 1;
 
         // UEFI boot
         s_config->m_data["UEFI_MOUNT"] = "";
