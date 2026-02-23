@@ -15,6 +15,7 @@
 #include "gucc/fstab.hpp"
 #include "gucc/hwclock.hpp"
 #include "gucc/initcpio.hpp"
+#include "gucc/install.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/kernel_params.hpp"
 #include "gucc/locale.hpp"
@@ -629,71 +630,50 @@ void install_base(const std::string_view& packages) noexcept {
     spdlog::info("Preparing for pkgs to install: '{}'", base_pkgs);
 
 #ifdef NDEVENV
-    // Prep variables
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
-
-    const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-
-    // Set console keymap before running pacstrap with packages
-    const auto& keymap = std::get<std::string>(config_data["KEYMAP"]);
-    gucc::locale::set_keymap(keymap, mountpoint);
-
-    // filter_packages
-    utils::install_from_pkglist(base_pkgs);
-
-    fs::copy_file("/etc/pacman.conf", fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint), fs::copy_options::overwrite_existing);
-
-    static constexpr auto base_installed = "/mnt/.base_installed";
-    std::ofstream{base_installed};  // NOLINT
+    const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
+    const auto& keymap     = std::get<std::string>(config_data["KEYMAP"]);
 
     // Detect filesystem type and encryption/lvm state
-    const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-    spdlog::info("filesystem type on '{}' := '{}'", mountpoint, filesystem_type);
-
     utils::recheck_luks();
+    const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
+    const auto& lvm             = std::get<std::int32_t>(config_data["LVM"]);
+    const auto& luks            = std::get<std::int32_t>(config_data["LUKS"]);
+    const auto fs_type          = gucc::fs::string_to_filesystem_type(filesystem_type);
 
-    const auto& lvm  = std::get<std::int32_t>(config_data["LVM"]);
-    const auto& luks = std::get<std::int32_t>(config_data["LUKS"]);
-    spdlog::info("LVM := {}, LUKS := {}", lvm, luks);
+    spdlog::info("filesystem type on '{}' := '{}', LVM := {}, LUKS := {}", mountpoint, filesystem_type, lvm, luks);
 
-    // Configure mkinitcpio.conf via GUCC
-    const auto fs_type         = gucc::fs::string_to_filesystem_type(filesystem_type);
-    const auto initcpio_config = gucc::initcpio::InitcpioConfig{
-        .filesystem_type  = fs_type,
-        .is_lvm           = (lvm == 1),
-        .is_luks          = (luks == 1),
-        .use_systemd_hook = true,
+    // Build GUCC install config
+    const auto install_config = gucc::install::InstallConfig{
+        .mountpoint      = mountpoint,
+        .packages        = base_pkgs,
+        .keymap          = keymap,
+        .initcpio_config = gucc::initcpio::InitcpioConfig{
+            .filesystem_type  = fs_type,
+            .is_lvm           = (lvm == 1),
+            .is_luks          = (luks == 1),
+            .use_systemd_hook = true,
+        },
+        .is_zfs             = (zfs != 0),
+        .hostcache          = (hostcache != 0),
+        .host_files_to_copy = {{"/etc/pacman.conf", "/etc/pacman.conf"}},
     };
-    if (!gucc::initcpio::setup_initcpio_config(initcpio_filename, initcpio_config)) {
-        spdlog::error("Failed to setup initcpio config");
+
+    // Run install_base inside the TUI progress widget
+    if (!tui::detail::follow_process_log_task([&](gucc::utils::SubProcess& child) {
+            return gucc::install::install_base(install_config, child);
+        })) {
+        spdlog::error("Failed to install base");
+        return;
     }
 
-    // we need to reconfigure with luks&lvm info
-    utils::arch_chroot("mkinitcpio -P");
-    spdlog::info("re-run mkinitcpio");
-
-    utils::generate_fstab();
-
-    // install drivers for hardware
-    if (!gucc::chwd::install_available_profiles(mountpoint)) {
-        spdlog::error("Failed to install chwd drivers");
-    }
-
-    /* clang-format off */
-    if (zfs == 0) { return; }
-    /* clang-format on */
-
-    // if we are using a zfs we should enable the zfs services
-    for (auto&& service_name : {"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv}) {
-        gucc::services::enable_systemd_service(service_name, mountpoint);
-    }
-
-    // we also need create the cachefile
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
-    gucc::utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
+    // Marker file
+    // TODO(vnepogodin): refactor that shit later
+    static constexpr auto base_installed = "/mnt/.base_installed";
+    std::ofstream{base_installed};  // NOLINT
 #endif
 }
 
