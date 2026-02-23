@@ -192,6 +192,7 @@ void edit_configs() noexcept {
         fmt::format(FMT_COMPILE("{}/etc/rc.conf"), mountpoint),
         fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint),
         fmt::format(FMT_COMPILE("{}/etc/makepkg.conf"), mountpoint),
+        fmt::format(FMT_COMPILE("{}/etc/plasmalogin.conf"), mountpoint),
         fmt::format(FMT_COMPILE("{}/etc/sddm.conf"), mountpoint),
         fmt::format(FMT_COMPILE("{}/etc/sudoers.conf"), mountpoint),
         fmt::format(FMT_COMPILE("{}/boot/syslinux/syslinux.cfg"), mountpoint),

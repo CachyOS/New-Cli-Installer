@@ -1706,7 +1706,9 @@ void enable_services() noexcept {
 
     // enable display manager for systemd
     const auto& temp = fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq"), mountpoint);
-    if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp))) {
+    if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} plasma-login-manager &> /dev/null"), temp))) {
+        gucc::services::enable_systemd_service("plasmalogin"sv, mountpoint);
+    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp))) {
         utils::set_lightdm_greeter();
         gucc::services::enable_systemd_service("lightdm"sv, mountpoint);
     } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp))) {

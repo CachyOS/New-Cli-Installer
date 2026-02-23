@@ -36,6 +36,8 @@ auto enable_autologin(std::string_view displaymanager, std::string_view username
             spdlog::error("Failed to add autologin group to user: {}", username);
             return false;
         }
+    } else if (displaymanager == "plasmalogin"sv) {
+        utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' {}/etc/plasmalogin.conf"), username, root_mountpoint));
     } else if (displaymanager == "sddm"sv) {
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' {}/etc/sddm.conf"), username, root_mountpoint));
     } else if (displaymanager == "lxdm"sv) {
