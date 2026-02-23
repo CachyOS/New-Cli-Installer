@@ -3,6 +3,8 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/mtab.hpp"
 
+#include <unistd.h>  // for sync
+
 #include <algorithm>  // for sort
 #include <ranges>     // for ranges::*
 
@@ -25,12 +27,19 @@ auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::
     // Sort in reverse (descending) order so deepest mountpoints are unmounted first.
     std::ranges::sort(*mtab_entries, std::ranges::greater(), &mtab::MTabEntry::mountpoint);
 
+    // Flush filesystem buffers before unmounting
+    ::sync();
+
     spdlog::debug("Got {} entries from mountpoint {}", mtab_entries->size(), root_mountpoint);
     for (auto&& mtab_entry : std::move(*mtab_entries)) {
         const auto& umount_cmd = fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), mtab_entry.mountpoint);
         if (!utils::exec_checked(umount_cmd)) {
-            spdlog::error("Failed to umount partition: {} {}", mtab_entry.device, mtab_entry.mountpoint);
-            return false;
+            spdlog::warn("Direct umount failed for {} {}, trying lazy umount", mtab_entry.device, mtab_entry.mountpoint);
+            const auto& lazy_cmd = fmt::format(FMT_COMPILE("umount -lv {} &>>/tmp/cachyos-install.log"), mtab_entry.mountpoint);
+            if (!utils::exec_checked(lazy_cmd)) {
+                spdlog::error("Failed to umount partition: {} {}", mtab_entry.device, mtab_entry.mountpoint);
+                return false;
+            }
         }
     }
 
