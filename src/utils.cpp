@@ -899,10 +899,7 @@ auto get_kernel_params() noexcept {
 
     // TODO(vnepogodin): make these configurable
     static constexpr auto default_kernel_params = "quiet zswap.enabled=0 nowatchdog"sv;
-
-    const auto& kernel_params = gucc::fs::get_kernel_params(partitions, default_kernel_params);
-
-    return kernel_params;
+    return gucc::fs::get_kernel_params(partitions, default_kernel_params);
 }
 
 void install_refind() noexcept {
