@@ -1,4 +1,5 @@
 #include "gucc/package_list.hpp"
+#include "gucc/cpu.hpp"
 #include "gucc/fetch_file.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/package_profiles.hpp"
@@ -66,6 +67,14 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
     pkg_list.insert(pkg_list.cend(),
         base_net_profs->base_packages.begin(),
         base_net_profs->base_packages.end());
+
+    // Dynamically add CPU-specific microcode package
+    const auto cpu_vendor = cpu::get_cpu_vendor();
+    if (cpu_vendor == cpu::CpuVendor::Intel) {
+        pkg_list.emplace_back("intel-ucode");
+    } else if (cpu_vendor == cpu::CpuVendor::AMD) {
+        pkg_list.emplace_back("amd-ucode");
+    }
 
     return std::make_optional<std::vector<std::string>>(pkg_list);
 }

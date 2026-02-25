@@ -1,10 +1,6 @@
 [base-packages]
 # should be equal to pacstrap module in GUI installer
 packages = [
-  # from "CPU specific Microcode update packages" in netinstall
-  "amd-ucode",
-  "intel-ucode",
-
   # from pacstrap/CachyOS Required
   "base",
   "base-devel",
