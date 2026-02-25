@@ -2,9 +2,15 @@
 
 #include <sys/utsname.h>  // for uname
 
-#include <cstdint>
+#include <cstdint>  // for uint32_t, uint64_t
+#include <cstring>  // for memcpy
+
+#include <array>        // for array
+#include <string_view>  // for string_view
 
 #include <spdlog/spdlog.h>
+
+using namespace std::string_view_literals;
 
 namespace gucc::cpu {
 
@@ -145,6 +151,29 @@ auto get_isa_levels() noexcept -> std::vector<std::string> {
     }
 
     return supported_isa_levels;
+}
+
+auto get_cpu_vendor() noexcept -> CpuVendor {
+#if defined(__x86_64__) || defined(__i386__)
+    uint32_t regs[4]{};
+    cpuid(regs, 0);
+
+    // fetch vendor string
+    std::array<char, 13> vendor{};
+    std::memcpy(vendor.data(), &regs[1], 4);      // EBX
+    std::memcpy(vendor.data() + 4, &regs[3], 4);  // EDX
+    std::memcpy(vendor.data() + 8, &regs[2], 4);  // ECX
+    vendor[12] = '\0';
+
+    std::string_view vendor_string = vendor.data();
+    if (vendor_string == "AuthenticAMD"sv) {
+        return CpuVendor::AMD;
+    }
+    if (vendor_string == "GenuineIntel"sv) {
+        return CpuVendor::Intel;
+    }
+#endif
+    return CpuVendor::Unknown;
 }
 
 }  // namespace gucc::cpu
