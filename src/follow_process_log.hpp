@@ -26,6 +26,9 @@ using ProcessTask = std::function<bool(gucc::utils::SubProcess& child)>;
 // Returns the bool produced by the task.
 auto follow_process_log_task(ProcessTask task, ftxui::Decorator box_size = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept -> bool;
 
+// Non-TUI variant: runs the task while printing output to stdout.
+auto follow_process_log_task_stdout(ProcessTask task) noexcept -> bool;
+
 }  // namespace tui::detail
 
 #endif  // FOLLOW_PROCESS_LOG_HPP

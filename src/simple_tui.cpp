@@ -601,7 +601,7 @@ void apply_user_selections(const UserSelections& selections) noexcept {
 
 #ifdef NDEVENV
     if (!selections.server_mode) {
-        tui::detail::follow_process_log_task([&](gucc::utils::SubProcess& child) -> bool {
+        tui::detail::follow_process_log_task_stdout([&](gucc::utils::SubProcess& child) -> bool {
             return gucc::chwd::install_available_profiles(mountpoint, child);
         });
         std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};

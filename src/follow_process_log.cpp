@@ -16,6 +16,7 @@
 #include <ftxui/component/screen_interactive.hpp>  // for ScreenInteractive
 #include <ftxui/dom/elements.hpp>                  // for operator|, text, Element, hbox, bold, color, filler, separator, vbox, window, gauge, Fit, size, dim, EQUAL, WIDTH
 
+#include <fmt/core.h>
 #include <spdlog/spdlog.h>
 
 using namespace ftxui;  // NOLINT
@@ -84,6 +85,43 @@ auto follow_process_log_task(ProcessTask task, Decorator box_size) noexcept -> b
     if (refresh_ui.joinable()) {
         refresh_ui.join();
     }
+    if (t.joinable()) {
+        t.join();
+    }
+    return task_status;
+}
+
+auto follow_process_log_task_stdout(ProcessTask task) noexcept -> bool {
+    using namespace std::chrono_literals;
+
+    std::atomic_bool task_status{true};
+    gucc::utils::SubProcess child{};
+
+    std::thread t([&]() {
+        if (!task(child)) {
+            spdlog::error("[follow_process_log_stdout] Task failed");
+            task_status = false;
+        }
+        child.running = false;
+    });
+
+    std::string::size_type last_printed{};
+    while (child.running) {
+        std::this_thread::sleep_for(0.05s);
+        const auto& log = child.get_log();
+
+        // NOTE: hackish
+        if (log.size() > last_printed) {
+            fmt::print("{}", std::string_view{log}.substr(last_printed));
+            last_printed = log.size();
+        }
+    }
+
+    const auto& log = child.get_log();
+    if (log.size() > last_printed) {
+        fmt::print("{}", std::string_view{log}.substr(last_printed));
+    }
+
     if (t.joinable()) {
         t.join();
     }
