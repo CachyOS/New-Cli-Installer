@@ -70,7 +70,9 @@ void auto_install_drivers() noexcept {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
 #ifdef NDEVENV
-    if (!gucc::chwd::install_available_profiles(mountpoint)) {
+    if (!tui::detail::follow_process_log_task([&](gucc::utils::SubProcess& child) -> bool {
+            return gucc::chwd::install_available_profiles(mountpoint, child);
+        })) {
         spdlog::error("Failed to install drivers");
         return;
     }

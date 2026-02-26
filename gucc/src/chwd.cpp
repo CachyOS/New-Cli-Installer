@@ -1,6 +1,7 @@
 #include "gucc/chwd.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/subprocess.hpp"
 
 #include <algorithm>  // for contains, for_each
 #include <ranges>     // for ranges::*
@@ -32,8 +33,8 @@ auto get_available_profile_names() noexcept -> std::vector<std::string> {
     return filtered_profile_names;
 }
 
-auto install_available_profiles(std::string_view root_mountpoint) noexcept -> bool {
-    if (!utils::arch_chroot_checked("chwd -a -f"sv, root_mountpoint)) {
+auto install_available_profiles(std::string_view root_mountpoint, utils::SubProcess& child) noexcept -> bool {
+    if (!utils::arch_chroot_follow("chwd -a -f"sv, root_mountpoint, child)) {
         spdlog::error("Failed to run chwd -a -f on {}", root_mountpoint);
         return false;
     }

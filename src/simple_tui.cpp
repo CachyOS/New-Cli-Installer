@@ -7,6 +7,7 @@
 
 // import gucc
 #include "gucc/btrfs.hpp"
+#include "gucc/chwd.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partitioning.hpp"
@@ -35,6 +36,10 @@
 using namespace ftxui;
 using namespace std::string_literals;
 using namespace std::string_view_literals;
+
+#ifdef NDEVENV
+#include "follow_process_log.hpp"
+#endif
 
 namespace {
 
@@ -596,7 +601,9 @@ void apply_user_selections(const UserSelections& selections) noexcept {
 
 #ifdef NDEVENV
     if (!selections.server_mode) {
-        utils::arch_chroot("chwd -a");
+        tui::detail::follow_process_log_task([&](gucc::utils::SubProcess& child) -> bool {
+            return gucc::chwd::install_available_profiles(mountpoint, child);
+        });
         std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
     }
 #endif

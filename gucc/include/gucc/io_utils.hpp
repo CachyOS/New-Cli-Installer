@@ -1,11 +1,13 @@
 #ifndef IO_UTILS_HPP
 #define IO_UTILS_HPP
 
-#include "gucc/subprocess.hpp"
-
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+namespace gucc::utils {
+class SubProcess;
+}  // namespace gucc::utils
 
 namespace gucc::utils {
 

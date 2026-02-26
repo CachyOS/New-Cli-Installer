@@ -1,4 +1,5 @@
 #include "gucc/io_utils.hpp"
+#include "gucc/subprocess.hpp"
 
 #include <sys/wait.h>  // for waitpid
 #include <unistd.h>    // for execvp, fork

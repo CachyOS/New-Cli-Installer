@@ -124,7 +124,7 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
     }
 
     // 8. Install hardware drivers
-    if (!gucc::chwd::install_available_profiles(mountpoint)) {
+    if (!gucc::chwd::install_available_profiles(mountpoint, child)) {
         spdlog::error("Failed to install chwd drivers");
         return false;
     }
