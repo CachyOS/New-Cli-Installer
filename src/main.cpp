@@ -4,6 +4,7 @@
 #include "utils.hpp"           // for exec, check_root, clear_sc...
 
 // import gucc
+#include "gucc/cpu.hpp"
 #include "gucc/io_utils.hpp"
 #ifndef COS_BUILD_STATIC
 #include "gucc/logger.hpp"
@@ -64,6 +65,11 @@ int main() {
         spdlog::shutdown();
         return -1;
     }
+
+    // print cpu info
+    const auto& isa_levels = gucc::cpu::get_isa_levels();
+    spdlog::info("isa_levels:={}", isa_levels);
+
     tui::init();
 
     spdlog::shutdown();
