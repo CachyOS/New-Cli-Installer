@@ -13,6 +13,7 @@
     "headless_mode": true,
     "device": "/dev/nvme0n1",
     "fs_name": "btrfs",
+    "subvolumes": "default",
     "partitions": [
         {"name": "/dev/nvme0n1p1", "mountpoint": "/boot", "size": "4G", "fs_name": "vfat", "type": "boot"},
         {"name": "/dev/nvme0n1p2", "mountpoint": "/", "size": "100%", "type": "root"}
@@ -41,6 +42,7 @@
 | `device` | string | - | Yes | Target device (e.g., `/dev/nvme0n1`) |
 | `fs_name` | string | - | Yes | Root filesystem type |
 | `partitions` | array | - | Yes | Partition layout (see below) |
+| `subvolumes` | string/array | `"default"` | - | Btrfs subvolume layout (see below) |
 | `mount_opts` | string | auto | - | Custom mount options |
 | `hostname` | string | - | Yes | Machine hostname |
 | `locale` | string | - | Yes | System locale (e.g., `en_US`) |
@@ -160,6 +162,40 @@ Custom mount options. If not specified, sensible defaults are used:
 ```json
 "mount_opts": "compress=zstd,noatime"
 ```
+
+### `subvolumes`
+
+Btrfs subvolume layout. Only applies when root filesystem is `btrfs`.
+
+**Default:** `"default"` (standard CachyOS layout)
+
+**Accepted values:**
+
+| Value | Behavior |
+|-------|----------|
+| `"default"` or omitted | Standard layout: `/@`, `/@home`, `/@root`, `/@srv`, `/@cache`, `/@tmp`, `/@log` |
+| Array of objects | Custom subvolume definitions |
+
+**Default layout example:**
+```json
+"subvolumes": "default"
+```
+
+**Custom layout example:**
+```json
+"subvolumes": [
+    {"subvolume": "/@", "mountpoint": "/"},
+    {"subvolume": "/@home", "mountpoint": "/home"},
+    {"subvolume": "/@snapshots", "mountpoint": "/.snapshots"}
+]
+```
+
+Each subvolume object requires:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subvolume` | string | Subvolume name (e.g., `/@home`) |
+| `mountpoint` | string | Mount point in installed system (e.g., `/home`) |
 
 ---
 
