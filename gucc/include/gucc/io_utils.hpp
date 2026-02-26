@@ -15,7 +15,7 @@ auto exec(std::string_view command, bool interactive = false) noexcept -> std::s
 auto exec_checked(std::string_view command) noexcept -> bool;
 void arch_chroot(std::string_view command, std::string_view mountpoint, bool interactive = false) noexcept;
 auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool;
-auto arch_chroot_follow(const std::vector<std::string>& vec, std::string_view mountpoint, SubProcess& child, bool async = true) noexcept -> bool;
+auto arch_chroot_follow(std::string_view command, std::string_view mountpoint, SubProcess& child) noexcept -> bool;
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache, SubProcess& child) noexcept -> bool;
 
 }  // namespace gucc::utils

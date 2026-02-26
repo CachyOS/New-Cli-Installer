@@ -117,6 +117,17 @@ auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) 
 #endif
 }
 
+auto arch_chroot_follow(std::string_view command, std::string_view mountpoint, SubProcess& child) noexcept -> bool {
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log"), mountpoint, command);
+
+#ifdef NDEVENV
+    return utils::exec_follow({"/bin/sh", "-c", cmd_formatted}, child);
+#else
+    spdlog::info("Running with arch-chroot-follow: '{}'", cmd_formatted);
+    return true;
+#endif
+}
+
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache, SubProcess& child) noexcept -> bool {
     const auto& cmd = hostcache ? "pacstrap"sv : "pacstrap -c"sv;
     // TODO(vnepogodin): pacstrap should be more customizable and be in it's own "module"
