@@ -5,6 +5,7 @@
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
+#include "gucc/subprocess.hpp"
 #include "gucc/systemd_services.hpp"
 
 #include <filesystem>  // for copy_file, copy_options, create_directories
@@ -52,6 +53,19 @@ auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> bool {
     }
     return true;
 }
+
+auto run_rate_mirrors(utils::SubProcess& child) noexcept -> bool {
+    spdlog::info("Running rate-mirrors...");
+    if (!gucc::utils::exec_follow({"/bin/bash", "-c", "pacman -Sy --noconfirm --needed cachyos-rate-mirrors rate-mirrors 2>>/tmp/cachyos-install.log"}, child)) {
+        spdlog::error("Failed to install cachyos-rate-mirrors");
+        return false;
+    }
+    if (!gucc::utils::exec_follow({"/bin/bash", "-c", "cachyos-rate-mirrors 2>>/tmp/cachyos-install.log"}, child)) {
+        spdlog::error("Failed to run cachyos-rate-mirrors");
+        return false;
+    }
+    return true;
+}
 }  // namespace
 
 namespace gucc::install {
@@ -86,13 +100,19 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
         return false;
     }
 
-    // 3. Run pacstrap
+    // 3. Rate mirrors before install
+    if (!run_rate_mirrors(child)) {
+        spdlog::error("Failed to update rate-mirrors");
+        return false;
+    }
+
+    // 4. Run pacstrap
     if (!gucc::utils::run_pacstrap(mountpoint, config.packages, config.hostcache, child)) {
         spdlog::error("pacstrap failed");
         return false;
     }
 
-    // 4. Copy host files into target
+    // 5. Copy host files into target
     for (const auto& [src, dst_relative] : config.host_files_to_copy) {
         const auto dst = fmt::format(FMT_COMPILE("{}{}"), mountpoint, dst_relative);
         std::error_code ec;
@@ -103,27 +123,27 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
         }
     }
 
-    // 5. Configure mkinitcpio
+    // 6. Configure mkinitcpio
     const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
     if (!gucc::initcpio::setup_initcpio_config(initcpio_path, config.initcpio_config)) {
         spdlog::error("Failed to setup initcpio config");
         return false;
     }
 
-    // 6. Regenerate initramfs with the new mkinitcpio config
+    // 7. Regenerate initramfs with the new mkinitcpio config
     spdlog::info("Regenerating initramfs...");
     if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint, child)) {
         spdlog::error("Failed to regenerate initramfs");
         return false;
     }
 
-    // 7. Generate fstab
+    // 8. Generate fstab
     if (!gucc::fs::run_genfstab_on_mount(mountpoint)) {
         spdlog::error("Failed to generate fstab");
         return false;
     }
 
-    // 8. Install hardware drivers
+    // 9. Install hardware drivers
     if (!gucc::chwd::install_available_profiles(mountpoint, child)) {
         spdlog::error("Failed to install chwd drivers");
         return false;
