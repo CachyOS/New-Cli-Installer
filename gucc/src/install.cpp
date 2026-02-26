@@ -56,8 +56,7 @@ auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> bool {
 
 namespace gucc::install {
 
-auto install_base(const InstallConfig& config,
-    utils::SubProcess& child) noexcept -> bool {
+auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcept -> bool {
     const auto& mountpoint = config.mountpoint;
 
     // Validate required fields
@@ -87,20 +86,13 @@ auto install_base(const InstallConfig& config,
         return false;
     }
 
-    // 3. Configure mkinitcpio
-    const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-    if (!gucc::initcpio::setup_initcpio_config(initcpio_path, config.initcpio_config)) {
-        spdlog::error("Failed to setup initcpio config");
-        return false;
-    }
-
-    // 4. Run pacstrap
+    // 3. Run pacstrap
     if (!gucc::utils::run_pacstrap(mountpoint, config.packages, config.hostcache, child)) {
         spdlog::error("pacstrap failed");
         return false;
     }
 
-    // 5. Copy host files into target
+    // 4. Copy host files into target
     for (const auto& [src, dst_relative] : config.host_files_to_copy) {
         const auto dst = fmt::format(FMT_COMPILE("{}{}"), mountpoint, dst_relative);
         std::error_code ec;
@@ -109,6 +101,20 @@ auto install_base(const InstallConfig& config,
             spdlog::error("Failed to copy '{}' -> '{}': {}", src, dst, ec.message());
             return false;
         }
+    }
+
+    // 5. Configure mkinitcpio
+    const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+    if (!gucc::initcpio::setup_initcpio_config(initcpio_path, config.initcpio_config)) {
+        spdlog::error("Failed to setup initcpio config");
+        return false;
+    }
+
+    // 6. Regenerate initramfs with the new mkinitcpio config
+    spdlog::info("Regenerating initramfs...");
+    if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint, child)) {
+        spdlog::error("Failed to regenerate initramfs");
+        return false;
     }
 
     // 7. Generate fstab
