@@ -914,8 +914,8 @@ void install_refind() noexcept {
     utils::inst_needed("refind");
 
     const std::vector<std::string> extra_kernel_versions{
-        "linux-cachyos", "linux", "linux-cachyos-cfs", "linux-cachyos-bore",
-        "linux-cachyos-tt", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-lts"};
+        "linux-cachyos", "linux-cachyos-server", "linux-cachyos-eevdf", "linux-cachyos-bore",
+        "linux-cachyos-hardened", "linux-cachyos-lts", "linux-cachyos-rc", "linux-cachyos-rt-bore"};
 
     const auto& kernel_params = utils::get_kernel_params();
     if (!kernel_params.has_value()) {
