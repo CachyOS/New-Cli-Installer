@@ -54,7 +54,7 @@ auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> bool {
     return true;
 }
 
-auto run_rate_mirrors(utils::SubProcess& child) noexcept -> bool {
+auto run_rate_mirrors(gucc::utils::SubProcess& child) noexcept -> bool {
     spdlog::info("Running rate-mirrors...");
     if (!gucc::utils::exec_follow({"/bin/bash", "-c", "pacman -Sy --noconfirm --needed cachyos-rate-mirrors rate-mirrors 2>>/tmp/cachyos-install.log"}, child)) {
         spdlog::error("Failed to install cachyos-rate-mirrors");
