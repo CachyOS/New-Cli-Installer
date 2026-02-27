@@ -205,8 +205,8 @@ void edit_configs() noexcept {
     }
 
     auto screen = ScreenInteractive::Fullscreen();
-    check_and_add(local_paths[19], "", true, [&screen] { edit_grub(screen); });
-    check_and_add(local_paths[20], "", true, [&screen] { edit_mkinitcpio(screen); });
+    check_and_add(local_paths[20], "", true, [&screen] { edit_grub(screen); });
+    check_and_add(local_paths[21], "", true, [&screen] { edit_mkinitcpio(screen); });
 
     std::int32_t selected{};
     auto ok_callback = [&] {
