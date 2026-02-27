@@ -628,7 +628,9 @@ void install_base() noexcept {
     }
 
     // 2. Select kernel(s) to install
-    const std::vector<std::string> available_kernels{"linux-cachyos", "linux", "linux-zen", "linux-lts", "linux-cachyos-cacule", "linux-cachyos-bmq", "linux-cachyos-pds", "linux-cachyos-tt", "linux-cachyos-bore"};
+    const std::vector<std::string> available_kernels{
+        "linux-cachyos", "linux-cachyos-server", "linux-cachyos-eevdf", "linux-cachyos-bore",
+        "linux-cachyos-hardened", "linux-cachyos-lts", "linux-cachyos-rc", "linux-cachyos-rt-bore"};
 
     // Create the base list of packages
     std::unique_ptr<bool[]> kernels_state{new bool[available_kernels.size()]{false}};
