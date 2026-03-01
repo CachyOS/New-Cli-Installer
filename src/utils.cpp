@@ -689,31 +689,87 @@ void remove_pkgs(const std::string_view& packages) noexcept {
 #endif
 }
 
+void configure_grub_common(gucc::bootloader::GrubConfig& grub_config, gucc::bootloader::GrubInstallConfig& grub_install_config, std::string_view mountpoint, std::string_view luks_dev, std::string_view zfs_extra_pkgs, std::string_view non_zfs_extra_pkgs) noexcept {
+    const auto& root_part_fs        = gucc::fs::utils::get_mountpoint_fs(mountpoint);
+    const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
+
+    // grub config changes for zfs root
+    if (root_part_fs == "zfs"sv) {
+        // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
+        gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
+
+        grub_install_config.is_root_on_zfs = true;
+
+        // zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
+        grub_config.savedefault = std::nullopt;
+
+        // we need to tell grub where the zfs root is
+        const auto& mountpoint_source     = gucc::fs::utils::get_mountpoint_source(mountpoint);
+        const auto& zroot_var             = fmt::format(FMT_COMPILE("zfs={} rw"), mountpoint_source);
+        grub_config.cmdline_linux_default = fmt::format(FMT_COMPILE("{} {}"), grub_config.cmdline_linux_default, zroot_var);
+        grub_config.cmdline_linux         = fmt::format(FMT_COMPILE("{} {}"), grub_config.cmdline_linux, zroot_var);
+
+        const auto& bash_code = fmt::format(FMT_COMPILE("#!/bin/bash\nln -s /hostlvm /run/lvm\npacman -S --noconfirm --needed {}\n"), zfs_extra_pkgs);
+        std::ofstream grub_installer{grub_installer_path};
+        grub_installer << bash_code;
+    } else {
+        // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
+        const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
+        if (is_root_lvm || (root_part_fs == "btrfs"sv)) {
+            grub_config.savedefault = std::nullopt;
+        }
+
+        const auto& bash_code = fmt::format(FMT_COMPILE("#!/bin/bash\nln -s /hostlvm /run/lvm\npacman -S --noconfirm --needed {}\n"), non_zfs_extra_pkgs);
+        std::ofstream grub_installer{grub_installer_path};
+        grub_installer << bash_code;
+    }
+
+    fs::permissions(grub_installer_path,
+        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+        fs::perm_options::add);
+
+    // If the root is on btrfs-subvolume, amend grub installation
+    auto is_btrfs_subvol = gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5");
+    if (!is_btrfs_subvol) {
+        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
+    }
+
+    // If encryption used amend grub
+    if (!luks_dev.empty()) {
+        const auto& luks_dev_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | {}"), luks_dev, "awk '{print $1}'"));
+        grub_config.cmdline_linux      = fmt::format(FMT_COMPILE("{} {}"), luks_dev_formatted, grub_config.cmdline_linux);
+        spdlog::info("adding kernel parameter {}", luks_dev);
+    }
+
+    // If Full disk encryption is used, use a keyfile
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& fde       = std::get<std::int32_t>(config_data["fde"]);
+    if (fde == 1) {
+        spdlog::info("Full disk encryption enabled");
+        grub_config.enable_cryptodisk = true;
+    }
+}
+
 void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept {
 #ifdef NDEVENV
     fs::create_directory("/mnt/hostlvm");
     gucc::utils::exec("mount --bind /run/lvm /mnt/hostlvm");
 #endif
 
-    // if root is encrypted, amend /etc/default/grub
-    const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
-    const auto& root_part   = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/part/p' | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
 #ifdef NDEVENV
     utils::boot_encrypted_setting();
 #endif
 
-    spdlog::info("root_name: {}. root_device: {}. root_part: {}", root_name, root_device, root_part);
     spdlog::info("Boot ID: {}", bootid);
     spdlog::info("Set as default: {}", as_default);
 
 #ifdef NDEVENV
-    auto* config_instance           = Config::instance();
-    auto& config_data               = config_instance->data();
-    const auto& uefi_mount          = std::get<std::string>(config_data["UEFI_MOUNT"]);
-    const auto& mountpoint          = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& luks_dev            = std::get<std::string>(config_data["LUKS_DEV"]);
-    const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& luks_dev   = std::get<std::string>(config_data["LUKS_DEV"]);
 
     gucc::bootloader::GrubConfig grub_config_struct{};
     gucc::bootloader::GrubInstallConfig grub_install_config_struct{};
@@ -723,71 +779,16 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
     grub_install_config_struct.efi_directory = uefi_mount;
     grub_install_config_struct.bootloader_id = bootid;
 
-    const auto& root_part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-
-    // grub config changes for zfs root
-    if (root_part_fs == "zfs"sv) {
-        // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
-
-        grub_install_config_struct.is_root_on_zfs = true;
-
-        // zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-        grub_config_struct.savedefault = std::nullopt;
-
-        // we need to tell grub where the zfs root is
-        const auto& mountpoint_source            = gucc::fs::utils::get_mountpoint_source(mountpoint);
-        const auto& zroot_var                    = fmt::format(FMT_COMPILE("zfs={} rw"), mountpoint_source);
-        grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("{} {}"), grub_config_struct.cmdline_linux_default, zroot_var);
-        grub_config_struct.cmdline_linux         = fmt::format(FMT_COMPILE("{} {}"), grub_config_struct.cmdline_linux, zroot_var);
-
-        constexpr auto bash_code = R"(#!/bin/bash
-ln -s /hostlvm /run/lvm
-pacman -S --noconfirm --needed grub efibootmgr dosfstools
-)";
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    } else {
-        // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
-        const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
-        if (is_root_lvm || (root_part_fs == "btrfs"sv)) {
-            grub_config_struct.savedefault = std::nullopt;
-        }
-
-        constexpr auto bash_code = R"(#!/bin/bash
-ln -s /hostlvm /run/lvm
-pacman -S --noconfirm --needed grub efibootmgr dosfstools grub-btrfs grub-hook
-)";
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    }
-
-    fs::permissions(grub_installer_path,
-        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
-        fs::perm_options::add);
-
     // if the device is removable append removable to the grub-install
     grub_install_config_struct.is_removable = utils::is_volume_removable();
 
-    // If the root is on btrfs-subvolume, amend grub installation
-    auto is_btrfs_subvol = gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5");
-    if (!is_btrfs_subvol) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
-    }
-    // If encryption used amend grub
-    if (!luks_dev.empty()) {
-        const auto& luks_dev_formatted   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | {}"), luks_dev, "awk '{print $1}'"));
-        grub_config_struct.cmdline_linux = fmt::format(FMT_COMPILE("{} {}"), luks_dev_formatted, grub_config_struct.cmdline_linux);
-        spdlog::info("adding kernel parameter {}", luks_dev);
-    }
+    // Configure shared GRUB settings (ZFS, btrfs, LUKS, FDE, grub_installer.sh)
+    utils::configure_grub_common(grub_config_struct, grub_install_config_struct,
+        mountpoint, luks_dev,
+        "grub efibootmgr dosfstools"sv,
+        "grub efibootmgr dosfstools grub-btrfs grub-hook"sv);
 
-    // If Full disk encryption is used, use a keyfile
-    const auto& fde = std::get<std::int32_t>(config_data["fde"]);
-    if (fde == 1) {
-        spdlog::info("Full disk encryption enabled");
-        grub_config_struct.enable_cryptodisk = true;
-    }
-
+    const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
     std::error_code err{};
 
     // install grub
@@ -1079,17 +1080,10 @@ void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
     grub_install_config_struct.do_recheck = true;
     grub_install_config_struct.device     = device_info;
 
-    const auto& root_part_fs = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-
     // if /boot is LVM (whether using a seperate /boot mount or not), amend grub
     if ((lvm == 1 && lvm_sep_boot == 0) || lvm_sep_boot == 2) {
         grub_config_struct.preload_modules = fmt::format(FMT_COMPILE("lvm {}"), grub_config_struct.preload_modules);
         grub_config_struct.savedefault     = std::nullopt;
-    }
-
-    // If root is on btrfs volume, amend grub
-    if (root_part_fs == "btrfs"sv) {
-        grub_config_struct.savedefault = std::nullopt;
     }
 
     // Same setting is needed for LVM
@@ -1100,70 +1094,14 @@ void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
     // enable os-prober
     grub_config_struct.disable_os_prober = false;
 
+    // Configure shared GRUB settings (ZFS, btrfs, LUKS, FDE, grub_installer.sh)
+    utils::configure_grub_common(grub_config_struct, grub_install_config_struct,
+        mountpoint, luks_dev,
+        "grub os-prober"sv,
+        "grub os-prober grub-btrfs grub-hook"sv);
+
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
-
-    // grub config changes for zfs root
-    if (root_part_fs == "zfs"sv) {
-        // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
-
-        // zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-        if (root_part_fs == "btrfs"sv) {
-            grub_config_struct.savedefault = std::nullopt;
-        }
-
-        // we need to tell grub where the zfs root is
-        const auto& mountpoint_source            = gucc::fs::utils::get_mountpoint_source(mountpoint);
-        const auto& zroot_var                    = fmt::format(FMT_COMPILE("zfs={} rw"), mountpoint_source);
-        grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("{} {}"), grub_config_struct.cmdline_linux_default, zroot_var);
-        grub_config_struct.cmdline_linux         = fmt::format(FMT_COMPILE("{} {}"), grub_config_struct.cmdline_linux, zroot_var);
-
-        constexpr auto bash_code = R"(#!/bin/bash
-ln -s /hostlvm /run/lvm
-pacman -S --noconfirm --needed grub os-prober
-)";
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    } else {
-        // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
-        const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
-        if (is_root_lvm || (root_part_fs == "btrfs"sv)) {
-            grub_config_struct.savedefault = std::nullopt;
-        }
-
-        constexpr auto bash_code = R"(#!/bin/bash
-ln -s /hostlvm /run/lvm
-pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
-)";
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    }
-
-    // If the root is on btrfs-subvolume, amend grub installation
-    auto is_btrfs_subvol = gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5");
-    if (!is_btrfs_subvol) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
-    }
-
-    // If encryption used amend grub
-    if (!luks_dev.empty()) {
-        const auto& luks_dev_formatted   = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | {}"), luks_dev, "awk '{print $1}'"));
-        grub_config_struct.cmdline_linux = fmt::format(FMT_COMPILE("{} {}"), luks_dev_formatted, grub_config_struct.cmdline_linux);
-        spdlog::info("adding kernel parameter {}", luks_dev);
-    }
-
-    // If Full disk encryption is used, use a keyfile
-    const auto& fde = std::get<std::int32_t>(config_data["fde"]);
-    if (fde == 1) {
-        spdlog::info("Full disk encryption enabled");
-        grub_config_struct.enable_cryptodisk = true;
-    }
-
     std::error_code err{};
-
-    fs::permissions(grub_installer_path,
-        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
-        fs::perm_options::add);
 
     tui::detail::infobox_widget("\nPlease wait...\n");
     gucc::utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of={} seek=1 count=2047"), device_info));
