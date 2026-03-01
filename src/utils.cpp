@@ -268,17 +268,18 @@ auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    const auto& bootloader  = std::get<std::string>(config_data["BOOTLOADER"]);
+    const auto& device_info    = std::get<std::string>(config_data["DEVICE"]);
+    const auto& system_info    = std::get<std::string>(config_data["SYSTEM"]);
+    const auto& bootloader_str = std::get<std::string>(config_data["BOOTLOADER"]);
 
     spdlog::info("Running automatic partitioning");
-
-    const auto& boot_mountpoint = utils::bootloader_default_mount(bootloader, system_info);
-    if (boot_mountpoint == "unknown bootloader"sv) {
-        spdlog::error("Unknown bootloader: {}", bootloader);
+    const auto& bootloader_opt = gucc::bootloader::bootloader_from_string(bootloader_str);
+    if (!bootloader_opt) {
+        spdlog::error("Unknown bootloader: {}", bootloader_str);
         return {};
     }
+
+    const auto& boot_mountpoint = utils::bootloader_default_mount(*bootloader_opt, system_info);
 
     // Create default partitioning for clean disk
     const auto& is_system_efi = (system_info == "UEFI"sv);
@@ -1021,16 +1022,19 @@ void install_limine() noexcept {
         return;
     }
 
-    // Intergrate Snapper support
+    // Integrate Snapper support and run post-setup
     const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-    if (filesystem_type == "btrfs"sv) {
+    const bool is_btrfs         = (filesystem_type == "btrfs"sv);
+
+    if (is_btrfs) {
         utils::install_from_pkglist("cachyos-snapper-support limine-snapper-sync");
     }
 #endif
     spdlog::info("Limine was installed");
 }
 
-void uefi_bootloader(const std::string_view& bootloader) noexcept {
+void uefi_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
+    using gucc::bootloader::BootloaderType;
 #ifdef NDEVENV
     // Ensure again that efivarfs is mounted
     static constexpr auto efi_path = "/sys/firmware/efi/";
@@ -1046,22 +1050,36 @@ void uefi_bootloader(const std::string_view& bootloader) noexcept {
     }
 #endif
 
-    if (bootloader == "grub"sv) {
+    switch (bootloader) {
+    case BootloaderType::Grub:
         utils::install_grub_uefi("cachyos");
-    } else if (bootloader == "refind"sv) {
+        break;
+    case BootloaderType::Refind:
         utils::install_refind();
-    } else if (bootloader == "systemd-boot"sv) {
+        break;
+    case BootloaderType::SystemdBoot:
         utils::install_systemd_boot();
-    } else if (bootloader == "limine"sv) {
+        break;
+    case BootloaderType::Limine:
         utils::install_limine();
-    } else {
-        spdlog::error("Unknown bootloader!");
+        break;
     }
 }
 
-void bios_bootloader(const std::string_view& bootloader) noexcept {
-    spdlog::info("Installing bios bootloader '{}'...", bootloader);
+void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
+    using gucc::bootloader::BootloaderType;
+    spdlog::info("Installing bios bootloader '{}'...", gucc::bootloader::bootloader_to_string(bootloader));
 #ifdef NDEVENV
+    if (bootloader == BootloaderType::Limine) {
+        utils::install_limine();
+        return;
+    }
+
+    if (bootloader != BootloaderType::Grub) {
+        spdlog::error("Unsupported BIOS bootloader: {}", gucc::bootloader::bootloader_to_string(bootloader));
+        return;
+    }
+
     // if root is encrypted, amend /etc/default/grub
     utils::boot_encrypted_setting();
 
@@ -1188,7 +1206,7 @@ pacman -S --noconfirm --needed grub os-prober grub-btrfs grub-hook
 #endif
 }
 
-void install_bootloader(const std::string_view& bootloader) noexcept {
+void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
     /* clang-format off */
     if (!utils::check_base()) { return; }
     /* clang-format on */

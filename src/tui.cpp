@@ -24,6 +24,7 @@
 #include "gucc/zfs.hpp"
 
 #include <algorithm>    // for copy, transform
+#include <array>        // for array
 #include <cstdlib>      // for setenv
 #include <filesystem>   // for exists, is_directory
 #include <fstream>      // for ofstream
@@ -564,32 +565,40 @@ void uefi_bootloader() noexcept {
     }
 #endif
 
-    static constexpr auto bootloaderInfo        = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.\nLimine is lightweight bootloader with Btrfs snapshots loading support."sv;
-    const std::vector<std::string> menu_entries = {
-        "grub",
-        "refind",
-        "systemd-boot",
-        "limine"};
+    using gucc::bootloader::BootloaderType;
+    static constexpr auto bootloaderInfo = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.\nLimine is lightweight bootloader with Btrfs snapshots loading support."sv;
+
+    static constexpr std::array bootloader_types = {
+        BootloaderType::Grub,
+        BootloaderType::Refind,
+        BootloaderType::SystemdBoot,
+        BootloaderType::Limine,
+    };
+    std::vector<std::string> menu_entries{};
+    menu_entries.reserve(bootloader_types.size());
+    for (const auto& bootloader_type : bootloader_types) {
+        menu_entries.emplace_back(gucc::bootloader::bootloader_to_string(bootloader_type));
+    }
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     auto ok_callback = [&] {
-        auto* config_instance           = Config::instance();
-        auto& config_data               = config_instance->data();
-        const auto& selected_bootloader = menu_entries[static_cast<std::size_t>(selected)];
-        config_data["BOOTLOADER"]       = selected_bootloader;
+        auto* config_instance     = Config::instance();
+        auto& config_data         = config_instance->data();
+        const auto& bootloader_bl = bootloader_types[static_cast<std::size_t>(selected)];
+        config_data["BOOTLOADER"] = std::string{gucc::bootloader::bootloader_to_string(bootloader_bl)};
 
-        switch (selected) {
-        case 0:
+        switch (bootloader_bl) {
+        case BootloaderType::Grub:
             tui::install_grub_uefi();
             break;
-        case 1:
+        case BootloaderType::Refind:
             tui::install_refind();
             break;
-        case 2:
+        case BootloaderType::SystemdBoot:
             tui::install_systemd_boot();
             break;
-        case 3:
+        case BootloaderType::Limine:
             tui::install_limine();
             break;
         }
@@ -783,29 +792,30 @@ void config_base_menu() noexcept {
 
 // Grub auto-detects installed kernel
 void bios_bootloader() {
+    using gucc::bootloader::BootloaderType;
     static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step."sv;
     const std::vector<std::string> menu_entries = {
-        "grub",
+        std::string{gucc::bootloader::bootloader_to_string(BootloaderType::Grub)},
     };
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
-    std::string selected_bootloader{};
+    bool success{};
     auto ok_callback = [&] {
-        selected_bootloader = menu_entries[static_cast<std::size_t>(selected)];
+        success = true;
         screen.ExitLoopClosure()();
     };
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, bootloaderInfo);
 
     /* clang-format off */
-    if (selected_bootloader.empty()) { return; }
+    if (!success) { return; }
     if (!tui::select_device()) { return; }
     /* clang-format on */
 
     auto* config_instance     = Config::instance();
     auto& config_data         = config_instance->data();
-    config_data["BOOTLOADER"] = selected_bootloader;
-    utils::bios_bootloader(selected_bootloader);
+    config_data["BOOTLOADER"] = menu_entries[static_cast<std::size_t>(selected)];
+    utils::bios_bootloader(BootloaderType::Grub);
 }
 
 void enable_autologin() {
@@ -878,7 +888,7 @@ void auto_partition() noexcept {
             result.reserve(available_bootloaders.size());
 
             std::ranges::transform(available_bootloaders, std::back_inserter(result),
-                [=](const std::string_view& entry) -> std::string { return std::string(entry); });
+                [](gucc::bootloader::BootloaderType bl) { return std::string{gucc::bootloader::bootloader_to_string(bl)}; });
             return result;
         }(system_info);
 

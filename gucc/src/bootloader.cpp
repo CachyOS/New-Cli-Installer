@@ -182,6 +182,30 @@ auto parse_grub_line(const gucc::bootloader::GrubConfig& grub_config, std::strin
 
 namespace gucc::bootloader {
 
+auto bootloader_from_string(std::string_view name) noexcept -> std::optional<BootloaderType> {
+    /* clang-format off */
+    if (name == "grub"sv) return BootloaderType::Grub; // NOLINT
+    if (name == "systemd-boot"sv) return BootloaderType::SystemdBoot; // NOLINT
+    if (name == "refind"sv) return BootloaderType::Refind; // NOLINT
+    if (name == "limine"sv) return BootloaderType::Limine; // NOLINT
+    /* clang-format on */
+    return std::nullopt;
+}
+
+auto bootloader_to_string(BootloaderType type) noexcept -> std::string_view {
+    switch (type) {
+    case BootloaderType::Grub:
+        return "grub"sv;
+    case BootloaderType::SystemdBoot:
+        return "systemd-boot"sv;
+    case BootloaderType::Refind:
+        return "refind"sv;
+    case BootloaderType::Limine:
+        return "limine"sv;
+    }
+    return "unknown"sv;
+}
+
 auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string {
     std::string result = GRUB_DEFAULT_CONFIG | std::ranges::views::split('\n')
         | std::ranges::views::transform([&](auto&& rng) {

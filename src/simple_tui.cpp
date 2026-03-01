@@ -114,7 +114,7 @@ auto select_bootloader(std::string_view sys_info) noexcept -> std::string {
         result.reserve(available_bootloaders.size());
 
         std::ranges::transform(available_bootloaders, std::back_inserter(result),
-            [=](const std::string_view& entry) -> std::string { return std::string(entry); });
+            [](gucc::bootloader::BootloaderType bl) { return std::string{gucc::bootloader::bootloader_to_string(bl)}; });
         return result;
     }(sys_info);
 
@@ -133,14 +133,18 @@ auto select_bootloader(std::string_view sys_info) noexcept -> std::string {
     tui::detail::menu_widget(menu_entries, ok_callback, &selected, &screen, filesystem_body, {size(HEIGHT, LESS_THAN, 18), content_size});
 
     if (!success) {
+        using gucc::bootloader::BootloaderType;
         // default bootloaders
-        selected_bootloader = (sys_info == "UEFI"sv) ? "systemd-boot"sv : "grub"sv;
+        const auto default_boot = (sys_info == "UEFI"sv) ? BootloaderType::SystemdBoot : BootloaderType::Grub;
+        selected_bootloader     = std::string{gucc::bootloader::bootloader_to_string(default_boot)};
     }
 
     return selected_bootloader;
 }
 
-void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view part_name, std::string_view bootloader_name, bool reformat_part = true, std::string_view boot_part_mountpoint = "(empty)"sv) noexcept {
+void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view part_name, gucc::bootloader::BootloaderType bootloader_type,
+    bool reformat_part = true, std::string_view boot_part_mountpoint = "(empty)"sv) noexcept {
+
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
@@ -152,7 +156,9 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view par
     auto& partition = std::get<std::string>(config_data["PARTITION"]);
     partition       = std::string{part_name};
 
-    const auto& uefi_mount    = (boot_part_mountpoint == "(empty)"sv) ? utils::bootloader_default_mount(bootloader_name, sys_info) : boot_part_mountpoint;
+    const auto& uefi_mount    = (boot_part_mountpoint == "(empty)"sv)
+           ? utils::bootloader_default_mount(bootloader_type, sys_info)
+           : boot_part_mountpoint;
     config_data["UEFI_MOUNT"] = std::string{uefi_mount};
     config_data["UEFI_PART"]  = partition;
 
@@ -187,13 +193,19 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view par
     partitions.emplace_back(std::move(boot_part_struct));
 }
 
-auto make_partitions_prepared(std::string_view bootloader, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts) -> bool {
+auto make_partitions_prepared(std::string_view bootloader_str, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts) -> bool {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
     /* clang-format off */
     if (ready_parts.empty()) { spdlog::error("Invalid use! ready parts empty."); return false; }
     /* clang-format on */
+
+    const auto& bootloader_opt = gucc::bootloader::bootloader_from_string(bootloader_str);
+    if (!bootloader_opt) {
+        spdlog::error("Unknown bootloader: {}", bootloader_str);
+        return false;
+    }
 
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
 
@@ -215,7 +227,7 @@ auto make_partitions_prepared(std::string_view bootloader, std::string_view root
         if (part_type == "boot"sv) {
             config_data["UEFI_MOUNT"] = part_mountpoint;
             config_data["UEFI_PART"]  = part_name;
-            make_esp(partitions, part_name, bootloader, true, part_mountpoint);
+            make_esp(partitions, part_name, *bootloader_opt, true, part_mountpoint);
             utils::get_cryptroot();
             utils::get_cryptboot();
             spdlog::info("boot partition: name={}", part_name);
@@ -596,7 +608,12 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     if (selections.bootloader.empty()) {
         tui::install_bootloader();
     } else {
-        utils::install_bootloader(selections.bootloader);
+        const auto& bootloader_type = gucc::bootloader::bootloader_from_string(selections.bootloader);
+        if (bootloader_type) {
+            utils::install_bootloader(*bootloader_type);
+        } else {
+            spdlog::error("Unknown bootloader: {}", selections.bootloader);
+        }
     }
 
 #ifdef NDEVENV

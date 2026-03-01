@@ -10,6 +10,13 @@
 
 namespace gucc::bootloader {
 
+enum class BootloaderType : std::uint8_t {
+    Grub,
+    SystemdBoot,
+    Refind,
+    Limine,
+};
+
 struct GrubConfig final {
     // e.g GRUB_DEFAULT=0
     std::string default_entry{"0"};
@@ -119,6 +126,12 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
 
 // Generate /etc/default/limine (limine entry) content
 auto gen_limine_entry_config(const std::vector<std::string>& kernel_params, std::optional<std::string_view> esp_path = std::nullopt) noexcept -> std::string;
+
+// Convert string to BootloaderType
+auto bootloader_from_string(std::string_view name) noexcept -> std::optional<BootloaderType>;
+
+// Convert BootloaderType to string
+auto bootloader_to_string(BootloaderType type) noexcept -> std::string_view;
 
 }  // namespace gucc::bootloader
 

@@ -4,6 +4,7 @@
 #include "definitions.hpp"
 
 // import gucc
+#include "gucc/bootloader.hpp"
 #include "gucc/partition.hpp"
 
 #include <charconv>     // for from_chars
@@ -50,9 +51,9 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default = true) n
 void install_refind() noexcept;
 void install_systemd_boot() noexcept;
 void install_limine() noexcept;
-void uefi_bootloader(const std::string_view& bootloader) noexcept;
-void bios_bootloader(const std::string_view& bootloader) noexcept;
-void install_bootloader(const std::string_view& bootloader) noexcept;
+void uefi_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
+void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
+void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
 
 void get_cryptroot() noexcept;
 void get_cryptboot() noexcept;
@@ -129,25 +130,27 @@ inline std::size_t remove_all(std::string& inout, std::string_view what) noexcep
 }
 
 // Get appropriate default mountpoint for bootloader
-constexpr inline auto bootloader_default_mount(std::string_view bootloader, std::string_view bios_mode) noexcept -> std::string_view {
+constexpr inline auto bootloader_default_mount(gucc::bootloader::BootloaderType bootloader, std::string_view bios_mode) noexcept -> std::string_view {
     using namespace std::string_view_literals;
+    using gucc::bootloader::BootloaderType;
 
-    if (bootloader == "systemd-boot"sv || bootloader == "limine"sv || bios_mode == "BIOS"sv) {
+    if (bootloader == BootloaderType::SystemdBoot || bootloader == BootloaderType::Limine || bios_mode == "BIOS"sv) {
         return "/boot"sv;
-    } else if (bootloader == "grub"sv || bootloader == "refind"sv) {
+    } else if (bootloader == BootloaderType::Grub || bootloader == BootloaderType::Refind) {
         return "/boot/efi"sv;
     }
     return "unknown bootloader"sv;
 }
 
 // Get available bootloaders
-constexpr inline auto available_bootloaders(std::string_view bios_mode) noexcept -> std::vector<std::string_view> {
+constexpr inline auto available_bootloaders(std::string_view bios_mode) noexcept -> std::vector<gucc::bootloader::BootloaderType> {
     using namespace std::string_view_literals;
+    using gucc::bootloader::BootloaderType;
 
     if (bios_mode == "BIOS"sv) {
-        return {"grub"sv};
+        return {BootloaderType::Grub};
     }
-    return {"systemd-boot"sv, "refind"sv, "grub"sv, "limine"sv};
+    return {BootloaderType::SystemdBoot, BootloaderType::Refind, BootloaderType::Grub, BootloaderType::Limine};
 }
 
 }  // namespace utils
