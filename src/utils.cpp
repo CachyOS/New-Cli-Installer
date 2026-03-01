@@ -26,6 +26,7 @@
 #include "gucc/partitioning.hpp"
 #include "gucc/repos.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/system_query.hpp"
 #include "gucc/systemd_services.hpp"
 #include "gucc/timezone.hpp"
 #include "gucc/umount_partitions.hpp"
@@ -41,7 +42,7 @@
 #include <array>          // for array
 #include <bit>            // for bit_cast
 #include <chrono>         // for filesystem, seconds
-#include <filesystem>     // for exists, is_directory
+#include <filesystem>     // for exists, is_directory, create_directories
 #include <fstream>        // for ofstream
 #include <iostream>       // for basic_istream, cin
 #include <mutex>          // for mutex
@@ -687,6 +688,30 @@ void remove_pkgs(const std::string_view& packages) noexcept {
 #ifdef NDEVENV
     utils::arch_chroot(fmt::format(FMT_COMPILE("pacman -Rsn {}"), packages));
 #endif
+}
+
+auto setup_esp_partition(std::string_view device, std::string_view mountpoint, bool format_requested) noexcept -> std::optional<gucc::fs::Partition> {
+    const auto& mountpoint_info = utils::get_mountpoint();
+    const bool is_boot_ssd      = gucc::disk::is_device_ssd(device);
+#ifdef NDEVENV
+    auto boot_part_struct = gucc::mount::setup_esp_partition(device, mountpoint, mountpoint_info, format_requested, is_boot_ssd);
+    if (!boot_part_struct) {
+        spdlog::error("Failed to setup ESP partition {}", device);
+        return std::nullopt;
+    }
+#else
+    spdlog::info("[DRY-RUN] Would setup ESP partition {} at {}{}", device, mountpoint_info, mountpoint);
+    auto boot_part_struct = std::make_optional(gucc::fs::Partition{
+        .fstype     = "vfat",
+        .mountpoint = std::string{mountpoint},
+        .device     = std::string{device},
+        .mount_opts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::Vfat, is_boot_ssd),
+    });
+#endif
+
+    // TODO(vnepogodin): handle luks information
+    utils::dump_partition_to_log(*boot_part_struct);
+    return boot_part_struct;
 }
 
 void configure_grub_common(gucc::bootloader::GrubConfig& grub_config, gucc::bootloader::GrubInstallConfig& grub_install_config, std::string_view mountpoint, std::string_view luks_dev, std::string_view zfs_extra_pkgs, std::string_view non_zfs_extra_pkgs) noexcept {

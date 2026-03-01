@@ -1734,13 +1734,8 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
         const auto& content = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), partition);
         do_boot_partition   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
     }
-    if (do_boot_partition) {
-#ifdef NDEVENV
-        gucc::utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
-#endif
-        spdlog::debug("Formating boot partition with fat/vfat!");
-    }
 
+    std::string uefi_mount{};
     {
         static constexpr auto MntUefiBody            = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n"sv;
         static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption.\nEncrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n"sv;
@@ -1749,47 +1744,30 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
             "/boot/efi",
             "/boot",
         };
-        answer.clear();
 
         auto screen = ScreenInteractive::Fullscreen();
         std::int32_t selected{};
         auto ok_callback = [&] {
-            answer = radiobox_list[static_cast<std::size_t>(selected)];
+            uefi_mount = radiobox_list[static_cast<std::size_t>(selected)];
             screen.ExitLoopClosure()();
         };
         detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = MntUefiMessage}, {.text_size = nothing});
     }
 
     /* clang-format off */
-    if (answer.empty()) { return; }
+    if (uefi_mount.empty()) { return; }
     /* clang-format on */
 
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    auto& uefi_mount            = std::get<std::string>(config_data["UEFI_MOUNT"]);
-    uefi_mount                  = answer;
-
-    const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
-#ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), part_mountpoint));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, part_mountpoint));
-#endif
-    confirm_mount(part_mountpoint);
-
-    // Use GUCC default mount opts for vfat
-    const auto& part_fs    = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
-    const bool is_boot_ssd = gucc::disk::is_device_ssd(partition);
-    const auto& boot_opts  = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::Vfat, is_boot_ssd);
-    auto boot_part_struct  = gucc::fs::Partition{.fstype = part_fs, .mountpoint = uefi_mount, .device = partition, .mount_opts = boot_opts};
-
-    const auto& part_uuid     = gucc::fs::utils::get_device_uuid(boot_part_struct.device);
-    boot_part_struct.uuid_str = part_uuid;
-
-    // TODO(vnepogodin): handle luks information
-
-    utils::dump_partition_to_log(boot_part_struct);
-
-    // insert boot partition
-    partitions.emplace_back(std::move(boot_part_struct));
+    // Apply ESP
+    utils::EspSelection esp_selection{
+        .device           = partition,
+        .mountpoint       = uefi_mount,
+        .format_requested = do_boot_partition,
+    };
+    if (!utils::apply_esp_selection(esp_selection, partitions)) {
+        spdlog::error("Failed to apply ESP actions");
+        return;
+    }
 }
 
 // Function to gather user choices for the root partition

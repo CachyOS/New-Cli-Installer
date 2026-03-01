@@ -16,9 +16,8 @@
 #include "gucc/system_query.hpp"
 #include "gucc/zfs.hpp"
 
-#include <algorithm>   // for find_if, transform
-#include <filesystem>  // for create_directories
-#include <ranges>      // for ranges::*
+#include <algorithm>  // for find_if, transform
+#include <ranges>     // for ranges::*
 
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/component_options.hpp>   // for ButtonOption
@@ -31,8 +30,6 @@
 
 using namespace std::string_view_literals;
 using namespace std::string_literals;
-
-namespace fs = std::filesystem;
 
 namespace {
 
@@ -466,45 +463,18 @@ auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partitio
     config_data["UEFI_PART"]  = esp.device;
     config_data["UEFI_MOUNT"] = esp.mountpoint;
 
-    if (esp.format_requested) {
-#ifdef NDEVENV
-        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), esp.device))) {
-            spdlog::error("Failed to format boot partition {}", esp.device);
-            return false;
-        }
-#endif
-        spdlog::info("Formating boot partition {} with fat/vfat!", esp.device);
+    auto esp_partition = utils::setup_esp_partition(esp.device, esp.mountpoint, esp.format_requested);
+    if (!esp_partition) {
+        spdlog::error("Failed to setup ESP partition");
+        return false;
     }
 
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& mountpoint_info = utils::get_mountpoint();
     const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, esp.mountpoint);
-
-#ifdef NDEVENV
-    std::error_code err{};
-    ::fs::create_directories(part_mountpoint, err);
-    if (err) {
-        spdlog::error("Failed to make esp directory {}: {}", part_mountpoint, err.message());
-        return false;
-    }
-    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("mount -v {} {} &>>/tmp/cachyos-install.log"), esp.device, part_mountpoint))) {
-        spdlog::error("Failed to mount esp {} at {}", esp.device, part_mountpoint);
-        return false;
-    }
-#endif
     tui::confirm_mount(part_mountpoint);
 
-    // Use GUCC default mount opts for vfat
-    const auto& part_fs    = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
-    const bool is_boot_ssd = gucc::disk::is_device_ssd(esp.device);
-    const auto& boot_opts  = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::Vfat, is_boot_ssd);
-    auto boot_part_struct  = gucc::fs::Partition{.fstype = part_fs, .mountpoint = esp.mountpoint, .device = esp.device, .mount_opts = boot_opts};
-
-    const auto& part_uuid     = gucc::fs::utils::get_device_uuid(esp.device);
-    boot_part_struct.uuid_str = part_uuid;
-
-    // TODO(vnepogodin): handle luks information
-    utils::dump_partition_to_log(boot_part_struct);
-    partitions.emplace_back(std::move(boot_part_struct));
+    // insert boot partition
+    partitions.emplace_back(std::move(*esp_partition));
     return true;
 }
 

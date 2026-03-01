@@ -10,8 +10,11 @@
 #include "gucc/chwd.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/mount_partitions.hpp"
+#include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/system_query.hpp"
 #include "gucc/zfs.hpp"
 
 #include <cstdlib>      // for setenv
@@ -162,35 +165,20 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view par
     config_data["UEFI_MOUNT"] = std::string{uefi_mount};
     config_data["UEFI_PART"]  = partition;
 
-    // If it is already a fat/vfat partition...
-    const auto& is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), partition));
-    if (!is_fat_part && reformat_part) {
-#ifdef NDEVENV
-        gucc::utils::exec(fmt::format(FMT_COMPILE("mkfs.vfat -F32 {} &>/dev/null"), partition));
-#endif
-        spdlog::debug("Formating boot partition with fat/vfat!");
+    // If it is already a fat/vfat partition, skip formatting
+    const bool is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), partition));
+    const bool do_format   = !is_fat_part && reformat_part;
+
+    // Apply ESP
+    utils::EspSelection esp_selection{
+        .device           = partition,
+        .mountpoint       = std::string{uefi_mount},
+        .format_requested = do_format,
+    };
+    if (!utils::apply_esp_selection(esp_selection, partitions)) {
+        spdlog::error("Failed to apply ESP actions");
+        return;
     }
-
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, uefi_mount);
-#ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mkdir -p {}"), part_mountpoint));
-    gucc::utils::exec(fmt::format(FMT_COMPILE("mount {} {}"), partition, part_mountpoint));
-#endif
-
-    // TODO(vnepogodin): handle boot partition mount options
-    const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
-    auto boot_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = std::string{uefi_mount}, .device = partition, .mount_opts = "defaults"s};
-
-    const auto& part_uuid     = gucc::fs::utils::get_device_uuid(boot_part_struct.device);
-    boot_part_struct.uuid_str = part_uuid;
-
-    // TODO(vnepogodin): handle luks information
-
-    utils::dump_partition_to_log(boot_part_struct);
-
-    // insert boot partition
-    partitions.emplace_back(std::move(boot_part_struct));
 }
 
 auto make_partitions_prepared(std::string_view bootloader_str, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts) -> bool {
@@ -207,7 +195,7 @@ auto make_partitions_prepared(std::string_view bootloader_str, std::string_view 
         return false;
     }
 
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& mountpoint_info = utils::get_mountpoint();
 
     std::vector<gucc::fs::Partition> partitions{};
 
