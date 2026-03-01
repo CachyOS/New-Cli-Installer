@@ -1,7 +1,7 @@
 #ifndef BOOTLOADER_HPP
 #define BOOTLOADER_HPP
 
-#include <cinttypes>
+#include <cstdint>
 
 #include <optional>     // for optional
 #include <string>       // for string
@@ -68,10 +68,15 @@ struct GrubInstallConfig final {
 };
 
 struct LimineInstallConfig final {
+    bool is_efi{true};
     bool is_removable{};
     std::string_view root_mountpoint;
     std::string_view boot_mountpoint;
     const std::vector<std::string>& kernel_params;
+    // BIOS-specific: the device to install limine to
+    std::optional<std::string> bios_device{};
+    // ESP path for /etc/default/limine
+    std::optional<std::string> efi_directory{};
 };
 
 struct RefindInstallConfig final {
@@ -106,8 +111,8 @@ auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -
 // Installs Limine on system
 auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> bool;
 
-// Generate Limine config into system
-auto gen_limine_config(const std::vector<std::string>& kernel_params) noexcept -> std::string;
+// Generate /etc/default/limine (limine entry) content
+auto gen_limine_entry_config(const std::vector<std::string>& kernel_params, std::optional<std::string_view> esp_path = std::nullopt) noexcept -> std::string;
 
 }  // namespace gucc::bootloader
 

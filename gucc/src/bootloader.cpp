@@ -5,15 +5,17 @@
 #include "gucc/kernel_params.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <ranges>  // for ranges::*
+#include <filesystem>  // for copy_file, copy_options
+#include <ranges>      // for ranges::*
+#include <string>      // for string
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
-#include <string>
 
 using namespace std::string_view_literals;
+namespace fs = std::filesystem;
 
 #define CONV_REQ_F(needle, f)               \
     if (line.starts_with(needle)) {         \
@@ -357,39 +359,82 @@ auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -
     return true;
 }
 
-auto gen_limine_config(const std::vector<std::string>& kernel_params) noexcept -> std::string {
+auto gen_limine_entry_config(const std::vector<std::string>& kernel_params, std::optional<std::string_view> esp_path) noexcept -> std::string {
     const auto& kernel_params_str = utils::join(kernel_params, ' ');
 
-    std::string limine_config{};
-    limine_config += fmt::format(FMT_COMPILE("KERNEL_CMDLINE[default]=\"{}\"\n"), kernel_params_str);
+    std::string result{};
+    if (esp_path) {
+        result += fmt::format(FMT_COMPILE("ESP_PATH=\"{}\"\n"), *esp_path);
+    }
+    result += fmt::format(FMT_COMPILE("KERNEL_CMDLINE[default]=\"{}\"\n"), kernel_params_str);
+    result += "BOOT_ORDER=\"*, *lts, *fallback, Snapshots\"\n"sv;
 
-    return limine_config;
+    return result;
 }
 
 auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> bool {
-    // Write generated config to system
+    // Write limine.conf theme/base config to the boot partition
     const auto& limine_config_path = fmt::format(FMT_COMPILE("{}/limine.conf"), limine_install_config.boot_mountpoint);
     if (!file_utils::create_file_for_overwrite(limine_config_path, LIMINE_DEFAULT_CONFIG)) {
         spdlog::error("Failed to open limine config for writing {}", limine_config_path);
         return false;
     }
 
-    // Write limine-entry-tool config to system
-    const auto& limine_entry_tool_config_path = fmt::format(FMT_COMPILE("{}/etc/default/limine"), limine_install_config.root_mountpoint);
-
-    const auto& limine_config_content = bootloader::gen_limine_config(limine_install_config.kernel_params);
-    if (!file_utils::create_file_for_overwrite(limine_entry_tool_config_path, limine_config_content)) {
-        spdlog::error("Failed to open limine-entry-tool config for writing {}", limine_entry_tool_config_path);
+    // Write /etc/default/limine config
+    const auto& limine_entry_config_path = fmt::format(FMT_COMPILE("{}/etc/default/limine"), limine_install_config.root_mountpoint);
+    const auto& limine_config_content    = bootloader::gen_limine_entry_config(
+        limine_install_config.kernel_params, limine_install_config.efi_directory);
+    if (!file_utils::create_file_for_overwrite(limine_entry_config_path, limine_config_content)) {
+        spdlog::error("Failed to open limine-entry-tool config for writing {}", limine_entry_config_path);
         return false;
     }
 
-    // Install Limine onto EFI
-    if (!utils::arch_chroot_checked("limine-install"sv, limine_install_config.root_mountpoint)) {
-        spdlog::error("Failed to run limine-install on path {}", limine_install_config.root_mountpoint);
-        return false;
+    if (limine_install_config.is_efi) {
+        // EFI mode: install limine with fallback retry
+        spdlog::info("Bootloader: limine (efi)");
+        if (!utils::arch_chroot_checked("limine-install"sv, limine_install_config.root_mountpoint)) {
+            spdlog::warn("Failed to install limine bootloader, trying fallback option");
+            if (!utils::arch_chroot_checked("limine-install --skip-uefi --fallback"sv, limine_install_config.root_mountpoint)) {
+                spdlog::error("Failed to install limine (fallback) on path {}", limine_install_config.root_mountpoint);
+                return false;
+            }
+
+            // Append fallback flags to /etc/default/limine
+            const auto& fallback_config = fmt::format(FMT_COMPILE("{}\nSKIP_UEFI=yes\nENABLE_LIMINE_FALLBACK=yes\n"),
+                file_utils::read_whole_file(limine_entry_config_path));
+            if (!file_utils::create_file_for_overwrite(limine_entry_config_path, fallback_config)) {
+                spdlog::error("Failed to append fallback config to {}", limine_entry_config_path);
+                return false;
+            }
+        }
+    } else {
+        // BIOS mode: copy limine-bios.sys and run limine bios-install
+        spdlog::info("Bootloader: limine (bios)");
+        if (!limine_install_config.bios_device) {
+            spdlog::error("BIOS mode requires bios_device to be set");
+            return false;
+        }
+
+        // Copy limine-bios.sys to boot partition
+        const auto& bios_sys_src = fmt::format(FMT_COMPILE("{}/usr/share/limine/limine-bios.sys"), limine_install_config.root_mountpoint);
+        const auto& bios_sys_dst = fmt::format(FMT_COMPILE("{}/limine-bios.sys"), limine_install_config.boot_mountpoint);
+
+        std::error_code ec;
+        ::fs::copy_file(bios_sys_src, bios_sys_dst, ::fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            spdlog::error("Failed to copy limine-bios.sys to {}", bios_sys_dst);
+            return false;
+        }
+
+        // Run limine bios-install on the target device
+        const auto& bios_install_cmd = fmt::format(FMT_COMPILE("limine bios-install {}"), *limine_install_config.bios_device);
+        if (!utils::arch_chroot_checked(bios_install_cmd, limine_install_config.root_mountpoint)) {
+            spdlog::error("Failed to run limine bios-install on {}", *limine_install_config.bios_device);
+            return false;
+        }
     }
 
-    // Add kernel entries
+    // Add kernel entries via limine-mkinitcpio
     if (!utils::arch_chroot_checked("limine-mkinitcpio"sv, limine_install_config.root_mountpoint)) {
         spdlog::error("Failed to run limine-mkinitcpio on path {}", limine_install_config.root_mountpoint);
         return false;

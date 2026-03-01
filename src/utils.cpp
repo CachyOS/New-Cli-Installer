@@ -973,6 +973,7 @@ void install_limine() noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    const auto& sys_info   = std::get<std::string>(config_data["SYSTEM"]);
 
     const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
 
@@ -982,14 +983,24 @@ void install_limine() noexcept {
         return;
     }
 
-    const gucc::bootloader::LimineInstallConfig limine_install_config{
+    const bool is_efi_mode = (sys_info == "UEFI"sv);
+
+    gucc::bootloader::LimineInstallConfig limine_install_config{
+        .is_efi          = is_efi_mode,
         .is_removable    = utils::is_volume_removable(),
         .root_mountpoint = mountpoint,
         .boot_mountpoint = boot_mountpoint,
         .kernel_params   = *kernel_params,
+        .efi_directory   = std::string{uefi_mount},
     };
 
-    // Preinstall limine-entry-tool
+    // For BIOS mode, set the bios_device
+    if (!is_efi_mode) {
+        const auto& device_info           = std::get<std::string>(config_data["DEVICE"]);
+        limine_install_config.bios_device = device_info;
+    }
+
+    // Preinstall limine-mkinitcpio-hook
     utils::install_from_pkglist("limine-mkinitcpio-hook");
 
     // Install splash screen
