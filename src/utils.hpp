@@ -16,6 +16,7 @@
 
 namespace utils {
 
+[[nodiscard]] auto get_mountpoint() noexcept -> std::string_view;
 [[nodiscard]] bool is_connected() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;

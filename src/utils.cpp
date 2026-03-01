@@ -105,6 +105,12 @@ using namespace std::string_view_literals;
 
 namespace utils {
 
+auto get_mountpoint() noexcept -> std::string_view {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    return std::get<std::string>(config_data["MOUNTPOINT"]);
+}
+
 bool is_connected() noexcept {
 #ifdef NDEVENV
     /* clang-format off */
@@ -331,9 +337,7 @@ void secure_wipe() noexcept {
 }
 
 void generate_fstab() noexcept {
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& mountpoint = utils::get_mountpoint();
     spdlog::info("Generating fstab on {}", mountpoint);
 
 #ifdef NDEVENV
@@ -347,11 +351,7 @@ void generate_fstab() noexcept {
 void set_hostname(const std::string_view& hostname) noexcept {
     spdlog::info("Setting hostname {}", hostname);
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    if (!gucc::user::set_hostname(hostname, mountpoint)) {
+    if (!gucc::user::set_hostname(hostname, utils::get_mountpoint())) {
         spdlog::error("Failed to set hostname");
     }
 #endif
@@ -361,11 +361,7 @@ void set_hostname(const std::string_view& hostname) noexcept {
 void set_locale(const std::string_view& locale) noexcept {
     spdlog::info("Selected locale: {}", locale);
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    if (!gucc::locale::set_locale(locale, mountpoint)) {
+    if (!gucc::locale::set_locale(locale, utils::get_mountpoint())) {
         spdlog::error("Failed to set locale");
     }
 #endif
@@ -374,11 +370,7 @@ void set_locale(const std::string_view& locale) noexcept {
 void set_xkbmap(const std::string_view& xkbmap) noexcept {
     spdlog::info("Selected xkbmap: {}", xkbmap);
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    if (!gucc::locale::set_xkbmap(xkbmap, mountpoint)) {
+    if (!gucc::locale::set_xkbmap(xkbmap, utils::get_mountpoint())) {
         spdlog::error("Failed to set xkbmap: {}", xkbmap);
     }
 #endif
@@ -403,11 +395,7 @@ void set_keymap(std::string_view selected_keymap) noexcept {
 void set_timezone(const std::string_view& timezone) noexcept {
     spdlog::info("Timezone is set to {}", timezone);
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    if (!gucc::timezone::set_timezone(timezone, mountpoint)) {
+    if (!gucc::timezone::set_timezone(timezone, utils::get_mountpoint())) {
         spdlog::error("Failed to set timezone: {}", timezone);
     }
 #endif
@@ -416,10 +404,7 @@ void set_timezone(const std::string_view& timezone) noexcept {
 void set_hw_clock(const std::string_view& clock_type) noexcept {
     spdlog::info("Clock type is: {}", clock_type);
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
+    const auto& mountpoint = utils::get_mountpoint();
     if (clock_type == "utc"sv) {
         if (!gucc::hwclock::set_hwclock_utc(mountpoint)) {
             spdlog::error("Failed to set UTC hwclock");
@@ -482,11 +467,7 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
 // Set password for root user
 void set_root_password(const std::string_view& password) noexcept {
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    if (!gucc::user::set_root_password(password, mountpoint)) {
+    if (!gucc::user::set_root_password(password, utils::get_mountpoint())) {
         spdlog::error("Failed to set root password");
     }
 #else
