@@ -135,7 +135,7 @@ auto select_bootloader(std::string_view sys_info) noexcept -> std::string {
     if (!success) {
         using gucc::bootloader::BootloaderType;
         // default bootloaders
-        const auto default_boot = (sys_info == "UEFI"sv) ? BootloaderType::SystemdBoot : BootloaderType::Grub;
+        const auto default_boot = (sys_info == "UEFI"sv) ? BootloaderType::Limine : BootloaderType::Grub;
         selected_bootloader     = std::string{gucc::bootloader::bootloader_to_string(default_boot)};
     }
 
