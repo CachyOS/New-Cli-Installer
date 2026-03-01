@@ -193,24 +193,24 @@ auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string {
     return result;
 }
 
-auto install_systemd_boot(std::string_view root_mountpoint, std::string_view efi_directory, bool is_volume_removable) noexcept -> bool {
+auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> bool {
     // Install systemd-boot onto EFI
-    const auto& bootctl_cmd = fmt::format(FMT_COMPILE("bootctl --path={} install"), efi_directory);
-    if (!utils::arch_chroot_checked(bootctl_cmd, root_mountpoint)) {
-        spdlog::error("Failed to run bootctl on path {} with: {}", root_mountpoint, bootctl_cmd);
+    const auto& bootctl_cmd = fmt::format(FMT_COMPILE("bootctl --path={} install"), config.efi_directory);
+    if (!utils::arch_chroot_checked(bootctl_cmd, config.root_mountpoint)) {
+        spdlog::error("Failed to run bootctl on path {} with: {}", config.root_mountpoint, bootctl_cmd);
         return false;
     }
 
-    // Generate systemd-boot configuration entries with our sdboot
+    // Generate systemd-boot configuration entries with sdboot-manage
     static constexpr auto sdboot_cmd = "sdboot-manage gen"sv;
-    if (!utils::arch_chroot_checked(sdboot_cmd, root_mountpoint)) {
-        spdlog::error("Failed to run sdboot-manage gen on mountpoint: {}", root_mountpoint);
+    if (!utils::arch_chroot_checked(sdboot_cmd, config.root_mountpoint)) {
+        spdlog::error("Failed to run sdboot-manage gen on mountpoint: {}", config.root_mountpoint);
         return false;
     }
 
     // if the volume is removable don't use autodetect
-    if (is_volume_removable) {
-        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), root_mountpoint);
+    if (config.is_removable) {
+        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), config.root_mountpoint);
 
         // Remove autodetect hook
         auto initcpio = detail::Initcpio{initcpio_filename};

@@ -958,7 +958,12 @@ void install_systemd_boot() noexcept {
     utils::install_from_pkglist("systemd-boot-manager");
 
     // start systemd-boot install & configuration
-    if (!gucc::bootloader::install_systemd_boot(mountpoint, uefi_mount, utils::is_volume_removable())) {
+    const gucc::bootloader::SystemdBootInstallConfig sdboot_config{
+        .is_removable    = utils::is_volume_removable(),
+        .root_mountpoint = mountpoint,
+        .efi_directory   = uefi_mount,
+    };
+    if (!gucc::bootloader::install_systemd_boot(sdboot_config)) {
         spdlog::error("Failed to install systemd-boot");
         return;
     }

@@ -67,6 +67,12 @@ struct GrubInstallConfig final {
     std::optional<std::string> bootloader_id{};
 };
 
+struct SystemdBootInstallConfig final {
+    bool is_removable{};
+    std::string_view root_mountpoint;
+    std::string_view efi_directory;
+};
+
 struct LimineInstallConfig final {
     bool is_efi{true};
     bool is_removable{};
@@ -97,7 +103,7 @@ auto write_grub_config(const GrubConfig& grub_config, std::string_view root_moun
 auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_install_config, std::string_view root_mountpoint) noexcept -> bool;
 
 // Installs & configures systemd-boot on system
-auto install_systemd_boot(std::string_view root_mountpoint, std::string_view efi_directory, bool is_volume_removable) noexcept -> bool;
+auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> bool;
 
 // Generate refind config into system
 auto gen_refind_config(const std::vector<std::string>& kernel_params) noexcept -> std::string;
