@@ -16,8 +16,9 @@
 #include "gucc/system_query.hpp"
 #include "gucc/zfs.hpp"
 
-#include <algorithm>  // for find_if, transform
-#include <ranges>     // for ranges::*
+#include <algorithm>   // for find_if, transform
+#include <filesystem>  // for create_directories
+#include <ranges>      // for ranges::*
 
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/component_options.hpp>   // for ButtonOption
@@ -28,6 +29,7 @@
 #include <fmt/compile.h>
 #include <fmt/core.h>
 
+namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 using namespace std::string_literals;
 
@@ -450,6 +452,7 @@ auto apply_swap_selection(const SwapSelection& swap, std::vector<gucc::fs::Parti
     case SwapSelection::Type::None:
         return true;
     }
+    return true;
 }
 
 auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
