@@ -21,6 +21,7 @@
 #include "gucc/locale.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/lvm.hpp"
+#include "gucc/mount_partitions.hpp"
 #include "gucc/package_list.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/partitioning.hpp"
