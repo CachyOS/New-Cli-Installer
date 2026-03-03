@@ -678,6 +678,40 @@ void install_desktop(const std::string_view& desktop) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     config_data["DE"]     = std::string{desktop};
+
+#ifdef NDEVENV
+    // Configure plymouth if installed by desktop packages
+    const auto& mountpoint   = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
+    if (fs::exists(plymouth_path)) {
+        spdlog::info("Plymouth detected in target, configuring boot splash");
+
+        // Set plymouth theme
+        utils::arch_chroot("plymouth-set-default-theme cachyos-bootanimation", false);
+
+        // Reconfigure initcpio with plymouth hook and rebuild initramfs
+        utils::recheck_luks();
+        const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
+        const auto& lvm             = std::get<std::int32_t>(config_data["LVM"]);
+        const auto& luks            = std::get<std::int32_t>(config_data["LUKS"]);
+        const auto fs_type          = gucc::fs::string_to_filesystem_type(filesystem_type);
+
+        const auto initcpio_config = gucc::initcpio::InitcpioConfig{
+            .filesystem_type  = fs_type,
+            .is_lvm           = (lvm == 1),
+            .is_luks          = (luks == 1),
+            .has_plymouth     = true,
+            .use_systemd_hook = true,
+        };
+        const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+        if (gucc::initcpio::setup_initcpio_config(initcpio_path, initcpio_config)) {
+            utils::arch_chroot("mkinitcpio -P");
+        } else {
+            spdlog::error("Failed to reconfigure initcpio with plymouth hook");
+        }
+    }
+#endif
+
     utils::enable_services();
 }
 
@@ -907,7 +941,11 @@ auto get_kernel_params() noexcept {
     partitions.emplace_back(std::move(root_part_struct));
 
     // TODO(vnepogodin): make these configurable
-    static constexpr auto default_kernel_params = "quiet zswap.enabled=0 nowatchdog"sv;
+    // Add splash param when plymouth is installed in the target
+    const auto plymouth_path         = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
+    const auto default_kernel_params = fs::exists(plymouth_path)
+        ? "quiet splash zswap.enabled=0 nowatchdog"sv
+        : "quiet zswap.enabled=0 nowatchdog"sv;
     return gucc::fs::get_kernel_params(partitions, default_kernel_params);
 }
 

@@ -43,8 +43,6 @@ packages = [
   "usbutils",
   "which",
   "xfsprogs",
-  "plymouth",
-  "cachyos-plymouth-bootanimation",
 
   # we use networkmanager
   "networkmanager",
@@ -65,6 +63,10 @@ packages = [
 # TODO(vnepogodin): refactor "subcategories" into recursive table, e.g [base-packages.desktop.fonts] etc
 # should be equal to "Base-devel + Common packages" and "CachyOS Packages" in netinstall module
 packages = [
+  # plymouth boot splash
+  "plymouth",
+  "cachyos-plymouth-bootanimation",
+
   # from "CachyOS Packages" & "Shell configuration"
   "cachyos-fish-config",
   "cachyos-zsh-config",
