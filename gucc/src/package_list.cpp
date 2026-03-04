@@ -7,6 +7,7 @@
 
 #include <algorithm>  // for find, search
 #include <ranges>     // for ranges::*
+#include <string>     // for string
 #include <vector>     // for erase_if
 
 #include <fmt/compile.h>
@@ -15,6 +16,32 @@
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
+
+namespace {
+
+std::optional<std::string> cached_content;  // NOLINT
+std::string cached_url;                     // NOLINT
+std::string cached_fallback_url;            // NOLINT
+
+auto fetch_net_profiles_cached(const gucc::package::NetProfileInfo& info) noexcept -> std::optional<std::string> {
+    if (cached_content
+        && cached_url == info.net_profs_url
+        && cached_fallback_url == info.net_profs_fallback_url) {
+        spdlog::debug("net profiles: using cached content");
+        return cached_content;
+    }
+
+    auto content = gucc::fetch::fetch_file_from_url(info.net_profs_url, info.net_profs_fallback_url);
+    if (content) {
+        cached_url          = info.net_profs_url;
+        cached_fallback_url = info.net_profs_fallback_url;
+        cached_content      = std::move(content);
+        return cached_content;
+    }
+    return std::nullopt;
+}
+
+}  // namespace
 
 namespace gucc::package {
 
@@ -47,7 +74,7 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
         pkg_list.insert(pkg_list.cend(), {"bcachefs-tools"});
     }
 
-    auto net_profs_content = fetch::fetch_file_from_url(net_profile_info.net_profs_url, net_profile_info.net_profs_fallback_url);
+    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
     if (!net_profs_content) {
         spdlog::error("Failed to get net profiles content");
         return std::nullopt;
@@ -88,7 +115,7 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
         return std::nullopt;
     }
 
-    auto net_profs_content = fetch::fetch_file_from_url(net_profile_info.net_profs_url, net_profile_info.net_profs_fallback_url);
+    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
     if (!net_profs_content) {
         spdlog::error("Failed to get net profiles content");
         return std::nullopt;
@@ -227,7 +254,7 @@ auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noe
         return std::nullopt;
     }
 
-    auto net_profs_content = fetch::fetch_file_from_url(net_profile_info.net_profs_url, net_profile_info.net_profs_fallback_url);
+    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
     if (!net_profs_content) {
         spdlog::error("Failed to get net profiles content");
         return std::nullopt;
@@ -254,7 +281,7 @@ auto get_servicelist_desktop(NetProfileInfo net_profile_info) noexcept -> std::o
         return std::nullopt;
     }
 
-    auto net_profs_content = fetch::fetch_file_from_url(net_profile_info.net_profs_url, net_profile_info.net_profs_fallback_url);
+    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
     if (!net_profs_content) {
         spdlog::error("Failed to get net profiles content");
         return std::nullopt;
