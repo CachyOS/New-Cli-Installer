@@ -113,6 +113,66 @@ static int32_t get_cpu_features() noexcept {
     return 0;
 #endif
 }
+static auto is_zen45() noexcept -> bool {
+#if defined(__x86_64__) || defined(__i386__)
+    if (get_cpu_vendor() != CpuVendor::AMD) {
+        spdlog::debug("is_zen45: not an AMD CPU, skipping");
+        return false;
+    }
+
+    // ref based on PR from GUI installer
+    // https://github.com/CachyOS/cachyos-calamares/pull/154
+
+    uint32_t regs[4]{};
+    cpuid(regs, 1);
+
+    const uint32_t eax = regs[0];
+
+    // Extract base family/model and extended family/model from CPUID leaf 1
+    const uint32_t base_family = (eax >> 8) & 0xF;
+    const uint32_t base_model  = (eax >> 4) & 0xF;
+    const uint32_t ext_family  = (eax >> 20) & 0xFF;
+    const uint32_t ext_model   = (eax >> 16) & 0xF;
+
+    // AMD (base family >= 0x0F): display family = base + extended, display model = (ext << 4) + base
+    uint32_t family = base_family;
+    uint32_t model  = base_model;
+    if (base_family >= 0x0F) {
+        family = base_family + ext_family;
+        model  = (ext_model << 4) + base_model;
+    }
+
+    spdlog::debug("is_zen45: CPUID raw EAX=0x{:08X}, base_family=0x{:X}, base_model=0x{:X}, ext_family=0x{:X}, ext_model=0x{:X}", eax, base_family, base_model, ext_family, ext_model);
+    spdlog::debug("is_zen45: display family=0x{:X} ({}), display model=0x{:X} ({})", family, family, model, model);
+
+    switch (family) {
+    case 0x19: {  // Family 25: Zen 3 / Zen 4
+        if (model <= 0x0F) {
+            spdlog::debug("is_zen45: family 0x19 model 0x{:X} is Zen 3, not Zen 4+", model);
+            return false;  // Zen 3
+        }
+        if ((model >= 0x10 && model <= 0x1F)
+            || (model >= 0x60 && model <= 0xAF)) {
+            spdlog::debug("is_zen45: family 0x19 model 0x{:X} detected as Zen 4", model);
+            return true;  // Zen 4
+        }
+        // Fallback: check for AVX-512 support (covers unknown Zen 4 models)
+        const int32_t features = get_cpu_features();
+        const bool has_avx512 = (features & AVX512F) != 0;
+        spdlog::debug("is_zen45: family 0x19 model 0x{:X} unknown model range, AVX-512 fallback={}", model, has_avx512);
+        return has_avx512;
+    }
+    case 0x1A:  // Family 26: Zen 5+
+        spdlog::debug("is_zen45: family 0x1A detected as Zen 5+");
+        return true;
+    default:
+        spdlog::debug("is_zen45: family 0x{:X} is not Zen 4/5", family);
+        break;
+    }
+#endif
+    return false;
+}
+
 // NOLINTEND
 
 }  // namespace
@@ -148,6 +208,12 @@ auto get_isa_levels() noexcept -> std::vector<std::string> {
     if (supports_v4) {
         spdlog::info("cpu supports x86_64_v4");
         supported_isa_levels.emplace_back("x86_64_v4");
+    }
+
+    /* Check for znver4/znver5 */
+    if (is_zen45()) {
+        spdlog::info("cpu is znver4 or znver5");
+        supported_isa_levels.emplace_back("znver4");
     }
 
     return supported_isa_levels;

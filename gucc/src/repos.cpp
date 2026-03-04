@@ -97,10 +97,6 @@ auto add_arch_specific_repo(std::string_view isa_level, std::string_view repo_na
     return true;
 }
 
-auto check_supported_znver45() noexcept -> bool {
-    return gucc::utils::exec_checked("gcc -march=native -Q --help=target 2>&1 | head -n 35 | grep -E '(znver4|znver5)' > /dev/null"sv);
-}
-
 }  // namespace
 
 namespace gucc::repos {
@@ -130,8 +126,8 @@ auto install_cachyos_repos() noexcept -> bool {
     }
 
     // 1. check ZNVER4/ZNVER5
-    if (check_supported_znver45()) {
-        if (!add_arch_specific_repo("x86_64_v4"sv, "cachyos-znver4"sv, isa_levels, CACHYOS_ZNVER4_REPO_STR)) {
+    if (std::ranges::contains(isa_levels, "znver4"sv)) {
+        if (!add_arch_specific_repo("znver4"sv, "cachyos-znver4"sv, isa_levels, CACHYOS_ZNVER4_REPO_STR)) {
             spdlog::error("Failed to add znver4 cachyos repo");
             return false;
         }
