@@ -62,7 +62,7 @@ CPMAddPackage(
 CPMAddPackage(
   NAME cpr
   GITHUB_REPOSITORY libcpr/cpr
-  GIT_TAG 1.14.1
+  GIT_TAG 1.14.2
   EXCLUDE_FROM_ALL YES
 )
 CPMAddPackage(
