@@ -7,7 +7,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 ## name and version
 ##
 project(cachyos-installer
-        VERSION 0.9.4
+        VERSION 0.10.0
         LANGUAGES CXX)
 
 ##
