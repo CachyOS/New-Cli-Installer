@@ -57,6 +57,10 @@ auto follow_process_log_task(ProcessTask task, Decorator box_size) noexcept -> b
     });
 
     auto handle_exit = [&]() {
+        if (child.running) {
+            // block exit while process is in-flight
+            return;
+        }
         if (child.has_child()) {
             child.terminate();
             child.destroy();
