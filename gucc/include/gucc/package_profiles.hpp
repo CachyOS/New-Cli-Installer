@@ -1,6 +1,7 @@
 #ifndef PACKAGE_PROFILES_HPP
 #define PACKAGE_PROFILES_HPP
 
+#include <cstdint>      // for uint8_t
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -8,9 +9,23 @@
 
 namespace gucc::profile {
 
+enum class ServiceAction : std::uint8_t {
+    Enable,
+    Disable,
+};
+
+struct ServiceEntry {
+    bool is_user_service{false};
+    bool is_urgent{false};
+    ServiceAction action{ServiceAction::Enable};
+    std::string name;
+};
+
 struct BaseProfiles {
     std::vector<std::string> base_packages{};
     std::vector<std::string> base_desktop_packages{};
+    std::vector<ServiceEntry> base_services{};
+    std::vector<ServiceEntry> base_desktop_services{};
 };
 
 struct DesktopProfile {

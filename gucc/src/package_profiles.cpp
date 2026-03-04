@@ -16,6 +16,31 @@ inline void parse_toml_array(const toml::array* arr, std::vector<std::string>& v
     }
 }
 
+inline void parse_toml_service_array(const toml::array* arr, std::vector<gucc::profile::ServiceEntry>& vec) noexcept {
+    if (arr == nullptr) {
+        return;
+    }
+    for (const auto& node_el : *arr) {
+        const auto* tbl = node_el.as_table();
+        if (tbl == nullptr) {
+            continue;
+        }
+        auto name       = (*tbl)["name"].value<std::string_view>().value_or(""sv);
+        auto action_str = (*tbl)["action"].value<std::string_view>().value_or("enable"sv);
+        auto user       = (*tbl)["user"].value<bool>().value_or(false);
+        auto urgent     = (*tbl)["urgent"].value<bool>().value_or(false);
+        if (name.empty()) {
+            continue;
+        }
+        vec.emplace_back(gucc::profile::ServiceEntry{
+            .is_user_service = user,
+            .is_urgent       = urgent,
+            .action          = (action_str == "disable"sv) ? gucc::profile::ServiceAction::Disable : gucc::profile::ServiceAction::Enable,
+            .name            = std::string{name},
+        });
+    }
+}
+
 }  // namespace
 
 namespace gucc::profile {
@@ -31,6 +56,8 @@ auto parse_base_profiles(std::string_view config_content) noexcept -> std::optio
     BaseProfiles base_profiles{};
     parse_toml_array(netprof_table["base-packages"]["packages"].as_array(), base_profiles.base_packages);
     parse_toml_array(netprof_table["base-packages"]["desktop"]["packages"].as_array(), base_profiles.base_desktop_packages);
+    parse_toml_service_array(netprof_table["services"]["units"].as_array(), base_profiles.base_services);
+    parse_toml_service_array(netprof_table["services"]["desktop"]["units"].as_array(), base_profiles.base_desktop_services);
     return std::make_optional<BaseProfiles>(std::move(base_profiles));
 }
 
@@ -67,6 +94,10 @@ auto parse_net_profiles(std::string_view config_content) noexcept -> std::option
     // parse base
     parse_toml_array(netprof_table["base-packages"]["packages"].as_array(), net_profiles.base_profiles.base_packages);
     parse_toml_array(netprof_table["base-packages"]["desktop"]["packages"].as_array(), net_profiles.base_profiles.base_desktop_packages);
+
+    // parse services
+    parse_toml_service_array(netprof_table["services"]["units"].as_array(), net_profiles.base_profiles.base_services);
+    parse_toml_service_array(netprof_table["services"]["desktop"]["units"].as_array(), net_profiles.base_profiles.base_desktop_services);
 
     // parse desktop
     const auto* desktop_table = netprof_table["desktop"].as_table();
