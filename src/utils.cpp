@@ -834,6 +834,13 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
     gucc::bootloader::GrubConfig grub_config_struct{};
     gucc::bootloader::GrubInstallConfig grub_install_config_struct{};
 
+    // Override GRUB cmdline_linux_default with shared kernel param defaults
+    grub_config_struct.cmdline_linux_default = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
+    const auto grub_plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
+    if (fs::exists(grub_plymouth_path)) {
+        grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("splash {}"), grub_config_struct.cmdline_linux_default);
+    }
+
     grub_install_config_struct.is_efi        = true;
     grub_install_config_struct.do_recheck    = true;
     grub_install_config_struct.efi_directory = uefi_mount;
@@ -940,13 +947,13 @@ auto get_kernel_params() noexcept {
     // insert root partition
     partitions.emplace_back(std::move(root_part_struct));
 
-    // TODO(vnepogodin): make these configurable
-    // Add splash param when plymouth is installed in the target
-    const auto plymouth_path         = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
-    const auto default_kernel_params = fs::exists(plymouth_path)
-        ? "quiet splash zswap.enabled=0 nowatchdog"sv
-        : "quiet zswap.enabled=0 nowatchdog"sv;
-    return gucc::fs::get_kernel_params(partitions, default_kernel_params);
+    // Build default kernel params from shared constexpr defaults
+    auto base_params = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
+    const auto plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
+    if (fs::exists(plymouth_path)) {
+        base_params = fmt::format(FMT_COMPILE("splash {}"), base_params);
+    }
+    return gucc::fs::get_kernel_params(partitions, base_params);
 }
 
 void install_refind() noexcept {
@@ -1139,6 +1146,13 @@ void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
 
     gucc::bootloader::GrubConfig grub_config_struct{};
     gucc::bootloader::GrubInstallConfig grub_install_config_struct{};
+
+    // Override GRUB cmdline_linux_default with shared kernel param defaults
+    grub_config_struct.cmdline_linux_default = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
+    const auto bios_plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
+    if (fs::exists(bios_plymouth_path)) {
+        grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("splash {}"), grub_config_struct.cmdline_linux_default);
+    }
 
     grub_install_config_struct.is_efi     = false;
     grub_install_config_struct.do_recheck = true;
