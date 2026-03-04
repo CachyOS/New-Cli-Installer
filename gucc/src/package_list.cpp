@@ -7,6 +7,7 @@
 
 #include <algorithm>  // for find, search
 #include <ranges>     // for ranges::*
+#include <vector>     // for erase_if
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -32,11 +33,12 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
 
     const auto pkg_count = pkg_list.size();
     for (std::size_t i = 0; i < pkg_count; ++i) {
-        const auto& pkg = pkg_list[i];
-        pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
+        // NOTE: copy pkg instead of using reference
+        const auto pkg = pkg_list[i];
         if (is_root_on_zfs && pkg.starts_with("linux-cachyos")) {
             pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-zfs"), pkg));
         }
+        pkg_list.emplace_back(fmt::format(FMT_COMPILE("{}-headers"), pkg));
     }
     if (is_root_on_zfs) {
         pkg_list.insert(pkg_list.cend(), {"zfs-utils"});
@@ -217,6 +219,53 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
     }
 
     return std::make_optional<std::vector<std::string>>(pkg_list);
+}
+
+auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>> {
+    if (net_profile_info.net_profs_url.empty() && net_profile_info.net_profs_fallback_url.empty()) {
+        spdlog::error("Invalid netprofiles info: cannot be empty");
+        return std::nullopt;
+    }
+
+    auto net_profs_content = fetch::fetch_file_from_url(net_profile_info.net_profs_url, net_profile_info.net_profs_fallback_url);
+    if (!net_profs_content) {
+        spdlog::error("Failed to get net profiles content");
+        return std::nullopt;
+    }
+    auto base_profs = profile::parse_base_profiles(*net_profs_content);
+    if (!base_profs) {
+        spdlog::error("Failed to parse net profiles");
+        return std::nullopt;
+    }
+
+    // Skip sshd for desktop mode
+    auto services = std::move(base_profs->base_services);
+    if (!server_mode) {
+        std::erase_if(services, [](const profile::ServiceEntry& entry) {
+            return entry.name == "sshd";
+        });
+    }
+    return std::make_optional(std::move(services));
+}
+
+auto get_servicelist_desktop(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>> {
+    if (net_profile_info.net_profs_url.empty() && net_profile_info.net_profs_fallback_url.empty()) {
+        spdlog::error("Invalid netprofiles info: cannot be empty");
+        return std::nullopt;
+    }
+
+    auto net_profs_content = fetch::fetch_file_from_url(net_profile_info.net_profs_url, net_profile_info.net_profs_fallback_url);
+    if (!net_profs_content) {
+        spdlog::error("Failed to get net profiles content");
+        return std::nullopt;
+    }
+    auto base_profs = profile::parse_base_profiles(*net_profs_content);
+    if (!base_profs) {
+        spdlog::error("Failed to parse net profiles");
+        return std::nullopt;
+    }
+
+    return std::make_optional(std::move(base_profs->base_desktop_services));
 }
 
 }  // namespace gucc::package

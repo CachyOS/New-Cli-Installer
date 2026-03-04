@@ -5,6 +5,7 @@
 
 // import gucc
 #include "gucc/bootloader.hpp"
+#include "gucc/package_profiles.hpp"
 #include "gucc/partition.hpp"
 
 #include <charconv>     // for from_chars
@@ -44,6 +45,8 @@ void find_partitions() noexcept;
 [[nodiscard]] auto get_kernel_params() noexcept;
 [[nodiscard]] auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>>;
 [[nodiscard]] auto get_pkglist_desktop(const std::string_view& desktop) noexcept -> std::optional<std::vector<std::string>>;
+[[nodiscard]] auto get_servicelist_base() noexcept -> std::optional<std::vector<gucc::profile::ServiceEntry>>;
+[[nodiscard]] auto get_servicelist_desktop() noexcept -> std::optional<std::vector<gucc::profile::ServiceEntry>>;
 auto install_from_pkglist(const std::string_view& packages) noexcept -> bool;
 void install_base(const std::string_view& packages) noexcept;
 void install_desktop(const std::string_view& desktop) noexcept;

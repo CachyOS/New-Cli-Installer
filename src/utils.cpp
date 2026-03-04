@@ -105,6 +105,53 @@
 namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
+namespace {
+auto apply_services(const std::vector<gucc::profile::ServiceEntry>& services, std::string_view mountpoint) noexcept -> bool {
+    for (const auto& entry : services) {
+        if (!gucc::services::systemd_unit_exists(entry.name, mountpoint)) {
+            if (entry.is_urgent) {
+                // TODO(vnepogodin): should be a hard-requirement
+                spdlog::error("required service '{}': unit not found", entry.name);
+            } else {
+                spdlog::debug("skipping optional service '{}': unit not found", entry.name);
+            }
+            continue;
+        }
+        bool ok = false;
+        if (entry.is_user_service) {
+            ok = gucc::services::enable_user_systemd_service(entry.name, mountpoint);
+        } else if (entry.action == gucc::profile::ServiceAction::Disable) {
+            ok = gucc::services::disable_systemd_service(entry.name, mountpoint);
+        } else {
+            ok = gucc::services::enable_systemd_service(entry.name, mountpoint);
+        }
+        if (ok) {
+            const auto& status_str = (entry.action == gucc::profile::ServiceAction::Disable)
+                ? "disabled"sv
+                : "enabled"sv;
+            spdlog::info("{} service '{}'", status_str, entry.name);
+        } else if (entry.is_urgent) {
+            spdlog::error("failed to configure required service '{}'", entry.name);
+            return false;
+        } else {
+            spdlog::warn("failed to configure optional service '{}'", entry.name);
+        }
+    }
+    return true;
+}
+
+auto enable_service_if_exists(std::string_view service, std::string_view mountpoint) noexcept -> bool {
+    if (!gucc::services::systemd_unit_exists(service, mountpoint)) {
+        return false;
+    }
+    if (gucc::services::enable_systemd_service(service, mountpoint)) {
+        spdlog::info("Enabled service '{}'", service);
+        return true;
+    }
+    return false;
+}
+}  // namespace
+
 namespace utils {
 
 auto get_mountpoint() noexcept -> std::string_view {
@@ -578,6 +625,27 @@ auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::o
     return gucc::package::get_pkglist_desktop(desktop_env, net_profs_info);
 }
 
+auto get_servicelist_base() noexcept -> std::optional<std::vector<gucc::profile::ServiceEntry>> {
+    auto* config_instance              = Config::instance();
+    auto& config_data                  = config_instance->data();
+    const auto& server_mode            = std::get<std::int32_t>(config_data["SERVER_MODE"]);
+    const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
+    const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
+
+    auto net_profs_info = gucc::package::NetProfileInfo{.net_profs_url = net_profs_url, .net_profs_fallback_url = net_profs_fallback_url};
+    return gucc::package::get_servicelist_base(server_mode != 0, net_profs_info);
+}
+
+auto get_servicelist_desktop() noexcept -> std::optional<std::vector<gucc::profile::ServiceEntry>> {
+    auto* config_instance              = Config::instance();
+    auto& config_data                  = config_instance->data();
+    const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
+    const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
+
+    auto net_profs_info = gucc::package::NetProfileInfo{.net_profs_url = net_profs_url, .net_profs_fallback_url = net_profs_fallback_url};
+    return gucc::package::get_servicelist_desktop(net_profs_info);
+}
+
 auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
     auto* config_instance     = Config::instance();
     auto& config_data         = config_instance->data();
@@ -661,6 +729,9 @@ void install_base(const std::string_view& packages) noexcept {
     static constexpr auto base_installed = "/mnt/.base_installed";
     std::ofstream{base_installed};  // NOLINT
 #endif
+
+    // Enable base services after base install
+    utils::enable_services();
 }
 
 void install_desktop(const std::string_view& desktop) noexcept {
@@ -712,6 +783,7 @@ void install_desktop(const std::string_view& desktop) noexcept {
     }
 #endif
 
+    // Additionally call it to enable desktop services
     utils::enable_services();
 }
 
@@ -836,7 +908,7 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
 
     // Override GRUB cmdline_linux_default with shared kernel param defaults
     grub_config_struct.cmdline_linux_default = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
-    const auto grub_plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
+    const auto grub_plymouth_path            = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
     if (fs::exists(grub_plymouth_path)) {
         grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("splash {}"), grub_config_struct.cmdline_linux_default);
     }
@@ -948,7 +1020,7 @@ auto get_kernel_params() noexcept {
     partitions.emplace_back(std::move(root_part_struct));
 
     // Build default kernel params from shared constexpr defaults
-    auto base_params = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
+    auto base_params         = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
     const auto plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
     if (fs::exists(plymouth_path)) {
         base_params = fmt::format(FMT_COMPILE("splash {}"), base_params);
@@ -1149,7 +1221,7 @@ void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
 
     // Override GRUB cmdline_linux_default with shared kernel param defaults
     grub_config_struct.cmdline_linux_default = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
-    const auto bios_plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
+    const auto bios_plymouth_path            = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
     if (fs::exists(bios_plymouth_path)) {
         grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("splash {}"), grub_config_struct.cmdline_linux_default);
     }
@@ -1706,6 +1778,7 @@ void set_lightdm_greeter() {
         if (temp == "lightdm-gtk-greeter"sv) {
             continue;
         }
+        // TODO(vnepogodin): should be just native
         gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i -e 's/^.*greeter-session=.*/greeter-session={}/' {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
         break;
     }
@@ -1715,52 +1788,39 @@ void enable_services() noexcept {
     spdlog::info("Enabling services...");
 
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
+    auto* config_instance   = Config::instance();
+    auto& config_data       = config_instance->data();
+    const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& server_mode = std::get<std::int32_t>(config_data["SERVER_MODE"]);
 
-    static constexpr std::array enable_systemd{"avahi-daemon", "bluetooth", "cronie", "ModemManager", "NetworkManager", "org.cups.cupsd", "tlp", "haveged", "ufw", "apparmor", "fstrim.timer"};
-    for (auto&& service_name : enable_systemd) {
-        if (!fs::exists(fmt::format(FMT_COMPILE("{}/usr/lib/systemd/system/{}.service"), mountpoint, service_name))) {
-            continue;
+    const auto& base_services = utils::get_servicelist_base();
+    if (!base_services) {
+        spdlog::error("Failed to get base service list");
+        return;
+    }
+    apply_services(*base_services, mountpoint);
+
+    if (server_mode == 0) {
+        const auto& desktop_services = utils::get_servicelist_desktop();
+        if (!desktop_services) {
+            spdlog::error("Failed to get desktop service list");
+            return;
         }
-        gucc::services::enable_systemd_service(service_name, mountpoint);
-        spdlog::info("enabled service {}", service_name);
+        apply_services(*desktop_services, mountpoint);
     }
 
-    utils::arch_chroot("systemctl disable pacman-init", false);
-    spdlog::info("enabled service pacman-init");
+    // Display manager detection (desktop mode only)
+    if (server_mode == 0) {
+        const std::vector<std::string_view> dm_services{"plasmalogin", "lightdm", "sddm", "gdm", "lxdm", "ly", "cosmic-greeter"};
+        const auto is_enabled = std::ranges::any_of(dm_services, [=](auto&& service) { return enable_service_if_exists(service, mountpoint); });
+        if (!is_enabled) {
+            spdlog::error("Failed to enable any of the DM services");
+        }
 
-    // enable display manager for systemd
-    const auto& temp = fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq"), mountpoint);
-    if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} plasma-login-manager &> /dev/null"), temp))) {
-        gucc::services::enable_systemd_service("plasmalogin"sv, mountpoint);
-    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} lightdm &> /dev/null"), temp))) {
-        utils::set_lightdm_greeter();
-        gucc::services::enable_systemd_service("lightdm"sv, mountpoint);
-    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} sddm &> /dev/null"), temp))) {
-        gucc::services::enable_systemd_service("sddm"sv, mountpoint);
-    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} gdm &> /dev/null"), temp))) {
-        gucc::services::enable_systemd_service("gdm"sv, mountpoint);
-    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} lxdm &> /dev/null"), temp))) {
-        gucc::services::enable_systemd_service("lxdm"sv, mountpoint);
-    } else if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("{} ly &> /dev/null"), temp))) {
-        gucc::services::enable_systemd_service("ly"sv, mountpoint);
+        if (gucc::services::systemd_unit_exists("lightdm"sv, mountpoint)) {
+            utils::set_lightdm_greeter();
+        }
     }
-
-    /* clang-format off */
-    if (zfs == 0) { return; }
-    /* clang-format on */
-
-    // if we are using a zfs we should enable the zfs services
-    for (auto&& service_name : {"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv}) {
-        gucc::services::enable_systemd_service(service_name, mountpoint);
-    }
-
-    // we also need create the cachefile
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache $(findmnt {} -lno SOURCE | {}) 2>>/tmp/cachyos-install.log"), mountpoint, "awk -F / '{print $1}'"), true);
-    gucc::utils::exec(fmt::format(FMT_COMPILE("cp /etc/zfs/zpool.cache {}/etc/zfs/zpool.cache 2>>/tmp/cachyos-install.log"), mountpoint), true);
 #endif
 }
 

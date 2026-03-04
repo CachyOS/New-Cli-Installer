@@ -1,6 +1,8 @@
 #ifndef PACKAGE_LIST_HPP
 #define PACKAGE_LIST_HPP
 
+#include "gucc/package_profiles.hpp"
+
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -20,6 +22,12 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
 
 // Get desktop profile packages
 auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<std::string>>;
+
+// Get base service list from net profiles
+auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>>;
+
+// Get desktop service list from net profiles
+auto get_servicelist_desktop(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>>;
 
 }  // namespace gucc::package
 

@@ -192,6 +192,37 @@ packages = [
   "openssh"
 ]
 
+[services]
+# Base services enabled for ALL installs (server + desktop)
+# urgent = required (failure is fatal), non-urgent = optional (skip if missing)
+units = [
+  { name = "NetworkManager", action = "enable", urgent = true },
+  { name = "fstrim.timer", action = "enable" },
+  { name = "systemd-timesyncd", action = "enable" },
+  { name = "sshd", action = "enable" },
+  { name = "apparmor", action = "enable" },
+  { name = "haveged", action = "enable" },
+  { name = "cronie", action = "enable" },
+  { name = "pacman-init", action = "disable", urgent = true },
+]
+
+[services.desktop]
+# Additional services for desktop installs only
+units = [
+  { name = "bluetooth", action = "enable" },
+  { name = "cups", action = "enable" },
+  { name = "avahi-daemon", action = "enable" },
+  { name = "ModemManager", action = "enable" },
+  { name = "tlp", action = "enable" },
+  { name = "ufw", action = "enable" },
+  { name = "firewalld", action = "enable" },
+  { name = "vboxservice", action = "enable" },
+  { name = "vmtoolsd", action = "enable" },
+  { name = "vmware-vmblock-fuse", action = "enable" },
+  { name = "arch-update.timer", action = "enable", user = true },
+  { name = "arch-update-tray.service", action = "enable", user = true },
+]
+
 [desktop.kde]
 # should be equal to netinstall KDE section group in GUI installer
 packages = [
