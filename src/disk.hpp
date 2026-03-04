@@ -76,7 +76,7 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
 [[nodiscard]] auto apply_swap_selection(const SwapSelection& swap, std::vector<gucc::fs::Partition>& partitions) noexcept -> bool;
 
 // Handles creation of ESP/boot partition
-[[nodiscard]] auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partition>& partitions) noexcept -> bool;
+[[nodiscard]] auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partition>& partitions, bool quiet = false) noexcept -> bool;
 
 // Handles partitioning of the root
 [[nodiscard]] auto apply_root_partition_actions(const RootPartitionSelection& selection, const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvols, std::vector<gucc::fs::Partition>& partition_schema) noexcept -> bool;

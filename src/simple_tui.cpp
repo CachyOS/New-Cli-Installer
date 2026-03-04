@@ -175,7 +175,7 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view par
         .mountpoint       = std::string{uefi_mount},
         .format_requested = do_format,
     };
-    if (!utils::apply_esp_selection(esp_selection, partitions)) {
+    if (!utils::apply_esp_selection(esp_selection, partitions, true)) {
         spdlog::error("Failed to apply ESP actions");
         return;
     }

@@ -455,7 +455,7 @@ auto apply_swap_selection(const SwapSelection& swap, std::vector<gucc::fs::Parti
     return true;
 }
 
-auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
+auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partition>& partitions, bool quiet) noexcept -> bool {
     if (esp.device.empty()) {
         return false;
     }
@@ -474,7 +474,7 @@ auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partitio
 
     const auto& mountpoint_info = utils::get_mountpoint();
     const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, esp.mountpoint);
-    tui::confirm_mount(part_mountpoint);
+    tui::confirm_mount(part_mountpoint, quiet);
 
     // insert boot partition
     partitions.emplace_back(std::move(*esp_partition));
