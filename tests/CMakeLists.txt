@@ -7,6 +7,7 @@ list(APPEND test_SOURCES
         ${CMAKE_SOURCE_DIR}/src/follow_process_log.cpp
         ${CMAKE_SOURCE_DIR}/src/crypto.cpp
         ${CMAKE_SOURCE_DIR}/src/misc.cpp
+        ${CMAKE_SOURCE_DIR}/src/installer_data.cpp
         ${CMAKE_SOURCE_DIR}/src/simple_tui.cpp
         ${CMAKE_SOURCE_DIR}/src/installer_config.cpp
         ${CMAKE_SOURCE_DIR}/src/tui.cpp
