@@ -76,6 +76,8 @@
 #ifdef NDEVENV
 #include "follow_process_log.hpp"
 
+#include "gucc/subprocess.hpp"
+
 #include <cpr/api.h>
 #include <cpr/response.h>
 #include <cpr/status_codes.h>
@@ -191,6 +193,7 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
 
     const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
 #ifdef NDEVENV
     const bool follow_headless = follow && headless_mode;
@@ -202,8 +205,16 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     }
 
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
-    if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
-        spdlog::error("Failed to run in arch-chroot: {}", command);
+    if (simple_mode) {
+        if (!tui::detail::follow_process_log_task_stdout([&](gucc::utils::SubProcess& child) -> bool {
+                return gucc::utils::exec_follow({"/bin/sh", "-c", cmd_formatted}, child);
+            })) {
+            spdlog::error("Failed to run in arch-chroot: {}", command);
+        }
+    } else {
+        if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
+            spdlog::error("Failed to run in arch-chroot: {}", command);
+        }
     }
 #else
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
@@ -656,8 +667,16 @@ auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
 
 #ifdef NDEVENV
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
     if (headless_mode) {
         if (!gucc::utils::exec_checked(cmd_formatted)) {
+            spdlog::error("Failed to install from pkglist: {}", packages);
+            return false;
+        }
+    } else if (simple_mode) {
+        if (!tui::detail::follow_process_log_task_stdout([&](gucc::utils::SubProcess& child) -> bool {
+                return gucc::utils::exec_follow({"/bin/sh", "-c", cmd_formatted}, child);
+            })) {
             spdlog::error("Failed to install from pkglist: {}", packages);
             return false;
         }
@@ -716,12 +735,21 @@ void install_base(const std::string_view& packages) noexcept {
         .host_files_to_copy = {{"/etc/pacman.conf", "/etc/pacman.conf"}},
     };
 
-    // Run install_base inside the TUI progress widget
-    if (!tui::detail::follow_process_log_task([&](gucc::utils::SubProcess& child) {
-            return gucc::install::install_base(install_config, child);
-        })) {
-        spdlog::error("Failed to install base");
-        return;
+    // Run install_base inside the appropriate progress display
+    const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+    const auto install_task = [&](gucc::utils::SubProcess& child) {
+        return gucc::install::install_base(install_config, child);
+    };
+    if (simple_mode) {
+        if (!tui::detail::follow_process_log_task_stdout(install_task)) {
+            spdlog::error("Failed to install base");
+            return;
+        }
+    } else {
+        if (!tui::detail::follow_process_log_task(install_task)) {
+            spdlog::error("Failed to install base");
+            return;
+        }
     }
 
     // Marker file

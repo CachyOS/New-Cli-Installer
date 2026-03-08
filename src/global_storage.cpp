@@ -76,6 +76,7 @@ bool Config::initialize() noexcept {
 
         // Installation
         s_config->m_data["HEADLESS_MODE"] = 0;
+        s_config->m_data["SIMPLE_MODE"]   = 0;
         s_config->m_data["SERVER_MODE"]   = 0;
         s_config->m_data["GRAPHIC_CARD"]  = "";
         s_config->m_data["KERNEL"]        = "";
