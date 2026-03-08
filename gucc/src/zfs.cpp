@@ -116,9 +116,9 @@ auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, 
     const auto& zfs_zpool_cmd = [&]() {
         auto cmd = fmt::format(FMT_COMPILE("zpool create {}"), pool_options);
         if (passphrase.has_value()) {
-            cmd += "-O encryption=aes-256-gcm -O keyformat=passphrase"sv;
+            cmd += " -O encryption=aes-256-gcm -O keyformat=passphrase"sv;
         }
-        cmd += fmt::format(FMT_COMPILE("'{}' '{}' 2>>/tmp/cachyos-install.log"), pool_name, device_path);
+        cmd += fmt::format(FMT_COMPILE(" '{}' '{}' 2>>/tmp/cachyos-install.log"), pool_name, device_path);
 
         if (passphrase.has_value()) {
             return fmt::format(FMT_COMPILE("echo '{}' | {}"), *passphrase, cmd);
