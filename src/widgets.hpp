@@ -42,6 +42,13 @@ namespace detail {
     void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const WidgetBoxSize widget_sizes = {}) noexcept;
     void radiolist_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const WidgetBoxRes& widget_res = {}, const WidgetBoxSize widget_sizes = {}) noexcept;
     void checklist_widget(const std::vector<std::string>& opts, const std::function<void()>&& ok_callback, bool* opts_state, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const std::string_view& title = "New CLI Installer", const WidgetBoxSize widget_sizes = {}) noexcept;
+
+    // Wizard step builders
+    auto wizard_menu_step(std::string_view label, const std::vector<std::string>& entries,
+        std::int32_t* selected, std::function<void()> on_enter) noexcept -> ftxui::Component;
+    auto wizard_input_step(std::string_view label, std::string* value,
+        std::string_view placeholder, bool password,
+        std::function<void()> on_enter) noexcept -> ftxui::Component;
 }  // namespace detail
 }  // namespace tui
 

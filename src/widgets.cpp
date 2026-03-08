@@ -362,4 +362,34 @@ void checklist_widget(const std::vector<std::string>& opts, const std::function<
     screen->Loop(renderer);
 }
 
+Component wizard_menu_step(std::string_view label, const std::vector<std::string>& entries,
+    std::int32_t* selected, std::function<void()> on_enter) noexcept {
+    auto opt     = MenuOption::Vertical();
+    opt.on_enter = std::move(on_enter);
+    auto menu    = Menu(&entries, selected, opt);
+    return Renderer(menu, [menu, lbl = std::string{label}] {
+        return vbox({
+            text(lbl) | bold,
+            separator(),
+            menu->Render() | vscroll_indicator | frame | flex,
+        });
+    });
+}
+
+Component wizard_input_step(std::string_view label, std::string* value,
+    std::string_view placeholder, bool password, std::function<void()> on_enter) noexcept {
+    InputOption opt;
+    opt.password  = password;
+    opt.multiline = false;
+    opt.on_enter  = std::move(on_enter);
+    auto input    = Input(value, std::string{placeholder}, opt);
+    return Renderer(input, [input, lbl = std::string{label}] {
+        return vbox({
+            text(lbl) | bold,
+            separator(),
+            input->Render(),
+        });
+    });
+}
+
 }  // namespace tui::detail
