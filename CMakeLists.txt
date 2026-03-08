@@ -112,6 +112,7 @@ add_executable(${PROJECT_NAME}
    src/follow_process_log.hpp src/follow_process_log.cpp
    src/crypto.cpp src/crypto.hpp
    src/misc.cpp src/misc.hpp
+   src/installer_data.cpp src/installer_data.hpp
    src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
    src/main.cpp

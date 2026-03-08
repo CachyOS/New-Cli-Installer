@@ -4,6 +4,7 @@
 #include "disk.hpp"
 #include "drivers.hpp"
 #include "global_storage.hpp"
+#include "installer_data.hpp"
 #include "misc.hpp"
 #include "simple_tui.hpp"
 #include "utils.hpp"
@@ -637,9 +638,7 @@ void install_base() noexcept {
     }
 
     // 2. Select kernel(s) to install
-    const std::vector<std::string> available_kernels{
-        "linux-cachyos", "linux-cachyos-server", "linux-cachyos-eevdf", "linux-cachyos-bore",
-        "linux-cachyos-hardened", "linux-cachyos-lts", "linux-cachyos-rc", "linux-cachyos-rt-bore"};
+    auto available_kernels = installer::data::to_vec(installer::data::available_kernels);
 
     // Create the base list of packages
     std::unique_ptr<bool[]> kernels_state{new bool[available_kernels.size()]{false}};
@@ -692,26 +691,7 @@ void install_desktop() noexcept {
     // Prep variables
 
     // TODO(vnepogodin): make available DEs configurable or fetchable from net-profiles
-    const std::vector<std::string> available_des{
-        "kde",       // KDE Plasma
-        "gnome",     // Gnome
-        "xfce",      // Xfce4
-        "bspwm",     // BSPWM (empty)
-        "budgie",    // Budgie
-        "cinnamon",  // Cinnamon
-        "cosmic",    // Cosmic
-        "i3wm",      // i3 Window Manager
-        "hyprland",  // Hyprland
-        "niri",      // Niri
-        "lxde",      // LXDE
-        "lxqt",      // LXQT
-        "mate",      // Mate
-        "openbox",   // Openbox
-        "qtile",     // Qtile
-        "sway",      // Sway
-        "ukui",      // UKUI"
-        "wayfire",   // Wayfire
-    };
+    auto available_des = installer::data::to_vec(installer::data::available_desktops);
 
     auto screen = ScreenInteractive::Fullscreen();
     std::string desktop_env{};
@@ -944,18 +924,15 @@ void refresh_pacman_keys() noexcept {
 // This function does not assume that the formatted device is the Root installation device as
 // more than one device may be formatted. Root is set in the mount_partitions function.
 bool select_device() noexcept {
-    auto* config_instance    = Config::instance();
-    auto& config_data        = config_instance->data();
-    auto devices             = gucc::utils::exec(R"(lsblk -lno NAME,SIZE,TYPE | grep 'disk' | awk '{print "/dev/" $1 " " $2}' | sort -u)");
-    const auto& devices_list = gucc::utils::make_multiline(devices);
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    auto devices_list     = installer::data::get_device_list();
 
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     bool success{};
     auto ok_callback = [&] {
-        const auto& src       = devices_list[static_cast<std::size_t>(selected)];
-        const auto& lines     = gucc::utils::make_multiline(src, false, ' ');
-        config_data["DEVICE"] = lines[0];
+        config_data["DEVICE"] = installer::data::parse_device_name(devices_list[static_cast<std::size_t>(selected)]);
         success               = true;
         screen.ExitLoopClosure()();
     };
