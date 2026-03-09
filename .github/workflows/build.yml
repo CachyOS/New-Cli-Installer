@@ -53,6 +53,7 @@ jobs:
           ./gucc/tests/test-partitioning_gen
           ./gucc/tests/test-limine_config_gen
           ./gucc/tests/test-block_devices
+          ./gucc/tests/test-crypto_detection
         shell: bash
   build-cmake_withoutdev:
     name: Build with CMake (DEVENV OFF)
@@ -112,6 +113,7 @@ jobs:
           ./gucc/tests/test-partitioning_gen
           ./gucc/tests/test-limine_config_gen
           ./gucc/tests/test-block_devices
+          ./gucc/tests/test-crypto_detection
         shell: bash
   build-meson_withoutdev:
     name: Build with Meson (DEVENV OFF)

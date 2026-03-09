@@ -1,5 +1,6 @@
 #include "gucc/mount_partitions.hpp"
 #include "gucc/block_devices.hpp"
+#include "gucc/crypto_detection.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition_config.hpp"
@@ -27,51 +28,24 @@ auto mount_partition(std::string_view partition, std::string_view mount_dir, std
 auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int32_t& is_lvm, std::string& luks_name, std::string& luks_dev, std::string& luks_uuid) noexcept -> bool {
     const auto& devices = disk::list_block_devices();
     if (!devices) {
-        return true;
+        return false;
     }
 
-    const auto& dev = disk::find_device_by_name(*devices, partition);
-    if (!dev) {
-        return true;
-    }
-
-    // Identify if mounted partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    const bool is_crypt = (dev->type == "crypt") || disk::has_type_in_ancestry(*devices, dev->name, "crypt"sv);
-    if (!is_crypt) {
-        return true;
+    // Identify if mounted partition is crypto
+    const auto& crypto = disk::detect_crypto_for_device(*devices, partition);
+    if (!crypto || !crypto->is_luks) {
+        return false;
     }
 
     is_luks   = true;
-    luks_name = std::string{disk::strip_device_prefix(partition)};
-
-    // Check if LUKS on LVM (lvm device with crypto_LUKS fstype)
-    const auto& luks_on_lvm = disk::find_devices_by_type_and_fstype(*devices, "lvm"sv, "crypto_LUKS"sv);
-    if (!luks_on_lvm.empty()) {
-        for (const auto& cryptpart : luks_on_lvm) {
-            luks_dev = fmt::format(FMT_COMPILE("{} cryptdevice={}:{}"), luks_dev, cryptpart.name, luks_name);
-            is_lvm   = true;
-        }
-        return true;
+    luks_name = crypto->luks_mapper_name;
+    luks_uuid = crypto->luks_uuid;
+    if (crypto->is_lvm) {
+        is_lvm = true;
     }
-
-    // Check if LVM on LUKS (crypt device with LVM2_member fstype)
-    const auto& lvm_on_luks = disk::find_devices_by_type_and_fstype(*devices, "crypt"sv, "LVM2_member"sv);
-    if (!lvm_on_luks.empty()) {
-        for (const auto& cryptpart : lvm_on_luks) {
-            luks_dev = fmt::format(FMT_COMPILE("{} cryptdevice={}:{}"), luks_dev, cryptpart.name, luks_name);
-            is_lvm   = true;
-        }
-        return true;
+    if (!crypto->luks_dev.empty()) {
+        luks_dev = fmt::format(FMT_COMPILE("{} {}"), luks_dev, crypto->luks_dev);
     }
-
-    // Check if LUKS alone (parent = part with crypto_LUKS fstype)
-    const auto& luks_parts = disk::find_devices_by_type_and_fstype(*devices, "part"sv, "crypto_LUKS"sv);
-    if (!luks_parts.empty()) {
-        luks_uuid = luks_parts.front().uuid;
-        luks_dev  = fmt::format(FMT_COMPILE("{} cryptdevice=UUID={}:{}"), luks_dev, luks_uuid, luks_name);
-        return true;
-    }
-
     return true;
 }
 
