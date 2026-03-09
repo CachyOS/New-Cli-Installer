@@ -122,6 +122,15 @@ auto insert_partition_number(std::string_view device, std::uint32_t part_number)
 /// @return extracted disk name of the device
 auto get_disk_name_from_device(std::string_view device) noexcept -> std::string_view;
 
+/// @brief Formats a partition table for a specific disk device for display
+/// @param disk_device The disk device path
+/// @return Formatted table string with NAME, TYPE, FSTYPE, SIZE columns
+auto format_partition_table(std::string_view disk_device) noexcept -> std::string;
+
+/// @brief Formats a device table showing all disks, partitions, LVM, and crypt devices
+/// @return Formatted table string with NAME, MODEL, TYPE, FSTYPE, SIZE, MOUNTPOINT columns
+auto format_device_table() noexcept -> std::string;
+
 }  // namespace gucc::disk
 
 #endif  // SYSTEM_QUERY_HPP

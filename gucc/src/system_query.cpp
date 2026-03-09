@@ -356,4 +356,36 @@ auto is_device_ssd(std::string_view device) noexcept -> bool {
     return rotational == '0';
 }
 
+auto format_partition_table(std::string_view disk_device) noexcept -> std::string {
+    auto disk_info = get_disk_info(disk_device);
+    if (!disk_info) {
+        return {};
+    }
+
+    auto result = fmt::format("{:<20} {:<8} {:<12} {}\n", "NAME", "TYPE", "FSTYPE", "SIZE");
+    result += fmt::format("{:<20} {:<8} {:<12} {}\n", disk_info->device, "disk", "", format_size(disk_info->size));
+    for (const auto& part : disk_info->partitions) {
+        result += fmt::format("{:<20} {:<8} {:<12} {}\n", part.device, "part", part.fstype, format_size(part.size));
+    }
+    return result;
+}
+
+auto format_device_table() noexcept -> std::string {
+    auto disks = list_disks();
+    if (!disks) {
+        return {};
+    }
+
+    auto result = fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", "NAME", "MODEL", "TYPE", "FSTYPE", "SIZE", "MOUNTPOINT");
+    for (const auto& disk : *disks) {
+        const auto& model = disk.model.value_or("");
+        result += fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", disk.device, model, "disk", "", format_size(disk.size), "");
+        for (const auto& part : disk.partitions) {
+            const auto& mp = part.mountpoint.value_or("");
+            result += fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", part.device, "", "part", part.fstype, format_size(part.size), mp);
+        }
+    }
+    return result;
+}
+
 }  // namespace gucc::disk

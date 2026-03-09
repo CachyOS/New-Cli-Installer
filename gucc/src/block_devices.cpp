@@ -1,9 +1,10 @@
 #include "gucc/block_devices.hpp"
 #include "gucc/io_utils.hpp"
 
-#include <algorithm>  // for find_if
+#include <algorithm>  // for find, find_if, equal
+#include <cctype>     // for tolower
 #include <ranges>     // for ranges::*
-#include <utility>    // for make_optional, move
+#include <set>        // for set
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
@@ -79,30 +80,77 @@ auto parse_lsblk_json(std::string_view json_output) -> std::vector<BlockDevice> 
 namespace gucc::disk {
 
 auto find_device_by_name(const std::vector<BlockDevice>& devices, std::string_view device_name) -> std::optional<BlockDevice> {
-    auto it = std::ranges::find_if(devices, [device_name](auto&& dev) {
-        return dev.name == device_name;
-    });
+    auto it = std::ranges::find(devices, device_name, &BlockDevice::name);
     if (it != std::ranges::end(devices)) {
-        return std::make_optional<BlockDevice>(std::move(*it));
+        return *it;
     }
     return std::nullopt;
 }
 
 auto find_device_by_pkname(const std::vector<BlockDevice>& devices, std::string_view pkname) -> std::optional<BlockDevice> {
-    auto it = std::ranges::find_if(devices, [pkname](auto&& dev) {
-        if (dev.pkname) {
-            return *dev.pkname == pkname;
-        }
-        return false;
+    auto it = std::ranges::find_if(devices, [pkname](const auto& dev) {
+        return dev.pkname == pkname;
     });
     if (it != std::ranges::end(devices)) {
-        return std::make_optional<BlockDevice>(std::move(*it));
+        return *it;
     }
     return std::nullopt;
 }
 
+auto find_device_by_mountpoint(const std::vector<BlockDevice>& devices, std::string_view mountpoint) -> std::optional<BlockDevice> {
+    auto it = std::ranges::find_if(devices, [mountpoint](const auto& dev) {
+        return dev.mountpoint == mountpoint;
+    });
+    if (it != std::ranges::end(devices)) {
+        return *it;
+    }
+    return std::nullopt;
+}
+
+auto has_type_in_ancestry(const std::vector<BlockDevice>& devices, std::string_view device_name, std::string_view type) -> bool {
+    return find_ancestor_of_type(devices, device_name, type).has_value();
+}
+
+auto find_ancestor_of_type(const std::vector<BlockDevice>& devices, std::string_view device_name, std::string_view type) -> std::optional<BlockDevice> {
+    std::set<std::string> visited;
+    auto current_name = std::string{device_name};
+    while (!visited.contains(current_name)) {
+        visited.insert(current_name);
+
+        auto it = std::ranges::find(devices, current_name, &BlockDevice::name);
+        if (it == std::ranges::end(devices)) {
+            break;
+        }
+        if (it->type == type) {
+            return *it;
+        }
+        if (!it->pkname) {
+            break;
+        }
+        current_name = *it->pkname;
+    }
+    return std::nullopt;
+}
+
+auto find_devices_by_type(const std::vector<BlockDevice>& devices, std::string_view type) -> std::vector<BlockDevice> {
+    auto filtered = devices | std::ranges::views::filter([type](const auto& dev) { return dev.type == type; });
+    return {filtered.begin(), filtered.end()};
+}
+
+auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, std::string_view type, std::string_view fstype) -> std::vector<BlockDevice> {
+    auto ci_equal = [](std::string_view a, std::string_view b) {
+        return std::ranges::equal(a, b, [](unsigned char x, unsigned char y) {
+            return std::tolower(x) == std::tolower(y);
+        });
+    };
+    auto filtered = devices | std::ranges::views::filter([&](const auto& dev) {
+        return dev.type == type && ci_equal(dev.fstype, fstype);
+    });
+    return {filtered.begin(), filtered.end()};
+}
+
 auto list_block_devices() -> std::optional<std::vector<BlockDevice>> {
-    const auto& lsblk_output = utils::exec(R"(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINT,MODEL -b -p -a -J -Q "type=='part' || type=='crypt' && fstype")");
+    const auto& lsblk_output = utils::exec(R"cmd(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINT,MODEL -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd");
     if (lsblk_output.empty()) {
         return std::nullopt;
     }

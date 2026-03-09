@@ -52,6 +52,53 @@ auto find_device_by_name(const std::vector<BlockDevice>& devices, std::string_vi
 /// @return An optional BlockDevice object if found, std::nullopt otherwise.
 auto find_device_by_pkname(const std::vector<BlockDevice>& devices, std::string_view pkname) -> std::optional<BlockDevice>;
 
+/// @brief Finds a block device by its mountpoint.
+/// @param devices A vector of BlockDevice objects.
+/// @param mountpoint The mountpoint to search for.
+/// @return An optional BlockDevice object if found, std::nullopt otherwise.
+auto find_device_by_mountpoint(const std::vector<BlockDevice>& devices, std::string_view mountpoint) -> std::optional<BlockDevice>;
+
+/// @brief Checks if a device has an ancestor of the given type by walking the pkname chain.
+/// @param devices A vector of BlockDevice objects.
+/// @param device_name The device name to start from.
+/// @param type The type to search for in ancestry.
+/// @return True if any ancestor has the given type.
+auto has_type_in_ancestry(const std::vector<BlockDevice>& devices, std::string_view device_name, std::string_view type) -> bool;
+
+/// @brief Finds the first ancestor of the given type by walking the pkname chain.
+/// @param devices A vector of BlockDevice objects.
+/// @param device_name The device name to start from.
+/// @param type The type to search for.
+/// @return An optional BlockDevice of the matching ancestor, std::nullopt otherwise.
+auto find_ancestor_of_type(const std::vector<BlockDevice>& devices, std::string_view device_name, std::string_view type) -> std::optional<BlockDevice>;
+
+/// @brief Returns all devices matching the given type.
+/// @param devices A vector of BlockDevice objects.
+/// @param type The device type to filter by.
+/// @return A vector of matching BlockDevice objects.
+auto find_devices_by_type(const std::vector<BlockDevice>& devices, std::string_view type) -> std::vector<BlockDevice>;
+
+/// @brief Strips /dev/mapper/ or /dev/ prefix from a device path
+/// @param device The device path (e.g., /dev/mapper/cryptroot or /dev/sda1)
+/// @return The device name without the prefix (e.g., cryptroot or sda1)
+constexpr auto strip_device_prefix(std::string_view device) noexcept -> std::string_view {
+    constexpr std::string_view dev_mapper_prefix{"/dev/mapper/"};
+    constexpr std::string_view dev_prefix{"/dev/"};
+    if (device.starts_with(dev_mapper_prefix)) {
+        device.remove_prefix(dev_mapper_prefix.size());
+    } else if (device.starts_with(dev_prefix)) {
+        device.remove_prefix(dev_prefix.size());
+    }
+    return device;
+}
+
+/// @brief Returns all devices matching both type and fstype.
+/// @param devices A vector of BlockDevice objects.
+/// @param type The device type to filter by.
+/// @param fstype The filesystem type to filter by (case-insensitive).
+/// @return A vector of matching BlockDevice objects.
+auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, std::string_view type, std::string_view fstype) -> std::vector<BlockDevice>;
+
 }  // namespace gucc::disk
 
 #endif  // BLOCK_DEVICES_HPP
