@@ -71,7 +71,7 @@ doctest = dependency('doctest', version : ['>=2.4.11'], fallback : ['doctest', '
 src_files = files(
     'src/view.hpp',
     'src/definitions.hpp',
-    'src/config.cpp', 'src/config.hpp',
+    'src/global_storage.cpp', 'src/global_storage.hpp',
     'src/utils.cpp', 'src/utils.hpp',
     'src/disk.cpp', 'src/disk.hpp',
     'src/drivers.cpp', 'src/drivers.hpp',
@@ -79,6 +79,7 @@ src_files = files(
     'src/follow_process_log.cpp', 'src/follow_process_log.hpp',
     'src/crypto.cpp', 'src/crypto.hpp',
     'src/misc.cpp', 'src/misc.hpp',
+    'src/installer_data.cpp', 'src/installer_data.hpp',
     'src/simple_tui.cpp', 'src/simple_tui.hpp',
     'src/tui.cpp', 'src/tui.hpp',
     'src/main.cpp',
@@ -177,7 +178,7 @@ executable(
   'cachyos-installer',
   src_files,
   dependencies: deps,
-  link_with: [gucc_lib, instconfig_lib]
+  link_with: [gucc_lib, instconfig_lib],
   include_directories: [include_directories('src'), include_directories('gucc/include')],
   install: true)
 

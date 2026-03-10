@@ -26,7 +26,7 @@ ftxui_screen_lib = static_library('ftxui_screen',
         'src/ftxui/screen/terminal.cpp',
         'src/ftxui/screen/util.hpp'
     ],
-    include_directories : ftxui_inc,
+    include_directories : [ftxui_inc, ftxui_priv_inc],
 )
 
 ftxui_dom_lib = static_library('ftxui_dom',
