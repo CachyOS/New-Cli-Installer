@@ -8,8 +8,10 @@
 
 // import gucc
 #include "gucc/autologin.hpp"
+#include "gucc/block_devices.hpp"
 #include "gucc/bootloader.hpp"
 #include "gucc/chwd.hpp"
+#include "gucc/crypto_detection.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
@@ -874,7 +876,9 @@ void configure_grub_common(gucc::bootloader::GrubConfig& grub_config, gucc::boot
         grub_installer << bash_code;
     } else {
         // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
-        const auto is_root_lvm = gucc::utils::exec_checked("lsblk -ino TYPE,MOUNTPOINT | grep ' /$' | grep -q lvm");
+        const auto& root_blk_devices = gucc::disk::list_block_devices();
+        const auto& root_blk_dev     = root_blk_devices ? gucc::disk::find_device_by_mountpoint(*root_blk_devices, "/"sv) : std::nullopt;
+        const auto is_root_lvm       = root_blk_dev && root_blk_dev->type == "lvm"sv;
         if (is_root_lvm || (root_part_fs == "btrfs"sv)) {
             grub_config.savedefault = std::nullopt;
         }
@@ -992,21 +996,28 @@ void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept
 }
 
 auto get_kernel_params() noexcept {
-    auto* config_instance      = Config::instance();
-    auto& config_data          = config_instance->data();
-    const auto& mountpoint     = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& luks           = std::get<std::int32_t>(config_data["LUKS"]);
-    const auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
-    const auto& luks_uuid      = std::get<std::string>(config_data["LUKS_UUID"]);
-    const auto& luks_dev       = std::get<std::string>(config_data["LUKS_DEV"]);
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& luks       = std::get<std::int32_t>(config_data["LUKS"]);
 
     // Check if the volume is removable. If so, install all drivers
-    const auto& root_name   = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
+    const auto& blk_devices = gucc::disk::list_block_devices();
+    const auto& mnt_device  = blk_devices ? gucc::disk::find_device_by_mountpoint(*blk_devices, mountpoint) : std::nullopt;
+    std::string root_name;
+    std::string root_device;
+    if (mnt_device) {
+        root_name = std::string{gucc::disk::strip_device_prefix(mnt_device->name)};
+        // Find the parent disk device
+        const auto& part_ancestor = gucc::disk::find_ancestor_of_type(*blk_devices, mnt_device->name, "part"sv);
+        if (part_ancestor) {
+            root_device = std::string{gucc::disk::get_disk_name_from_device(part_ancestor->name)};
+        }
+    }
     std::vector<gucc::fs::Partition> partitions{};
 
     const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-    auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/", .device = fmt::format(FMT_COMPILE("/dev/{}"), root_name)};
+    auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/", .device = mnt_device ? mnt_device->name : fmt::format(FMT_COMPILE("/dev/{}"), root_name)};
 
     const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
     root_part_struct.uuid_str  = root_part_uuid;
@@ -1019,28 +1030,17 @@ auto get_kernel_params() noexcept {
         spdlog::debug("root btrfs subvol := '{}'", *root_part_struct.subvolume);
     }
 
-    if (!luks_root_name.empty()) {
-        root_part_struct.luks_mapper_name = luks_root_name;
+    // Use crypto detection to populate LUKS fields for kernel params
+    const auto& crypto = blk_devices ? gucc::disk::detect_crypto_for_mountpoint(*blk_devices, mountpoint) : std::nullopt;
+    if (crypto && crypto->is_luks) {
+        root_part_struct.luks_mapper_name = crypto->luks_mapper_name;
+        if (!crypto->luks_uuid.empty()) {
+            root_part_struct.luks_uuid = crypto->luks_uuid;
+        }
         spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
-    }
-    if (!luks_uuid.empty()) {
-        root_part_struct.luks_uuid = luks_uuid;
-        spdlog::debug("kernel_params: luks_uuid:='{}'", *root_part_struct.luks_uuid);
-    }
-    if (!luks_dev.empty()) {
-        spdlog::debug("kernel_params: luks_dev:='{}'. why we need that here???", luks_dev);
-    }
-
-    // LUKS and lvm with LUKS
-    if (luks == 1) {
-        const auto& luks_mapper_name      = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed 's/\\/dev\\/mapper\\///'");
-        root_part_struct.luks_mapper_name = luks_mapper_name;
-        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
-    }
-    // Lvm without LUKS
-    else if (gucc::utils::exec("lsblk -i | sed -r 's/^[^[:alnum:]]+//' | grep '/mnt$' | awk '{print $6}'") == "lvm"sv) {
-        const auto& luks_mapper_name      = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed 's/\\/dev\\/mapper\\///'");
-        root_part_struct.luks_mapper_name = luks_mapper_name;
+    } else if (luks == 1 || (mnt_device && mnt_device->type == "lvm"sv)) {
+        // Fallback: LUKS flag set from config, or LVM without LUKS
+        root_part_struct.luks_mapper_name = root_name;
         spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
     }
 
@@ -1320,8 +1320,15 @@ void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
 
 // List partitions to be hidden from the mounting menu
 std::string list_mounted() noexcept {
-    gucc::utils::exec("lsblk -l | awk '$7 ~ /mnt/ {print $1}' > /tmp/.mounted");
-    return gucc::utils::exec("echo /dev/* /dev/mapper/* | xargs -n1 2>/dev/null | grep -f /tmp/.mounted");
+    const auto& devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        spdlog::error("failed to find block devices");
+        return {};
+    }
+
+    const auto mountpoint     = utils::get_mountpoint();
+    const auto& mounted_names = gucc::disk::list_mounted_devices(*devices, mountpoint);
+    return gucc::utils::join(mounted_names);
 }
 
 std::string list_containing_crypt() noexcept {
@@ -1332,161 +1339,131 @@ std::string list_non_crypt() noexcept {
     return gucc::utils::exec("blkid | awk '!/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
 }
 
-void get_cryptroot() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
+auto get_cryptroot() noexcept -> bool {
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    // Identify if /mnt or partition is type "crypt" (LUKS on LVM, or LUKS alone)
-    if (!gucc::utils::exec_checked("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt$/ {print $6}' | grep -q crypt")
-        || !gucc::utils::exec_checked(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt$/,/part/p' | awk '{print $6}' | grep -q crypt)")) {
-        return;
+    const auto& devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        spdlog::error("failed to find block devices");
+        return false;
+    }
+
+    const auto& crypto = gucc::disk::detect_crypto_for_mountpoint(*devices, mountpoint);
+    if (!crypto) {
+        spdlog::error("failed to find root device on mountpoint");
+        return false;
+    }
+    if (!crypto->is_luks) {
+        spdlog::info("crypt type not found");
+        return false;
+    }
+
+    config_data["LUKS"]           = 1;
+    config_data["LUKS_ROOT_NAME"] = crypto->luks_mapper_name;
+    config_data["LUKS_DEV"]       = crypto->luks_dev;
+
+    if (!crypto->luks_uuid.empty()) {
+        config_data["LUKS_UUID"] = crypto->luks_uuid;
+    }
+    if (crypto->is_lvm) {
+        config_data["LVM"] = 1;
+    }
+    return true;
+}
+
+auto recheck_luks() noexcept -> bool {
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+
+    const auto& devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        spdlog::error("failed to find block devices");
+        return false;
+    }
+
+    const auto boot_mount = !uefi_mount.empty()
+        ? fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount)
+        : std::string{};
+
+    if (gucc::disk::is_encrypted(*devices, mountpoint, boot_mount)) {
+        config_data["LUKS"] = 1;
+    }
+    return true;
+}
+
+auto get_cryptboot() noexcept -> bool {
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+
+    const auto& devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        spdlog::error("failed to find block devices");
+        return false;
+    }
+
+    const auto boot_mount = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
+    const auto& crypto    = gucc::disk::detect_crypto_for_boot(*devices, boot_mount);
+    if (!crypto) {
+        spdlog::error("failed to find boot device on mountpoint");
+        return false;
+    }
+    if (!crypto->is_luks) {
+        spdlog::info("crypt type not found");
+        return false;
+    }
+    if (crypto->luks_uuid.empty()) {
+        spdlog::error("failed to get uuid of cryptboot");
+        return false;
     }
 
     config_data["LUKS"] = 1;
-    auto& luks_name     = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
-    luks_name           = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    // Get the name of the Luks device
-    if (!gucc::utils::exec_checked("lsblk -i | grep -q -e 'crypt /mnt'")) {
-        // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-        luks_name = gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt$/,/crypt/p' | awk '/crypt/ {print $1}')");
-    }
-
-    const auto& check_cryptparts = [&luks_name](const auto& cryptparts, auto functor) {
-        for (const auto& cryptpart : cryptparts) {
-            if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -lno NAME {} | grep -q '{}'"), cryptpart, luks_name))) {
-                functor(cryptpart);
-            }
-        }
-    };
-
-    // Check if LUKS on LVM (parent = lvm /dev/mapper/...)
-    auto temp_out = gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "lvm" | grep "/mnt$" | grep -i "crypto_luks" | uniq | awk '{print "/dev/mapper/"$1}')");
-    if (!temp_out.empty()) {
-        const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
-        const auto& check_functor = [&](const auto& cryptpart) {
-            config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice={}:{}"), cryptpart, luks_name);
-            config_data["LVM"]      = 1;
-        };
-        check_cryptparts(cryptparts, check_functor);
-        return;
-    }
-
-    // Check if LVM on LUKS
-    temp_out = gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE | grep " crypt$" | grep -i "LVM2_member" | uniq | awk '{print "/dev/mapper/"$1}')");
-    if (!temp_out.empty()) {
-        const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
-        const auto& check_functor = [&]([[maybe_unused]] const auto& cryptpart) {
-            auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = gucc::utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e "/\/mnt /,/part/p" | awk '/crypto_LUKS/ {print $4}')");
-            config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
-            config_data["LVM"]      = 1;
-        };
-        check_cryptparts(cryptparts, check_functor);
-        return;
-    }
-
-    // Check if LUKS alone (parent = part /dev/...)
-    temp_out = gucc::utils::exec(R"(lsblk -lno NAME,FSTYPE,TYPE,MOUNTPOINT | grep "/mnt$" | grep "part" | grep -i "crypto_luks" | uniq | awk '{print "/dev/"$1}')");
-    if (!temp_out.empty()) {
-        const auto& cryptparts    = gucc::utils::make_multiline(temp_out);
-        const auto& check_functor = [&](const auto& cryptpart) {
-            auto& luks_uuid         = std::get<std::string>(config_data["LUKS_UUID"]);
-            luks_uuid               = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno UUID,TYPE,FSTYPE {} | grep 'part' | grep -i 'crypto_luks' | {}"), cryptpart, "awk '{print $1}'"));
-            config_data["LUKS_DEV"] = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, luks_name);
-        };
-        check_cryptparts(cryptparts, check_functor);
-        return;
-    }
-}
-
-void recheck_luks() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-
-    // Check if there is separate encrypted /boot partition
-    if (gucc::utils::exec_checked("lsblk | grep '/mnt/boot' | grep -q 'crypt'")) {
-        config_data["LUKS"] = 1;
-    }
-    // Check if root is encrypted and there is no separate /boot
-    else if ((gucc::utils::exec_checked("lsblk | grep '/mnt$' | grep -q 'crypt'")) && !gucc::utils::exec_checked("lsblk | grep -q '/mnt/boot$'")) {
-        config_data["LUKS"] = 1;
-    }
-    // Check if root is on encrypted lvm volume
-    else if (gucc::utils::exec_checked("lsblk | grep '/mnt/boot' | grep -q 'crypt'") && gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {} | grep -q crypt"), root_name, "awk '{print $6}'"))) {
-        config_data["LUKS"] = 1;
-    }
-}
-
-void get_cryptboot() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    // If /boot is encrypted
-    if (!gucc::utils::exec_checked("lsblk | sed -r 's/^[^[:alnum:]]+//' | awk '/\\/mnt\\/boot$/ {print $6}' | grep -q crypt")
-        || !gucc::utils::exec_checked(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt\/boot$/,/part/p' | awk '{print $6}' | grep -q crypt)")) {
-        return;
-    }
-    config_data["LUKS"] = 1;
-
-    // Mountpoint is directly on the LUKS device, so LUKS device is the same as root name
-    std::string boot_name{gucc::utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g")};
-    // Get UUID of the encrypted /boot
-    std::string boot_uuid{gucc::utils::exec("lsblk -lno UUID,MOUNTPOINT | awk '/\\mnt\\/boot$/ {print $1}'")};
-
-    // Get the name of the Luks device
-    if (!gucc::utils::exec_checked("lsblk -i | grep -q -e 'crypt /mnt'")) {
-        // Mountpoint is not directly on LUKS device, so we need to get the crypt device above the mountpoint
-        boot_name = gucc::utils::exec(R"(lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt\/boot$/,/crypt/p' | awk '/crypt/ {print $1}')");
-        boot_uuid = gucc::utils::exec(R"(lsblk -ino NAME,FSTYPE,TYPE,MOUNTPOINT,UUID | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/\/mnt\/boot /,/part/p' | awk '/crypto_LUKS/ {print $4}')");
-    }
-
-    // Check if LVM on LUKS
-    if (gucc::utils::exec_checked("lsblk -lno TYPE,MOUNTPOINT | grep '/mnt/boot$' | grep -q lvm")) {
+    if (crypto->is_lvm) {
         config_data["LVM"] = 1;
     }
 
     // Add cryptdevice to LUKS_DEV, if not already present (if on same LVM on LUKS as /)
-    auto& luks_dev    = std::get<std::string>(config_data["LUKS_DEV"]);
-    const auto& found = std::ranges::search(luks_dev, boot_uuid);
-    if (found.empty()) {
-        luks_dev = fmt::format(FMT_COMPILE("{} cryptdevice=UUID={}:{}"), luks_dev, boot_uuid, boot_name);
+    auto& luks_dev = std::get<std::string>(config_data["LUKS_DEV"]);
+    if (!luks_dev.contains(crypto->luks_uuid)) {
+        luks_dev = fmt::format(FMT_COMPILE("{} {}"), luks_dev, crypto->luks_dev);
     }
+    return true;
 }
 
-void boot_encrypted_setting() noexcept {
+auto boot_encrypted_setting() noexcept -> bool {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
+
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
     config_data["fde"] = 0;
     auto& fde          = std::get<std::int32_t>(config_data["fde"]);
 
-    // Check if there is separate /boot partition
-    if (!gucc::utils::exec_checked("lsblk | grep -q '/mnt/boot$'")) {
-        // There is no separate /boot parition
-        const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-        const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
-        // Check if root is encrypted
-        if ((luks == 1)
-            || gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk '/dev/mapper/{}' | grep -q 'crypt'"), root_name))
-            || gucc::utils::exec_checked("lsblk | grep '/mnt$' | grep -q 'crypt'")
-            // Check if root is on encrypted lvm volume
-            || gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {} | grep -q crypt"), root_name, "awk '{print $6}'"))) {
-            fde = 1;
-            utils::setup_luks_keyfile();
-        }
-        return;
+    const auto& devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        spdlog::error("failed to find block devices");
+        return false;
     }
-    // There is a separate /boot. Check if it is encrypted
-    const auto& boot_name = gucc::utils::exec("mount | awk '/\\/mnt\\/boot / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    if (gucc::utils::exec_checked("lsblk | grep '/mnt/boot' | grep -q 'crypt'")
-        // Check if the /boot is inside encrypted lvm volume
-        || gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {} | grep -q crypt"), boot_name, "awk '{print $6}'"))
-        || gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk '/dev/mapper/{}' | grep -q 'crypt'"), boot_name))) {
+
+    const auto boot_mount = !uefi_mount.empty()
+        ? fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount)
+        : std::string{};
+    const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
+
+    if (gucc::disk::is_fde(*devices, mountpoint, boot_mount, luks == 1)) {
         fde = 1;
-        utils::setup_luks_keyfile();
+        if (!utils::setup_luks_keyfile()) {
+            spdlog::error("failed to setup luks keyfile");
+            return false;
+        }
     }
+    return true;
 }
 
 // Ensure that a partition is mounted
@@ -1770,21 +1747,32 @@ bool parse_config() noexcept {
     return true;
 }
 
-void setup_luks_keyfile() noexcept {
-    // Add keyfile to luks
-    const auto& root_name          = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-    const auto& root_part          = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/part/p' | {} | tr -cd '[:alnum:]'"), root_name, "awk '/part/ {print $1}'"));
-    const auto& partition          = fmt::format(FMT_COMPILE("/dev/{}"), root_part);
+auto setup_luks_keyfile() noexcept -> bool {
+    const auto& devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        spdlog::error("failed to find block devices");
+        return false;
+    }
+
+    const auto mountpoint = utils::get_mountpoint();
+    const auto& part_dev  = gucc::disk::find_underlying_partition(*devices, mountpoint);
+    if (!part_dev) {
+        spdlog::error("failed to find underlying partition for root device");
+        return false;
+    }
+    const auto& partition          = part_dev->name;
     const auto& number_of_lukskeys = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump '{}' | grep 'ENABLED' | wc -l"), partition)));
     if (number_of_lukskeys < 4) {
         // Create a keyfile
 #ifdef NDEVENV
-        const std::string_view keyfile_path{"/mnt/crypto_keyfile.bin"};
-        if (!gucc::crypto::luks1_setup_keyfile(keyfile_path, "/mnt", partition, "--pbkdf-force-iterations 200000")) {
-            return;
+        const auto keyfile_path = fmt::format(FMT_COMPILE("{}/crypto_keyfile.bin"), mountpoint);
+        if (!gucc::crypto::luks1_setup_keyfile(keyfile_path, mountpoint, partition, "--pbkdf-force-iterations 200000")) {
+            spdlog::error("failed to setup luks1 keyfile");
+            return false;
         }
 #endif
     }
+    return true;
 }
 
 void grub_mkconfig() noexcept {

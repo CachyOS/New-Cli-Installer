@@ -61,10 +61,11 @@ void uefi_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
 void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
 void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
 
-void get_cryptroot() noexcept;
-void get_cryptboot() noexcept;
-void boot_encrypted_setting() noexcept;
-void recheck_luks() noexcept;
+// TODO(vnepogodin): shouldn't that hardcoded and poorly handheld. let's use something structured and firm (gucc::fs::Partition for example)
+auto get_cryptroot() noexcept -> bool;
+auto get_cryptboot() noexcept -> bool;
+auto boot_encrypted_setting() noexcept -> bool;
+auto recheck_luks() noexcept -> bool;
 
 void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
 void dump_to_log(const std::string& data) noexcept;
@@ -77,8 +78,8 @@ void id_system() noexcept;
 void show_iwctl() noexcept;
 
 void enable_autologin(const std::string_view& dm, const std::string_view& username) noexcept;
-bool parse_config() noexcept;
-void setup_luks_keyfile() noexcept;
+auto parse_config() noexcept -> bool;
+auto setup_luks_keyfile() noexcept -> bool;
 void grub_mkconfig() noexcept;
 void enable_services() noexcept;
 void final_check() noexcept;

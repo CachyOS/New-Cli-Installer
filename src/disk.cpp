@@ -13,6 +13,7 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/swap.hpp"
+#include "gucc/block_devices.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/zfs.hpp"
 
@@ -280,12 +281,13 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
 #ifdef NDEVENV
     std::string device_path{partition};
 
-    // Find the UUID of the partition
-    const auto& partuuid = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno PATH,PARTUUID | grep \"^{}\" | {}"), partition, "awk '{print $2}'"sv), false);
-
-    // See if the partition has a partuuid, if not use the device name
-    if (!partuuid.empty()) {
-        device_path = partuuid;
+    // Find the PARTUUID of the partition
+    const auto& blk_devices = gucc::disk::list_block_devices();
+    if (blk_devices) {
+        const auto& dev = gucc::disk::find_device_by_name(*blk_devices, partition);
+        if (dev && dev->partuuid && !dev->partuuid->empty()) {
+            device_path = *dev->partuuid;
+        }
     }
 
     if (!gucc::fs::zfs_create_zpool(device_path, pool_name, zpool_options)) {
@@ -621,8 +623,12 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
         // 2 = separate lvm boot. For Grub configuration
         if (p.mountpoint == "/boot"sv) {
             config_data["LVM_SEP_BOOT"] = 1;
-            if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep -q 'lvm'"), p.device))) {
-                config_data["LVM_SEP_BOOT"] = 2;
+            const auto& boot_devices = gucc::disk::list_block_devices();
+            if (boot_devices) {
+                const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, p.device);
+                if (boot_dev && boot_dev->type == "lvm") {
+                    config_data["LVM_SEP_BOOT"] = 2;
+                }
             }
         }
     }
