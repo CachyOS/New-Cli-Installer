@@ -16,6 +16,7 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/block_devices.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/timezone.hpp"
 #include "gucc/zfs.hpp"
@@ -270,10 +271,12 @@ auto make_partitions_prepared(std::string_view bootloader_str, std::string_view 
             if (part_mountpoint == "/boot"sv) {
                 config_data["LVM_SEP_BOOT"] = 1;
 
-                const auto& cmd        = fmt::format(FMT_COMPILE("lsblk -lno TYPE {} | grep -q 'lvm'"), part_name);
-                const bool is_boot_lvm = gucc::utils::exec_checked(cmd);
-                if (is_boot_lvm) {
-                    config_data["LVM_SEP_BOOT"] = 2;
+                const auto& boot_devices = gucc::disk::list_block_devices();
+                if (boot_devices) {
+                    const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, part_name);
+                    if (boot_dev && boot_dev->type == "lvm"sv) {
+                        config_data["LVM_SEP_BOOT"] = 2;
+                    }
                 }
             }
             continue;

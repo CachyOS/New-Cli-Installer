@@ -11,6 +11,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
@@ -1142,8 +1143,10 @@ void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
     auto swap_partition = gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = partition, .mount_opts = std::move(swap_mountopts)};
 
     // Warn user if creating a new swap
-    const auto& swap_part = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE '{}' | grep -i 'swap'"), partition));
-    if (swap_part != "swap"sv) {
+    const auto& devices     = gucc::disk::list_block_devices();
+    const auto& swap_dev    = devices ? gucc::disk::find_device_by_name(*devices, partition) : std::nullopt;
+    const bool already_swap = swap_dev && swap_dev->fstype == "swap"sv;
+    if (!already_swap) {
         const auto& do_swap = detail::yesno_widget(fmt::format(FMT_COMPILE("\nmkswap {}\n"), partition), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
         if (!do_swap) { return; }
@@ -1921,8 +1924,9 @@ auto select_swap_info() noexcept -> std::optional<utils::SwapSelection> {
     selection.device = answer;
 
     // Check if partition already has swap
-    const auto& swap_part  = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o FSTYPE '{}' | grep -i 'swap'"), answer));
-    selection.needs_mkswap = (swap_part != "swap"sv);
+    const auto& swap_devices = gucc::disk::list_block_devices();
+    const auto& swap_info    = swap_devices ? gucc::disk::find_device_by_name(*swap_devices, answer) : std::nullopt;
+    selection.needs_mkswap   = !(swap_info && swap_info->fstype == "swap"sv);
 
     if (selection.needs_mkswap) {
         const auto& do_swap = detail::yesno_widget(fmt::format(FMT_COMPILE("\nmkswap {}\n"), answer), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
