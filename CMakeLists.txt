@@ -137,12 +137,13 @@ set(RAPIDJSON_INCLUDE_DIR "${rapidjson_SOURCE_DIR}/include")
 include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/gucc/include ${RAPIDJSON_INCLUDE_DIR})
 
 add_subdirectory(gucc)
+add_subdirectory(installer-lib)
 
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ${PROJECT_NAME}-config ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ${PROJECT_NAME}-config ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib)
 target_link_libraries(${PROJECT_NAME}-config PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
