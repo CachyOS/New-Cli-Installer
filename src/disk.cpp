@@ -4,7 +4,11 @@
 #include "utils.hpp"
 #include "widgets.hpp"
 
+// import installer-lib
+#include "cachyos/disk.hpp"
+
 // import gucc
+#include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
@@ -13,7 +17,6 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/swap.hpp"
-#include "gucc/block_devices.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/zfs.hpp"
 
@@ -51,16 +54,7 @@ constexpr auto find_root_btrfs_part(auto&& parts) noexcept {
 namespace utils {
 
 auto default_btrfs_subvolumes() noexcept -> std::vector<gucc::fs::BtrfsSubvolume> {
-    return {
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@"s, .mountpoint = "/"s},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@home"s, .mountpoint = "/home"s},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@root"s, .mountpoint = "/root"s},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@srv"s, .mountpoint = "/srv"s},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@cache"s, .mountpoint = "/var/cache"s},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@tmp"s, .mountpoint = "/var/tmp"s},
-        gucc::fs::BtrfsSubvolume{.subvolume = "/@log"s, .mountpoint = "/var/log"s},
-        // gucc::fs::BtrfsSubvolume{.subvolume = "/@snapshots"sv, .mountpoint = "/.snapshots"sv},
-    };
+    return cachyos::installer::default_btrfs_subvolumes();
 }
 
 auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& subvolumes, const RootPartitionSelection& selection, std::string_view mountpoint_info, std::vector<gucc::fs::Partition>& partition_schema) noexcept -> bool {
@@ -348,14 +342,7 @@ void select_filesystem(std::string_view file_sys) noexcept {
 }
 
 auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string> {
-    const auto& fs_type = gucc::fs::string_to_filesystem_type(fstype);
-    const auto& fs_opts = gucc::fs::get_available_mount_opts(fs_type);
-
-    std::vector<std::string> result{};
-    result.reserve(fs_opts.size());
-    std::ranges::transform(fs_opts, std::back_inserter(result),
-        [](auto&& mount_opt) -> std::string { return mount_opt.name; });
-    return result;
+    return cachyos::installer::get_available_mount_opts(fstype);
 }
 
 auto mount_partition(std::string_view partition, std::string_view mountpoint, std::string_view mount_dev, std::string_view mount_opts) noexcept -> bool {
@@ -403,14 +390,8 @@ auto mount_partition(std::string_view partition, std::string_view mountpoint, st
 }
 
 auto is_volume_removable() noexcept -> bool {
-    // NOTE: for /mnt on /dev/mapper/cryptroot `root_name` will be cryptroot
-    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
-
-    // NOTE: for /mnt on /dev/mapper/cryptroot on /dev/sda2 with `root_name`=cryptroot, `root_device` will be sda
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
-    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    return utils::to_int(removable) == 1;
+    const auto& mountpoint_info = utils::get_mountpoint();
+    return cachyos::installer::is_volume_removable(mountpoint_info);
 }
 
 auto apply_swap_selection(const SwapSelection& swap, std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
@@ -623,7 +604,7 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
         // 2 = separate lvm boot. For Grub configuration
         if (p.mountpoint == "/boot"sv) {
             config_data["LVM_SEP_BOOT"] = 1;
-            const auto& boot_devices = gucc::disk::list_block_devices();
+            const auto& boot_devices    = gucc::disk::list_block_devices();
             if (boot_devices) {
                 const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, p.device);
                 if (boot_dev && boot_dev->type == "lvm") {
