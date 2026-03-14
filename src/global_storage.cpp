@@ -20,7 +20,6 @@ bool Config::initialize() noexcept {
         s_config->m_data["menus"]        = -1;
         s_config->m_data["POST_INSTALL"] = "";
 
-        s_config->m_data["H_INIT"] = "openrc";
         s_config->m_data["SYSTEM"] = "BIOS";
         s_config->m_data["KEYMAP"] = "us";
         s_config->m_data["XKBMAP"] = "us";

@@ -6,6 +6,7 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/block_devices.hpp"
 #include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/chwd.hpp"
@@ -16,7 +17,6 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
-#include "gucc/block_devices.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/timezone.hpp"
 #include "gucc/zfs.hpp"

@@ -6,6 +6,10 @@
 #include "tui.hpp"
 #include "widgets.hpp"
 
+// import installer-lib
+#include "cachyos/system.hpp"
+#include "cachyos/validation.hpp"
+
 // import gucc
 #include "gucc/autologin.hpp"
 #include "gucc/block_devices.hpp"
@@ -166,11 +170,7 @@ auto get_mountpoint() noexcept -> std::string_view {
 
 bool is_connected() noexcept {
 #ifdef NDEVENV
-    /* clang-format off */
-    auto r = cpr::Get(cpr::Url{"https://cachyos.org"},
-             cpr::Timeout{15000}); // 15s
-    /* clang-format on */
-    return cpr::status::is_success(static_cast<std::int32_t>(r.status_code)) || cpr::status::is_redirect(static_cast<std::int32_t>(r.status_code));
+    return cachyos::installer::is_connected();
 #else
     return true;
 #endif
@@ -178,7 +178,7 @@ bool is_connected() noexcept {
 
 bool check_root() noexcept {
 #ifdef NDEVENV
-    return (gucc::utils::exec("whoami") == "root"sv);
+    return cachyos::installer::check_root();
 #else
     return true;
 #endif
@@ -1469,26 +1469,18 @@ auto boot_encrypted_setting() noexcept -> bool {
 // Ensure that a partition is mounted
 bool check_mount() noexcept {
 #ifdef NDEVENV
-    auto* config_instance       = Config::instance();
-    auto& config_data           = config_instance->data();
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    if (gucc::utils::exec(fmt::format(FMT_COMPILE("findmnt -nl {}"), mountpoint_info)).empty()) {
-        return false;
-    }
-#endif
+    const auto& mountpoint_info = utils::get_mountpoint();
+    return cachyos::installer::check_mount(mountpoint_info);
+#else
     return true;
+#endif
 }
 
 // Ensure that CachyOS has been installed
 bool check_base() noexcept {
 #ifdef NDEVENV
-    if (!check_mount()) {
-        return false;
-    }
-
-    // TODO(vnepogodin): invalidate base install
-    // checking just for pacman is not enough
-    if (!fs::exists("/mnt/usr/bin/pacman")) {
+    const auto& mountpoint_info = utils::get_mountpoint();
+    if (!cachyos::installer::check_base_installed(mountpoint_info)) {
         tui::detail::msgbox_widget("\nThe CachyOS base must be installed first.\n");
         return false;
     }
@@ -1500,37 +1492,19 @@ void id_system() noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    // Apple System Detection
-    const auto& sys_vendor = gucc::utils::exec("cat /sys/class/dmi/id/sys_vendor");
-    if ((sys_vendor == "Apple Inc."sv) || (sys_vendor == "Apple Computer, Inc."sv)) {
-        gucc::utils::exec("modprobe -r -q efivars || true");  // if MAC
-    } else {
-        gucc::utils::exec("modprobe -q efivarfs");  // all others
+    const auto& result = cachyos::installer::detect_system();
+    if (!result) {
+        spdlog::error("detect_system failed: {}", result.error());
+        // TODO(vnepogodin): for interactivity it shouldn't exit out forcefully
+        exit(1);
     }
 
-    // BIOS or UEFI Detection
-    static constexpr auto efi_path = "/sys/firmware/efi/";
-    if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
-        // Mount efivarfs if it is not already mounted
-        const auto& mount_out = gucc::utils::exec("mount | grep /sys/firmware/efi/efivars");
-        if (mount_out.empty()) {
-            if (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0) {
-                perror("utils::id_system");
-                exit(1);
-            }
-        }
+    if (result->system_mode == cachyos::installer::InstallContext::SystemMode::UEFI) {
         config_data["SYSTEM"] = "UEFI";
     }
 
-    // init system
-    const auto& init_sys = gucc::utils::exec("cat /proc/1/comm");
-    auto& h_init         = std::get<std::string>(config_data["H_INIT"]);
-    if (init_sys == "systemd"sv) {
-        h_init = "systemd";
-    }
-
-    // TODO(vnepogodin): Test which nw-client is available, including if the service according to $H_INIT is running
-    if (h_init == "systemd"sv && gucc::utils::exec("systemctl is-active NetworkManager") == "active"sv) {
+    // TODO(vnepogodin): Test which nw-client is available
+    if (gucc::utils::exec("systemctl is-active NetworkManager") == "active"sv) {
         config_data["NW_CMD"] = "nmtui";
     }
 }
@@ -1847,42 +1821,22 @@ void final_check() noexcept {
     config_data["CHECKLIST"] = "";
     auto& checklist          = std::get<std::string>(config_data["CHECKLIST"]);
 
-    // Check if base is installed
-    if (!fs::exists("/mnt/.base_installed")) {
-        checklist += "- Base is not installed\n";
-        return;
-    }
-
+    // Build InstallContext from Config for the library call
     const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
     const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
-    // Check if bootloader is installed
-    if (system_info == "BIOS"sv) {
-        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), mountpoint))) {
-            checklist += "- Bootloader is not installed\n";
-        }
+
+    cachyos::installer::InstallContext ctx{};
+    ctx.mountpoint  = mountpoint;
+    ctx.system_mode = (system_info == "UEFI"sv)
+        ? cachyos::installer::InstallContext::SystemMode::UEFI
+        : cachyos::installer::InstallContext::SystemMode::BIOS;
+
+    const auto& result = cachyos::installer::final_check(ctx);
+    for (const auto& err : result.errors) {
+        checklist += fmt::format(FMT_COMPILE("- {}\n"), err);
     }
-
-    // Check if fstab is generated
-    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("grep -qv '^#' {}/etc/fstab 2>/dev/null"), mountpoint))) {
-        checklist += "- Fstab has not been generated\n";
-    }
-
-    // Check if video-driver has been installed
-    //[[ ! -e /mnt/.video_installed ]] && echo "- $_GCCheck" >> ${CHECKLIST}
-
-    // Check if locales have been generated
-    if (utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} locale -a | wc -l"), mountpoint), false)) < 3) {
-        checklist += "- Locales have not been generated\n";
-    }
-
-    // Check if root password has been set
-    if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("arch-chroot {} passwd --status root | cut -d' ' -f2 | grep -q 'NP'"), mountpoint))) {
-        checklist += "- Root password is not set\n";
-    }
-
-    // check if user account has been generated
-    if (!fs::exists("/mnt/home")) {
-        checklist += "- No user accounts have been generated\n";
+    for (const auto& warn : result.warnings) {
+        checklist += fmt::format(FMT_COMPILE("- {}\n"), warn);
     }
 }
 
