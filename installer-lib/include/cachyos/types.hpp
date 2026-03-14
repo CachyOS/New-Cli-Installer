@@ -1,6 +1,7 @@
 #ifndef CACHYOS_INSTALLER_TYPES_HPP
 #define CACHYOS_INSTALLER_TYPES_HPP
 
+// import gucc
 #include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/partition.hpp"

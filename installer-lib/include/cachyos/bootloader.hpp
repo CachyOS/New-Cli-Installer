@@ -3,6 +3,7 @@
 
 #include "cachyos/types.hpp"
 
+// import gucc
 #include "gucc/bootloader.hpp"
 
 #include <expected>     // for expected
