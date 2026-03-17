@@ -7,6 +7,9 @@
 #include "widgets.hpp"
 
 // import installer-lib
+#include "cachyos/config.hpp"
+#include "cachyos/crypto.hpp"
+#include "cachyos/disk.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/validation.hpp"
 
@@ -316,15 +319,9 @@ void umount_partitions() noexcept {
     const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
     const auto& swap_device     = std::get<std::string>(config_data["SWAP_DEVICE"]);
 #ifdef NDEVENV
-
-    // disable swap it was created
-    if (!swap_device.empty() && !gucc::utils::exec_checked(fmt::format(FMT_COMPILE("swapoff {}"), swap_device))) {
-        spdlog::error("Failed to disable swap on {}", swap_device);
-    }
-
-    // unmount all detected paritions on mountpoint
-    if (!gucc::umount::umount_partitions(mountpoint, zfs_zpool_names)) {
-        spdlog::error("Failed to umount partitions");
+    auto result = cachyos::installer::umount_partitions(mountpoint, zfs_zpool_names, swap_device);
+    if (!result) {
+        spdlog::error("Failed to umount partitions: {}", result.error());
     }
 #else
     spdlog::info("Unmounting partitions on {}, zfs zpool names {}, swap_device {}", mountpoint, zfs_zpool_names, swap_device);
@@ -400,12 +397,13 @@ void secure_wipe() noexcept {
 
 void generate_fstab() noexcept {
     const auto& mountpoint = utils::get_mountpoint();
-    spdlog::info("Generating fstab on {}", mountpoint);
-
 #ifdef NDEVENV
-    if (!gucc::fs::run_genfstab_on_mount(mountpoint)) {
-        spdlog::error("Failed to generate fstab");
+    auto result = cachyos::installer::generate_fstab(mountpoint);
+    if (!result) {
+        spdlog::error("Failed to generate fstab: {}", result.error());
     }
+#else
+    spdlog::info("Generating fstab on {}", mountpoint);
 #endif
 }
 
@@ -413,8 +411,10 @@ void generate_fstab() noexcept {
 void set_hostname(const std::string_view& hostname) noexcept {
     spdlog::info("Setting hostname {}", hostname);
 #ifdef NDEVENV
-    if (!gucc::user::set_hostname(hostname, utils::get_mountpoint())) {
-        spdlog::error("Failed to set hostname");
+    const cachyos::installer::SystemSettings settings{.hostname = std::string{hostname}};
+    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
+    if (!result) {
+        spdlog::error("Failed to set hostname: {}", result.error());
     }
 #endif
 }
@@ -529,8 +529,9 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
 // Set password for root user
 void set_root_password(const std::string_view& password) noexcept {
 #ifdef NDEVENV
-    if (!gucc::user::set_root_password(password, utils::get_mountpoint())) {
-        spdlog::error("Failed to set root password");
+    auto result = cachyos::installer::set_root_password(password, utils::get_mountpoint());
+    if (!result) {
+        spdlog::error("Failed to set root password: {}", result.error());
     }
 #else
     spdlog::debug("root password := {}", password);
@@ -829,25 +830,27 @@ void remove_pkgs(const std::string_view& packages) noexcept {
 
 auto setup_esp_partition(std::string_view device, std::string_view mountpoint, bool format_requested) noexcept -> std::optional<gucc::fs::Partition> {
     const auto& mountpoint_info = utils::get_mountpoint();
-    const bool is_boot_ssd      = gucc::disk::is_device_ssd(device);
 #ifdef NDEVENV
-    auto boot_part_struct = gucc::mount::setup_esp_partition(device, mountpoint, mountpoint_info, format_requested, is_boot_ssd);
-    if (!boot_part_struct) {
-        spdlog::error("Failed to setup ESP partition {}", device);
+    auto result = cachyos::installer::setup_esp_partition(device, mountpoint, mountpoint_info, format_requested);
+    if (!result) {
+        spdlog::error("Failed to setup ESP partition: {}", result.error());
         return std::nullopt;
     }
+
+    auto boot_part_struct = std::move(*result);
 #else
+    const bool is_boot_ssd = gucc::disk::is_device_ssd(device);
     spdlog::info("[DRY-RUN] Would setup ESP partition {} at {}{}", device, mountpoint_info, mountpoint);
-    auto boot_part_struct = std::make_optional(gucc::fs::Partition{
+    auto boot_part_struct = gucc::fs::Partition{
         .fstype     = "vfat",
         .mountpoint = std::string{mountpoint},
         .device     = std::string{device},
         .mount_opts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::Vfat, is_boot_ssd),
-    });
+    };
 #endif
 
     // TODO(vnepogodin): handle luks information
-    utils::dump_partition_to_log(*boot_part_struct);
+    utils::dump_partition_to_log(boot_part_struct);
     return boot_part_struct;
 }
 
@@ -1344,30 +1347,25 @@ auto get_cryptroot() noexcept -> bool {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    const auto& devices = gucc::disk::list_block_devices();
-    if (!devices) {
-        spdlog::error("failed to find block devices");
+    auto result = cachyos::installer::detect_crypto_root(mountpoint);
+    if (!result) {
+        spdlog::error("{}", result.error());
         return false;
     }
 
-    const auto& crypto = gucc::disk::detect_crypto_for_mountpoint(*devices, mountpoint);
-    if (!crypto) {
-        spdlog::error("failed to find root device on mountpoint");
-        return false;
-    }
-    if (!crypto->is_luks) {
-        spdlog::info("crypt type not found");
+    const auto& state = *result;
+    if (!state.is_luks) {
         return false;
     }
 
     config_data["LUKS"]           = 1;
-    config_data["LUKS_ROOT_NAME"] = crypto->luks_mapper_name;
-    config_data["LUKS_DEV"]       = crypto->luks_dev;
+    config_data["LUKS_ROOT_NAME"] = state.luks_root_name;
+    config_data["LUKS_DEV"]       = state.luks_dev;
 
-    if (!crypto->luks_uuid.empty()) {
-        config_data["LUKS_UUID"] = crypto->luks_uuid;
+    if (!state.luks_uuid.empty()) {
+        config_data["LUKS_UUID"] = state.luks_uuid;
     }
-    if (crypto->is_lvm) {
+    if (state.is_lvm) {
         config_data["LVM"] = 1;
     }
     return true;
@@ -1379,17 +1377,12 @@ auto recheck_luks() noexcept -> bool {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
-    const auto& devices = gucc::disk::list_block_devices();
-    if (!devices) {
-        spdlog::error("failed to find block devices");
+    auto result = cachyos::installer::recheck_luks(mountpoint, uefi_mount);
+    if (!result) {
+        spdlog::error("{}", result.error());
         return false;
     }
-
-    const auto boot_mount = !uefi_mount.empty()
-        ? fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount)
-        : std::string{};
-
-    if (gucc::disk::is_encrypted(*devices, mountpoint, boot_mount)) {
+    if (*result) {
         config_data["LUKS"] = 1;
     }
     return true;
@@ -1401,36 +1394,26 @@ auto get_cryptboot() noexcept -> bool {
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
 
-    const auto& devices = gucc::disk::list_block_devices();
-    if (!devices) {
-        spdlog::error("failed to find block devices");
+    auto result = cachyos::installer::detect_crypto_boot(mountpoint, uefi_mount);
+    if (!result) {
+        spdlog::error("{}", result.error());
         return false;
     }
 
-    const auto boot_mount = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
-    const auto& crypto    = gucc::disk::detect_crypto_for_boot(*devices, boot_mount);
-    if (!crypto) {
-        spdlog::error("failed to find boot device on mountpoint");
-        return false;
-    }
-    if (!crypto->is_luks) {
-        spdlog::info("crypt type not found");
-        return false;
-    }
-    if (crypto->luks_uuid.empty()) {
-        spdlog::error("failed to get uuid of cryptboot");
+    const auto& state = *result;
+    if (!state.is_luks) {
         return false;
     }
 
     config_data["LUKS"] = 1;
-    if (crypto->is_lvm) {
+    if (state.is_lvm) {
         config_data["LVM"] = 1;
     }
 
-    // Add cryptdevice to LUKS_DEV, if not already present (if on same LVM on LUKS as /)
-    auto& luks_dev = std::get<std::string>(config_data["LUKS_DEV"]);
-    if (!luks_dev.contains(crypto->luks_uuid)) {
-        luks_dev = fmt::format(FMT_COMPILE("{} {}"), luks_dev, crypto->luks_dev);
+    // Merge boot's luks_dev into existing LUKS_DEV (may already have root's entry)
+    auto& existing_luks_dev = std::get<std::string>(config_data["LUKS_DEV"]);
+    if (!state.luks_uuid.empty() && !existing_luks_dev.contains(state.luks_uuid)) {
+        existing_luks_dev = fmt::format(FMT_COMPILE("{} {}"), existing_luks_dev, state.luks_dev);
     }
     return true;
 }
@@ -1441,27 +1424,17 @@ auto boot_encrypted_setting() noexcept -> bool {
 
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    const auto& luks       = std::get<std::int32_t>(config_data["LUKS"]);
 
     config_data["fde"] = 0;
-    auto& fde          = std::get<std::int32_t>(config_data["fde"]);
 
-    const auto& devices = gucc::disk::list_block_devices();
-    if (!devices) {
-        spdlog::error("failed to find block devices");
+    auto result = cachyos::installer::boot_encrypted_setting(mountpoint, uefi_mount, luks == 1);
+    if (!result) {
+        spdlog::error("{}", result.error());
         return false;
     }
-
-    const auto boot_mount = !uefi_mount.empty()
-        ? fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount)
-        : std::string{};
-    const auto& luks      = std::get<std::int32_t>(config_data["LUKS"]);
-
-    if (gucc::disk::is_fde(*devices, mountpoint, boot_mount, luks == 1)) {
-        fde = 1;
-        if (!utils::setup_luks_keyfile()) {
-            spdlog::error("failed to setup luks keyfile");
-            return false;
-        }
+    if (*result) {
+        config_data["fde"] = 1;
     }
     return true;
 }
@@ -1586,8 +1559,9 @@ void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unuse
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    if (!gucc::user::enable_autologin(dm, username, mountpoint)) {
-        spdlog::error("Failed to enable autologin");
+    auto result = cachyos::installer::enable_autologin(dm, username, mountpoint);
+    if (!result) {
+        spdlog::error("Failed to enable autologin: {}", result.error());
     }
 #endif
 }
@@ -1722,30 +1696,14 @@ bool parse_config() noexcept {
 }
 
 auto setup_luks_keyfile() noexcept -> bool {
-    const auto& devices = gucc::disk::list_block_devices();
-    if (!devices) {
-        spdlog::error("failed to find block devices");
-        return false;
-    }
-
-    const auto mountpoint = utils::get_mountpoint();
-    const auto& part_dev  = gucc::disk::find_underlying_partition(*devices, mountpoint);
-    if (!part_dev) {
-        spdlog::error("failed to find underlying partition for root device");
-        return false;
-    }
-    const auto& partition          = part_dev->name;
-    const auto& number_of_lukskeys = utils::to_int(gucc::utils::exec(fmt::format(FMT_COMPILE("cryptsetup luksDump '{}' | grep 'ENABLED' | wc -l"), partition)));
-    if (number_of_lukskeys < 4) {
-        // Create a keyfile
 #ifdef NDEVENV
-        const auto keyfile_path = fmt::format(FMT_COMPILE("{}/crypto_keyfile.bin"), mountpoint);
-        if (!gucc::crypto::luks1_setup_keyfile(keyfile_path, mountpoint, partition, "--pbkdf-force-iterations 200000")) {
-            spdlog::error("failed to setup luks1 keyfile");
-            return false;
-        }
-#endif
+    const auto mountpoint = utils::get_mountpoint();
+    auto result           = cachyos::installer::setup_luks_keyfile(mountpoint);
+    if (!result) {
+        spdlog::error("{}", result.error());
+        return false;
     }
+#endif
     return true;
 }
 

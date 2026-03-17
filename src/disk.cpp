@@ -76,21 +76,27 @@ auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& subvolu
     /* clang-format on */
 
 #ifdef NDEVENV
-    // save mount options of the root partition
-    gucc::utils::exec(R"(mount | grep 'on /mnt ' | grep -Po '(?<=\().*(?=\))' > /tmp/.root_mount_options)"sv);
-
-    // Create subvolumes
-    if (!gucc::fs::btrfs_create_subvols(subvolumes, selection.device, mountpoint_info, selection.mount_opts)) {
-        spdlog::error("Failed to create btrfs subvolumes");
-        return false;
+    {
+        const cachyos::installer::RootPartitionSelection lib_selection{
+            .device           = selection.device,
+            .fstype           = selection.fstype,
+            .mkfs_command     = selection.mkfs_command,
+            .mount_opts       = selection.mount_opts,
+            .format_requested = selection.format_requested,
+        };
+        auto result = cachyos::installer::apply_btrfs_subvolumes(subvolumes, lib_selection, mountpoint_info, partition_schema);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
+        }
     }
 #else
     spdlog::info("[DRY-RUN] Would create {} btrfs subvolumes", subvolumes.size());
-#endif
     if (!gucc::fs::btrfs_append_subvolumes(partition_schema, subvolumes)) {
         spdlog::error("Failed to append btrfs subvolumes into partition scheme");
         return false;
     }
+#endif
 
     // find root part schema
     const auto& root_part = find_root_btrfs_part(partition_schema);
@@ -575,10 +581,10 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
         const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, p.mountpoint);
         const auto& part_fs         = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
         auto part_struct            = gucc::fs::Partition{
-                       .fstype     = part_fs.empty() ? p.fstype : std::string{part_fs},
-                       .mountpoint = p.mountpoint,
-                       .device     = p.device,
-                       .mount_opts = p.mount_opts,
+            .fstype     = part_fs.empty() ? p.fstype : std::string{part_fs},
+            .mountpoint = p.mountpoint,
+            .device     = p.device,
+            .mount_opts = p.mount_opts,
         };
 
         const auto& part_uuid = gucc::fs::utils::get_device_uuid(p.device);
