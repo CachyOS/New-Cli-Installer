@@ -1,14 +1,17 @@
 #include "cachyos/system.hpp"
 
+#include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 
 #include <chrono>      // for seconds
 #include <expected>    // for unexpected
 #include <filesystem>  // for exists, is_directory
+#include <fstream>     // for ifstream
 #include <string>      // for string
 #include <thread>      // for sleep_for
 
 #include <sys/mount.h>  // for mount
+#include <unistd.h>     // for getuid
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -29,20 +32,28 @@ auto detect_system() noexcept -> std::expected<SystemInfo, std::string> {
     SystemInfo info{};
 
     // Apple System Detection
-    const auto& sys_vendor = gucc::utils::exec("cat /sys/class/dmi/id/sys_vendor");
+    // TODO(vnepogodin): refactor later to util function to read just single line
+    std::string sys_vendor{};
+    if (std::ifstream ifs{"/sys/class/dmi/id/sys_vendor"}; ifs) {
+        std::getline(ifs, sys_vendor);
+    }
     if ((sys_vendor == "Apple Inc."sv) || (sys_vendor == "Apple Computer, Inc."sv)) {
-        gucc::utils::exec("modprobe -r -q efivars &>/dev/null");
+        if (!gucc::utils::exec_checked("modprobe -r -q efivars"sv)) {
+            spdlog::warn("failed to unload efivars module");
+        }
     } else {
-        gucc::utils::exec("modprobe -q efivarfs &>/dev/null");
+        if (!gucc::utils::exec_checked("modprobe -q efivarfs"sv)) {
+            spdlog::warn("failed to load efivarfs module");
+        }
     }
 
     // BIOS or UEFI Detection
     static constexpr auto efi_path = "/sys/firmware/efi/";
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
         // Mount efivarfs if it is not already mounted
-        const auto& mount_out = gucc::utils::exec("mount | grep /sys/firmware/efi/efivars");
-        if (mount_out.empty()) {
-            if (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0) {
+        static constexpr auto efivars_path = "/sys/firmware/efi/efivars";
+        if (::gucc::fs::utils::get_mountpoint_source(efivars_path).empty()) {
+            if (mount("efivarfs", efivars_path, "efivarfs", 0, "") != 0) {
                 return std::unexpected(fmt::format(FMT_COMPILE("failed to mount efivarfs: {}"), std::strerror(errno)));
             }
         }
@@ -55,7 +66,8 @@ auto detect_system() noexcept -> std::expected<SystemInfo, std::string> {
 }
 
 auto check_root() noexcept -> bool {
-    return (gucc::utils::exec("whoami") == "root"sv);
+    // surely root user will always be 0
+    return getuid() == 0;
 }
 
 auto is_connected() noexcept -> bool {
