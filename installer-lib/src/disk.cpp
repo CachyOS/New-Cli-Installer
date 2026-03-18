@@ -1,4 +1,5 @@
 #include "cachyos/disk.hpp"
+#include "cachyos/packages.hpp"
 
 // import gucc
 #include "gucc/block_devices.hpp"
@@ -8,8 +9,10 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition_config.hpp"
+#include "gucc/partitioning.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/umount_partitions.hpp"
+#include "gucc/zfs.hpp"
 
 #include <algorithm>    // for transform
 #include <charconv>     // for from_chars
@@ -27,6 +30,8 @@ using namespace std::string_view_literals;
 using namespace std::string_literals;
 
 namespace {
+
+// TODO(vnepogodin): refactor to util header/module
 template <typename T = std::int32_t>
     requires std::numeric_limits<T>::is_integer
 inline T to_int(const std::string_view& str) {
@@ -34,6 +39,21 @@ inline T to_int(const std::string_view& str) {
     std::from_chars(str.data(), str.data() + str.size(), result);
     return result;
 }
+
+/// Default ZFS pool creation options shared by all ZFS setup paths.
+constexpr auto kDefaultZpoolOptions{"-f -o ashift=12 -o autotrim=on -O mountpoint=none -O acltype=posixacl -O atime=off -O relatime=off -O xattr=sa -O normalization=formD -O dnodesize=auto"sv};
+
+/// Get appropriate default mountpoint for bootloader.
+constexpr auto bootloader_default_mount(gucc::bootloader::BootloaderType bootloader, std::string_view system_mode) noexcept -> std::string_view {
+    using gucc::bootloader::BootloaderType;
+    if (bootloader == BootloaderType::SystemdBoot || bootloader == BootloaderType::Limine || system_mode == "BIOS"sv) {
+        return "/boot"sv;
+    } else if (bootloader == BootloaderType::Grub || bootloader == BootloaderType::Refind) {
+        return "/boot/efi"sv;
+    }
+    return "unknown bootloader"sv;
+}
+
 }  // namespace
 
 namespace cachyos::installer {
@@ -73,10 +93,93 @@ auto is_volume_removable(std::string_view device) noexcept -> bool {
     return to_int(removable) == 1;
 }
 
-auto auto_partition(std::string_view /*device*/, std::string_view /*system_mode*/,
-    gucc::bootloader::BootloaderType /*bootloader*/, const ExecutionCallbacks& /*callbacks*/) noexcept
+auto auto_partition(std::string_view device, std::string_view system_mode,
+    gucc::bootloader::BootloaderType bootloader, const ExecutionCallbacks& /*callbacks*/) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string> {
-    return std::unexpected("not yet implemented");
+    spdlog::info("Running automatic partitioning");
+
+    const auto& boot_mountpoint = bootloader_default_mount(bootloader, system_mode);
+    const bool is_system_efi    = (system_mode == "UEFI"sv);
+
+    auto partitions = gucc::disk::generate_default_partition_schema(device, boot_mountpoint, is_system_efi);
+    if (partitions.empty()) {
+        return std::unexpected("failed to generate default partition schema: it cannot be empty");
+    }
+
+    if (!gucc::disk::make_clean_partschema(device, partitions, is_system_efi)) {
+        return std::unexpected("failed to perform automatic partitioning");
+    }
+
+    return partitions;
+}
+
+auto secure_wipe(std::string_view device,
+    const ExecutionCallbacks& /*callbacks*/) noexcept
+    -> std::expected<void, std::string> {
+    // Ensure wipe tool is installed
+    auto needed_result = install_needed("wipe", {});
+    if (!needed_result) {
+        return std::unexpected(needed_result.error());
+    }
+
+    const auto& cmd = fmt::format(FMT_COMPILE("wipe -Ifre {}"), device);
+    if (!gucc::utils::exec_checked(cmd)) {
+        return std::unexpected(fmt::format("failed to wipe device: {}", device));
+    }
+    return {};
+}
+
+auto zfs_auto_pres(std::string_view partition,
+    std::string_view zpool_name, std::string_view /*mountpoint*/) noexcept
+    -> std::expected<gucc::fs::ZfsSetupConfig, std::string> {
+
+    const std::vector<gucc::fs::ZfsDataset> default_zfs_datasets{
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT"), zpool_name), .mountpoint = "none"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos"), zpool_name), .mountpoint = "none"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zpool_name), .mountpoint = "/"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zpool_name), .mountpoint = "/home"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zpool_name), .mountpoint = "/var/cache"s},
+        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zpool_name), .mountpoint = "/var/log"s},
+    };
+
+    gucc::fs::ZfsSetupConfig zfs_setup_config{
+        .zpool_name    = std::string(zpool_name),
+        .zpool_options = std::string(kDefaultZpoolOptions),
+        .passphrase    = std::nullopt,
+        .datasets      = default_zfs_datasets,
+    };
+
+    if (!gucc::fs::zfs_create_with_config(partition, zfs_setup_config)) {
+        return std::unexpected("failed to create ZFS automatically");
+    }
+
+    return zfs_setup_config;
+}
+
+auto zfs_create_zpool(std::string_view partition,
+    std::string_view pool_name, std::string_view mountpoint) noexcept
+    -> std::expected<void, std::string> {
+
+    std::string device_path{partition};
+
+    // Find the PARTUUID of the partition
+    const auto& blk_devices = gucc::disk::list_block_devices();
+    if (blk_devices) {
+        const auto& dev = gucc::disk::find_device_by_name(*blk_devices, partition);
+        if (dev && dev->partuuid && !dev->partuuid->empty()) {
+            device_path = *dev->partuuid;
+        }
+    }
+
+    if (!gucc::fs::zfs_create_zpool(device_path, pool_name, kDefaultZpoolOptions)) {
+        return std::unexpected("failed to create zpool");
+    }
+
+    // Since zfs manages mountpoints, export and re-import with root at mountpoint
+    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), pool_name), true);
+    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, pool_name), true);
+
+    return {};
 }
 
 auto apply_mount_selections(const MountSelections& /*selections*/,

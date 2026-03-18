@@ -6,6 +6,7 @@
 // import gucc
 #include "gucc/btrfs.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/zfs_types.hpp"
 
 #include <expected>     // for expected
 #include <string>       // for string
@@ -73,6 +74,20 @@ struct MountSelections {
 [[nodiscard]] auto auto_partition(std::string_view device, std::string_view system_mode,
     gucc::bootloader::BootloaderType bootloader, const ExecutionCallbacks& callbacks) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string>;
+
+/// Securely wipes a device.
+[[nodiscard]] auto secure_wipe(std::string_view device, const ExecutionCallbacks& callbacks) noexcept
+    -> std::expected<void, std::string>;
+
+/// Automated ZFS setup: creates a new zpool with default datasets.
+[[nodiscard]] auto zfs_auto_pres(std::string_view partition,
+    std::string_view zpool_name, std::string_view mountpoint) noexcept
+    -> std::expected<gucc::fs::ZfsSetupConfig, std::string>;
+
+/// Creates a new zpool on an existing partition.
+[[nodiscard]] auto zfs_create_zpool(std::string_view partition,
+    std::string_view pool_name, std::string_view mountpoint) noexcept
+    -> std::expected<void, std::string>;
 
 /// Applies the user's partition/mount selections and returns the resulting partition schema.
 [[nodiscard]] auto apply_mount_selections(const MountSelections& selections,
