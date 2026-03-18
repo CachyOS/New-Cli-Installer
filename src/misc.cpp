@@ -143,7 +143,7 @@ void edit_configs() noexcept {
     functions.reserve(24);
     const auto& check_and_add = [&](
                                     const std::string& file_path, const std::string& dir = "",
-                                    bool is_custom = false, std::function<void()>&& cust_func = []() {}) {
+                                    bool is_custom = false, std::function<void()>&& cust_func = []() { }) {
         const auto& append_function = [&functions](const std::string& filename) {
             /* clang-format off */
             functions.emplace_back([filename]{ gucc::utils::exec(fmt::format(FMT_COMPILE("vim {}"), filename), true); });
