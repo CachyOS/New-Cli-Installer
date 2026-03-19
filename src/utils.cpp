@@ -684,9 +684,10 @@ void install_base(const std::string_view& packages) noexcept {
     auto ctx   = utils::build_install_context();
     ctx.kernel = std::string{packages};
 
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+    auto* config_instance     = Config::instance();
+    auto& config_data         = config_instance->data();
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
     const auto install_task = [&](gucc::utils::SubProcess& child) -> bool {
         auto result = cachyos::installer::install_base(ctx, child);
@@ -696,7 +697,7 @@ void install_base(const std::string_view& packages) noexcept {
         }
         return true;
     };
-    if (simple_mode) {
+    if (simple_mode || headless_mode) {
         if (!tui::detail::follow_process_log_task_stdout(install_task)) {
             spdlog::error("Failed to install base");
         }
@@ -722,7 +723,8 @@ void install_desktop(const std::string_view& desktop) noexcept {
 
     auto ctx = utils::build_install_context();
 
-    const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
     const auto install_task = [&](gucc::utils::SubProcess& child) -> bool {
         auto result = cachyos::installer::install_desktop(desktop, ctx, child);
         if (!result) {
@@ -731,7 +733,7 @@ void install_desktop(const std::string_view& desktop) noexcept {
         }
         return true;
     };
-    if (simple_mode) {
+    if (simple_mode || headless_mode) {
         if (!tui::detail::follow_process_log_task_stdout(install_task)) {
             spdlog::error("Failed to install desktop");
         }
@@ -802,9 +804,10 @@ void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
     auto ctx       = utils::build_install_context();
     ctx.bootloader = bootloader;
 
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+    auto* config_instance     = Config::instance();
+    auto& config_data         = config_instance->data();
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
     const auto task = [&](gucc::utils::SubProcess& child) -> bool {
         auto result = cachyos::installer::install_bootloader(ctx, child);
@@ -814,7 +817,7 @@ void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
         }
         return true;
     };
-    if (simple_mode) {
+    if (simple_mode || headless_mode) {
         if (!tui::detail::follow_process_log_task_stdout(task)) {
             spdlog::error("Failed to install bootloader");
         }
