@@ -88,8 +88,8 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view par
     partition       = std::string{part_name};
 
     const auto& uefi_mount    = (boot_part_mountpoint == "(empty)"sv)
-           ? utils::bootloader_default_mount(bootloader_type, sys_info)
-           : boot_part_mountpoint;
+        ? utils::bootloader_default_mount(bootloader_type, sys_info)
+        : boot_part_mountpoint;
     config_data["UEFI_MOUNT"] = std::string{uefi_mount};
     config_data["UEFI_PART"]  = partition;
 
@@ -220,7 +220,7 @@ auto make_partitions_prepared(std::string_view bootloader_str, std::string_view 
                 const auto& use_default    = std::get<std::int32_t>(config_data["USE_DEFAULT_SUBVOLS"]);
                 const auto& config_subvols = std::get<std::vector<gucc::fs::BtrfsSubvolume>>(config_data["BTRFS_SUBVOLUMES"]);
                 const auto& btrfs_subvols  = (!config_subvols.empty()) ? config_subvols
-                     : (use_default)                                   ? utils::default_btrfs_subvolumes()
+                    : (use_default)                                    ? utils::default_btrfs_subvolumes()
                                                                        : std::vector<gucc::fs::BtrfsSubvolume>{};
 
                 if (btrfs_subvols.empty()) {

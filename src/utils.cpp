@@ -7,9 +7,11 @@
 #include "widgets.hpp"
 
 // import installer-lib
+#include "cachyos/bootloader.hpp"
 #include "cachyos/config.hpp"
 #include "cachyos/crypto.hpp"
 #include "cachyos/disk.hpp"
+#include "cachyos/packages.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/validation.hpp"
 
@@ -23,10 +25,7 @@
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
 #include "gucc/hwclock.hpp"
-#include "gucc/initcpio.hpp"
-#include "gucc/install.hpp"
 #include "gucc/io_utils.hpp"
-#include "gucc/kernel_params.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/lvm.hpp"
@@ -37,26 +36,15 @@
 #include "gucc/repos.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
-#include "gucc/systemd_services.hpp"
 #include "gucc/timezone.hpp"
 #include "gucc/umount_partitions.hpp"
 #include "gucc/user.hpp"
 
-#include <cerrno>       // for errno, strerror
-#include <cstdint>      // for int32_t
-#include <cstdio>       // for feof, fgets, pclose, perror, popen
-#include <cstdlib>      // for exit, WIFEXITED, WIFSIGNALED
-#include <sys/mount.h>  // for mount
+#include <cstdint>  // for int32_t
+#include <cstdlib>  // for exit
 
-#include <algorithm>      // for transform, search
-#include <array>          // for array
-#include <bit>            // for bit_cast
-#include <chrono>         // for filesystem, seconds
-#include <filesystem>     // for exists, is_directory, create_directories
-#include <fstream>        // for ofstream
+#include <chrono>         // for seconds
 #include <iostream>       // for basic_istream, cin
-#include <mutex>          // for mutex
-#include <ranges>         // for ranges::*
 #include <string>         // for operator==, string, basic_string, allocator
 #include <thread>         // for sleep_for
 #include <unordered_map>  // for unordered_map
@@ -113,55 +101,7 @@
 #endif
 */
 
-namespace fs = std::filesystem;
 using namespace std::string_view_literals;
-
-namespace {
-auto apply_services(const std::vector<gucc::profile::ServiceEntry>& services, std::string_view mountpoint) noexcept -> bool {
-    for (const auto& entry : services) {
-        if (!gucc::services::systemd_unit_exists(entry.name, mountpoint)) {
-            if (entry.is_urgent) {
-                // TODO(vnepogodin): should be a hard-requirement
-                spdlog::error("required service '{}': unit not found", entry.name);
-            } else {
-                spdlog::debug("skipping optional service '{}': unit not found", entry.name);
-            }
-            continue;
-        }
-        bool ok = false;
-        if (entry.is_user_service) {
-            ok = gucc::services::enable_user_systemd_service(entry.name, mountpoint);
-        } else if (entry.action == gucc::profile::ServiceAction::Disable) {
-            ok = gucc::services::disable_systemd_service(entry.name, mountpoint);
-        } else {
-            ok = gucc::services::enable_systemd_service(entry.name, mountpoint);
-        }
-        if (ok) {
-            const auto& status_str = (entry.action == gucc::profile::ServiceAction::Disable)
-                ? "disabled"sv
-                : "enabled"sv;
-            spdlog::info("{} service '{}'", status_str, entry.name);
-        } else if (entry.is_urgent) {
-            spdlog::error("failed to configure required service '{}'", entry.name);
-            return false;
-        } else {
-            spdlog::warn("failed to configure optional service '{}'", entry.name);
-        }
-    }
-    return true;
-}
-
-auto enable_service_if_exists(std::string_view service, std::string_view mountpoint) noexcept -> bool {
-    if (!gucc::services::systemd_unit_exists(service, mountpoint)) {
-        return false;
-    }
-    if (gucc::services::enable_systemd_service(service, mountpoint)) {
-        spdlog::info("Enabled service '{}'", service);
-        return true;
-    }
-    return false;
-}
-}  // namespace
 
 namespace utils {
 
@@ -169,6 +109,44 @@ auto get_mountpoint() noexcept -> std::string_view {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     return std::get<std::string>(config_data["MOUNTPOINT"]);
+}
+
+auto build_install_context() noexcept -> cachyos::installer::InstallContext {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    cachyos::installer::InstallContext ctx{};
+    ctx.mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
+    ctx.device      = std::get<std::string>(config_data["DEVICE"]);
+    ctx.system_mode = (std::get<std::string>(config_data["SYSTEM"]) == "UEFI"sv)
+        ? cachyos::installer::InstallContext::SystemMode::UEFI
+        : cachyos::installer::InstallContext::SystemMode::BIOS;
+    ctx.hostcache   = std::get<std::int32_t>(config_data["hostcache"]) != 0;
+
+    ctx.partition_schema = std::get<std::vector<gucc::fs::Partition>>(config_data["PARTITION_SCHEMA"]);
+    ctx.swap_device      = std::get<std::string>(config_data["SWAP_DEVICE"]);
+    ctx.uefi_mount       = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    ctx.zfs_zpool_names  = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
+
+    ctx.crypto.is_luks        = std::get<std::int32_t>(config_data["LUKS"]) != 0;
+    ctx.crypto.is_lvm         = std::get<std::int32_t>(config_data["LVM"]) != 0;
+    ctx.crypto.luks_dev       = std::get<std::string>(config_data["LUKS_DEV"]);
+    ctx.crypto.luks_name      = std::get<std::string>(config_data["LUKS_NAME"]);
+    ctx.crypto.luks_uuid      = std::get<std::string>(config_data["LUKS_UUID"]);
+    ctx.crypto.luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
+    ctx.crypto.lvm_sep_boot   = std::get<std::int32_t>(config_data["LVM_SEP_BOOT"]);
+    ctx.crypto.is_fde         = std::get<std::int32_t>(config_data["fde"]) != 0;
+
+    ctx.kernel          = std::get<std::string>(config_data["KERNEL"]);
+    ctx.desktop         = std::get<std::string>(config_data["DE"]);
+    ctx.filesystem_name = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
+    ctx.keymap          = std::get<std::string>(config_data["KEYMAP"]);
+    ctx.server_mode     = std::get<std::int32_t>(config_data["SERVER_MODE"]) != 0;
+
+    ctx.net_profiles_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
+    ctx.net_profiles_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
+
+    return ctx;
 }
 
 bool is_connected() noexcept {
@@ -196,34 +174,33 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
-    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
 #ifdef NDEVENV
-    const bool follow_headless = follow && headless_mode;
-    if (!follow || follow_headless) {
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    if (!follow) {
         if (!gucc::utils::arch_chroot_checked(command, mountpoint)) {
             spdlog::error("Failed to run in arch-chroot: {}", command);
         }
         return;
     }
 
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
-    if (simple_mode) {
-        if (!tui::detail::follow_process_log_task_stdout([&](gucc::utils::SubProcess& child) -> bool {
-                return gucc::utils::exec_follow({"/bin/sh", "-c", cmd_formatted}, child);
-            })) {
-            spdlog::error("Failed to run in arch-chroot: {}", command);
+    const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+    const auto task         = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::arch_chroot(command, mountpoint, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
         }
+        return true;
+    };
+    if (simple_mode || headless_mode) {
+        tui::detail::follow_process_log_task_stdout(task);
     } else {
-        if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
-            spdlog::error("Failed to run in arch-chroot: {}", command);
-        }
+        tui::detail::follow_process_log_task(task);
     }
 #else
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
-    spdlog::info("[arch_chroot] Running command {}", cmd_formatted);
+    spdlog::info("[arch_chroot] {}", command);
 #endif
 }
 
@@ -661,161 +638,112 @@ auto get_servicelist_desktop() noexcept -> std::optional<std::vector<gucc::profi
 }
 
 auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
-    auto* config_instance     = Config::instance();
-    auto& config_data         = config_instance->data();
-    const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& hostcache     = std::get<std::int32_t>(config_data["hostcache"]);
-    const auto& cmd           = (hostcache) ? "pacstrap" : "pacstrap -c";
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
+    /* clang-format off */
+    if (packages.empty()) { return true; }
+    /* clang-format on */
+
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]) != 0;
+
+    // Split the packages string into a vector
+    auto pkg_vec = gucc::utils::make_multiline(packages, false, ' ');
 
 #ifdef NDEVENV
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
-    if (headless_mode) {
-        if (!gucc::utils::exec_checked(cmd_formatted)) {
-            spdlog::error("Failed to install from pkglist: {}", packages);
+    const auto task           = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::install_packages(pkg_vec, mountpoint, hostcache, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
             return false;
         }
-    } else if (simple_mode) {
-        if (!tui::detail::follow_process_log_task_stdout([&](gucc::utils::SubProcess& child) -> bool {
-                return gucc::utils::exec_follow({"/bin/sh", "-c", cmd_formatted}, child);
-            })) {
-            spdlog::error("Failed to install from pkglist: {}", packages);
+        return true;
+    };
+    if (simple_mode || headless_mode) {
+        if (!tui::detail::follow_process_log_task_stdout(task)) {
             return false;
         }
     } else {
-        if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
-            spdlog::error("Failed to install from pkglist: {}", packages);
+        if (!tui::detail::follow_process_log_task(task)) {
             return false;
         }
     }
 #else
-    spdlog::info("Installing from pkglist: '{}'", cmd_formatted);
+    spdlog::info("Installing from pkglist: '{}'", packages);
 #endif
     return true;
 }
 
 void install_base(const std::string_view& packages) noexcept {
-    const auto& pkg_list = utils::get_pkglist_base(packages);
-    if (!pkg_list.has_value()) {
-        spdlog::error("Failed to install base");
-        return;
-    }
-    const auto& base_pkgs = gucc::utils::join(*pkg_list, ' ');
-
-    spdlog::info("Preparing for pkgs to install: '{}'", base_pkgs);
-
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& zfs        = std::get<std::int32_t>(config_data["ZFS"]);
-    const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
-    const auto& keymap     = std::get<std::string>(config_data["KEYMAP"]);
-
-    // Detect filesystem type and encryption/lvm state
+    // Ensure crypto state is current before building context
     utils::recheck_luks();
-    const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-    const auto& lvm             = std::get<std::int32_t>(config_data["LVM"]);
-    const auto& luks            = std::get<std::int32_t>(config_data["LUKS"]);
-    const auto fs_type          = gucc::fs::string_to_filesystem_type(filesystem_type);
 
-    spdlog::info("filesystem type on '{}' := '{}', LVM := {}, LUKS := {}", mountpoint, filesystem_type, lvm, luks);
+    auto ctx   = utils::build_install_context();
+    ctx.kernel = std::string{packages};
 
-    // Build GUCC install config
-    const auto install_config = gucc::install::InstallConfig{
-        .mountpoint      = mountpoint,
-        .packages        = base_pkgs,
-        .keymap          = keymap,
-        .initcpio_config = gucc::initcpio::InitcpioConfig{
-            .filesystem_type  = fs_type,
-            .is_lvm           = (lvm == 1),
-            .is_luks          = (luks == 1),
-            .use_systemd_hook = true,
-        },
-        .is_zfs             = (zfs != 0),
-        .hostcache          = (hostcache != 0),
-        .host_files_to_copy = {{"/etc/pacman.conf", "/etc/pacman.conf"}},
-    };
-
-    // Run install_base inside the appropriate progress display
+    auto* config_instance   = Config::instance();
+    auto& config_data       = config_instance->data();
     const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
-    const auto install_task = [&](gucc::utils::SubProcess& child) {
-        return gucc::install::install_base(install_config, child);
+
+    const auto install_task = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::install_base(ctx, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
+        }
+        return true;
     };
     if (simple_mode) {
         if (!tui::detail::follow_process_log_task_stdout(install_task)) {
             spdlog::error("Failed to install base");
-            return;
         }
     } else {
         if (!tui::detail::follow_process_log_task(install_task)) {
             spdlog::error("Failed to install base");
-            return;
         }
     }
-
-    // Marker file
-    // TODO(vnepogodin): refactor that shit later
-    static constexpr auto base_installed = "/mnt/.base_installed";
-    std::ofstream{base_installed};  // NOLINT
+    // NOTE: enable_services() is called internally by the library
+#else
+    spdlog::info("[install_base] packages: {}", packages);
 #endif
-
-    // Enable base services after base install
-    utils::enable_services();
 }
 
 void install_desktop(const std::string_view& desktop) noexcept {
-    // Create the base list of packages
-    const auto& pkg_list = utils::get_pkglist_desktop(desktop);
-    if (!pkg_list.has_value()) {
-        spdlog::error("Failed to install desktop");
-        return;
-    }
-    const auto& packages = gucc::utils::join(*pkg_list, ' ');
-
-    spdlog::info("Preparing for desktop envs to install: '{}'", packages);
-    utils::install_from_pkglist(packages);
-
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
     config_data["DE"]     = std::string{desktop};
 
 #ifdef NDEVENV
-    // Configure plymouth if installed by desktop packages
-    const auto& mountpoint   = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
-    if (fs::exists(plymouth_path)) {
-        spdlog::info("Plymouth detected in target, configuring boot splash");
+    // Ensure crypto state is current before building context
+    utils::recheck_luks();
 
-        // Set plymouth theme
-        utils::arch_chroot("plymouth-set-default-theme cachyos-bootanimation", false);
+    auto ctx = utils::build_install_context();
 
-        // Reconfigure initcpio with plymouth hook and rebuild initramfs
-        utils::recheck_luks();
-        const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-        const auto& lvm             = std::get<std::int32_t>(config_data["LVM"]);
-        const auto& luks            = std::get<std::int32_t>(config_data["LUKS"]);
-        const auto fs_type          = gucc::fs::string_to_filesystem_type(filesystem_type);
-
-        const auto initcpio_config = gucc::initcpio::InitcpioConfig{
-            .filesystem_type  = fs_type,
-            .is_lvm           = (lvm == 1),
-            .is_luks          = (luks == 1),
-            .has_plymouth     = true,
-            .use_systemd_hook = true,
-        };
-        const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-        if (gucc::initcpio::setup_initcpio_config(initcpio_path, initcpio_config)) {
-            utils::arch_chroot("mkinitcpio -P");
-        } else {
-            spdlog::error("Failed to reconfigure initcpio with plymouth hook");
+    const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+    const auto install_task = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::install_desktop(desktop, ctx, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
+        }
+        return true;
+    };
+    if (simple_mode) {
+        if (!tui::detail::follow_process_log_task_stdout(install_task)) {
+            spdlog::error("Failed to install desktop");
+        }
+    } else {
+        if (!tui::detail::follow_process_log_task(install_task)) {
+            spdlog::error("Failed to install desktop");
         }
     }
+    // NOTE: enable_services() is called internally by the library
+#else
+    spdlog::info("[install_desktop] desktop: {}", desktop);
 #endif
-
-    // Additionally call it to enable desktop services
-    utils::enable_services();
 }
 
 void remove_pkgs(const std::string_view& packages) noexcept {
@@ -824,7 +752,15 @@ void remove_pkgs(const std::string_view& packages) noexcept {
     /* clang-format on */
 
 #ifdef NDEVENV
-    utils::arch_chroot(fmt::format(FMT_COMPILE("pacman -Rsn {}"), packages));
+    auto* config_instance  = Config::instance();
+    auto& config_data      = config_instance->data();
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    auto pkg_vec = gucc::utils::make_multiline(packages, false, ' ');
+    auto result  = cachyos::installer::remove_packages(pkg_vec, mountpoint, {});
+    if (!result) {
+        spdlog::error("{}", result.error());
+    }
 #endif
 }
 
@@ -854,471 +790,42 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, b
     return boot_part_struct;
 }
 
-void configure_grub_common(gucc::bootloader::GrubConfig& grub_config, gucc::bootloader::GrubInstallConfig& grub_install_config, std::string_view mountpoint, std::string_view luks_dev, std::string_view zfs_extra_pkgs, std::string_view non_zfs_extra_pkgs) noexcept {
-    const auto& root_part_fs        = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-    const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
-
-    // grub config changes for zfs root
-    if (root_part_fs == "zfs"sv) {
-        // zfs needs ZPOOL_VDEV_NAME_PATH set to properly find the device
-        gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
-
-        grub_install_config.is_root_on_zfs = true;
-
-        // zfs is considered a sparse filesystem so we can't use SAVEDEFAULT
-        grub_config.savedefault = std::nullopt;
-
-        // we need to tell grub where the zfs root is
-        const auto& mountpoint_source     = gucc::fs::utils::get_mountpoint_source(mountpoint);
-        const auto& zroot_var             = fmt::format(FMT_COMPILE("zfs={} rw"), mountpoint_source);
-        grub_config.cmdline_linux_default = fmt::format(FMT_COMPILE("{} {}"), grub_config.cmdline_linux_default, zroot_var);
-        grub_config.cmdline_linux         = fmt::format(FMT_COMPILE("{} {}"), grub_config.cmdline_linux, zroot_var);
-
-        const auto& bash_code = fmt::format(FMT_COMPILE("#!/bin/bash\nln -s /hostlvm /run/lvm\npacman -S --noconfirm --needed {}\n"), zfs_extra_pkgs);
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    } else {
-        // we need to disable SAVEDEFAULT if either we are on LVM or BTRFS
-        const auto& root_blk_devices = gucc::disk::list_block_devices();
-        const auto& root_blk_dev     = root_blk_devices ? gucc::disk::find_device_by_mountpoint(*root_blk_devices, "/"sv) : std::nullopt;
-        const auto is_root_lvm       = root_blk_dev && root_blk_dev->type == "lvm"sv;
-        if (is_root_lvm || (root_part_fs == "btrfs"sv)) {
-            grub_config.savedefault = std::nullopt;
-        }
-
-        const auto& bash_code = fmt::format(FMT_COMPILE("#!/bin/bash\nln -s /hostlvm /run/lvm\npacman -S --noconfirm --needed {}\n"), non_zfs_extra_pkgs);
-        std::ofstream grub_installer{grub_installer_path};
-        grub_installer << bash_code;
-    }
-
-    fs::permissions(grub_installer_path,
-        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
-        fs::perm_options::add);
-
-    // If the root is on btrfs-subvolume, amend grub installation
-    auto is_btrfs_subvol = gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5");
-    if (!is_btrfs_subvol) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
-    }
-
-    // If encryption used amend grub
-    if (!luks_dev.empty()) {
-        const auto& luks_dev_formatted = gucc::utils::exec(fmt::format(FMT_COMPILE("echo '{}' | {}"), luks_dev, "awk '{print $1}'"));
-        grub_config.cmdline_linux      = fmt::format(FMT_COMPILE("{} {}"), luks_dev_formatted, grub_config.cmdline_linux);
-        spdlog::info("adding kernel parameter {}", luks_dev);
-    }
-
-    // If Full disk encryption is used, use a keyfile
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& fde       = std::get<std::int32_t>(config_data["fde"]);
-    if (fde == 1) {
-        spdlog::info("Full disk encryption enabled");
-        grub_config.enable_cryptodisk = true;
-    }
-}
-
-void install_grub_uefi(const std::string_view& bootid, bool as_default) noexcept {
-#ifdef NDEVENV
-    fs::create_directory("/mnt/hostlvm");
-    gucc::utils::exec("mount --bind /run/lvm /mnt/hostlvm");
-#endif
-
-#ifdef NDEVENV
-    utils::boot_encrypted_setting();
-#endif
-
-    spdlog::info("Boot ID: {}", bootid);
-    spdlog::info("Set as default: {}", as_default);
-
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& luks_dev   = std::get<std::string>(config_data["LUKS_DEV"]);
-
-    gucc::bootloader::GrubConfig grub_config_struct{};
-    gucc::bootloader::GrubInstallConfig grub_install_config_struct{};
-
-    // Override GRUB cmdline_linux_default with shared kernel param defaults
-    grub_config_struct.cmdline_linux_default = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
-    const auto grub_plymouth_path            = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
-    if (fs::exists(grub_plymouth_path)) {
-        grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("splash {}"), grub_config_struct.cmdline_linux_default);
-    }
-
-    grub_install_config_struct.is_efi        = true;
-    grub_install_config_struct.do_recheck    = true;
-    grub_install_config_struct.efi_directory = uefi_mount;
-    grub_install_config_struct.bootloader_id = bootid;
-
-    // if the device is removable append removable to the grub-install
-    grub_install_config_struct.is_removable = utils::is_volume_removable();
-
-    // Configure shared GRUB settings (ZFS, btrfs, LUKS, FDE, grub_installer.sh)
-    utils::configure_grub_common(grub_config_struct, grub_install_config_struct,
-        mountpoint, luks_dev,
-        "grub efibootmgr dosfstools"sv,
-        "grub efibootmgr dosfstools grub-btrfs grub-hook"sv);
-
-    const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
-    std::error_code err{};
-
-    // install grub
-    utils::arch_chroot("grub_installer.sh");
-
-    if (!gucc::bootloader::install_grub(grub_config_struct, grub_install_config_struct, mountpoint)) {
-        spdlog::error("Failed to install grub");
-        umount("/mnt/hostlvm");
-        fs::remove("/mnt/hostlvm", err);
-        tui::detail::infobox_widget("\nFailed to install grub\n");
-        return;
-    }
-    umount("/mnt/hostlvm");
-    fs::remove("/mnt/hostlvm", err);
-
-    // the grub_installer is no longer needed
-    fs::remove(grub_installer_path, err);
-
-    /* clang-format off */
-    if (!as_default) { return; }
-    /* clang-format on */
-
-    // create efi directories
-    const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
-    fs::create_directories(fmt::format(FMT_COMPILE("{}/EFI/boot"), boot_mountpoint), err);
-
-    const auto& efi_cachyos_grub_file = fmt::format(FMT_COMPILE("{}/EFI/cachyos/grubx64.efi"), boot_mountpoint);
-    spdlog::info("Grub efi binary status:(EFI/cachyos/grubx64.efi): {}", fs::exists(efi_cachyos_grub_file));
-
-    // copy cachyos efi as default efi
-    const auto& default_efi_grub_file = fmt::format(FMT_COMPILE("{}/EFI/boot/bootx64.efi"), boot_mountpoint);
-    fs::copy_file(efi_cachyos_grub_file, default_efi_grub_file, fs::copy_options::overwrite_existing);
-#endif
-}
-
-auto get_kernel_params() noexcept {
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& luks       = std::get<std::int32_t>(config_data["LUKS"]);
-
-    // Check if the volume is removable. If so, install all drivers
-    const auto& blk_devices = gucc::disk::list_block_devices();
-    const auto& mnt_device  = blk_devices ? gucc::disk::find_device_by_mountpoint(*blk_devices, mountpoint) : std::nullopt;
-    std::string root_name;
-    std::string root_device;
-    if (mnt_device) {
-        root_name = std::string{gucc::disk::strip_device_prefix(mnt_device->name)};
-        // Find the parent disk device
-        const auto& part_ancestor = gucc::disk::find_ancestor_of_type(*blk_devices, mnt_device->name, "part"sv);
-        if (part_ancestor) {
-            root_device = std::string{gucc::disk::get_disk_name_from_device(part_ancestor->name)};
-        }
-    }
-    std::vector<gucc::fs::Partition> partitions{};
-
-    const auto& part_fs   = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-    auto root_part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/", .device = mnt_device ? mnt_device->name : fmt::format(FMT_COMPILE("/dev/{}"), root_name)};
-
-    const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
-    root_part_struct.uuid_str  = root_part_uuid;
-
-    // Set subvol field in case ROOT on btrfs subvolume
-    if ((root_part_struct.fstype == "btrfs"sv) && gucc::utils::exec_checked("mount | awk '$3 == \"/mnt\" {print $0}' | grep btrfs | grep -qv subvolid=5")) {
-        const auto& root_subvol    = gucc::utils::exec("mount | awk '$3 == \"/mnt\" {print $6}' | sed 's/^.*subvol=/subvol=/' | sed -e 's/,.*$/,/p' | sed 's/)//g' | sed 's/subvol=//'");
-        root_part_struct.subvolume = root_subvol;
-
-        spdlog::debug("root btrfs subvol := '{}'", *root_part_struct.subvolume);
-    }
-
-    // Use crypto detection to populate LUKS fields for kernel params
-    const auto& crypto = blk_devices ? gucc::disk::detect_crypto_for_mountpoint(*blk_devices, mountpoint) : std::nullopt;
-    if (crypto && crypto->is_luks) {
-        root_part_struct.luks_mapper_name = crypto->luks_mapper_name;
-        if (!crypto->luks_uuid.empty()) {
-            root_part_struct.luks_uuid = crypto->luks_uuid;
-        }
-        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
-    } else if (luks == 1 || (mnt_device && mnt_device->type == "lvm"sv)) {
-        // Fallback: LUKS flag set from config, or LVM without LUKS
-        root_part_struct.luks_mapper_name = root_name;
-        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part_struct.luks_mapper_name);
-    }
-
-    // insert root partition
-    partitions.emplace_back(std::move(root_part_struct));
-
-    // Build default kernel params from shared constexpr defaults
-    auto base_params         = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
-    const auto plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
-    if (fs::exists(plymouth_path)) {
-        base_params = fmt::format(FMT_COMPILE("splash {}"), base_params);
-    }
-    return gucc::fs::get_kernel_params(partitions, base_params);
-}
-
-void install_refind() noexcept {
-    spdlog::info("Installing refind...");
-#ifdef NDEVENV
-    auto* config_instance       = Config::instance();
-    auto& config_data           = config_instance->data();
-    const auto& mountpoint      = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& uefi_mount      = std::get<std::string>(config_data["UEFI_MOUNT"]);
-    const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
-
-    utils::inst_needed("refind");
-
-    const std::vector<std::string> extra_kernel_versions{
-        "linux-cachyos", "linux-cachyos-server", "linux-cachyos-eevdf", "linux-cachyos-bore",
-        "linux-cachyos-hardened", "linux-cachyos-lts", "linux-cachyos-rc", "linux-cachyos-rt-bore"};
-
-    const auto& kernel_params = utils::get_kernel_params();
-    if (!kernel_params.has_value()) {
-        spdlog::error("Failed to get kernel params for partition scheme");
-        return;
-    }
-
-    // start refind install & configuration
-    const gucc::bootloader::RefindInstallConfig refind_install_config{
-        .is_removable          = utils::is_volume_removable(),
-        .root_mountpoint       = mountpoint,
-        .boot_mountpoint       = boot_mountpoint,
-        .extra_kernel_versions = extra_kernel_versions,
-        .kernel_params         = *kernel_params,
-    };
-
-    if (!gucc::bootloader::install_refind(refind_install_config)) {
-        spdlog::error("Failed to install refind");
-        return;
-    }
-
-    spdlog::info("Created rEFInd config:");
-    const auto& refind_conf_content = gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), mountpoint));
-    utils::dump_to_log(refind_conf_content);
-
-    utils::install_from_pkglist("refind-theme-nord");
-#endif
-    spdlog::info("Refind was succesfully installed");
-}
-
-void install_systemd_boot() noexcept {
-    spdlog::info("Installing systemd-boot...");
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
-
-    // preinstall systemd-boot-manager. it has to be installed
-    utils::install_from_pkglist("systemd-boot-manager");
-
-    // start systemd-boot install & configuration
-    const gucc::bootloader::SystemdBootInstallConfig sdboot_config{
-        .is_removable    = utils::is_volume_removable(),
-        .root_mountpoint = mountpoint,
-        .efi_directory   = uefi_mount,
-    };
-    if (!gucc::bootloader::install_systemd_boot(sdboot_config)) {
-        spdlog::error("Failed to install systemd-boot");
-        return;
-    }
-#endif
-    spdlog::info("Systemd-boot was installed");
-}
-
-void install_limine() noexcept {
-    spdlog::info("Installing Limine...");
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
-    const auto& sys_info   = std::get<std::string>(config_data["SYSTEM"]);
-
-    const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
-
-    const auto& kernel_params = utils::get_kernel_params();
-    if (!kernel_params.has_value()) {
-        spdlog::error("Failed to get kernel params for partition scheme");
-        return;
-    }
-
-    const bool is_efi_mode = (sys_info == "UEFI"sv);
-
-    gucc::bootloader::LimineInstallConfig limine_install_config{
-        .is_efi          = is_efi_mode,
-        .is_removable    = utils::is_volume_removable(),
-        .root_mountpoint = mountpoint,
-        .boot_mountpoint = boot_mountpoint,
-        .kernel_params   = *kernel_params,
-        .efi_directory   = std::string{uefi_mount},
-    };
-
-    // For BIOS mode, set the bios_device
-    if (!is_efi_mode) {
-        const auto& device_info           = std::get<std::string>(config_data["DEVICE"]);
-        limine_install_config.bios_device = device_info;
-    }
-
-    // Preinstall limine-mkinitcpio-hook
-    utils::install_from_pkglist("limine-mkinitcpio-hook");
-
-    // Install splash screen
-    utils::inst_needed("cachyos-wallpapers");
-
-    // Copy cachyos splash screen
-    const auto& limine_splash_file = fmt::format(FMT_COMPILE("{}/limine-splash.png"), boot_mountpoint);
-    fs::copy_file("/usr/share/wallpapers/cachyos-wallpapers/limine-splash.png", limine_splash_file, fs::copy_options::overwrite_existing);
-
-    // Start limine install & configuration
-    if (!gucc::bootloader::install_limine(limine_install_config)) {
-        spdlog::error("Failed to install Limine");
-        return;
-    }
-
-    // Integrate Snapper support and run post-setup
-    const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-    const bool is_btrfs         = (filesystem_type == "btrfs"sv);
-
-    if (is_btrfs) {
-        utils::install_from_pkglist("cachyos-snapper-support limine-snapper-sync");
-    }
-#endif
-    spdlog::info("Limine was installed");
-}
-
-void uefi_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
-    using gucc::bootloader::BootloaderType;
-#ifdef NDEVENV
-    // Ensure again that efivarfs is mounted
-    static constexpr auto efi_path = "/sys/firmware/efi/";
-    if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
-        // Mount efivarfs if it is not already mounted
-        const auto& mount_out = gucc::utils::exec("mount | grep /sys/firmware/efi/efivars");
-        if (mount_out.empty()) {
-            if (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0) {
-                perror("utils::uefi_bootloader");
-                exit(1);
-            }
-        }
-    }
-#endif
-
-    switch (bootloader) {
-    case BootloaderType::Grub:
-        utils::install_grub_uefi("cachyos");
-        break;
-    case BootloaderType::Refind:
-        utils::install_refind();
-        break;
-    case BootloaderType::SystemdBoot:
-        utils::install_systemd_boot();
-        break;
-    case BootloaderType::Limine:
-        utils::install_limine();
-        break;
-    }
-}
-
-void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
-    using gucc::bootloader::BootloaderType;
-    spdlog::info("Installing bios bootloader '{}'...", gucc::bootloader::bootloader_to_string(bootloader));
-#ifdef NDEVENV
-    if (bootloader == BootloaderType::Limine) {
-        utils::install_limine();
-        return;
-    }
-
-    if (bootloader != BootloaderType::Grub) {
-        spdlog::error("Unsupported BIOS bootloader: {}", gucc::bootloader::bootloader_to_string(bootloader));
-        return;
-    }
-
-    // if root is encrypted, amend /etc/default/grub
-    utils::boot_encrypted_setting();
-
-    auto* config_instance    = Config::instance();
-    auto& config_data        = config_instance->data();
-    const auto& lvm          = std::get<std::int32_t>(config_data["LVM"]);
-    const auto& lvm_sep_boot = std::get<std::int32_t>(config_data["LVM_SEP_BOOT"]);
-    const auto& luks_dev     = std::get<std::string>(config_data["LUKS_DEV"]);
-    const auto& mountpoint   = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& device_info  = std::get<std::string>(config_data["DEVICE"]);
-
-    gucc::bootloader::GrubConfig grub_config_struct{};
-    gucc::bootloader::GrubInstallConfig grub_install_config_struct{};
-
-    // Override GRUB cmdline_linux_default with shared kernel param defaults
-    grub_config_struct.cmdline_linux_default = fmt::format("{}", fmt::join(gucc::fs::kDefaultKernelParams, " "));
-    const auto bios_plymouth_path            = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
-    if (fs::exists(bios_plymouth_path)) {
-        grub_config_struct.cmdline_linux_default = fmt::format(FMT_COMPILE("splash {}"), grub_config_struct.cmdline_linux_default);
-    }
-
-    grub_install_config_struct.is_efi     = false;
-    grub_install_config_struct.do_recheck = true;
-    grub_install_config_struct.device     = device_info;
-
-    // if /boot is LVM (whether using a seperate /boot mount or not), amend grub
-    if ((lvm == 1 && lvm_sep_boot == 0) || lvm_sep_boot == 2) {
-        grub_config_struct.preload_modules = fmt::format(FMT_COMPILE("lvm {}"), grub_config_struct.preload_modules);
-        grub_config_struct.savedefault     = std::nullopt;
-    }
-
-    // Same setting is needed for LVM
-    if (lvm == 1) {
-        grub_config_struct.savedefault = std::nullopt;
-    }
-
-    // enable os-prober
-    grub_config_struct.disable_os_prober = false;
-
-    // Configure shared GRUB settings (ZFS, btrfs, LUKS, FDE, grub_installer.sh)
-    utils::configure_grub_common(grub_config_struct, grub_install_config_struct,
-        mountpoint, luks_dev,
-        "grub os-prober"sv,
-        "grub os-prober grub-btrfs grub-hook"sv);
-
-    const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
-    std::error_code err{};
-
-    tui::detail::infobox_widget("\nPlease wait...\n");
-    gucc::utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of={} seek=1 count=2047"), device_info));
-    fs::create_directory("/mnt/hostlvm", err);
-    gucc::utils::exec("mount --bind /run/lvm /mnt/hostlvm");
-
-    // install grub
-    utils::arch_chroot("grub_installer.sh");
-
-    // the grub_installer is no longer needed - there still needs to be a better way to do this
-    fs::remove(grub_installer_path, err);
-
-    umount("/mnt/hostlvm");
-    fs::remove("/mnt/hostlvm", err);
-
-    if (!gucc::bootloader::install_grub(grub_config_struct, grub_install_config_struct, mountpoint)) {
-        spdlog::error("Failed to install grub");
-        tui::detail::infobox_widget("\nFailed to install grub\n");
-        return;
-    }
-#endif
-}
-
 void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
     /* clang-format off */
     if (!utils::check_base()) { return; }
     /* clang-format on */
 
+#ifdef NDEVENV
+    utils::recheck_luks();
+    utils::boot_encrypted_setting();
+
+    auto ctx       = utils::build_install_context();
+    ctx.bootloader = bootloader;
+
     auto* config_instance   = Config::instance();
     auto& config_data       = config_instance->data();
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    if (system_info == "BIOS"sv) {
-        utils::bios_bootloader(bootloader);
+    const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+
+    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::install_bootloader(ctx, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
+        }
+        return true;
+    };
+    if (simple_mode) {
+        if (!tui::detail::follow_process_log_task_stdout(task)) {
+            spdlog::error("Failed to install bootloader");
+        }
     } else {
-        utils::uefi_bootloader(bootloader);
+        if (!tui::detail::follow_process_log_task(task)) {
+            spdlog::error("Failed to install bootloader");
+        }
     }
+#else
+    spdlog::info("[install_bootloader] {}", gucc::bootloader::bootloader_to_string(bootloader));
+#endif
 }
 
 // List partitions to be hidden from the mounting menu
@@ -1712,62 +1219,12 @@ void grub_mkconfig() noexcept {
     // check_for_error "grub-mkconfig" $?
 }
 
-void set_lightdm_greeter() {
-    auto* config_instance      = Config::instance();
-    auto& config_data          = config_instance->data();
-    const auto& mountpoint     = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& xgreeters_path = fmt::format(FMT_COMPILE("{}/usr/share/xgreeters"), mountpoint);
-    /* clang-format off */
-    if (!fs::exists(xgreeters_path)) { return; }
-    for (const auto& name : fs::directory_iterator{xgreeters_path}) {
-        const auto& temp = name.path().filename().string();
-        if (!temp.starts_with("lightdm-") && !temp.ends_with("-greeter")) { continue; }
-        /* clang-format on */
-        if (temp == "lightdm-gtk-greeter"sv) {
-            continue;
-        }
-        // TODO(vnepogodin): should be just native
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i -e 's/^.*greeter-session=.*/greeter-session={}/' {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
-        break;
-    }
-}
-
 void enable_services() noexcept {
-    spdlog::info("Enabling services...");
-
 #ifdef NDEVENV
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& server_mode = std::get<std::int32_t>(config_data["SERVER_MODE"]);
-
-    const auto& base_services = utils::get_servicelist_base();
-    if (!base_services) {
-        spdlog::error("Failed to get base service list");
-        return;
-    }
-    apply_services(*base_services, mountpoint);
-
-    if (server_mode == 0) {
-        const auto& desktop_services = utils::get_servicelist_desktop();
-        if (!desktop_services) {
-            spdlog::error("Failed to get desktop service list");
-            return;
-        }
-        apply_services(*desktop_services, mountpoint);
-    }
-
-    // Display manager detection (desktop mode only)
-    if (server_mode == 0) {
-        const std::vector<std::string_view> dm_services{"plasmalogin", "lightdm", "sddm", "gdm", "lxdm", "ly", "cosmic-greeter"};
-        const auto is_enabled = std::ranges::any_of(dm_services, [=](auto&& service) { return enable_service_if_exists(service, mountpoint); });
-        if (!is_enabled) {
-            spdlog::error("Failed to enable any of the DM services");
-        }
-
-        if (gucc::services::systemd_unit_exists("lightdm"sv, mountpoint)) {
-            utils::set_lightdm_greeter();
-        }
+    auto ctx    = utils::build_install_context();
+    auto result = cachyos::installer::enable_services(ctx);
+    if (!result) {
+        spdlog::error("Failed to enable services: {}", result.error());
     }
 #endif
 }

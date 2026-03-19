@@ -15,8 +15,14 @@
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
+// forward-declare
+namespace cachyos::installer {
+struct InstallContext;
+}
+
 namespace utils {
 
+[[nodiscard]] auto build_install_context() noexcept -> cachyos::installer::InstallContext;
 [[nodiscard]] auto get_mountpoint() noexcept -> std::string_view;
 [[nodiscard]] bool is_connected() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
@@ -42,7 +48,6 @@ void lvm_detect(std::optional<std::function<void()>> func_callback = std::nullop
 void umount_partitions() noexcept;
 void find_partitions() noexcept;
 
-[[nodiscard]] auto get_kernel_params() noexcept;
 [[nodiscard]] auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>>;
 [[nodiscard]] auto get_pkglist_desktop(const std::string_view& desktop) noexcept -> std::optional<std::vector<std::string>>;
 [[nodiscard]] auto get_servicelist_base() noexcept -> std::optional<std::vector<gucc::profile::ServiceEntry>>;
@@ -51,14 +56,7 @@ auto install_from_pkglist(const std::string_view& packages) noexcept -> bool;
 void install_base(const std::string_view& packages) noexcept;
 void install_desktop(const std::string_view& desktop) noexcept;
 void remove_pkgs(const std::string_view& packages) noexcept;
-void configure_grub_common(gucc::bootloader::GrubConfig& grub_config, gucc::bootloader::GrubInstallConfig& grub_install_config, std::string_view mountpoint, std::string_view luks_dev, std::string_view zfs_extra_pkgs, std::string_view non_zfs_extra_pkgs) noexcept;
 auto setup_esp_partition(std::string_view device, std::string_view mountpoint, bool format_requested) noexcept -> std::optional<gucc::fs::Partition>;
-void install_grub_uefi(const std::string_view& bootid, bool as_default = true) noexcept;
-void install_refind() noexcept;
-void install_systemd_boot() noexcept;
-void install_limine() noexcept;
-void uefi_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
-void bios_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
 void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
 
 // TODO(vnepogodin): shouldn't that hardcoded and poorly handheld. let's use something structured and firm (gucc::fs::Partition for example)
