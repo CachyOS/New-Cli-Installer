@@ -2,6 +2,11 @@
 
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/pacmanconf_repo.hpp"
+#include "gucc/repos.hpp"
+
+#include <sys/mount.h>  // for mount
+#include <unistd.h>     // for getuid
 
 #include <chrono>      // for seconds
 #include <expected>    // for unexpected
@@ -10,11 +15,9 @@
 #include <string>      // for string
 #include <thread>      // for sleep_for
 
-#include <sys/mount.h>  // for mount
-#include <unistd.h>     // for getuid
-
 #include <fmt/compile.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 
 #include <cpr/api.h>
@@ -84,17 +87,29 @@ auto wait_for_connection(const std::chrono::seconds& timeout_secs) noexcept -> b
         return true;
     }
 
-    std::int64_t waited{};
     const auto limit = timeout_secs.count();
     spdlog::warn("No active network connection detected, waiting {} seconds...", limit);
-    while (!is_connected()) {
+    for (std::int64_t waited{}; waited < limit; ++waited) {
         std::this_thread::sleep_for(1s);
-        if (++waited >= limit) {
-            break;
+        if (is_connected()) {
+            return true;
         }
     }
+    return false;
+}
 
-    return is_connected();
+auto install_cachyos_repo() noexcept -> std::expected<void, std::string> {
+    // Check if it's already been applied
+    const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
+    spdlog::info("install_cachyos_repo: repo_list := '{}'", repo_list);
+
+    if (!gucc::repos::install_cachyos_repos()) {
+        return std::unexpected("failed to install cachyos repos");
+    }
+    if (!gucc::utils::exec_checked("yes | pacman -Sy --noconfirm"sv)) {
+        return std::unexpected("failed to refresh pacman databases");
+    }
+    return {};
 }
 
 }  // namespace cachyos::installer

@@ -325,7 +325,7 @@ auto install_refind(const InstallContext& ctx, gucc::utils::SubProcess& child) n
     const auto& uefi_mount      = ctx.uefi_mount;
     const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
 
-    auto needed_result = install_needed("refind", {});
+    auto needed_result = install_needed("refind", child);
     if (!needed_result) {
         return std::unexpected(needed_result.error());
     }
@@ -425,7 +425,7 @@ auto install_limine(const InstallContext& ctx, gucc::utils::SubProcess& child) n
     }
 
     // Install splash screen
-    auto splash_result = install_needed("cachyos-wallpapers", {});
+    auto splash_result = install_needed("cachyos-wallpapers", child);
     if (!splash_result) {
         spdlog::warn("Failed to install cachyos-wallpapers: {}", splash_result.error());
     }

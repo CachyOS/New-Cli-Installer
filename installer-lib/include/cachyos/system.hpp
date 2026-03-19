@@ -23,6 +23,9 @@ namespace cachyos::installer {
 /// @return true if connected within the timeout.
 [[nodiscard]] auto wait_for_connection(const std::chrono::seconds& timeout_secs) noexcept -> bool;
 
+/// Installs CachyOS repos on the live system and refreshes pacman databases.
+[[nodiscard]] auto install_cachyos_repo() noexcept -> std::expected<void, std::string>;
+
 }  // namespace cachyos::installer
 
 #endif  // CACHYOS_INSTALLER_SYSTEM_HPP

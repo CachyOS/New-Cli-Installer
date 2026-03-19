@@ -32,17 +32,15 @@ namespace cachyos::installer {
 
 /// Removes packages from the target system.
 [[nodiscard]] auto remove_packages(const std::vector<std::string>& packages,
-    std::string_view mountpoint,
-    const ExecutionCallbacks& callbacks) noexcept
+    std::string_view mountpoint, gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string>;
 
-/// Enables systemd/openrc services on the installed system.
+/// Enables systemd services on the installed system.
 [[nodiscard]] auto enable_services(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
 /// Ensures a package is installed on the live system (not the target).
-[[nodiscard]] auto install_needed(std::string_view pkg,
-    const ExecutionCallbacks& callbacks) noexcept
+[[nodiscard]] auto install_needed(std::string_view pkg, gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string>;
 
 }  // namespace cachyos::installer

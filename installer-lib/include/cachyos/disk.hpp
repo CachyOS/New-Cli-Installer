@@ -13,6 +13,11 @@
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
+// forward-declare
+namespace gucc::utils {
+class SubProcess;
+}
+
 namespace cachyos::installer {
 
 /// Re-export disk selection types from the TUI layer for use by the library.
@@ -76,7 +81,7 @@ struct MountSelections {
     -> std::expected<std::vector<gucc::fs::Partition>, std::string>;
 
 /// Securely wipes a device.
-[[nodiscard]] auto secure_wipe(std::string_view device, const ExecutionCallbacks& callbacks) noexcept
+[[nodiscard]] auto secure_wipe(std::string_view device, gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string>;
 
 /// Automated ZFS setup: creates a new zpool with default datasets.

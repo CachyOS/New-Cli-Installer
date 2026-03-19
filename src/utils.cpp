@@ -16,29 +16,16 @@
 #include "cachyos/validation.hpp"
 
 // import gucc
-#include "gucc/autologin.hpp"
 #include "gucc/block_devices.hpp"
 #include "gucc/bootloader.hpp"
-#include "gucc/chwd.hpp"
 #include "gucc/crypto_detection.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
-#include "gucc/fstab.hpp"
-#include "gucc/hwclock.hpp"
 #include "gucc/io_utils.hpp"
-#include "gucc/locale.hpp"
-#include "gucc/luks.hpp"
 #include "gucc/lvm.hpp"
-#include "gucc/mount_partitions.hpp"
-#include "gucc/package_list.hpp"
-#include "gucc/pacmanconf_repo.hpp"
 #include "gucc/partitioning.hpp"
-#include "gucc/repos.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
-#include "gucc/timezone.hpp"
-#include "gucc/umount_partitions.hpp"
-#include "gucc/user.hpp"
 
 #include <cstdint>  // for int32_t
 #include <cstdlib>  // for exit
@@ -261,30 +248,28 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
 
 // install a pkg in the live session if not installed
 void inst_needed(const std::string_view& pkg) noexcept {
-    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg))) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        utils::clear_screen();
-
-        const auto& cmd_formatted = fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg);
-
 #ifdef NDEVENV
-        auto* config_instance     = Config::instance();
-        auto& config_data         = config_instance->data();
-        const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
-        if (headless_mode) {
-            if (!gucc::utils::exec_checked(cmd_formatted)) {
-                spdlog::error("Failed to install needed: {}", pkg);
-            }
-        } else {
-            if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
-                spdlog::error("Failed to install needed: {}", pkg);
-            }
+    auto* config_instance     = Config::instance();
+    auto& config_data         = config_instance->data();
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+
+    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::install_needed(pkg, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
         }
-        // gucc::utils::exec(fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg));
-#else
-        spdlog::info("Installing needed: '{}'", cmd_formatted);
-#endif
+        return true;
+    };
+    if (simple_mode || headless_mode) {
+        tui::detail::follow_process_log_task_stdout(task);
+    } else {
+        tui::detail::follow_process_log_task(task);
     }
+#else
+    spdlog::info("Installing needed: '{}'", pkg);
+#endif
 }
 
 // Unmount partitions.
@@ -314,35 +299,31 @@ auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
     const auto& system_info    = std::get<std::string>(config_data["SYSTEM"]);
     const auto& bootloader_str = std::get<std::string>(config_data["BOOTLOADER"]);
 
-    spdlog::info("Running automatic partitioning");
     const auto& bootloader_opt = gucc::bootloader::bootloader_from_string(bootloader_str);
     if (!bootloader_opt) {
         spdlog::error("Unknown bootloader: {}", bootloader_str);
         return {};
     }
 
+#ifdef NDEVENV
+    auto result = cachyos::installer::auto_partition(device_info, system_info, *bootloader_opt, {});
+    if (!result) {
+        spdlog::error("{}", result.error());
+        return {};
+    }
+    auto& partitions = *result;
+#else
     const auto& boot_mountpoint = utils::bootloader_default_mount(*bootloader_opt, system_info);
-
-    // Create default partitioning for clean disk
-    const auto& is_system_efi = (system_info == "UEFI"sv);
-    auto partitions           = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
+    const auto& is_system_efi   = (system_info == "UEFI"sv);
+    auto partitions              = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
     if (partitions.empty()) {
         spdlog::error("Failed to generate default partition schema: it cannot be empty");
         return {};
     }
-
-    utils::dump_partitions_to_log(partitions);
-
-#ifdef NDEVENV
-    // Clear disk and perform partitioning
-    if (!gucc::disk::make_clean_partschema(device_info, partitions, is_system_efi)) {
-        spdlog::error("Failed to perform automatic partitioning");
-        return {};
-    }
-#else
     spdlog::info("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info);
 #endif
 
+    utils::dump_partitions_to_log(partitions);
     return partitions;
 }
 
@@ -353,20 +334,22 @@ void secure_wipe() noexcept {
     const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
 
 #ifdef NDEVENV
-    utils::inst_needed("wipe");
-
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info);
-    if (headless_mode) {
-        if (!gucc::utils::exec_checked(cmd_formatted)) {
-            spdlog::error("Failed to wipe device: {}", device_info);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
+
+    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::secure_wipe(device_info, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
         }
+        return true;
+    };
+    if (simple_mode || headless_mode) {
+        tui::detail::follow_process_log_task_stdout(task);
     } else {
-        if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
-            spdlog::error("Failed to wipe device: {}", device_info);
-        }
+        tui::detail::follow_process_log_task(task);
     }
-    // gucc::utils::exec(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device_info));
 #else
     spdlog::debug("{}\n", device_info);
 #endif
@@ -400,18 +383,18 @@ void set_hostname(const std::string_view& hostname) noexcept {
 void set_locale(const std::string_view& locale) noexcept {
     spdlog::info("Selected locale: {}", locale);
 #ifdef NDEVENV
-    if (!gucc::locale::set_locale(locale, utils::get_mountpoint())) {
-        spdlog::error("Failed to set locale");
-    }
+    const cachyos::installer::SystemSettings settings{.locale = std::string{locale}};
+    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
+    if (!result) { spdlog::error("Failed to set locale: {}", result.error()); }
 #endif
 }
 
 void set_xkbmap(const std::string_view& xkbmap) noexcept {
     spdlog::info("Selected xkbmap: {}", xkbmap);
 #ifdef NDEVENV
-    if (!gucc::locale::set_xkbmap(xkbmap, utils::get_mountpoint())) {
-        spdlog::error("Failed to set xkbmap: {}", xkbmap);
-    }
+    const cachyos::installer::SystemSettings settings{.xkbmap = std::string{xkbmap}};
+    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
+    if (!result) { spdlog::error("Failed to set xkbmap: {}", result.error()); }
 #endif
 }
 
@@ -423,38 +406,35 @@ void set_keymap(std::string_view selected_keymap) noexcept {
     config_data["KEYMAP"] = std::string{selected_keymap};
 
 #ifdef NDEVENV
-    // Apply keymap to the live session only.
-    // The target system's vconsole.conf is written later by GUCC base install.
-    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("localectl set-keymap {}"), selected_keymap))) {
-        spdlog::error("Failed to set live session keymap: {}", selected_keymap);
-    }
+    const cachyos::installer::SystemSettings settings{.keymap = std::string{selected_keymap}};
+    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
+    if (!result) { spdlog::error("Failed to set keymap: {}", result.error()); }
 #endif
 }
 
 void set_timezone(const std::string_view& timezone) noexcept {
     spdlog::info("Timezone is set to {}", timezone);
 #ifdef NDEVENV
-    if (!gucc::timezone::set_timezone(timezone, utils::get_mountpoint())) {
-        spdlog::error("Failed to set timezone: {}", timezone);
-    }
+    const cachyos::installer::SystemSettings settings{.timezone = std::string{timezone}};
+    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
+    if (!result) { spdlog::error("Failed to set timezone: {}", result.error()); }
 #endif
 }
 
 void set_hw_clock(const std::string_view& clock_type) noexcept {
     spdlog::info("Clock type is: {}", clock_type);
 #ifdef NDEVENV
-    const auto& mountpoint = utils::get_mountpoint();
+    cachyos::installer::SystemSettings settings{};
     if (clock_type == "utc"sv) {
-        if (!gucc::hwclock::set_hwclock_utc(mountpoint)) {
-            spdlog::error("Failed to set UTC hwclock");
-        }
+        settings.hw_clock = cachyos::installer::SystemSettings::HwClock::UTC;
     } else if (clock_type == "localtime"sv) {
-        if (!gucc::hwclock::set_hwclock_localtime(mountpoint)) {
-            spdlog::error("Failed to set localtime hwclock");
-        }
+        settings.hw_clock = cachyos::installer::SystemSettings::HwClock::Localtime;
     } else {
         spdlog::error("Unknown clock type {}", clock_type);
+        return;
     }
+    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
+    if (!result) { spdlog::error("Failed to set hw clock: {}", result.error()); }
 #endif
 }
 
@@ -463,40 +443,30 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
     spdlog::info("default shell: [{}]", shell);
 
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    auto* config_instance     = Config::instance();
+    auto& config_data         = config_instance->data();
+    const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& hostcache     = std::get<std::int32_t>(config_data["hostcache"]) != 0;
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
-    if (shell.ends_with("zsh") || shell.ends_with("fish")) {
-        const auto& packages  = fmt::format(FMT_COMPILE("cachyos-{}-config"), (shell.ends_with("zsh")) ? "zsh" : "fish");
-        const auto& hostcache = std::get<std::int32_t>(config_data["hostcache"]);
-        const auto& cmd       = (hostcache) ? "pacstrap" : "pacstrap -c";
-
-        const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
-        const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
-        if (headless_mode) {
-            if (!gucc::utils::exec_checked(cmd_formatted)) {
-                spdlog::error("Failed to install shell settings: {}", packages);
-            }
-        } else {
-            if (!tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted})) {
-                spdlog::error("Failed to install shell settings: {}", packages);
-            }
-        }
-    }
-
-    // Create user with sudoers and default groups
-    using namespace std::string_literals;
-    using namespace std::string_view_literals;
-    const gucc::user::UserInfo user_info{
-        .username      = user,
-        .password      = password,
-        .shell         = shell,
-        .sudoers_group = "wheel"sv,
+    const cachyos::installer::UserSettings settings{
+        .username = std::string{user},
+        .password = std::string{password},
+        .shell    = std::string{shell},
     };
-    const std::vector default_user_groups{"wheel"s, "rfkill"s, "sys"s, "users"s, "lp"s, "video"s, "network"s, "storage"s, "audio"s};
-    if (!gucc::user::create_new_user(user_info, default_user_groups, mountpoint)) {
-        spdlog::error("Failed to create user");
+    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::create_user(settings, mountpoint, hostcache, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
+        }
+        return true;
+    };
+    if (simple_mode || headless_mode) {
+        tui::detail::follow_process_log_task_stdout(task);
+    } else {
+        tui::detail::follow_process_log_task(task);
     }
 #else
     spdlog::debug("user := {}, password := {}", user, password);
@@ -590,51 +560,6 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
         spdlog::error("Failed to activate LVM");
     }
 #endif
-}
-
-auto get_pkglist_base(const std::string_view& packages) noexcept -> std::optional<std::vector<std::string>> {
-    auto* config_instance              = Config::instance();
-    auto& config_data                  = config_instance->data();
-    const auto& server_mode            = std::get<std::int32_t>(config_data["SERVER_MODE"]);
-    const auto& mountpoint_info        = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
-    const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
-
-    const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-
-    auto net_profs_info = gucc::package::NetProfileInfo{.net_profs_url = net_profs_url, .net_profs_fallback_url = net_profs_fallback_url};
-    return gucc::package::get_pkglist_base(packages, root_filesystem, server_mode, net_profs_info);
-}
-
-auto get_pkglist_desktop(const std::string_view& desktop_env) noexcept -> std::optional<std::vector<std::string>> {
-    auto* config_instance              = Config::instance();
-    auto& config_data                  = config_instance->data();
-    const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
-    const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
-
-    auto net_profs_info = gucc::package::NetProfileInfo{.net_profs_url = net_profs_url, .net_profs_fallback_url = net_profs_fallback_url};
-    return gucc::package::get_pkglist_desktop(desktop_env, net_profs_info);
-}
-
-auto get_servicelist_base() noexcept -> std::optional<std::vector<gucc::profile::ServiceEntry>> {
-    auto* config_instance              = Config::instance();
-    auto& config_data                  = config_instance->data();
-    const auto& server_mode            = std::get<std::int32_t>(config_data["SERVER_MODE"]);
-    const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
-    const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
-
-    auto net_profs_info = gucc::package::NetProfileInfo{.net_profs_url = net_profs_url, .net_profs_fallback_url = net_profs_fallback_url};
-    return gucc::package::get_servicelist_base(server_mode != 0, net_profs_info);
-}
-
-auto get_servicelist_desktop() noexcept -> std::optional<std::vector<gucc::profile::ServiceEntry>> {
-    auto* config_instance              = Config::instance();
-    auto& config_data                  = config_instance->data();
-    const auto& net_profs_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
-    const auto& net_profs_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
-
-    auto net_profs_info = gucc::package::NetProfileInfo{.net_profs_url = net_profs_url, .net_profs_fallback_url = net_profs_fallback_url};
-    return gucc::package::get_servicelist_desktop(net_profs_info);
 }
 
 auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
@@ -754,14 +679,27 @@ void remove_pkgs(const std::string_view& packages) noexcept {
     /* clang-format on */
 
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    auto* config_instance     = Config::instance();
+    auto& config_data         = config_instance->data();
+    const auto& mountpoint    = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
     auto pkg_vec = gucc::utils::make_multiline(packages, false, ' ');
-    auto result  = cachyos::installer::remove_packages(pkg_vec, mountpoint, {});
-    if (!result) {
-        spdlog::error("{}", result.error());
+
+    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::remove_packages(pkg_vec, mountpoint, child);
+        if (!result) {
+            spdlog::error("{}", result.error());
+            return false;
+        }
+        return true;
+    };
+
+    if (simple_mode || headless_mode) {
+        tui::detail::follow_process_log_task_stdout(task);
+    } else {
+        tui::detail::follow_process_log_task(task);
     }
 #endif
 }
@@ -993,59 +931,39 @@ void id_system() noexcept {
 }
 
 void install_cachyos_repo() noexcept {
-    // Check if it's already been applied
-    const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
-    spdlog::info("install_cachyos_repo: repo_list := '{}'", repo_list);
-
 #ifdef NDEVENV
-    if (!gucc::repos::install_cachyos_repos()) {
-        spdlog::error("Failed to install cachyos repos");
+    auto result = cachyos::installer::install_cachyos_repo();
+    if (!result) {
+        spdlog::error("Failed to install cachyos repos: {}", result.error());
     }
 #endif
 }
 
 bool handle_connection() noexcept {
-    bool connected{utils::is_connected()};
-
 #ifdef NDEVENV
-    static constexpr std::int32_t CONNECTION_TIMEOUT = 15;
+    using namespace std::chrono_literals;
+    bool connected = cachyos::installer::wait_for_connection(15s);
+
     if (!connected) {
-        warning_inter("An active network connection could not be detected, waiting 15 seconds ...\n");
-
-        std::int32_t time_waited{};
-
-        while (!(connected = utils::is_connected())) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-
-            if (time_waited++ >= CONNECTION_TIMEOUT) {
-                break;
+        char type{};
+        while (utils::prompt_char("An active network connection could not be detected, do you want to connect using wifi? [y/n]", RED, &type)) {
+            if (type != 'n') {
+                show_iwctl();
             }
+            break;
         }
-
-        if (!connected) {
-            char type{};
-
-            while (utils::prompt_char("An active network connection could not be detected, do you want to connect using wifi? [y/n]", RED, &type)) {
-                if (type != 'n') {
-                    show_iwctl();
-                }
-
-                break;
-            }
-
-            connected = utils::is_connected();
-        }
+        connected = utils::is_connected();
     }
 
     if (connected) {
         utils::install_cachyos_repo();
-        gucc::utils::exec("yes | pacman -Sy --noconfirm", true);
     }
-#else
-    utils::install_cachyos_repo();
-#endif
 
     return connected;
+#else
+    utils::install_cachyos_repo();
+    return true;
+#endif
 }
 
 void show_iwctl() noexcept {

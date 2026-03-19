@@ -235,8 +235,7 @@ auto install_packages(const std::vector<std::string>& packages,
 }
 
 auto remove_packages(const std::vector<std::string>& packages,
-    std::string_view mountpoint,
-    const ExecutionCallbacks& /*callbacks*/) noexcept
+    std::string_view mountpoint, gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string> {
     /* clang-format off */
     if (packages.empty()) { return {}; }
@@ -244,7 +243,7 @@ auto remove_packages(const std::vector<std::string>& packages,
 
     const auto& pkgs_str       = gucc::utils::join(packages, ' ');
     const auto& chroot_command = fmt::format(FMT_COMPILE("pacman -Rsn {}"), pkgs_str);
-    if (!gucc::utils::arch_chroot_checked(chroot_command, mountpoint)) {
+    if (!gucc::utils::arch_chroot_follow(chroot_command, mountpoint, child)) {
         return std::unexpected(fmt::format("failed to remove packages: {}", pkgs_str));
     }
     return {};
@@ -285,8 +284,7 @@ auto enable_services(const InstallContext& ctx) noexcept
     return {};
 }
 
-auto install_needed(std::string_view pkg,
-    const ExecutionCallbacks& /*callbacks*/) noexcept
+auto install_needed(std::string_view pkg, gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string> {
     // Check if already installed
     if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg))) {
@@ -295,7 +293,7 @@ auto install_needed(std::string_view pkg,
 
     // Install it
     const auto& cmd = fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg);
-    if (!gucc::utils::exec_checked(cmd)) {
+    if (!gucc::utils::exec_follow({"/bin/sh", "-c", cmd}, child)) {
         return std::unexpected(fmt::format("failed to install needed package: {}", pkg));
     }
     return {};

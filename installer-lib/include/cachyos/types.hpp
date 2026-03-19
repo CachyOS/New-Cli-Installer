@@ -8,6 +8,7 @@
 
 #include <cstdint>      // for int32_t
 #include <functional>   // for function
+#include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -117,7 +118,7 @@ struct SystemSettings {
     std::string xkbmap;
     std::string keymap;
     std::string timezone;
-    HwClock hw_clock{HwClock::UTC};
+    std::optional<HwClock> hw_clock{};
 };
 
 /// User account settings.

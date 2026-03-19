@@ -1,4 +1,5 @@
 #include "cachyos/config.hpp"
+#include "cachyos/packages.hpp"
 
 // import gucc
 #include "gucc/autologin.hpp"
@@ -18,6 +19,31 @@
 
 using namespace std::string_view_literals;
 using namespace std::string_literals;
+
+namespace {
+
+using cachyos::installer::SystemSettings;
+
+auto apply_hw_clock(SystemSettings::HwClock hw_clock, std::string_view mountpoint) noexcept -> std::expected<void, std::string> {
+    spdlog::info("Setting hw_clock: {}", (hw_clock == SystemSettings::HwClock::UTC) ? "utc"sv : "localtime"sv);
+    switch (hw_clock) {
+    case SystemSettings::HwClock::UTC: {
+        if (!gucc::hwclock::set_hwclock_utc(mountpoint)) {
+            return std::unexpected("failed to set UTC hwclock");
+        }
+        break;
+    }
+    case SystemSettings::HwClock::Localtime: {
+        if (!gucc::hwclock::set_hwclock_localtime(mountpoint)) {
+            return std::unexpected("failed to set localtime hwclock");
+        }
+        break;
+    }
+    }
+    return {};
+}
+
+}  // namespace
 
 namespace cachyos::installer {
 
@@ -65,27 +91,31 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     }
 
     // Hardware clock
-    spdlog::info("Setting hw_clock: {}", (settings.hw_clock == SystemSettings::HwClock::UTC) ? "utc"sv : "localtime"sv);
-    switch (settings.hw_clock) {
-    case SystemSettings::HwClock::UTC: {
-        if (!gucc::hwclock::set_hwclock_utc(mountpoint)) {
-            return std::unexpected("failed to set UTC hwclock");
+    if (settings.hw_clock.has_value()) {
+        auto result = apply_hw_clock(*settings.hw_clock, mountpoint);
+        if (!result) {
+            return result;
         }
-        break;
-    }
-    case SystemSettings::HwClock::Localtime: {
-        if (!gucc::hwclock::set_hwclock_localtime(mountpoint)) {
-            return std::unexpected("failed to set localtime hwclock");
-        }
-        break;
-    }
     }
     return {};
 }
 
-auto create_user(const UserSettings& settings, std::string_view mountpoint) noexcept
+auto create_user(const UserSettings& settings, std::string_view mountpoint,
+    bool hostcache, gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string> {
     spdlog::info("Creating user: {}", settings.username);
+
+    // Install shell config packages if using zsh or fish
+    const bool is_zsh  = settings.shell.ends_with("zsh");
+    const bool is_fish = settings.shell.ends_with("fish");
+    if (is_zsh || is_fish) {
+        const auto shell_name = is_zsh ? "zsh"sv : "fish"sv;
+        auto pkg              = fmt::format(FMT_COMPILE("cachyos-{}-config"), shell_name);
+        auto pkg_result       = install_packages({std::move(pkg)}, mountpoint, hostcache, child);
+        if (!pkg_result) {
+            spdlog::error("Failed to install shell config: {}", pkg_result.error());
+        }
+    }
 
     // TODO(vnepogodin): should be customizable from some sort of config
     // instead of hardcoding??
