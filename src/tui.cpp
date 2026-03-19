@@ -478,81 +478,6 @@ void chroot_interactive() noexcept {
 #endif
 }
 
-void install_grub_uefi() noexcept {
-    static constexpr auto content = "\nInstall UEFI Bootloader GRUB.\n"sv;
-    const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    /* clang-format off */
-    if (!do_install_uefi) { return; }
-    /* clang-format on */
-
-    std::string bootid{"cachyos"};
-    if (gucc::utils::exec_checked("efibootmgr | cut -d\\  -f2 | grep -q -o cachyos")) {
-        static constexpr auto bootid_content = "\nInput the name identify your grub installation. Choosing an existing name overwrites it.\n"sv;
-        if (!detail::inputbox_widget(bootid, bootid_content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
-            return;
-        }
-        bootid = std::string{gucc::utils::trim(bootid)};
-    }
-
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
-
-    utils::clear_screen();
-    // Ask if user wishes to set Grub as the default bootloader and act accordingly
-    static constexpr auto set_boot_default_body  = "Some UEFI firmware may not detect the bootloader unless it is set\nas default by copying its efi stub to"sv;
-    static constexpr auto set_boot_default_body2 = "and renaming it to bootx64.efi.\n\nIt is recommended to do so unless already using a default bootloader,\nor where intending to use multiple bootloaders.\n\nSet bootloader as default?"sv;
-
-    const auto& do_set_default_bootloader = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{} {}/EFI/boot {}\n"), set_boot_default_body, uefi_mount, set_boot_default_body2), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-
-    utils::install_grub_uefi(bootid, do_set_default_bootloader);
-    /* clang-format off */
-    if (!do_set_default_bootloader) { return; }
-    /* clang-format on */
-
-    detail::infobox_widget("\nGrub has been set as the default bootloader.\n"sv);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-}
-
-void install_refind() noexcept {
-    static constexpr auto content = "\nThis installs refind and configures it to automatically detect your kernels.\nNo support for encrypted /boot or intel microcode.\nThese require manual boot stanzas or using a different bootloader.\n"sv;
-    const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    /* clang-format off */
-    if (!do_install_uefi) { return; }
-    /* clang-format on */
-
-    utils::install_refind();
-
-    detail::infobox_widget("\nRefind was succesfully installed\n");
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-}
-
-void install_limine() noexcept {
-    static constexpr auto content = "\nThis installs Limine and configures it for Btrfs support.\nNo support for encrypted /boot.\n"sv;
-    const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    /* clang-format off */
-    if (!do_install_uefi) { return; }
-    /* clang-format on */
-
-    utils::install_limine();
-
-    detail::infobox_widget("\nLimine was succesfully installed\n");
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-}
-
-void install_systemd_boot() noexcept {
-    static constexpr auto content = "\nThis installs systemd-boot and generates boot entries\nfor the currently installed kernels.\nThis bootloader requires your kernels to be on the UEFI partition.\nThis is achieved by mounting the UEFI partition to /boot.\n"sv;
-    const auto& do_install_uefi   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    /* clang-format off */
-    if (!do_install_uefi) { return; }
-    /* clang-format on */
-
-    utils::install_systemd_boot();
-
-    detail::infobox_widget("\nSystemd-boot was installed\n"sv);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-}
-
 void uefi_bootloader() noexcept {
 #ifdef NDEVENV
     // Ensure again that efivarfs is mounted
@@ -590,20 +515,7 @@ void uefi_bootloader() noexcept {
         const auto& bootloader_bl = bootloader_types[static_cast<std::size_t>(selected)];
         config_data["BOOTLOADER"] = std::string{gucc::bootloader::bootloader_to_string(bootloader_bl)};
 
-        switch (bootloader_bl) {
-        case BootloaderType::Grub:
-            tui::install_grub_uefi();
-            break;
-        case BootloaderType::Refind:
-            tui::install_refind();
-            break;
-        case BootloaderType::SystemdBoot:
-            tui::install_systemd_boot();
-            break;
-        case BootloaderType::Limine:
-            tui::install_limine();
-            break;
-        }
+        utils::install_bootloader(bootloader_bl);
         screen.ExitLoopClosure()();
     };
 
@@ -796,7 +708,7 @@ void bios_bootloader() {
     auto* config_instance     = Config::instance();
     auto& config_data         = config_instance->data();
     config_data["BOOTLOADER"] = menu_entries[static_cast<std::size_t>(selected)];
-    utils::bios_bootloader(BootloaderType::Grub);
+    utils::install_bootloader(BootloaderType::Grub);
 }
 
 void enable_autologin() {
@@ -903,14 +815,14 @@ void auto_partition() noexcept {
     spdlog::info("Auto-partition schema stored with {} entries", partitions.size());
 
     // Show created partitions
-    const auto& disk_list = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk {} -o NAME,TYPE,FSTYPE,SIZE"), device_info));
+    const auto& disk_list = gucc::disk::format_partition_table(device_info);
     detail::msgbox_widget(disk_list, size(HEIGHT, GREATER_THAN, 5));
 }
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    const auto& lsblk = gucc::utils::exec(R"(lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep "disk\|part\|lvm\|crypt\|NAME\|MODEL\|TYPE\|FSTYPE\|SIZE\|MOUNTPOINT")");
-    detail::msgbox_widget(lsblk, size(HEIGHT, GREATER_THAN, 5));
+    const auto& device_table = gucc::disk::format_device_table();
+    detail::msgbox_widget(device_table, size(HEIGHT, GREATER_THAN, 5));
 }
 
 // Refresh pacman keys
