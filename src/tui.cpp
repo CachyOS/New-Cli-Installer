@@ -815,14 +815,14 @@ void auto_partition() noexcept {
     spdlog::info("Auto-partition schema stored with {} entries", partitions.size());
 
     // Show created partitions
-    const auto& disk_list = gucc::disk::format_partition_table(device_info);
+    const auto& disk_list = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk {} -o NAME,TYPE,FSTYPE,SIZE"), device_info));
     detail::msgbox_widget(disk_list, size(HEIGHT, GREATER_THAN, 5));
 }
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    const auto& device_table = gucc::disk::format_device_table();
-    detail::msgbox_widget(device_table, size(HEIGHT, GREATER_THAN, 5));
+    const auto& lsblk = gucc::utils::exec(R"(lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep "disk\|part\|lvm\|crypt\|NAME\|MODEL\|TYPE\|FSTYPE\|SIZE\|MOUNTPOINT")");
+    detail::msgbox_widget(lsblk, size(HEIGHT, GREATER_THAN, 5));
 }
 
 // Refresh pacman keys
