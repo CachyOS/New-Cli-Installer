@@ -128,6 +128,9 @@ struct MountApplicationResult {
 [[nodiscard]] auto generate_fstab(std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
 
+/// Loads kernel module for specific filesystem if needed.
+void load_filesystem_module(std::string_view fstype) noexcept;
+
 }  // namespace cachyos::installer
 
 #endif  // CACHYOS_INSTALLER_DISK_HPP

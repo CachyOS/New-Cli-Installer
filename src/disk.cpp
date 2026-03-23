@@ -18,7 +18,6 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/swap.hpp"
 #include "gucc/system_query.hpp"
-#include "gucc/zfs.hpp"
 
 #include <algorithm>   // for find_if, transform
 #include <filesystem>  // for create_directories
@@ -234,35 +233,22 @@ std::vector<std::string> lvm_show_vg() noexcept {
 
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
 bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zfs_zpool_name) noexcept {
-    static constexpr auto zpool_options{"-f -o ashift=12 -o autotrim=on -O mountpoint=none -O acltype=posixacl -O atime=off -O relatime=off -O xattr=sa -O normalization=formD -O dnodesize=auto"sv};
-
-    // next create the datasets including their parents
-    const std::vector<gucc::fs::ZfsDataset> default_zfs_datasets{
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT"), zfs_zpool_name), .mountpoint = "none"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos"), zfs_zpool_name), .mountpoint = "none"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zfs_zpool_name), .mountpoint = "/"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zfs_zpool_name), .mountpoint = "/home"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zfs_zpool_name), .mountpoint = "/var/cache"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zfs_zpool_name), .mountpoint = "/var/log"s},
-    };
-    // passphrase should be known at this time, e.g. passing as arg to zfs_auto_pres func
-    const gucc::fs::ZfsSetupConfig zfs_setup_config{.zpool_name = std::string(zfs_zpool_name), .zpool_options = std::string(zpool_options), .passphrase = std::nullopt, .datasets = default_zfs_datasets};
-
-#ifdef NDEVENV
-    if (!gucc::fs::zfs_create_with_config(partition, zfs_setup_config)) {
-        spdlog::error("Failed to create ZFS automatically");
-        return false;
-    }
-#else
-    spdlog::info("Created ZFS automatically with: {}", zfs_setup_config);
-#endif
-
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
-    config_data["ZFS"]    = 1;
 
-    // save setup config
-    config_data["ZFS_SETUP_CONFIG"] = zfs_setup_config;
+#ifdef NDEVENV
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    auto result = cachyos::installer::zfs_auto_pres(partition, zfs_zpool_name, mountpoint);
+    if (!result) {
+        spdlog::error("{}", result.error());
+        return false;
+    }
+    config_data["ZFS_SETUP_CONFIG"] = std::move(*result);
+#else
+    spdlog::info("[DRY-RUN] Would create ZFS automatically on {} with pool {}", partition, zfs_zpool_name);
+#endif
+
+    config_data["ZFS"] = 1;
 
     // insert zpool name into config
     auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
@@ -276,40 +262,22 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
-    static constexpr auto zpool_options{"-f -o ashift=12 -o autotrim=on -O mountpoint=none -O acltype=posixacl -O atime=off -O relatime=off -O xattr=sa -O normalization=formD -O dnodesize=auto"sv};
-
 #ifdef NDEVENV
-    std::string device_path{partition};
-
-    // Find the PARTUUID of the partition
-    const auto& blk_devices = gucc::disk::list_block_devices();
-    if (blk_devices) {
-        const auto& dev = gucc::disk::find_device_by_name(*blk_devices, partition);
-        if (dev && dev->partuuid && !dev->partuuid->empty()) {
-            device_path = *dev->partuuid;
-        }
-    }
-
-    if (!gucc::fs::zfs_create_zpool(device_path, pool_name, zpool_options)) {
-        spdlog::error("Failed to create zpool!");
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    auto result = cachyos::installer::zfs_create_zpool(partition, pool_name, mountpoint);
+    if (!result) {
+        spdlog::error("{}", result.error());
         return false;
     }
 #else
-    spdlog::info("zfs zpool options := '{}', on '{}'", zpool_options, partition);
+    spdlog::info("[DRY-RUN] Would create zpool '{}' on '{}'", pool_name, partition);
 #endif
 
     config_data["ZFS"] = 1;
 
-#ifdef NDEVENV
-    // Since zfs manages mountpoints, we export it and then import with a root of MOUNTPOINT
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), pool_name), true);
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, pool_name), true);
-#endif
-
     // insert zpool name into config
     auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
-    zfs_zpool_names.emplace_back(pool_name.data());
+    zfs_zpool_names.emplace_back(pool_name);
 
     return true;
 }
@@ -339,11 +307,7 @@ void select_filesystem(std::string_view file_sys) noexcept {
 
     // Load kernel modules for specific filesystems
 #ifdef NDEVENV
-    if (fs_type == gucc::fs::FilesystemType::Btrfs) {
-        gucc::utils::exec("modprobe btrfs"sv);
-    } else if (fs_type == gucc::fs::FilesystemType::F2fs) {
-        gucc::utils::exec("modprobe f2fs"sv);
-    }
+    cachyos::installer::load_filesystem_module(file_sys);
 #endif
 }
 

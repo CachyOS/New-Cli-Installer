@@ -9,7 +9,9 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition_config.hpp"
+#include "gucc/subprocess.hpp"
 #include "gucc/partitioning.hpp"
+#include "gucc/subprocess.hpp"
 #include "gucc/swap.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/umount_partitions.hpp"
@@ -134,17 +136,16 @@ auto auto_partition(std::string_view device, std::string_view system_mode,
     return partitions;
 }
 
-auto secure_wipe(std::string_view device,
-    const ExecutionCallbacks& /*callbacks*/) noexcept
+auto secure_wipe(std::string_view device, gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string> {
     // Ensure wipe tool is installed
-    auto needed_result = install_needed("wipe", {});
+    auto needed_result = install_needed("wipe", child);
     if (!needed_result) {
         return std::unexpected(needed_result.error());
     }
 
     const auto& cmd = fmt::format(FMT_COMPILE("wipe -Ifre {}"), device);
-    if (!gucc::utils::exec_checked(cmd)) {
+    if (!gucc::utils::exec_follow({"/bin/sh", "-c", cmd}, child)) {
         return std::unexpected(fmt::format("failed to wipe device: {}", device));
     }
     return {};
@@ -163,6 +164,7 @@ auto zfs_auto_pres(std::string_view partition,
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zpool_name), .mountpoint = "/var/log"s},
     };
 
+    // passphrase should be known at this time, e.g. passing as arg to zfs_auto_pres func
     gucc::fs::ZfsSetupConfig zfs_setup_config{
         .zpool_name    = std::string(zpool_name),
         .zpool_options = std::string(kDefaultZpoolOptions),
@@ -411,6 +413,19 @@ auto generate_fstab(std::string_view mountpoint) noexcept
         return std::unexpected("failed to generate fstab");
     }
     return {};
+}
+
+void load_filesystem_module(std::string_view fstype) noexcept {
+    const auto fs_type = gucc::fs::string_to_filesystem_type(fstype);
+    if (fs_type == gucc::fs::FilesystemType::Btrfs) {
+        if (!gucc::utils::exec_checked("modprobe btrfs"sv)) {
+            spdlog::warn("failed to load btrfs kernel module");
+        }
+    } else if (fs_type == gucc::fs::FilesystemType::F2fs) {
+        if (!gucc::utils::exec_checked("modprobe f2fs"sv)) {
+            spdlog::warn("failed to load f2fs kernel module");
+        }
+    }
 }
 
 }  // namespace cachyos::installer
