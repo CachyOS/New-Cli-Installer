@@ -536,13 +536,30 @@ auto apply_root_partition_actions(const RootPartitionSelection& selection, const
     return apply_btrfs_subvolumes(btrfs_subvols, selection, mountpoint_info, partition_schema);
 }
 
-auto apply_mount_selections(const MountSelections& selections) noexcept -> bool {
+auto convert_additional_selections(const std::vector<AdditionalPartSelection>& additional)
+    -> std::vector<cachyos::installer::AdditionalPartSelection> {
+    std::vector<cachyos::installer::AdditionalPartSelection> result;
+    result.reserve(additional.size());
+    for (const auto& p : additional) {
+        result.push_back({
+            .device           = p.device,
+            .mountpoint       = p.mountpoint,
+            .fstype           = p.fstype,
+            .mkfs_command     = p.mkfs_command,
+            .mount_opts       = p.mount_opts,
+            .format_requested = p.format_requested,
+        });
+    }
+    return result;
+}
+
+auto apply_mount_selections_interactive(const MountSelections& selections) noexcept -> bool {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
     std::vector<gucc::fs::Partition> partitions{};
 
-    // 1. Apply root partition (format + mount + btrfs subvols)
+    // 1. Apply root partition (format + mount + btrfs subvols including existing detection)
     if (!apply_root_partition_actions(selections.root, selections.btrfs_subvolumes, partitions)) {
         spdlog::error("Failed to apply root partition actions for {}", selections.root.device);
         return false;
@@ -555,6 +572,7 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
     }
 
     // 3. Apply additional partitions
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     for (const auto& p : selections.additional) {
         // Format if requested
         if (p.format_requested) {
@@ -571,7 +589,6 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
         }
 
         // Mount
-        const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
         if (!utils::mount_partition(p.device, mountpoint_info, p.mountpoint, p.mount_opts)) {
             spdlog::error("Failed to mount {} at {}", p.device, p.mountpoint);
             return false;
@@ -586,9 +603,7 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
             .device     = p.device,
             .mount_opts = p.mount_opts,
         };
-
-        const auto& part_uuid = gucc::fs::utils::get_device_uuid(p.device);
-        part_struct.uuid_str  = part_uuid;
+        part_struct.uuid_str = gucc::fs::utils::get_device_uuid(p.device);
 
         // get luks information about the additional partition
         const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
@@ -634,6 +649,81 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
     utils::dump_partitions_to_log(partitions);
     config_data["PARTITION_SCHEMA"] = partitions;
     spdlog::info("Partition schema stored with {} entries", partitions.size());
+
+    return true;
+}
+
+auto apply_mount_selections(const MountSelections& selections) noexcept -> bool {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    // Existing btrfs subvols require TUI interaction — handle locally.
+    // Only applies when root is btrfs, not formatting, and no subvols were selected.
+    const bool may_have_existing_subvols = selections.btrfs_subvolumes.empty()
+        && !selections.root.format_requested
+        && (selections.root.fstype == "btrfs"sv || selections.root.fstype == "skip"sv);
+    if (may_have_existing_subvols) {
+        return apply_mount_selections_interactive(selections);
+    }
+
+#ifdef NDEVENV
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+
+    // Convert TUI selections to library types
+    const cachyos::installer::MountSelections lib_selections{
+        .root = {
+            .device           = selections.root.device,
+            .fstype           = selections.root.fstype,
+            .mkfs_command     = selections.root.mkfs_command,
+            .mount_opts       = selections.root.mount_opts,
+            .format_requested = selections.root.format_requested,
+        },
+        .swap = {
+            .type          = static_cast<cachyos::installer::SwapSelection::Type>(selections.swap.type),
+            .device        = selections.swap.device,
+            .swapfile_size = selections.swap.swapfile_size,
+            .needs_mkswap  = selections.swap.needs_mkswap,
+        },
+        .esp = {
+            .device           = selections.esp.device,
+            .mountpoint       = selections.esp.mountpoint,
+            .format_requested = selections.esp.format_requested,
+        },
+        .additional       = convert_additional_selections(selections.additional),
+        .btrfs_subvolumes = selections.btrfs_subvolumes,
+    };
+
+    auto result = cachyos::installer::apply_mount_selections(lib_selections, mountpoint_info);
+    if (!result) {
+        spdlog::error("{}", result.error());
+        return false;
+    }
+
+    auto& [partitions, swap_device, lvm_sep_boot] = *result;
+
+    // Store results in Config
+    if (!swap_device.empty()) {
+        config_data["SWAP_DEVICE"] = std::move(swap_device);
+    }
+    config_data["LVM_SEP_BOOT"] = lvm_sep_boot;
+    if (!selections.esp.device.empty()) {
+        config_data["UEFI_PART"]    = selections.esp.device;
+        config_data["UEFI_MOUNT"]   = selections.esp.mountpoint;
+        const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, selections.esp.mountpoint);
+        tui::confirm_mount(part_mountpoint, false);
+    }
+
+    // Detect LUKS
+    utils::get_cryptroot();
+    utils::get_cryptboot();
+#else
+    spdlog::info("[DRY-RUN] Would apply mount selections for root={}", selections.root.device);
+    std::vector<gucc::fs::Partition> partitions{
+        gucc::fs::Partition{.fstype = selections.root.fstype, .mountpoint = "/"s, .device = selections.root.device},
+    };
+#endif
+    utils::dump_partitions_to_log(partitions);
+    config_data["PARTITION_SCHEMA"] = std::move(partitions);
 
     return true;
 }

@@ -10,6 +10,7 @@
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
+#include "gucc/swap.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/umount_partitions.hpp"
 #include "gucc/zfs.hpp"
@@ -17,6 +18,7 @@
 #include <algorithm>    // for transform
 #include <charconv>     // for from_chars
 #include <expected>     // for unexpected
+#include <filesystem>   // for create_directories
 #include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -52,6 +54,25 @@ constexpr auto bootloader_default_mount(gucc::bootloader::BootloaderType bootloa
         return "/boot/efi"sv;
     }
     return "unknown bootloader"sv;
+}
+
+/// Queries LUKS/LVM state for a partition and populates the Partition struct.
+void query_partition_luks(std::string_view device, gucc::fs::Partition& part) noexcept {
+    std::int32_t is_luks{};
+    std::int32_t is_lvm{};
+    std::string luks_name;
+    std::string luks_dev;
+    std::string luks_uuid;
+
+    // TODO(vnepogodin): should check query res?
+    gucc::mount::query_partition(device, is_luks, is_lvm, luks_name, luks_dev, luks_uuid);
+
+    if (is_luks && !luks_name.empty()) {
+        part.luks_mapper_name = luks_name;
+    }
+    if (is_luks && !luks_uuid.empty()) {
+        part.luks_uuid = luks_uuid;
+    }
 }
 
 }  // namespace
@@ -182,10 +203,153 @@ auto zfs_create_zpool(std::string_view partition,
     return {};
 }
 
-auto apply_mount_selections(const MountSelections& /*selections*/,
-    std::string_view /*mountpoint*/) noexcept
-    -> std::expected<std::vector<gucc::fs::Partition>, std::string> {
-    return std::unexpected("not yet implemented");
+auto apply_mount_selections(const MountSelections& selections,
+    std::string_view mountpoint) noexcept
+    -> std::expected<MountApplicationResult, std::string> {
+    spdlog::info("Applying mount selections on {}", mountpoint);
+    MountApplicationResult result{};
+
+    // 1. Format root partition if requested
+    if (selections.root.format_requested) {
+        const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selections.root.mkfs_command, selections.root.device);
+        if (!gucc::utils::exec_checked(mkfs_cmd)) {
+            return std::unexpected(fmt::format("failed to format root partition {} with {}", selections.root.device, selections.root.mkfs_command));
+        }
+        spdlog::info("Formatted {} with {}", selections.root.device, selections.root.mkfs_command);
+    }
+
+    // 2. Mount root partition
+    {
+        std::error_code ec{};
+        std::filesystem::create_directories(std::string{mountpoint}, ec);
+        if (ec) {
+            return std::unexpected(fmt::format("failed to create root mount directory {}: {}", mountpoint, ec.message()));
+        }
+        if (!gucc::mount::mount_partition(selections.root.device, mountpoint, selections.root.mount_opts)) {
+            return std::unexpected(fmt::format("failed to mount root partition {} at {}", selections.root.device, mountpoint));
+        }
+    }
+
+    // 3. Build root partition struct
+    {
+        const auto& mount_fstype = gucc::fs::utils::get_mountpoint_fs(mountpoint);
+        std::string root_fs;
+        if (!mount_fstype.empty()) {
+            root_fs = mount_fstype;
+        } else if (selections.root.fstype == "skip"sv) {
+            root_fs = "unknown"s;
+        } else {
+            root_fs = selections.root.fstype;
+        }
+
+        auto root_part = gucc::fs::Partition{
+            .fstype     = std::move(root_fs),
+            .mountpoint = "/"s,
+            .device     = selections.root.device,
+            .mount_opts = selections.root.mount_opts,
+        };
+        root_part.uuid_str = gucc::fs::utils::get_device_uuid(selections.root.device);
+        query_partition_luks(selections.root.device, root_part);
+        result.partitions.emplace_back(std::move(root_part));
+    }
+
+    // 4. BTRFS subvolumes
+    if (!selections.btrfs_subvolumes.empty()) {
+        auto btrfs_res = apply_btrfs_subvolumes(selections.btrfs_subvolumes,
+            selections.root, mountpoint, result.partitions);
+        if (!btrfs_res) {
+            return std::unexpected(btrfs_res.error());
+        }
+    }
+
+    // 5. Swap
+    switch (selections.swap.type) {
+    case SwapSelection::Type::Swapfile: {
+        const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
+        if (!gucc::swap::make_swapfile(mountpoint, selections.swap.swapfile_size)) {
+            return std::unexpected("failed to create swapfile");
+        }
+        result.swap_device = swapfile_path;
+        break;
+    }
+    case SwapSelection::Type::Partition: {
+        auto swap_opts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::LinuxSwap, false);
+        auto swap_part = gucc::fs::Partition{
+            .fstype     = "linuxswap"s,
+            .mountpoint = ""s,
+            .device     = selections.swap.device,
+            .mount_opts = std::move(swap_opts),
+        };
+        if (!gucc::swap::make_swap_partition(swap_part)) {
+            return std::unexpected("failed to create swap partition");
+        }
+        result.swap_device = selections.swap.device;
+        swap_part.uuid_str = gucc::fs::utils::get_device_uuid(selections.swap.device);
+        result.partitions.emplace_back(std::move(swap_part));
+        break;
+    }
+    case SwapSelection::Type::None:
+        break;
+    }
+
+    // 6. Additional partitions
+    for (const auto& p : selections.additional) {
+        if (p.format_requested) {
+            const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), p.mkfs_command, p.device);
+            if (!gucc::utils::exec_checked(mkfs_cmd)) {
+                return std::unexpected(fmt::format("failed to format {} with {}", p.device, p.mkfs_command));
+            }
+            spdlog::info("Formatted {} with {}", p.device, p.mkfs_command);
+        }
+
+        const auto& mount_dir = fmt::format(FMT_COMPILE("{}{}"), mountpoint, p.mountpoint);
+        {
+            std::error_code ec{};
+            std::filesystem::create_directories(mount_dir, ec);
+            if (ec) {
+                return std::unexpected(fmt::format("failed to create directory {}: {}", mount_dir, ec.message()));
+            }
+        }
+        if (!gucc::mount::mount_partition(p.device, mount_dir, p.mount_opts)) {
+            return std::unexpected(fmt::format("failed to mount {} at {}", p.device, p.mountpoint));
+        }
+
+        const auto& part_fs = gucc::fs::utils::get_mountpoint_fs(mount_dir);
+        auto part           = gucc::fs::Partition{
+            .fstype     = part_fs.empty() ? p.fstype : std::string{part_fs},
+            .mountpoint = p.mountpoint,
+            .device     = p.device,
+            .mount_opts = p.mount_opts,
+        };
+        part.uuid_str = gucc::fs::utils::get_device_uuid(p.device);
+        query_partition_luks(p.device, part);
+        result.partitions.emplace_back(std::move(part));
+
+        // Detect separate /boot for Grub configuration
+        if (p.mountpoint == "/boot"sv) {
+            result.lvm_sep_boot      = 1;
+            const auto& boot_devices = gucc::disk::list_block_devices();
+            if (boot_devices) {
+                const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, p.device);
+                if (boot_dev && boot_dev->type == "lvm") {
+                    result.lvm_sep_boot = 2;
+                }
+            }
+        }
+    }
+
+    // 7. ESP
+    if (!selections.esp.device.empty()) {
+        auto esp_result = setup_esp_partition(selections.esp.device, selections.esp.mountpoint,
+            mountpoint, selections.esp.format_requested);
+        if (!esp_result) {
+            return std::unexpected(esp_result.error());
+        }
+        result.partitions.emplace_back(std::move(*esp_result));
+    }
+
+    spdlog::info("Mount selections applied: {} partitions", result.partitions.size());
+    return result;
 }
 
 auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& subvols, const RootPartitionSelection& selection,

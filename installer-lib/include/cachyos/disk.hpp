@@ -66,6 +66,13 @@ struct MountSelections {
     std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
 };
 
+/// Result of applying mount selections.
+struct MountApplicationResult {
+    std::vector<gucc::fs::Partition> partitions;
+    std::string swap_device;
+    std::int32_t lvm_sep_boot{0};
+};
+
 /// Returns the default set of btrfs subvolumes used by CachyOS.
 [[nodiscard]] auto default_btrfs_subvolumes() noexcept -> std::vector<gucc::fs::BtrfsSubvolume>;
 
@@ -94,10 +101,10 @@ struct MountSelections {
     std::string_view pool_name, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
 
-/// Applies the user's partition/mount selections and returns the resulting partition schema.
+/// Applies the user's partition/mount selections: formats, mounts, and builds partition schema.
 [[nodiscard]] auto apply_mount_selections(const MountSelections& selections,
     std::string_view mountpoint) noexcept
-    -> std::expected<std::vector<gucc::fs::Partition>, std::string>;
+    -> std::expected<MountApplicationResult, std::string>;
 
 /// Creates btrfs subvolumes according to the selection.
 [[nodiscard]] auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& subvols,
