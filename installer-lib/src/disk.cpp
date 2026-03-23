@@ -9,7 +9,6 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition_config.hpp"
-#include "gucc/subprocess.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/subprocess.hpp"
 #include "gucc/swap.hpp"
@@ -18,7 +17,6 @@
 #include "gucc/zfs.hpp"
 
 #include <algorithm>    // for transform
-#include <charconv>     // for from_chars
 #include <expected>     // for unexpected
 #include <filesystem>   // for create_directories
 #include <ranges>       // for ranges::*
@@ -34,15 +32,6 @@ using namespace std::string_view_literals;
 using namespace std::string_literals;
 
 namespace {
-
-// TODO(vnepogodin): refactor to util header/module
-template <typename T = std::int32_t>
-    requires std::numeric_limits<T>::is_integer
-inline T to_int(const std::string_view& str) {
-    T result = 0;
-    std::from_chars(str.data(), str.data() + str.size(), result);
-    return result;
-}
 
 /// Default ZFS pool creation options shared by all ZFS setup paths.
 constexpr auto kDefaultZpoolOptions{"-f -o ashift=12 -o autotrim=on -O mountpoint=none -O acltype=posixacl -O atime=off -O relatime=off -O xattr=sa -O normalization=formD -O dnodesize=auto"sv};
@@ -105,15 +94,36 @@ auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<s
     return result;
 }
 
-auto is_volume_removable(std::string_view device) noexcept -> bool {
-    // NOTE: for /mnt on /dev/mapper/cryptroot `root_name` will be cryptroot
-    const auto& root_name = gucc::utils::exec("mount | awk '/\\/mnt / {print $1}' | sed s~/dev/mapper/~~g | sed s~/dev/~~g");
+auto is_volume_removable(std::string_view mountpoint) noexcept -> bool {
+    // Find the block device mounted at the given mountpoint
+    const auto& devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        spdlog::error("Failed to list block devices for removable check");
+        return false;
+    }
 
-    // NOTE: for /mnt on /dev/mapper/cryptroot on /dev/sda2 with `root_name`=cryptroot, `root_device` will be sda
-    const auto& root_device = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -i | tac | sed -r 's/^[^[:alnum:]]+//' | sed -n -e '/{}/,/disk/p' | {}"), root_name, "awk '/disk/ {print $1}'"));
-    spdlog::info("root_name: {}. root_device: {}", root_name, root_device);
-    const auto& removable = gucc::utils::exec(fmt::format(FMT_COMPILE("cat /sys/block/{}/removable"), root_device));
-    return to_int(removable) == 1;
+    const auto& mounted_dev = gucc::disk::find_device_by_mountpoint(*devices, mountpoint);
+    if (!mounted_dev) {
+        spdlog::error("No block device found at mountpoint {}", mountpoint);
+        return false;
+    }
+
+    // Walk the pkname chain (handles mapper → crypt → part → disk) to find the parent disk
+    const auto& disk_dev = gucc::disk::find_ancestor_of_type(*devices, mounted_dev->name, "disk"sv);
+    if (!disk_dev) {
+        spdlog::error("Could not find parent disk for {}", mounted_dev->name);
+        return false;
+    }
+
+    // Query disk info which includes the sysfs removable flag
+    const auto& disk_info = gucc::disk::get_disk_info(disk_dev->name);
+    if (!disk_info) {
+        spdlog::error("Failed to get disk info for {}", disk_dev->name);
+        return false;
+    }
+
+    spdlog::info("root_device: {}. is_removable: {}", disk_info->device, disk_info->is_removable);
+    return disk_info->is_removable;
 }
 
 auto auto_partition(std::string_view device, std::string_view system_mode,

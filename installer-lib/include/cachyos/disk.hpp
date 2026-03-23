@@ -80,7 +80,7 @@ struct MountApplicationResult {
 [[nodiscard]] auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string>;
 
 /// Returns true if the installation target volume is removable (USB, etc.).
-[[nodiscard]] auto is_volume_removable(std::string_view device) noexcept -> bool;
+[[nodiscard]] auto is_volume_removable(std::string_view mountpoint) noexcept -> bool;
 
 /// Performs automatic partitioning of the device.
 [[nodiscard]] auto auto_partition(std::string_view device, std::string_view system_mode,
