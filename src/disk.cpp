@@ -12,16 +12,13 @@
 #include "gucc/btrfs.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
-#include "gucc/mount_partitions.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
-#include "gucc/swap.hpp"
 #include "gucc/system_query.hpp"
 
-#include <algorithm>   // for find_if, transform
-#include <filesystem>  // for create_directories
-#include <ranges>      // for ranges::*
+#include <algorithm>  // for find_if, transform
+#include <ranges>     // for ranges::*
 
 #include <ftxui/component/component.hpp>           // for Renderer, Button
 #include <ftxui/component/component_options.hpp>   // for ButtonOption
@@ -32,7 +29,6 @@
 #include <fmt/compile.h>
 #include <fmt/core.h>
 
-namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 using namespace std::string_literals;
 
@@ -46,6 +42,15 @@ constexpr auto is_root_btrfs_part(const gucc::fs::Partition& part) noexcept -> b
 constexpr auto find_root_btrfs_part(auto&& parts) noexcept {
     return std::ranges::find_if(parts,
         [](auto&& part) { return is_root_btrfs_part(part); });
+}
+
+/// Store LUKS/LVM state from a mount result into the Config singleton.
+void store_luks_config(auto& config_data, cachyos::installer::MountPartitionResult&& mount_result) noexcept {
+    std::get<std::int32_t>(config_data["LUKS"])     = mount_result.is_luks;
+    std::get<std::int32_t>(config_data["LVM"])      = mount_result.is_lvm;
+    std::get<std::string>(config_data["LUKS_NAME"]) = std::move(mount_result.luks_name);
+    std::get<std::string>(config_data["LUKS_DEV"])  = std::move(mount_result.luks_dev);
+    std::get<std::string>(config_data["LUKS_UUID"]) = std::move(mount_result.luks_uuid);
 }
 
 }  // namespace
@@ -238,7 +243,7 @@ bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zf
 
 #ifdef NDEVENV
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    auto result = cachyos::installer::zfs_auto_pres(partition, zfs_zpool_name, mountpoint);
+    auto result            = cachyos::installer::zfs_auto_pres(partition, zfs_zpool_name, mountpoint);
     if (!result) {
         spdlog::error("{}", result.error());
         return false;
@@ -264,7 +269,7 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
 
 #ifdef NDEVENV
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    auto result = cachyos::installer::zfs_create_zpool(partition, pool_name, mountpoint);
+    auto result            = cachyos::installer::zfs_create_zpool(partition, pool_name, mountpoint);
     if (!result) {
         spdlog::error("{}", result.error());
         return false;
@@ -316,46 +321,16 @@ auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<s
 }
 
 auto mount_partition(std::string_view partition, std::string_view mountpoint, std::string_view mount_dev, std::string_view mount_opts) noexcept -> bool {
-    // Make the mount directory
-    const auto& mount_dir = fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev);
 #ifdef NDEVENV
-    std::error_code err{};
-    ::fs::create_directories(mount_dir, err);
-    if (err) {
-        spdlog::error("Failed to make directory {}: {}", mount_dev, err.message());
+    auto result = cachyos::installer::mount_partition(partition, mountpoint, mount_dev, mount_opts);
+    if (!result) {
+        spdlog::error("{}", result.error());
         return false;
     }
-#endif
-
-    // TODO(vnepogodin): use libmount instead.
-    // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
-#ifdef NDEVENV
-    if (!gucc::mount::mount_partition(partition, mount_dir, mount_opts)) {
-        spdlog::error("Failed to mount partition {} at {} with {}", partition, mount_dir, mount_opts);
-        return false;
-    }
+    store_luks_config(Config::instance()->data(), std::move(*result));
 #else
-    spdlog::info("[DRY-RUN] Would mount {} at {} with options '{}'", partition, mount_dir, mount_opts);
+    spdlog::info("[DRY-RUN] Would mount {} at {}{} with options '{}'", partition, mountpoint, mount_dev, mount_opts);
 #endif
-
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    auto& luks_name       = std::get<std::string>(config_data["LUKS_NAME"]);
-    auto& luks_dev        = std::get<std::string>(config_data["LUKS_DEV"]);
-    auto& luks_uuid       = std::get<std::string>(config_data["LUKS_UUID"]);
-
-    auto& is_luks = std::get<std::int32_t>(config_data["LUKS"]);
-    auto& is_lvm  = std::get<std::int32_t>(config_data["LVM"]);
-
-    // Use the actual mounted device path for querying LUKS/LVM, which might be a mapper device
-    const auto& mounted_device = gucc::utils::exec(fmt::format("findmnt -n -o SOURCE {}", mount_dir));
-    const auto& query_device   = mounted_device.empty() ? partition : mounted_device;
-    if (!gucc::mount::query_partition(query_device, is_luks, is_lvm, luks_name, luks_dev, luks_uuid)) {
-        spdlog::error("Failed to query partition: {} (queried as {})", partition, query_device);
-        return false;
-    }
-
-    spdlog::debug("partition '{}': is_luks:={};is_lvm:={};luks_name:='{}';luks_dev:='{}';luks_uuid:='{}'", partition, is_luks, is_lvm, luks_name, luks_dev, luks_uuid);
     return true;
 }
 
@@ -368,43 +343,40 @@ auto apply_swap_selection(const SwapSelection& swap, std::vector<gucc::fs::Parti
     auto* config_instance       = Config::instance();
     auto& config_data           = config_instance->data();
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& swapfile_path   = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint_info);
 
+#ifdef NDEVENV
+    const cachyos::installer::SwapSelection lib_swap{
+        .type          = static_cast<cachyos::installer::SwapSelection::Type>(swap.type),
+        .device        = swap.device,
+        .swapfile_size = swap.swapfile_size,
+    };
+    auto result = cachyos::installer::apply_swap(lib_swap, mountpoint_info);
+    if (!result) {
+        spdlog::error("{}", result.error());
+        return false;
+    }
+    if (!result->swap_device.empty()) {
+        config_data["SWAP_DEVICE"] = std::move(result->swap_device);
+    }
+    if (result->swap_partition) {
+        utils::dump_partition_to_log(*result->swap_partition);
+        partitions.emplace_back(std::move(*result->swap_partition));
+    }
+#else
     switch (swap.type) {
-    case SwapSelection::Type::Swapfile: {
-#ifdef NDEVENV
-        if (!gucc::swap::make_swapfile(mountpoint_info, swap.swapfile_size)) {
-            spdlog::error("Failed to create swapfile: {}", swapfile_path);
-            return false;
-        }
-#endif
-        config_data["SWAP_DEVICE"] = swapfile_path;
-        return true;
-    }
-    case SwapSelection::Type::Partition: {
-        // TODO(vnepogodin): handle swap partition mount options?
-        auto swap_mountopts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::LinuxSwap, false);
-        auto swap_partition = gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = swap.device, .mount_opts = std::move(swap_mountopts)};
-
-#ifdef NDEVENV
-        if (!gucc::swap::make_swap_partition(swap_partition)) {
-            spdlog::error("Failed to create swap partition");
-            return false;
-        }
-#endif
+    case SwapSelection::Type::Swapfile:
+        spdlog::info("[DRY-RUN] Would create swapfile at {}/swapfile (size: {})", mountpoint_info, swap.swapfile_size);
+        config_data["SWAP_DEVICE"] = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint_info);
+        break;
+    case SwapSelection::Type::Partition:
+        spdlog::info("[DRY-RUN] Would create swap partition on {}", swap.device);
         config_data["SWAP_DEVICE"] = swap.device;
-
-        // TODO(vnepogodin): handle luks information
-        const auto& part_uuid   = gucc::fs::utils::get_device_uuid(swap.device);
-        swap_partition.uuid_str = part_uuid;
-        // insert swap partition
-        utils::dump_partition_to_log(swap_partition);
-        partitions.emplace_back(std::move(swap_partition));
-        return true;
-    }
+        partitions.emplace_back(gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = swap.device});
+        break;
     case SwapSelection::Type::None:
-        return true;
+        break;
     }
+#endif
     return true;
 }
 
@@ -435,69 +407,61 @@ auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partitio
 }
 
 auto apply_root_partition_actions(const RootPartitionSelection& selection, const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvols, std::vector<gucc::fs::Partition>& partition_schema) noexcept -> bool {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    // 1. Format the partition if requested (already approved in preview)
-    if (selection.format_requested) {
 #ifdef NDEVENV
-        const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
-        if (!gucc::utils::exec_checked(mkfs_cmd)) {
-            spdlog::error("Failed to format partition {} with command: {}", selection.device, selection.mkfs_command);
-            return false;
-        }
-        spdlog::info("Formatted {} with {}", selection.device, selection.mkfs_command);
-#else
-        spdlog::info("[DRY-RUN] Would format {} with command: {}", selection.device, selection.mkfs_command);
-#endif
-    }
-
-    // 2. Mount the partition
-    auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
-    auto& luks_dev  = std::get<std::string>(config_data["LUKS_DEV"]);
-    auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
-    auto& is_luks   = std::get<std::int32_t>(config_data["LUKS"]);
-    auto& is_lvm    = std::get<std::int32_t>(config_data["LVM"]);
-
-    // Reset before query
-    luks_name = "";
-    luks_dev  = "";
-    luks_uuid = "";
-    is_luks   = 0;
-    is_lvm    = 0;
-
-    if (!utils::mount_partition(selection.device, mountpoint_info, "/"sv, selection.mount_opts)) {
-        spdlog::error("Failed to mount root partition {}", selection.device);
+    auto* config_instance       = Config::instance();
+    auto& config_data           = config_instance->data();
+    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const cachyos::installer::RootPartitionSelection lib_selection{
+        .device           = selection.device,
+        .fstype           = selection.fstype,
+        .mkfs_command     = selection.mkfs_command,
+        .mount_opts       = selection.mount_opts,
+        .format_requested = selection.format_requested,
+    };
+    auto result = cachyos::installer::apply_root_partition(lib_selection, btrfs_subvols, mountpoint_info);
+    if (!result) {
+        spdlog::error("{}", result.error());
         return false;
     }
 
-    // 3. Add partition info to the schema
-    const auto& mount_fstype = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-    const auto& part_fs      = mount_fstype.empty() ? (selection.fstype == "skip"sv ? "unknown"s : selection.fstype) : mount_fstype;
-    auto root_part_struct    = gucc::fs::Partition{.fstype = part_fs, .mountpoint = "/"s, .device = selection.device, .mount_opts = selection.mount_opts};
+    store_luks_config(config_data, std::move(result->mount_info));
 
-    // Get UUID of made partition
-    const auto& root_part_uuid = gucc::fs::utils::get_device_uuid(root_part_struct.device);
-    root_part_struct.uuid_str  = root_part_uuid;
-
-    // Get luks information about the partition
-    if (is_luks && !luks_name.empty()) {
-        root_part_struct.luks_mapper_name = luks_name;
-    }
-    // Store the UUID of the underlying *encrypted* partition if available
-    if (is_luks && !luks_uuid.empty()) {
-        root_part_struct.luks_uuid = luks_uuid;
+    partition_schema = std::move(result->partitions);
+    for (const auto& p : partition_schema) {
+        utils::dump_partition_to_log(p);
     }
 
-    utils::dump_partition_to_log(root_part_struct);
+    // Handle existing btrfs subvolume detection (requires TUI interaction)
+    if (btrfs_subvols.empty() && !selection.format_requested) {
+        const auto& exist_subvols = gucc::utils::exec(
+            fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info));
+        if (!exist_subvols.empty()) {
+            spdlog::info("Found existing btrfs subvolumes, mounting them automatically");
+            if (!utils::mount_existing_subvols(partition_schema)) {
+                spdlog::error("Failed to mount existing btrfs subvolumes");
+                return false;
+            }
+        }
+    }
+#else
+    spdlog::info("[DRY-RUN] Would apply root partition actions for {}", selection.device);
+    auto root_part = gucc::fs::Partition{
+        .fstype     = selection.fstype,
+        .mountpoint = "/"s,
+        .device     = selection.device,
+        .mount_opts = selection.mount_opts,
+    };
+    utils::dump_partition_to_log(root_part);
+    partition_schema.emplace_back(std::move(root_part));
 
-    // insert root partition
-    partition_schema.emplace_back(std::move(root_part_struct));
-
-    // 4. Handle BTRFS subvolumes
-    return apply_btrfs_subvolumes(btrfs_subvols, selection, mountpoint_info, partition_schema);
+    if (!btrfs_subvols.empty()) {
+        if (!gucc::fs::btrfs_append_subvolumes(partition_schema, btrfs_subvols)) {
+            spdlog::error("Failed to append btrfs subvolumes into partition scheme");
+            return false;
+        }
+    }
+#endif
+    return true;
 }
 
 auto convert_additional_selections(const std::vector<AdditionalPartSelection>& additional)

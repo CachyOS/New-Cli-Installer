@@ -8,7 +8,9 @@
 #include "gucc/partition.hpp"
 #include "gucc/zfs_types.hpp"
 
+#include <cstdint>      // for int32_t
 #include <expected>     // for expected
+#include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -64,6 +66,29 @@ struct MountSelections {
     EspSelection esp;
     std::vector<AdditionalPartSelection> additional;
     std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
+};
+
+/// Result of mounting a single partition with LUKS/LVM detection.
+struct MountPartitionResult {
+    std::int32_t is_luks{};
+    std::int32_t is_lvm{};
+    std::string luks_name;
+    std::string luks_dev;
+    std::string luks_uuid;
+    std::string fstype;   // detected filesystem type at mountpoint
+    std::string uuid;     // device UUID
+};
+
+/// Result of applying swap selection.
+struct SwapApplicationResult {
+    std::string swap_device;
+    std::optional<gucc::fs::Partition> swap_partition;
+};
+
+/// Result of applying root partition actions.
+struct RootPartitionResult {
+    std::vector<gucc::fs::Partition> partitions;
+    MountPartitionResult mount_info;
 };
 
 /// Result of applying mount selections.
@@ -127,6 +152,22 @@ struct MountApplicationResult {
 /// Generates fstab for the installed system.
 [[nodiscard]] auto generate_fstab(std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
+
+/// Mounts a partition, creates directories, and queries LUKS/LVM state.
+[[nodiscard]] auto mount_partition(std::string_view partition, std::string_view mountpoint,
+    std::string_view mount_dev, std::string_view mount_opts) noexcept
+    -> std::expected<MountPartitionResult, std::string>;
+
+/// Creates swap (file or partition) and returns the device path and optional partition struct.
+[[nodiscard]] auto apply_swap(const SwapSelection& swap,
+    std::string_view mountpoint) noexcept
+    -> std::expected<SwapApplicationResult, std::string>;
+
+/// Formats, mounts root partition, builds partition struct, and applies btrfs subvolumes.
+[[nodiscard]] auto apply_root_partition(const RootPartitionSelection& selection,
+    const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvols,
+    std::string_view mountpoint) noexcept
+    -> std::expected<RootPartitionResult, std::string>;
 
 /// Loads kernel module for specific filesystem if needed.
 void load_filesystem_module(std::string_view fstype) noexcept;
