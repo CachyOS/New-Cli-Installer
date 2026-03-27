@@ -1096,37 +1096,38 @@ void lvm_detect() noexcept {
 }
 
 void lvm_del_vg() noexcept {
-    // Generate list of VGs for selection
     const auto& vg_list = utils::lvm_show_vg();
-
-    // If no VGs, no point in continuing
     if (vg_list.empty()) {
         detail::msgbox_widget("\nNo Volume Groups found.\n");
         return;
     }
 
-    // Select VG
+    // Build display strings: "name (size)"
+    std::vector<std::string> display_list{};
+    display_list.reserve(vg_list.size());
+    for (const auto& [name, size] : vg_list) {
+        display_list.push_back(fmt::format(FMT_COMPILE("{} ({})"), name, size));
+    }
+
     auto screen = ScreenInteractive::Fullscreen();
     std::int32_t selected{};
     std::string sel_vg{};
     auto ok_callback = [&] {
-        sel_vg = vg_list[static_cast<size_t>(selected)];
+        sel_vg = vg_list[static_cast<size_t>(selected)].first;
         screen.ExitLoopClosure()();
     };
     /* clang-format off */
     static constexpr auto del_lvmvg_body = "\nSelect Volume Group to delete.\nAll Logical Volumes within will also be deleted.\n"sv;
-    detail::menu_widget(vg_list, ok_callback, &selected, &screen, del_lvmvg_body);
+    detail::menu_widget(display_list, ok_callback, &selected, &screen, del_lvmvg_body);
     if (sel_vg.empty()) { return; }
     /* clang-format on */
 
-    // Ask for confirmation
     const auto& do_action = detail::yesno_widget("\nConfirm deletion of Volume Group(s) and Logical Volume(s).\n"sv);
     /* clang-format off */
     if (!do_action) { return; }
     /* clang-format on */
 
 #ifdef NDEVENV
-    // if confirmation given, delete
     gucc::utils::exec(fmt::format(FMT_COMPILE("vgremove -f {} 2>/dev/null"), sel_vg), true);
 #endif
 }

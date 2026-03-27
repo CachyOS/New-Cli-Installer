@@ -75,8 +75,8 @@ struct MountPartitionResult {
     std::string luks_name;
     std::string luks_dev;
     std::string luks_uuid;
-    std::string fstype;   // detected filesystem type at mountpoint
-    std::string uuid;     // device UUID
+    std::string fstype;  // detected filesystem type at mountpoint
+    std::string uuid;    // device UUID
 };
 
 /// Result of applying swap selection.
@@ -171,6 +171,15 @@ struct MountApplicationResult {
 
 /// Loads kernel module for specific filesystem if needed.
 void load_filesystem_module(std::string_view fstype) noexcept;
+
+/// Lists mounted devices under the given mountpoint as a joined string.
+[[nodiscard]] auto list_mounted_devices(std::string_view mountpoint) noexcept -> std::string;
+
+/// Lists devices containing LUKS crypto as a newline-separated string.
+[[nodiscard]] auto list_containing_crypt() noexcept -> std::string;
+
+/// Lists devices NOT containing LUKS crypto as a newline-separated string.
+[[nodiscard]] auto list_non_crypt() noexcept -> std::string;
 
 }  // namespace cachyos::installer
 

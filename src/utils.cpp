@@ -16,11 +16,8 @@
 #include "cachyos/validation.hpp"
 
 // import gucc
-#include "gucc/block_devices.hpp"
 #include "gucc/bootloader.hpp"
-#include "gucc/crypto_detection.hpp"
 #include "gucc/file_utils.hpp"
-#include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/lvm.hpp"
 #include "gucc/partitioning.hpp"
@@ -315,7 +312,7 @@ auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
 #else
     const auto& boot_mountpoint = utils::bootloader_default_mount(*bootloader_opt, system_info);
     const auto& is_system_efi   = (system_info == "UEFI"sv);
-    auto partitions              = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
+    auto partitions             = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
     if (partitions.empty()) {
         spdlog::error("Failed to generate default partition schema: it cannot be empty");
         return {};
@@ -385,7 +382,9 @@ void set_locale(const std::string_view& locale) noexcept {
 #ifdef NDEVENV
     const cachyos::installer::SystemSettings settings{.locale = std::string{locale}};
     auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) { spdlog::error("Failed to set locale: {}", result.error()); }
+    if (!result) {
+        spdlog::error("Failed to set locale: {}", result.error());
+    }
 #endif
 }
 
@@ -394,7 +393,9 @@ void set_xkbmap(const std::string_view& xkbmap) noexcept {
 #ifdef NDEVENV
     const cachyos::installer::SystemSettings settings{.xkbmap = std::string{xkbmap}};
     auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) { spdlog::error("Failed to set xkbmap: {}", result.error()); }
+    if (!result) {
+        spdlog::error("Failed to set xkbmap: {}", result.error());
+    }
 #endif
 }
 
@@ -408,7 +409,9 @@ void set_keymap(std::string_view selected_keymap) noexcept {
 #ifdef NDEVENV
     const cachyos::installer::SystemSettings settings{.keymap = std::string{selected_keymap}};
     auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) { spdlog::error("Failed to set keymap: {}", result.error()); }
+    if (!result) {
+        spdlog::error("Failed to set keymap: {}", result.error());
+    }
 #endif
 }
 
@@ -417,7 +420,9 @@ void set_timezone(const std::string_view& timezone) noexcept {
 #ifdef NDEVENV
     const cachyos::installer::SystemSettings settings{.timezone = std::string{timezone}};
     auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) { spdlog::error("Failed to set timezone: {}", result.error()); }
+    if (!result) {
+        spdlog::error("Failed to set timezone: {}", result.error());
+    }
 #endif
 }
 
@@ -434,7 +439,9 @@ void set_hw_clock(const std::string_view& clock_type) noexcept {
         return;
     }
     auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) { spdlog::error("Failed to set hw clock: {}", result.error()); }
+    if (!result) {
+        spdlog::error("Failed to set hw clock: {}", result.error());
+    }
 #endif
 }
 
@@ -650,7 +657,7 @@ void install_desktop(const std::string_view& desktop) noexcept {
 
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
-    const auto install_task = [&](gucc::utils::SubProcess& child) -> bool {
+    const auto install_task   = [&](gucc::utils::SubProcess& child) -> bool {
         auto result = cachyos::installer::install_desktop(desktop, ctx, child);
         if (!result) {
             spdlog::error("{}", result.error());
@@ -769,25 +776,16 @@ void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
 #endif
 }
 
-// List partitions to be hidden from the mounting menu
 std::string list_mounted() noexcept {
-    const auto& devices = gucc::disk::list_block_devices();
-    if (!devices) {
-        spdlog::error("failed to find block devices");
-        return {};
-    }
-
-    const auto mountpoint     = utils::get_mountpoint();
-    const auto& mounted_names = gucc::disk::list_mounted_devices(*devices, mountpoint);
-    return gucc::utils::join(mounted_names);
+    return cachyos::installer::list_mounted_devices(utils::get_mountpoint());
 }
 
 std::string list_containing_crypt() noexcept {
-    return gucc::utils::exec("blkid | awk '/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
+    return cachyos::installer::list_containing_crypt();
 }
 
 std::string list_non_crypt() noexcept {
-    return gucc::utils::exec("blkid | awk '!/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
+    return cachyos::installer::list_non_crypt();
 }
 
 auto get_cryptroot() noexcept -> bool {

@@ -4,12 +4,14 @@
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
+#include "gucc/crypto_detection.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
+#include "gucc/string_utils.hpp"
 #include "gucc/subprocess.hpp"
 #include "gucc/swap.hpp"
 #include "gucc/system_query.hpp"
@@ -476,6 +478,24 @@ void load_filesystem_module(std::string_view fstype) noexcept {
             spdlog::warn("failed to load f2fs kernel module");
         }
     }
+}
+
+auto list_mounted_devices(std::string_view mountpoint) noexcept -> std::string {
+    const auto& devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        spdlog::error("failed to find block devices");
+        return {};
+    }
+    const auto& mounted_names = gucc::disk::list_mounted_devices(*devices, mountpoint);
+    return gucc::utils::join(mounted_names);
+}
+
+auto list_containing_crypt() noexcept -> std::string {
+    return gucc::utils::exec("blkid | awk '/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
+}
+
+auto list_non_crypt() noexcept -> std::string {
+    return gucc::utils::exec("blkid | awk '!/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
 }
 
 }  // namespace cachyos::installer

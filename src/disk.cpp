@@ -10,8 +10,8 @@
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
-#include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/lvm.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
@@ -45,12 +45,12 @@ constexpr auto find_root_btrfs_part(auto&& parts) noexcept {
 }
 
 /// Store LUKS/LVM state from a mount result into the Config singleton.
-void store_luks_config(auto& config_data, cachyos::installer::MountPartitionResult&& mount_result) noexcept {
+void store_luks_config(auto& config_data, const cachyos::installer::MountPartitionResult& mount_result) noexcept {
     std::get<std::int32_t>(config_data["LUKS"])     = mount_result.is_luks;
     std::get<std::int32_t>(config_data["LVM"])      = mount_result.is_lvm;
-    std::get<std::string>(config_data["LUKS_NAME"]) = std::move(mount_result.luks_name);
-    std::get<std::string>(config_data["LUKS_DEV"])  = std::move(mount_result.luks_dev);
-    std::get<std::string>(config_data["LUKS_UUID"]) = std::move(mount_result.luks_uuid);
+    std::get<std::string>(config_data["LUKS_NAME"]) = mount_result.luks_name;
+    std::get<std::string>(config_data["LUKS_DEV"])  = mount_result.luks_dev;
+    std::get<std::string>(config_data["LUKS_UUID"]) = mount_result.luks_uuid;
 }
 
 }  // namespace
@@ -223,17 +223,13 @@ auto mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexce
     return true;
 }
 
-std::vector<std::string> lvm_show_vg() noexcept {
-    const auto& vg_list = gucc::utils::make_multiline(gucc::utils::exec("lvs --noheadings | awk '{print $2}' | uniq"sv));
-
-    std::vector<std::string> res{};
-    res.reserve(vg_list.size());
-    for (const auto& vg : vg_list) {
-        const auto& temp = gucc::utils::exec(fmt::format(FMT_COMPILE("vgdisplay {} | grep -i \"vg size\" | {}"), vg, "awk '{print $3$4}'"sv));
-        res.push_back(temp);
-    }
-
-    return res;
+auto lvm_show_vg() noexcept -> std::vector<std::pair<std::string, std::string>> {
+#ifdef NDEVENV
+    return gucc::lvm::show_volume_groups();
+#else
+    spdlog::info("[DRY-RUN] Would query volume groups");
+    return {};
+#endif
 }
 
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
@@ -502,7 +498,6 @@ auto apply_mount_selections_interactive(const MountSelections& selections) noexc
     // 3. Apply additional partitions
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
     for (const auto& p : selections.additional) {
-        // Format if requested
         if (p.format_requested) {
 #ifdef NDEVENV
             const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), p.mkfs_command, p.device);
@@ -516,33 +511,36 @@ auto apply_mount_selections_interactive(const MountSelections& selections) noexc
 #endif
         }
 
-        // Mount
-        if (!utils::mount_partition(p.device, mountpoint_info, p.mountpoint, p.mount_opts)) {
-            spdlog::error("Failed to mount {} at {}", p.device, p.mountpoint);
+#ifdef NDEVENV
+        auto mount_res = cachyos::installer::mount_partition(p.device, mountpoint_info, p.mountpoint, p.mount_opts);
+        if (!mount_res) {
+            spdlog::error("{}", mount_res.error());
             return false;
         }
 
-        // get mountpoint
-        const auto& part_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, p.mountpoint);
-        const auto& part_fs         = gucc::fs::utils::get_mountpoint_fs(part_mountpoint);
-        auto part_struct            = gucc::fs::Partition{
-            .fstype     = part_fs.empty() ? p.fstype : std::string{part_fs},
+        auto part_struct = gucc::fs::Partition{
+            .fstype     = mount_res->fstype.empty() ? p.fstype : mount_res->fstype,
             .mountpoint = p.mountpoint,
             .device     = p.device,
             .mount_opts = p.mount_opts,
         };
-        part_struct.uuid_str = gucc::fs::utils::get_device_uuid(p.device);
-
-        // get luks information about the additional partition
-        const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
-        const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
-        if (!luks_name.empty()) {
-            part_struct.luks_mapper_name = luks_name;
+        part_struct.uuid_str = mount_res->uuid;
+        if (mount_res->is_luks && !mount_res->luks_name.empty()) {
+            part_struct.luks_mapper_name = mount_res->luks_name;
         }
-        if (!luks_uuid.empty()) {
-            part_struct.luks_uuid = luks_uuid;
+        if (mount_res->is_luks && !mount_res->luks_uuid.empty()) {
+            part_struct.luks_uuid = mount_res->luks_uuid;
         }
-
+        store_luks_config(config_data, *mount_res);
+#else
+        spdlog::info("[DRY-RUN] Would mount {} at {}{}", p.device, mountpoint_info, p.mountpoint);
+        auto part_struct = gucc::fs::Partition{
+            .fstype     = p.fstype,
+            .mountpoint = p.mountpoint,
+            .device     = p.device,
+            .mount_opts = p.mount_opts,
+        };
+#endif
         utils::dump_partition_to_log(part_struct);
         // insert partition
         partitions.emplace_back(std::move(part_struct));
@@ -556,7 +554,7 @@ auto apply_mount_selections_interactive(const MountSelections& selections) noexc
             const auto& boot_devices    = gucc::disk::list_block_devices();
             if (boot_devices) {
                 const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, p.device);
-                if (boot_dev && boot_dev->type == "lvm") {
+                if (boot_dev && boot_dev->type == "lvm"sv) {
                     config_data["LVM_SEP_BOOT"] = 2;
                 }
             }

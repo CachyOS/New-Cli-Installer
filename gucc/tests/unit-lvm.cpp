@@ -49,3 +49,64 @@ TEST_CASE("lvm test")
         REQUIRE(full_info.is_active());
     }
 }
+
+TEST_CASE("parse_vgs_output test")
+{
+    using gucc::lvm::parse_vgs_output;
+
+    SECTION("empty input")
+    {
+        auto result = parse_vgs_output(""sv);
+        CHECK(result.empty());
+    }
+
+    SECTION("single volume group")
+    {
+        constexpr auto input = "  vg0\t100.00g\n"sv;
+        auto result = parse_vgs_output(input);
+        REQUIRE(result.size() == 1);
+        CHECK(result[0].first == "vg0");
+        CHECK(result[0].second == "100.00g");
+    }
+
+    SECTION("multiple volume groups")
+    {
+        constexpr auto input = "  vg0\t100.00g\n  vg1\t500.00g\n  vg_data\t1000.00g\n"sv;
+        auto result = parse_vgs_output(input);
+        REQUIRE(result.size() == 3);
+        CHECK(result[0].first == "vg0");
+        CHECK(result[0].second == "100.00g");
+        CHECK(result[1].first == "vg1");
+        CHECK(result[1].second == "500.00g");
+        CHECK(result[2].first == "vg_data");
+        CHECK(result[2].second == "1000.00g");
+    }
+
+    SECTION("handles whitespace")
+    {
+        constexpr auto input = "  vg0  \t  50.00g  \n"sv;
+        auto result = parse_vgs_output(input);
+        REQUIRE(result.size() == 1);
+        CHECK(result[0].first == "vg0");
+        CHECK(result[0].second == "50.00g");
+    }
+
+    SECTION("filters empty lines")
+    {
+        constexpr auto input = "\n  vg0\t100.00g\n\n  vg1\t200.00g\n\n"sv;
+        auto result = parse_vgs_output(input);
+        REQUIRE(result.size() == 2);
+        CHECK(result[0].first == "vg0");
+        CHECK(result[1].first == "vg1");
+    }
+
+    SECTION("typical vgs output")
+    {
+        // Output from: vgs -o vg_name,vg_size --noheading --separator='\t' --units=g
+        constexpr auto input = "  cachyos-vg\t476.45g\n"sv;
+        auto result = parse_vgs_output(input);
+        REQUIRE(result.size() == 1);
+        CHECK(result[0].first == "cachyos-vg");
+        CHECK(result[0].second == "476.45g");
+    }
+}

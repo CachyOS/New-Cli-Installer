@@ -8,6 +8,7 @@
 
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <utility>      // for pair
 #include <vector>       // for vector
 
 namespace utils {
@@ -84,7 +85,7 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
 // Mounts partitions
 [[nodiscard]] auto apply_mount_selections(const MountSelections& selections) noexcept -> bool;
 
-auto lvm_show_vg() noexcept -> std::vector<std::string>;
+auto lvm_show_vg() noexcept -> std::vector<std::pair<std::string, std::string>>;
 
 [[nodiscard]] bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zfs_zpool_name) noexcept;
 [[nodiscard]] bool zfs_create_zpool(const std::string_view& partition, const std::string_view& pool_name) noexcept;
