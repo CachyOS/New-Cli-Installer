@@ -203,7 +203,7 @@ units = [
   { name = "apparmor", action = "enable" },
   { name = "haveged", action = "enable" },
   { name = "cronie", action = "enable" },
-  { name = "pacman-init", action = "disable", urgent = true },
+  { name = "pacman-init", action = "disable" },
 ]
 
 [services.desktop]
