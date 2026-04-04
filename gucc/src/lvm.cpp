@@ -15,7 +15,7 @@ using namespace std::string_view_literals;
 
 namespace {
 auto parse_simple_lvm_output(std::string_view output) noexcept -> std::vector<std::string> {
-    return utils::make_multiline_view(output)
+    return gucc::utils::make_multiline_view(output)
         | std::ranges::views::transform([](std::string_view sv) { return gucc::utils::trim(sv); })
         | std::ranges::views::filter([](std::string_view sv) { return !sv.empty(); })
         | std::ranges::views::transform([](std::string_view sv) { return std::string{sv}; })
