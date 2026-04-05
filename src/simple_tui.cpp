@@ -896,7 +896,8 @@ void prepare_disk_state(const UserSelections& selections) noexcept {
     config_data["BOOTLOADER"]      = selections.bootloader;
     config_data["FILESYSTEM_NAME"] = selections.filesystem;
 
-    utils::auto_partition();
+    // Generate and apply partition schema
+    auto auto_partitions = utils::auto_partition();
     utils::lvm_detect();
 
     config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
@@ -915,12 +916,28 @@ void prepare_disk_state(const UserSelections& selections) noexcept {
     }
 
     auto& ready_parts = std::get<std::vector<std::string>>(config_data["READY_PARTITIONS"]);
-    if (ready_parts.empty()) {
-        utils::select_filesystem(selections.filesystem);
+    if (ready_parts.empty() && !auto_partitions.empty()) {
+        config_data["PARTITION_SCHEMA"] = auto_partitions;
+        spdlog::info("Auto-partition schema stored with {} entries", auto_partitions.size());
+
+        // Convert auto-partition output into ready_parts format:
+        // "{device}\t{mountpoint}\t{size}\t{fstype}\t{type}"
+        // where type is "boot" for /boot or /boot/efi, "root" for /, else "additional".
+        std::vector<std::string> built_ready_parts{};
+        built_ready_parts.reserve(auto_partitions.size());
+        for (const auto& part : auto_partitions) {
+            const auto part_type = (part.mountpoint == "/boot"sv || part.mountpoint == "/boot/efi"sv)
+                ? "boot"sv
+                : (part.mountpoint == "/"sv ? "root"sv : "additional"sv);
+            built_ready_parts.emplace_back(fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"),
+                part.device, part.mountpoint, part.size, part.fstype, part_type));
+        }
+        ready_parts = std::move(built_ready_parts);
+        spdlog::info("Auto-partition produced {} ready_parts entries", ready_parts.size());
     }
 
     if (ready_parts.empty()) {
-        spdlog::info("TODO: auto make layout(ready parts)!");
+        utils::select_filesystem(selections.filesystem);
     }
 }
 
