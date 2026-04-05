@@ -34,6 +34,12 @@ using cachyos::installer::InstallContext;
 auto apply_services(const std::vector<gucc::profile::ServiceEntry>& services, std::string_view mountpoint) noexcept -> bool {
     for (const auto& entry : services) {
         if (!gucc::services::systemd_unit_exists(entry.name, mountpoint)) {
+            // A service targeted for Disable is already effectively disabled
+            // if its unit doesn't exist, then not an error condition
+            if (entry.action == gucc::profile::ServiceAction::Disable) {
+                spdlog::debug("service '{}' not present, skip disable", entry.name);
+                continue;
+            }
             if (entry.is_urgent) {
                 spdlog::error("required service '{}': unit not found", entry.name);
             } else {
@@ -271,9 +277,19 @@ auto enable_services(const InstallContext& ctx) noexcept
     // Display manager detection (desktop mode only)
     if (!ctx.server_mode) {
         const std::vector<std::string_view> dm_services{"plasmalogin", "lightdm", "sddm", "gdm", "lxdm", "ly", "cosmic-greeter"};
-        const auto is_enabled = std::ranges::any_of(dm_services, [=](auto&& service) { return enable_service_if_exists(service, mountpoint); });
-        if (!is_enabled) {
-            spdlog::error("Failed to enable any of the DM services");
+        // Only attempt DM enablement if at least one DM unit exists on target.
+        const auto has_any_dm = std::ranges::any_of(dm_services, [=](auto&& service) {
+            return gucc::services::systemd_unit_exists(service, mountpoint);
+        });
+        const auto is_enabled = std::ranges::any_of(dm_services, [=](auto&& service) {
+            return enable_service_if_exists(service, mountpoint);
+        });
+        if (has_any_dm) {
+            if (!is_enabled) {
+                spdlog::error("Failed to enable any of the DM services");
+            }
+        } else {
+            spdlog::debug("No display manager units found on target yet. Skipping DM enablement..");
         }
 
         if (gucc::services::systemd_unit_exists("lightdm"sv, mountpoint)) {
