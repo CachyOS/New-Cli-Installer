@@ -26,7 +26,9 @@ auto make_device(std::string name, std::string type, std::string fstype = {},
     dev.fstype     = std::move(fstype);
     dev.uuid       = std::move(uuid);
     dev.pkname     = std::move(pkname);
-    dev.mountpoint = std::move(mountpoint);
+    if (mountpoint) {
+        dev.mountpoints.push_back(std::move(*mountpoint));
+    }
     dev.partuuid   = std::move(partuuid);
     return dev;
 }

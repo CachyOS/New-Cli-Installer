@@ -36,8 +36,21 @@ auto get_blockdevice_from_json(const rapidjson::Value& doc) -> BlockDevice {
     if (doc.HasMember("model") && doc["model"].IsString()) {
         device.model = doc["model"].GetString();
     }
-    if (doc.HasMember("mountpoint") && doc["mountpoint"].IsString()) {
-        device.mountpoint = doc["mountpoint"].GetString();
+    if (doc.HasMember("mountpoints") && doc["mountpoints"].IsArray()) {
+        for (const auto& mnt : doc["mountpoints"].GetArray()) {
+            if (!mnt.IsString()) {
+                continue;
+            }
+            auto mountpoint = std::string{mnt.GetString()};
+            if (!mountpoint.empty()) {
+                device.mountpoints.emplace_back(std::move(mountpoint));
+            }
+        }
+    } else if (doc.HasMember("mountpoint") && doc["mountpoint"].IsString()) {
+        auto mountpoint = std::string{doc["mountpoint"].GetString()};
+        if (!mountpoint.empty()) {
+            device.mountpoints.emplace_back(std::move(mountpoint));
+        }
     }
     if (doc.HasMember("pkname") && doc["pkname"].IsString()) {
         device.pkname = doc["pkname"].GetString();
@@ -99,7 +112,7 @@ auto find_device_by_pkname(const std::vector<BlockDevice>& devices, std::string_
 
 auto find_device_by_mountpoint(const std::vector<BlockDevice>& devices, std::string_view mountpoint) -> std::optional<BlockDevice> {
     auto it = std::ranges::find_if(devices, [mountpoint](const auto& dev) {
-        return dev.mountpoint == mountpoint;
+        return std::ranges::contains(dev.mountpoints, mountpoint);
     });
     if (it != std::ranges::end(devices)) {
         return *it;
@@ -150,7 +163,7 @@ auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, st
 }
 
 auto list_block_devices() -> std::optional<std::vector<BlockDevice>> {
-    const auto& lsblk_output = utils::exec(R"cmd(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINT,MODEL -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd");
+    const auto& lsblk_output = utils::exec(R"cmd(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd");
     if (lsblk_output.empty()) {
         return std::nullopt;
     }

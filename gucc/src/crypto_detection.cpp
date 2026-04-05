@@ -1,6 +1,9 @@
 #include "gucc/crypto_detection.hpp"
 #include "gucc/block_devices.hpp"
 
+#include <algorithm>  // for any_of
+#include <ranges>     // for ranges::*
+
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
@@ -125,9 +128,10 @@ auto is_fde(const std::vector<BlockDevice>& devices, std::string_view root_mount
 }
 
 auto list_mounted_devices(const std::vector<BlockDevice>& devices, std::string_view base_mountpoint) noexcept -> std::vector<std::string> {
+    auto filter_pred = [&base_mountpoint](const auto& mp) { return mp.starts_with(base_mountpoint); };
     std::vector<std::string> result{};
     for (const auto& dev : devices) {
-        if (dev.mountpoint && dev.mountpoint->starts_with(base_mountpoint)) {
+        if (std::ranges::any_of(dev.mountpoints, filter_pred)) {
             result.emplace_back(dev.name);
         }
     }

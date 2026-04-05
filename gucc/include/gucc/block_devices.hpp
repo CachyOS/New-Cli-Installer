@@ -21,8 +21,9 @@ struct BlockDevice {
     std::string uuid;
     /// Device model.
     std::optional<std::string> model;
-    /// Mount point.
-    std::optional<std::string> mountpoint;
+    /// Mount points (util-linux >= 2.37 exposes MOUNTPOINTS as array for
+    /// devices with multiple mounts, e.g. btrfs subvolumes).
+    std::vector<std::string> mountpoints;
     /// Parent device name.
     std::optional<std::string> pkname;
     /// Filesystem label.
