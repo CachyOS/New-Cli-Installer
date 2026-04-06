@@ -64,5 +64,10 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PUBLIC project_warnings project_options spdlog::spdlog fmt::fmt tomlplusplus::tomlplusplus cpr::cpr)
 
 if(COS_INSTALLER_BUILD_TESTS)
-   add_subdirectory(tests)
+    add_subdirectory(tests)
 endif()
+
+if(COS_BUILD_LUA_BINDINGS)
+   add_subdirectory(lua)
+endif()
+

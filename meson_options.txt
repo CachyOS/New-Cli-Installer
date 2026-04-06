@@ -1,3 +1,4 @@
 option('devenv', type: 'boolean', value: true, description: 'enable dev environment')
 option('build_tests', type: 'boolean', value: false, description: 'enable tests')
 option('build_static', type: 'boolean', value: false, description: 'build all static')
+option('build_lua_bindings', type: 'boolean', value: false, description: 'build GUCC Lua bindings (requires sol2 and Lua)')

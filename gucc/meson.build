@@ -48,3 +48,7 @@ gucc_lib = library('gucc',
 if is_tests_build
     subdir('tests')
 endif
+
+if get_option('build_lua_bindings')
+    subdir('lua')
+endif

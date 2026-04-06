@@ -77,6 +77,12 @@ CPMAddPackage(
    GIT_TAG v2.4.12
    EXCLUDE_FROM_ALL YES
 )
+CPMAddPackage(
+   NAME sol2
+   GITHUB_REPOSITORY ThePhD/sol2
+   GIT_TAG v3.5.0
+   EXCLUDE_FROM_ALL YES
+)
 
 # FIXME(vnepogodin): temp hack for ftxui
 target_compile_options(screen PRIVATE
@@ -149,6 +155,8 @@ if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
 endif()
 
+option(COS_BUILD_LUA_BINDINGS "Build GUCC Lua bindings (requires sol2 and Lua)" ON)
+option(COS_INSTALLER_BUILD_TOOLS "Build gucc query utilities" ON)
 option(ENABLE_UNITY "Enable Unity builds of projects" OFF)
 if(ENABLE_UNITY)
    # Add for any project you want to apply unity builds for
