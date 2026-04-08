@@ -877,7 +877,7 @@ auto select_fs_and_cmd() noexcept -> std::optional<std::pair<std::string, std::s
     menu_entries.push_back({"skip", "Do not format -"});
     for (const auto& fs_type : supported_fs_types) {
         const auto& name = gucc::fs::filesystem_type_to_string(fs_type);
-        const auto& cmd = gucc::fs::get_mkfs_command(fs_type);
+        const auto& cmd  = gucc::fs::get_mkfs_command(fs_type);
         menu_entries.push_back({std::string{name}, std::string{name} + " " + std::string{cmd}});
     }
 

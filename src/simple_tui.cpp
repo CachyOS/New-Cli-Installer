@@ -72,7 +72,6 @@ struct UserSelections {
     std::vector<std::string> ready_partitions;
 };
 
-
 auto make_partitions_prepared(std::string_view bootloader_str, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts) -> bool {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
@@ -354,7 +353,7 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
     auto device_list = installer::data::get_device_list();
 
     const auto& sys_info      = std::get<std::string>(config_data["SYSTEM"]);
-    const auto& available_bls = utils::available_bootloaders(sys_info);
+    const auto& available_bls = cachyos::installer::data::available_bootloaders(sys_info);
     std::vector<std::string> bootloader_list{};
     bootloader_list.reserve(available_bls.size());
     std::ranges::transform(available_bls, std::back_inserter(bootloader_list),

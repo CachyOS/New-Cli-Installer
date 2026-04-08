@@ -16,6 +16,7 @@ add_library(${PROJECT_NAME}
    src/bootloader.cpp include/cachyos/bootloader.hpp
    src/crypto.cpp include/cachyos/crypto.hpp
    src/validation.cpp include/cachyos/validation.hpp
+   src/installer_data.cpp include/cachyos/installer_data.hpp
    include/cachyos/types.hpp
    include/cachyos/installer.hpp
    )

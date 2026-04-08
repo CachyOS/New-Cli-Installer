@@ -1,4 +1,4 @@
-#include "installer_data.hpp"
+#include "cachyos/installer_data.hpp"
 
 // import gucc
 #include "gucc/string_utils.hpp"
@@ -11,7 +11,7 @@
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
-namespace installer::data {
+namespace cachyos::installer::data {
 
 auto get_device_list() noexcept -> std::vector<std::string> {
     auto disks = gucc::disk::list_disks();
@@ -34,4 +34,4 @@ auto parse_device_name(std::string_view entry) noexcept -> std::string {
     return parts.empty() ? std::string{} : parts[0];
 }
 
-}  // namespace installer::data
+}  // namespace cachyos::installer::data
