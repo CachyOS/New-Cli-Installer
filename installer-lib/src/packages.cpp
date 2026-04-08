@@ -13,6 +13,7 @@
 #include "gucc/subprocess.hpp"
 #include "gucc/systemd_services.hpp"
 
+#include <algorithm>    // for ranges::contains, erase_if
 #include <expected>     // for unexpected
 #include <fstream>      // for ofstream
 #include <string>       // for string
@@ -142,6 +143,13 @@ auto install_desktop_packages(std::string_view desktop, const InstallContext& ct
         return std::unexpected("failed to get desktop package list");
     }
 
+    // Drop packages the user unchecked in the advanced selection.
+    if (!ctx.excluded_packages.empty()) {
+        std::erase_if(*pkg_list, [&ctx](const std::string& pkg) {
+            return std::ranges::contains(ctx.excluded_packages, pkg);
+        });
+    }
+
     spdlog::info("Preparing for desktop envs to install: '{}'", gucc::utils::join(*pkg_list, ' '));
 
     auto pkg_result = install_packages(*pkg_list, ctx.mountpoint, ctx.hostcache, child);
@@ -197,6 +205,17 @@ auto install_desktop(std::string_view desktop, const InstallContext& ctx,
         return res;
     }
     return configure_desktop_extras(ctx, child);
+}
+
+auto install_additional(const InstallContext& ctx,
+    gucc::utils::SubProcess& child) noexcept
+    -> std::expected<void, std::string> {
+    /* clang-format off */
+    if (ctx.additional_packages.empty()) { return {}; }
+    /* clang-format on */
+
+    spdlog::info("Preparing for additional pkgs to install: '{}'", gucc::utils::join(ctx.additional_packages, ' '));
+    return install_packages(ctx.additional_packages, ctx.mountpoint, ctx.hostcache, child);
 }
 
 auto install_packages(const std::vector<std::string>& packages,

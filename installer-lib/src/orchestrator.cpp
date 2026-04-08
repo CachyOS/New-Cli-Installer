@@ -1,8 +1,11 @@
 #include "cachyos/orchestrator.hpp"
 #include "cachyos/disk.hpp"
+#include "cachyos/partition_planner.hpp"
 #include "cachyos/steps.hpp"
 
 // import gucc
+#include "gucc/logger.hpp"
+#include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/subprocess.hpp"
 
@@ -39,6 +42,7 @@ enum class Step : std::uint8_t {
     MachineId,
     Desktop,
     DesktopConfigure,
+    Additional,
     Autologin,
     Chwd,
     NetworkCarryover,
@@ -63,6 +67,7 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Generating machine ID..."sv,
     "Installing desktop environment..."sv,
     "Configuring desktop environment..."sv,
+    "Installing additional packages..."sv,
     "Configuring autologin..."sv,
     "Installing hardware-driver profiles..."sv,
     "Carrying network connections forward..."sv,
@@ -132,10 +137,14 @@ auto mount_selections_from_auto(const std::vector<gucc::fs::Partition>& partitio
     MountSelections mounts{};
     for (const auto& part : partitions) {
         if (part.mountpoint == "/"sv) {
+            // auto_partition lays partitions down unformatted, so the root must be
+            // formatted here. Derive the mkfs command from the fstype — leaving it
+            // empty makes apply_root_partition try to exec the device node itself.
+            const auto& mkfs_cmd = gucc::fs::get_mkfs_command(gucc::fs::string_to_filesystem_type(part.fstype));
             mounts.root = {
                 .device           = part.device,
                 .fstype           = part.fstype,
-                .mkfs_command     = "",
+                .mkfs_command     = std::string{mkfs_cmd},
                 .mount_opts       = part.mount_opts,
                 .format_requested = true,
             };
@@ -224,6 +233,15 @@ auto run(InstallContext& ctx,
     const auto mountpoint = ctx.mountpoint;
     std::vector<std::string> warnings;
 
+    // Mask every passphrase before any sink can receive a line that quotes it.
+    // gucc scrubs at the exec layer too; this is defence-in-depth at the single
+    // entry point shared by the headless, simple-TUI and GUI frontends.
+    gucc::logger::register_secret(root_password);
+    gucc::logger::register_secret(user.password);
+    if (ctx.root_luks_passphrase) {
+        gucc::logger::register_secret(*ctx.root_luks_passphrase);
+    }
+
     spdlog::info("Install orchestrator starting...");
     emit_progress(callbacks, Started, 0, "Starting installation..."sv);
 
@@ -257,6 +275,25 @@ auto run(InstallContext& ctx,
                 return fail_step(callbacks, Step::Partition, "Auto-partition failed"sv, partitions.error(), std::move(warnings));
             }
             mounts = mount_selections_from_auto(*partitions);
+
+            // Optional full-disk encryption: luksFormat + open the auto root, then
+            // mount the mapper. detect_crypto (Step 12) later reads the mounted
+            // system to populate ctx.crypto for the bootloader/initramfs.
+            if (ctx.root_luks_passphrase) {
+                const auto enc = partition_planner::encrypt_partition(partition_planner::LuksFormatRequest{
+                    .device      = mounts.root.device,
+                    .mapper_name = "cryptroot",
+                    .passphrase  = *ctx.root_luks_passphrase,
+                    .extra_flags = {},
+                    .version     = ctx.root_luks_use_luks2
+                        ? partition_planner::LuksVersion::Luks2
+                        : partition_planner::LuksVersion::Luks1,
+                });
+                if (!enc) {
+                    return fail_step(callbacks, Step::Partition, "Root encryption failed"sv, enc.error(), std::move(warnings));
+                }
+                mounts.root.device = "/dev/mapper/cryptroot";
+            }
         }
 
         auto mount_res = apply_mount_selections(mounts, mountpoint);
@@ -338,6 +375,15 @@ auto run(InstallContext& ctx,
     }
     emit_step_running(callbacks, Step::DesktopConfigure);
     if (auto res = steps::desktop_configure(ctx, step_log_callback(callbacks, Step::DesktopConfigure), stop_token); !res) {
+        warnings.emplace_back(res.error());
+    }
+
+    // Step: Optional packages picked on the GUI Packages page (runs in server mode too).
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Additional, std::move(warnings));
+    }
+    emit_step_running(callbacks, Step::Additional);
+    if (auto res = steps::additional(ctx, step_log_callback(callbacks, Step::Additional), stop_token); !res) {
         warnings.emplace_back(res.error());
     }
 

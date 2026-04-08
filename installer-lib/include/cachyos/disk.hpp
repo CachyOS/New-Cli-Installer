@@ -64,6 +64,17 @@ struct MountApplicationResult {
 /// Returns true if the installation target volume is removable (USB, etc.).
 [[nodiscard]] auto is_volume_removable(std::string_view mountpoint) noexcept -> bool;
 
+/// EFI system partition layout (mountpoint + size) for a bootloader
+struct EspLayout {
+    std::string mountpoint;  ///< "/boot" or "/boot/efi"
+    std::string size;        ///< gucc size string, e.g. "512MiB", "2GiB", "4GiB"
+};
+
+/// Returns the ESP mountpoint+size the given bootloader expects. Mountpoint comes
+/// from the existing per-bootloader mapping.
+[[nodiscard]] auto bootloader_esp_layout(gucc::bootloader::BootloaderType bootloader,
+    std::string_view system_mode) noexcept -> EspLayout;
+
 /// Performs automatic partitioning of the device.
 [[nodiscard]] auto auto_partition(std::string_view device, std::string_view system_mode,
     gucc::bootloader::BootloaderType bootloader, const ExecutionCallbacks& callbacks) noexcept
@@ -73,10 +84,23 @@ struct MountApplicationResult {
 [[nodiscard]] auto secure_wipe(std::string_view device, gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string>;
 
-/// Automated ZFS setup: creates a new zpool with default datasets.
+/// Automated ZFS setup: creates a new zpool with default datasets. When
+/// @p passphrase is set the pool is created with ZFS native encryption.
 [[nodiscard]] auto zfs_auto_pres(std::string_view partition,
-    std::string_view zpool_name, std::string_view mountpoint) noexcept
+    std::string_view zpool_name, std::string_view mountpoint,
+    std::optional<std::string> passphrase = std::nullopt) noexcept
     -> std::expected<gucc::fs::ZfsSetupConfig, std::string>;
+
+/// Erases @p device, lays down an ESP (UEFI) + a pool partition for the chosen
+/// bootloader, creates the default zpool (optionally encrypted) on it, imports it
+/// with altroot at @p mountpoint, and mounts the ESP. Returns the zpool name.
+/// The caller marks the install prepartitioned and records the pool name so the
+/// later steps (fstab/cleanup) see the datasets already mounted.
+[[nodiscard]] auto apply_zfs_root_layout(std::string_view device, std::string_view zpool_name,
+    std::optional<std::string> passphrase, std::string_view system_mode,
+    gucc::bootloader::BootloaderType bootloader, std::string_view mountpoint,
+    const ExecutionCallbacks& callbacks) noexcept
+    -> std::expected<std::string, std::string>;
 
 /// Creates a new zpool on an existing partition.
 [[nodiscard]] auto zfs_create_zpool(std::string_view partition,

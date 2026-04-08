@@ -138,7 +138,7 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
     constexpr std::string_view bspwm{"bspwm"};
     constexpr std::string_view lxqt{"lxqt"};
     constexpr std::string_view cinnamon{"cinnamon"};
-    constexpr std::string_view ukui{"ukui"};
+    constexpr std::string_view mangowm{"mangowm"};
     constexpr std::string_view qtile{"qtile"};
     constexpr std::string_view mate{"mate"};
     constexpr std::string_view lxde{"lxde"};
@@ -204,11 +204,10 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
         needed_xorg = true;
     }
-    found = std::ranges::search(desktop_env, ukui);
+    found = std::ranges::search(desktop_env, mangowm);
     if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, ukui, &profile::DesktopProfile::profile_name);
+        auto profile = std::ranges::find(*desktop_net_profs, mangowm, &profile::DesktopProfile::profile_name);
         pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
     }
     found = std::ranges::search(desktop_env, qtile);
     if (!found.empty()) {
@@ -246,6 +245,21 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
     }
 
     return std::make_optional<std::vector<std::string>>(pkg_list);
+}
+
+auto get_netinstall_groups(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::NetinstallGroup>> {
+    // must have at least single valid net profile url
+    if (net_profile_info.net_profs_url.empty() && net_profile_info.net_profs_fallback_url.empty()) {
+        spdlog::error("Invalid netprofiles info: cannot be empty");
+        return std::nullopt;
+    }
+
+    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
+    if (!net_profs_content) {
+        spdlog::error("Failed to get net profiles content");
+        return std::nullopt;
+    }
+    return profile::parse_netinstall_groups(*net_profs_content);
 }
 
 auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>> {

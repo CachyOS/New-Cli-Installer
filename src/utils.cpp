@@ -20,6 +20,7 @@
 #include "gucc/bootloader.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/lvm.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
@@ -355,6 +356,8 @@ void secure_wipe() noexcept {
 
 // Create user on the system
 void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept {
+    // Mask the password before anything (commands, subprocess output) can log it.
+    gucc::logger::register_secret(password);
     spdlog::info("default shell: [{}]", shell);
 
 #ifdef NDEVENV

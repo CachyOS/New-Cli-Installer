@@ -1,11 +1,17 @@
 #include "gucc/partitioning.hpp"
+#include "gucc/block_devices.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/system_query.hpp"
 
-#include <algorithm>    // for sort, unique_copy, any_of, count_if
-#include <ranges>       // for ranges::*
-#include <string_view>  // for string_view
+#include <algorithm>      // for sort, unique_copy, any_of, count_if
+#include <array>          // for array
+#include <charconv>       // for from_chars
+#include <cstddef>        // for size_t
+#include <optional>       // for optional
+#include <ranges>         // for ranges::*
+#include <string_view>    // for string_view
+#include <unordered_set>  // for unordered_set
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -33,9 +39,334 @@ constexpr auto get_part_type_alias(std::string_view fsname) noexcept -> std::str
     return "L"sv;
 }
 
+// Trims a trailing ';' and a trailing 'B' (parted's byte-unit suffix) plus
+// surrounding whitespace/CR from a `parted -m` field.
+constexpr auto strip_byte_suffix(std::string_view field) noexcept -> std::string_view {
+    while (!field.empty() && (field.back() == ';' || field.back() == '\r' || field.back() == ' ')) {
+        field.remove_suffix(1);
+    }
+    if (!field.empty() && field.back() == 'B') {
+        field.remove_suffix(1);
+    }
+    return field;
+}
+
+[[nodiscard]] auto field_to_u64(std::string_view field) noexcept -> std::optional<std::uint64_t> {
+    const auto digits = strip_byte_suffix(field);
+    std::uint64_t value{};
+    const auto* const begin = digits.data();
+    const auto* const end   = digits.data() + digits.size();
+    const auto [ptr, ec]    = std::from_chars(begin, end, value);
+    if (ec != std::errc{} || ptr != end) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+// Names (e.g. "sda3") of the partitions that hang off `device` right now.
+[[nodiscard]] auto partition_names_under(std::string_view device) noexcept
+    -> std::unordered_set<std::string> {
+    std::unordered_set<std::string> names;
+    const auto parent  = std::string{gucc::disk::strip_device_prefix(device)};
+    const auto devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        return names;
+    }
+    for (const auto& dev : *devices) {
+        if (dev.type == "part"sv && dev.pkname.has_value() && *dev.pkname == parent) {
+            names.insert(dev.name);
+        }
+    }
+    return names;
+}
+
 }  // namespace
 
 namespace gucc::disk {
+
+auto parse_free_regions(std::string_view parted_machine_output) noexcept -> std::vector<FreeRegion> {
+    std::vector<FreeRegion> regions;
+
+    std::size_t pos = 0;
+    while (pos <= parted_machine_output.size()) {
+        const auto nl   = parted_machine_output.find('\n', pos);
+        const auto line = parted_machine_output.substr(pos, nl == std::string_view::npos ? std::string_view::npos : nl - pos);
+        pos             = (nl == std::string_view::npos) ? parted_machine_output.size() + 1 : nl + 1;
+
+        // A free-space record is `NUM:START B:END B:SIZE B:free;`
+        std::array<std::string_view, 5> fields{};
+        std::size_t fcount = 0;
+        std::size_t fp     = 0;
+        while (fp <= line.size() && fcount < fields.size()) {
+            const auto colon = line.find(':', fp);
+            fields[fcount++] = line.substr(fp, colon == std::string_view::npos ? std::string_view::npos : colon - fp);
+            if (colon == std::string_view::npos) {
+                break;
+            }
+            fp = colon + 1;
+        }
+        if (fcount < 5 || strip_byte_suffix(fields[4]) != "free"sv) {
+            continue;
+        }
+
+        const auto start = field_to_u64(fields[1]);
+        const auto end   = field_to_u64(fields[2]);
+        const auto size  = field_to_u64(fields[3]);
+        if (start && end && size) {
+            regions.push_back(FreeRegion{.start_bytes = *start, .end_bytes = *end, .size_bytes = *size});
+        }
+    }
+    return regions;
+}
+
+auto parse_device_partitions(std::string_view parted_machine_output) noexcept -> std::vector<PartitionLayout> {
+    std::vector<PartitionLayout> parts;
+
+    std::size_t pos = 0;
+    while (pos <= parted_machine_output.size()) {
+        const auto nl   = parted_machine_output.find('\n', pos);
+        const auto line = parted_machine_output.substr(pos, nl == std::string_view::npos ? std::string_view::npos : nl - pos);
+        pos             = (nl == std::string_view::npos) ? parted_machine_output.size() + 1 : nl + 1;
+
+        // Partition records are `NUM:START B:END B:SIZE B:FSTYPE:NAME:FLAGS;`
+        std::vector<std::string_view> f;
+        std::size_t fp = 0;
+        while (fp <= line.size()) {
+            const auto colon = line.find(':', fp);
+            f.push_back(line.substr(fp, colon == std::string_view::npos ? std::string_view::npos : colon - fp));
+            if (colon == std::string_view::npos) {
+                break;
+            }
+            fp = colon + 1;
+        }
+        if (f.size() < 7) {
+            continue;
+        }
+
+        const auto number = field_to_u64(f[0]);
+        const auto start  = field_to_u64(f[1]);
+        const auto end    = field_to_u64(f[2]);
+        const auto size   = field_to_u64(f[3]);
+        if (!number || !start || !end || !size) {
+            continue;
+        }
+
+        // Flags field carries a trailing ';' and possibly surrounding spaces.
+        auto flags = f[6];
+        while (!flags.empty() && (flags.back() == ';' || flags.back() == '\r' || flags.back() == ' ')) {
+            flags.remove_suffix(1);
+        }
+
+        parts.push_back(PartitionLayout{
+            .number      = static_cast<std::uint32_t>(*number),
+            .start_bytes = *start,
+            .end_bytes   = *end,
+            .size_bytes  = *size,
+            .fstype      = std::string{f[4]},
+            .name        = std::string{f[5]},
+            .flags       = std::string{flags},
+        });
+    }
+    return parts;
+}
+
+auto build_resize_filesystem_command(std::string_view partition, std::string_view fstype, std::uint64_t new_size_bytes) noexcept -> std::string {
+    if (fstype == "ext2"sv || fstype == "ext3"sv || fstype == "ext4"sv) {
+        // resize2fs in KiB; rounding down keeps the filesystem inside the partition.
+        return fmt::format(FMT_COMPILE("resize2fs '{}' {}K"), partition, new_size_bytes / 1024U);
+    }
+    if (fstype == "ntfs"sv) {
+        return fmt::format(FMT_COMPILE("ntfsresize --force --size {} '{}'"), new_size_bytes, partition);
+    }
+    // xfs can't shrink; btrfs needs an online (mounted) resize handled elsewhere.
+    return {};
+}
+
+auto build_resize_partition_command(std::string_view device, std::uint32_t number, std::uint64_t new_end_bytes) noexcept -> std::string {
+    return fmt::format(FMT_COMPILE("parted -s -m '{}' unit B resizepart {} {}B"), device, number, new_end_bytes);
+}
+
+auto build_create_partition_command(std::string_view device, std::uint64_t start_bytes, std::uint64_t end_bytes, std::string_view parted_fs) noexcept -> std::string {
+    if (parted_fs.empty()) {
+        return fmt::format(FMT_COMPILE("parted -s -m -a optimal '{}' unit B mkpart primary {}B {}B"), device, start_bytes, end_bytes);
+    }
+    return fmt::format(FMT_COMPILE("parted -s -m -a optimal '{}' unit B mkpart primary {} {}B {}B"), device, parted_fs, start_bytes, end_bytes);
+}
+
+auto build_delete_partition_command(std::string_view device, std::uint32_t number) noexcept -> std::string {
+    return fmt::format(FMT_COMPILE("parted -s -m '{}' rm {}"), device, number);
+}
+
+auto build_set_flag_command(std::string_view device, std::uint32_t number, std::string_view flag, bool state) noexcept -> std::string {
+    return fmt::format(FMT_COMPILE("parted -s -m '{}' set {} {} {}"), device, number, flag, state ? "on" : "off");
+}
+
+auto build_create_table_command(std::string_view device, std::string_view table_type) noexcept -> std::string {
+    return fmt::format(FMT_COMPILE("parted -s -m '{}' mklabel {}"), device, table_type);
+}
+
+auto list_device_partitions(std::string_view device) noexcept -> std::vector<PartitionLayout> {
+    const auto cmd = fmt::format(FMT_COMPILE("parted -m -s '{}' unit B print 2>/dev/null"), device);
+    return parse_device_partitions(utils::exec(cmd));
+}
+
+auto resize_filesystem(std::string_view partition, std::string_view fstype, std::uint64_t new_size_bytes) noexcept -> Result<void> {
+    const auto cmd = build_resize_filesystem_command(partition, fstype, new_size_bytes);
+    if (cmd.empty()) {
+        return make_error(ErrorCode::InvalidArgument, fmt::format("filesystem '{}' cannot be resized", fstype));
+    }
+    // ext* requires a forced check before resize2fs will run.
+    if (fstype.starts_with("ext"sv)) {
+        utils::exec_checked(fmt::format(FMT_COMPILE("e2fsck -f -y '{}' &>>/tmp/cachyos-install.log"), partition));
+    }
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), cmd))) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to resize filesystem on {}", partition));
+    }
+    return {};
+}
+
+auto resize_partition(std::string_view device, std::uint32_t number, std::uint64_t new_end_bytes) noexcept -> Result<void> {
+    const auto cmd = build_resize_partition_command(device, number, new_end_bytes);
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("echo Yes | {} &>>/tmp/cachyos-install.log"), cmd))) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to resize partition {} on {}", number, device));
+    }
+    return {};
+}
+
+auto shrink_partition(std::string_view device, std::uint32_t number, std::string_view partition,
+    std::string_view fstype, std::uint64_t new_size_bytes, std::uint64_t new_end_bytes) noexcept -> Result<void> {
+    if (auto res = resize_filesystem(partition, fstype, new_size_bytes); !res) {
+        return res;
+    }
+    return resize_partition(device, number, new_end_bytes);
+}
+
+auto filesystem_used_bytes(std::string_view partition, std::string_view fstype) noexcept -> Result<std::uint64_t> {
+    const auto value_after = [](std::string_view text, std::string_view label) -> std::optional<std::uint64_t> {
+        const auto at = text.find(label);
+        if (at == std::string_view::npos) {
+            return std::nullopt;
+        }
+        auto rest = text.substr(at + label.size());
+        const auto first = rest.find_first_of("0123456789");
+        if (first == std::string_view::npos) {
+            return std::nullopt;
+        }
+        rest = rest.substr(first);
+        const auto last = rest.find_first_not_of("0123456789");
+        return field_to_u64(last == std::string_view::npos ? rest : rest.substr(0, last));
+    };
+
+    if (fstype.starts_with("ext"sv)) {
+        const auto out = utils::exec(fmt::format(FMT_COMPILE("dumpe2fs -h '{}' 2>/dev/null"), partition));
+        const auto count = value_after(out, "Block count:"sv);
+        const auto freeb = value_after(out, "Free blocks:"sv);
+        const auto bsize = value_after(out, "Block size:"sv);
+        if (!count || !freeb || !bsize) {
+            return make_error(ErrorCode::ParseError, fmt::format("could not read ext usage on {}", partition));
+        }
+        return (*count - *freeb) * *bsize;
+    }
+    if (fstype == "ntfs"sv) {
+        const auto out = utils::exec(fmt::format(FMT_COMPILE("ntfsresize --info --force '{}' 2>/dev/null"), partition));
+        if (const auto min = value_after(out, "You might resize at"sv)) {
+            return *min;
+        }
+        return make_error(ErrorCode::ParseError, fmt::format("could not read ntfs minimum size on {}", partition));
+    }
+    return make_error(ErrorCode::InvalidArgument, fmt::format("no usage probe for filesystem '{}'", fstype));
+}
+
+auto delete_partition(std::string_view device, std::uint32_t number) noexcept -> Result<void> {
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), build_delete_partition_command(device, number)))) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to delete partition {} on {}", number, device));
+    }
+    return {};
+}
+
+auto format_partition(std::string_view partition, std::string_view fstype, std::string_view label) noexcept -> Result<void> {
+    const auto mkfs = fs::get_mkfs_command(fs::string_to_filesystem_type(fstype));
+    if (mkfs.empty()) {
+        return make_error(ErrorCode::InvalidArgument, fmt::format("no mkfs command for filesystem '{}'", fstype));
+    }
+    auto cmd = fmt::format(FMT_COMPILE("{} '{}'"), mkfs, partition);
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), cmd))) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to format {} as {}", partition, fstype));
+    }
+    if (!label.empty()) {
+        return set_filesystem_label(partition, fstype, label);
+    }
+    return {};
+}
+
+auto set_partition_flag(std::string_view device, std::uint32_t number, std::string_view flag, bool state) noexcept -> Result<void> {
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), build_set_flag_command(device, number, flag, state)))) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to set flag {} on partition {} of {}", flag, number, device));
+    }
+    return {};
+}
+
+auto set_filesystem_label(std::string_view partition, std::string_view fstype, std::string_view label) noexcept -> Result<void> {
+    std::string cmd;
+    if (fstype.starts_with("ext"sv)) {
+        cmd = fmt::format(FMT_COMPILE("e2label '{}' '{}'"), partition, label);
+    } else if (fstype == "btrfs"sv) {
+        cmd = fmt::format(FMT_COMPILE("btrfs filesystem label '{}' '{}'"), partition, label);
+    } else if (fstype == "xfs"sv) {
+        cmd = fmt::format(FMT_COMPILE("xfs_admin -L '{}' '{}'"), label, partition);
+    } else if (fstype == "vfat"sv || fstype == "fat32"sv || fstype == "fat16"sv) {
+        cmd = fmt::format(FMT_COMPILE("fatlabel '{}' '{}'"), partition, label);
+    } else if (fstype == "ntfs"sv) {
+        cmd = fmt::format(FMT_COMPILE("ntfslabel '{}' '{}'"), partition, label);
+    } else {
+        return make_error(ErrorCode::InvalidArgument, fmt::format("no label tool for filesystem '{}'", fstype));
+    }
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), cmd))) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to label {} as '{}'", partition, label));
+    }
+    return {};
+}
+
+auto create_partition_table(std::string_view device, std::string_view table_type) noexcept -> Result<void> {
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), build_create_table_command(device, table_type)))) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to create {} table on {}", table_type, device));
+    }
+    return {};
+}
+
+auto list_free_regions(std::string_view device) noexcept -> std::vector<FreeRegion> {
+    const auto cmd = fmt::format(FMT_COMPILE("parted -m -s '{}' unit B print free 2>/dev/null"), device);
+    return parse_free_regions(utils::exec(cmd));
+}
+
+auto create_partition_in_region(std::string_view device, std::uint64_t start_bytes, std::uint64_t end_bytes) noexcept -> Result<std::string> {
+    if (end_bytes <= start_bytes) {
+        return make_error(ErrorCode::InvalidArgument,
+            fmt::format("free region end ({}) must be greater than start ({})", end_bytes, start_bytes));
+    }
+
+    const auto before = partition_names_under(device);
+
+    // -a optimal lets parted snap the boundaries to alignment within the gap.
+    const auto mkpart = fmt::format(
+        FMT_COMPILE("parted -m -s -a optimal '{}' unit B mkpart primary {}B {}B &>>/tmp/cachyos-install.log"),
+        device, start_bytes, end_bytes);
+    if (!utils::exec_checked(mkpart)) {
+        return make_error(ErrorCode::SubprocessFailed,
+            fmt::format("failed to create partition in free region on {}", device));
+    }
+    const auto reprobe = fmt::format(FMT_COMPILE("partprobe '{}' &>/dev/null"), device);
+    utils::exec_checked(reprobe);
+
+    const auto after = partition_names_under(device);
+    for (const auto& name : after) {
+        if (!before.contains(name)) {
+            return fmt::format("/dev/{}", name);
+        }
+    }
+    return make_error(ErrorCode::NotFound,
+        fmt::format("created a partition on {} but could not identify its device node", device));
+}
 
 auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> std::string {
     // sfdisk does not create partition table without partitions by default. The lines with partitions are expected in the script by default.
@@ -123,14 +454,15 @@ auto erase_disk(std::string_view device) noexcept -> Result<void> {
     return {};
 }
 
-auto generate_default_partition_schema(std::string_view device, std::string_view boot_mountpoint, bool is_efi) noexcept -> std::vector<fs::Partition> {
+auto generate_default_partition_schema(std::string_view device, std::string_view boot_mountpoint, bool is_efi, std::string_view efi_partition_size) noexcept -> std::vector<fs::Partition> {
     // TODO(vnepogodin): make whole default partition scheme customizable from config/code
 
-    // Create 4GB ESP only for UEFI systems:
+    // Create the ESP (size driven by the bootloader, e.g. grub 512MiB / limine 4GiB)
+    // only for UEFI systems:
     fs::DefaultPartitionSchemaConfig config{
         // TODO(vnepogodin): currently doesn't matter which FS is used here for sgdisk, make customizable for future use
         .root_fs_type       = fs::FilesystemType::Btrfs,
-        .efi_partition_size = "4GiB"s,
+        .efi_partition_size = std::string{efi_partition_size},
         .is_ssd             = gucc::disk::is_device_ssd(device),
         .boot_mountpoint    = std::string{boot_mountpoint},
     };

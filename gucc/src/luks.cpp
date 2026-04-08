@@ -1,6 +1,7 @@
 #include "gucc/luks.hpp"
 #include "gucc/error.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 
 #include <filesystem>
 #include <string>
@@ -71,21 +72,25 @@ namespace gucc::crypto {
 
 // TODO(vnepogodin): they are mostly equal. refactor this shit
 auto luks1_open(std::string_view luks_pass, std::string_view partition, std::string_view luks_name) noexcept -> Result<void> {
+    logger::register_secret(luks_pass);
     auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup open --type luks1 {} {} &>/dev/null"), luks_pass, partition, luks_name);
     return run_checked(cmd, fmt::format("failed to open luks1 partition {}", partition));
 }
 
 auto luks1_format(std::string_view luks_pass, std::string_view partition, std::string_view additional_flags) noexcept -> Result<void> {
+    logger::register_secret(luks_pass);
     auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup -q {} --type luks1 luksFormat {} &>/dev/null"), luks_pass, additional_flags, partition);
     return run_checked(cmd, fmt::format("failed to format luks1 partition {}", partition));
 }
 
 auto luks2_open(std::string_view luks_pass, std::string_view partition, std::string_view luks_name) noexcept -> Result<void> {
+    logger::register_secret(luks_pass);
     auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup open --type luks2 {} {} &>/dev/null"), luks_pass, partition, luks_name);
     return run_checked(cmd, fmt::format("failed to open luks2 partition {}", partition));
 }
 
 auto luks2_format(std::string_view luks_pass, std::string_view partition, std::string_view additional_flags) noexcept -> Result<void> {
+    logger::register_secret(luks_pass);
     auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup -q {} --type luks2 luksFormat {} &>/dev/null"), luks_pass, additional_flags, partition);
     return run_checked(cmd, fmt::format("failed to format luks2 partition {}", partition));
 }

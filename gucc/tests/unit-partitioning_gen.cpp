@@ -110,7 +110,7 @@ TEST_CASE("partitioning gen test")
             gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/nvme0n1p1"s, .size = "4GiB", .mount_opts = "defaults,umask=0077"s},
             gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime,compress=zstd:1"s},
         };
-        const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1", "/boot", true);
+        const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1", "/boot", true, "4GiB");
         const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
         REQUIRE_EQ(sfdisk_content, PART_DEFAULT_TEST);
         REQUIRE_EQ(partitions, expected_partitions);
@@ -344,6 +344,112 @@ TEST_CASE("partition schema preview test")
         REQUIRE(preview.contains("Subvolume"sv));
         REQUIRE(preview.contains("/@"sv));
         REQUIRE(preview.contains("/@home"sv));
+    }
+}
+
+TEST_CASE("parse free regions test")
+{
+    using gucc::disk::parse_free_regions;
+
+    SECTION("extracts only free records from parted -m output")
+    {
+        // Real-ish `parted -m -s <dev> unit B print free` output: a 500GB disk
+        // with ESP + ext4 root and a trailing free gap, plus a small free gap
+        // between the table start and the ESP.
+        static constexpr auto kOutput = R"(BYT;
+/dev/sda:500107862016B:scsi:512:512:gpt:ATA Samsung SSD 860:;
+1:17408B:1048575B:1031168B:free;
+1:1048576B:538968063B:537919488B:fat32:EFI System Partition:boot, esp;
+2:538968064B:250059350015B:249520381952B:ext4::;
+1:250059350016B:500107862015B:250048512000B:free;
+)"sv;
+
+        const auto regions = parse_free_regions(kOutput);
+        REQUIRE(regions.size() == 2);
+
+        CHECK(regions[0].start_bytes == 17408ULL);
+        CHECK(regions[0].end_bytes == 1048575ULL);
+        CHECK(regions[0].size_bytes == 1031168ULL);
+
+        CHECK(regions[1].start_bytes == 250059350016ULL);
+        CHECK(regions[1].end_bytes == 500107862015ULL);
+        CHECK(regions[1].size_bytes == 250048512000ULL);
+    }
+
+    SECTION("no free space yields no regions")
+    {
+        static constexpr auto kOutput = R"(BYT;
+/dev/sda:500107862016B:scsi:512:512:gpt:ATA:;
+1:1048576B:538968063B:537919488B:fat32::;
+2:538968064B:500107862015B:499568893952B:ext4::;
+)"sv;
+        CHECK(parse_free_regions(kOutput).empty());
+    }
+
+    SECTION("empty and garbage input is handled")
+    {
+        CHECK(parse_free_regions(""sv).empty());
+        CHECK(parse_free_regions("not parted output\n"sv).empty());
+    }
+}
+
+TEST_CASE("parse device partitions test")
+{
+    using gucc::disk::parse_device_partitions;
+
+    SECTION("parses partition records, ignoring header and free rows")
+    {
+        static constexpr auto kOutput = R"(BYT;
+/dev/sda:500107862016B:scsi:512:512:gpt:ATA Samsung SSD 860:;
+1:1048576B:538968063B:537919488B:fat32:EFI System Partition:boot, esp;
+2:538968064B:250059350015B:249520381952B:ext4::;
+1:250059350016B:500107862015B:250048512000B:free;
+)"sv;
+
+        const auto parts = parse_device_partitions(kOutput);
+        REQUIRE(parts.size() == 2);
+
+        CHECK(parts[0].number == 1U);
+        CHECK(parts[0].start_bytes == 1048576ULL);
+        CHECK(parts[0].end_bytes == 538968063ULL);
+        CHECK(parts[0].size_bytes == 537919488ULL);
+        CHECK(parts[0].fstype == "fat32");
+        CHECK(parts[0].name == "EFI System Partition");
+        CHECK(parts[0].flags == "boot, esp");
+
+        CHECK(parts[1].number == 2U);
+        CHECK(parts[1].fstype == "ext4");
+        CHECK(parts[1].name.empty());
+        CHECK(parts[1].flags.empty());
+    }
+
+    SECTION("empty / garbage input")
+    {
+        CHECK(parse_device_partitions(""sv).empty());
+        CHECK(parse_device_partitions("BYT;\n"sv).empty());
+    }
+}
+
+TEST_CASE("partition op command builders test")
+{
+    using namespace gucc::disk;
+
+    SECTION("filesystem resize per fstype")
+    {
+        CHECK(build_resize_filesystem_command("/dev/sda2"sv, "ext4"sv, 100ULL * 1024 * 1024) == "resize2fs '/dev/sda2' 102400K");
+        CHECK(build_resize_filesystem_command("/dev/sda2"sv, "ntfs"sv, 104857600ULL) == "ntfsresize --force --size 104857600 '/dev/sda2'");
+        CHECK(build_resize_filesystem_command("/dev/sda2"sv, "xfs"sv, 104857600ULL).empty());
+        CHECK(build_resize_filesystem_command("/dev/sda2"sv, "btrfs"sv, 104857600ULL).empty());
+    }
+    SECTION("parted ops")
+    {
+        CHECK(build_resize_partition_command("/dev/sda"sv, 2U, 250000000000ULL) == "parted -s -m '/dev/sda' unit B resizepart 2 250000000000B");
+        CHECK(build_create_partition_command("/dev/sda"sv, 1000ULL, 2000ULL, ""sv) == "parted -s -m -a optimal '/dev/sda' unit B mkpart primary 1000B 2000B");
+        CHECK(build_create_partition_command("/dev/sda"sv, 1000ULL, 2000ULL, "ext4"sv) == "parted -s -m -a optimal '/dev/sda' unit B mkpart primary ext4 1000B 2000B");
+        CHECK(build_delete_partition_command("/dev/sda"sv, 3U) == "parted -s -m '/dev/sda' rm 3");
+        CHECK(build_set_flag_command("/dev/sda"sv, 1U, "esp"sv, true) == "parted -s -m '/dev/sda' set 1 esp on");
+        CHECK(build_set_flag_command("/dev/sda"sv, 1U, "boot"sv, false) == "parted -s -m '/dev/sda' set 1 boot off");
+        CHECK(build_create_table_command("/dev/sda"sv, "gpt"sv) == "parted -s -m '/dev/sda' mklabel gpt");
     }
 }
 

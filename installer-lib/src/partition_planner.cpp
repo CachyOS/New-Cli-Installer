@@ -7,11 +7,16 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/lvm.hpp"
+#include "gucc/partitioning.hpp"
+#include "gucc/system_query.hpp"
 #include "gucc/zfs_query.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <filesystem>
 #include <random>
+#include <sstream>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -28,27 +33,54 @@ namespace {
 // NOLINTNEXTLINE
 using namespace cachyos::installer::partition_planner;
 
+auto to_device_entry(gucc::disk::BlockDevice&& d) noexcept -> DeviceEntry {
+    return DeviceEntry{
+        .name        = std::move(d.name),
+        .type        = std::move(d.type),
+        .fstype      = std::move(d.fstype),
+        .label       = d.label.value_or(""),
+        .model       = d.model.value_or(""),
+        .size_bytes  = d.size.value_or(0),
+        .parent      = d.pkname.value_or(""),
+        .mountpoints = std::move(d.mountpoints),
+        .uuid        = std::move(d.uuid),
+        .partuuid    = d.partuuid.value_or(""),
+    };
+}
+
+auto from_disk_info(gucc::disk::DiskInfo&& d) noexcept -> DeviceEntry {
+    return DeviceEntry{
+        .name        = std::move(d.device),
+        .type        = std::string{"disk"},
+        .fstype      = {},
+        .label       = {},
+        .model       = d.model.value_or(""),
+        .size_bytes  = d.size,
+        .parent      = {},
+        .mountpoints = {},
+        .uuid        = {},
+        .partuuid    = {},
+    };
+}
+
 auto block_devices_inventory() noexcept -> std::vector<DeviceEntry> {
-    auto devs = gucc::disk::list_block_devices();
-    if (!devs) {
-        return {};
+    std::vector<DeviceEntry> out;
+
+    // Top-level disks first so a frontend that filters by `parent.empty()`
+    // gets a usable target-device list. `list_block_devices` filters disks
+    // out for legacy callers, so we pull them via `list_disks`.
+    if (auto disks = gucc::disk::list_disks()) {
+        out.reserve(disks->size());
+        for (auto& d : *disks) {
+            out.push_back(from_disk_info(std::move(d)));
+        }
     }
 
-    std::vector<DeviceEntry> out;
-    out.reserve(devs->size());
-    for (auto& d : *devs) {
-        out.push_back(DeviceEntry{
-            .name        = std::move(d.name),
-            .type        = std::move(d.type),
-            .fstype      = std::move(d.fstype),
-            .label       = d.label.value_or(""),
-            .model       = d.model.value_or(""),
-            .size_bytes  = d.size.value_or(0),
-            .parent      = d.pkname.value_or(""),
-            .mountpoints = std::move(d.mountpoints),
-            .uuid        = std::move(d.uuid),
-            .partuuid    = d.partuuid.value_or(""),
-        });
+    if (auto devs = gucc::disk::list_block_devices()) {
+        out.reserve(out.size() + devs->size());
+        for (auto& d : *devs) {
+            out.push_back(to_device_entry(std::move(d)));
+        }
     }
     return out;
 }
@@ -202,6 +234,310 @@ auto inspect_existing_btrfs(std::string_view device) noexcept
         paths.push_back(std::move(subvol.subvolume));
     }
     return paths;
+}
+
+namespace {
+
+// lsblk reports START in 512-byte sectors regardless of physical sector size.
+constexpr std::uint64_t kSectorBytes = 512;
+// Conservative reserve at each end of a disk when deriving free space without
+// parted: ~1 MiB covers MBR/GPT alignment and the GPT backup header. parted's
+// `-a optimal` snaps to real alignment at apply time, so this only needs to be
+// safe, not exact.
+constexpr std::uint64_t kEdgeReserveBytes = 1024ULL * 1024ULL;
+// Gaps smaller than this are alignment slack, not usable free space.
+constexpr std::uint64_t kMinFreeBytes = 1024ULL * 1024ULL;
+
+// Trailing decimal run of a partition path ("/dev/nvme0n1p2" -> 2, "/dev/sda3" -> 3).
+auto trailing_number(std::string_view path) -> std::uint32_t {
+    std::size_t i = path.size();
+    while (i > 0 && (std::isdigit(static_cast<unsigned char>(path[i - 1])) != 0)) {
+        --i;
+    }
+    std::uint32_t n = 0;
+    for (; i < path.size(); ++i) {
+        n = (n * 10) + static_cast<std::uint32_t>(path[i] - '0');
+    }
+    return n;
+}
+
+// Resolve a partition's device path: nvme0n1/mmcblk0 use a 'p' separator while
+// sd*/vd* append the number directly.
+auto partition_path(std::string_view device, std::uint32_t number) -> std::string {
+    const bool needs_p = !device.empty() && (std::isdigit(static_cast<unsigned char>(device.back())) != 0);
+    return needs_p ? fmt::format("{}p{}", device, number) : fmt::format("{}{}", device, number);
+}
+
+// Friendly flag string derived from lsblk's partition type (parted-style names
+// the Manual editor recognizes). The ESP is the case that matters for booting.
+auto derive_partition_flags(const gucc::disk::BlockDevice& d) -> std::string {
+    if (d.parttypename.value_or("") == "EFI System") {
+        return "boot, esp";
+    }
+    return {};
+}
+
+// Build the partition list for a disk from the non-root lsblk inventory.
+auto collect_partitions(std::string_view device) -> std::vector<PartitionEntry> {
+    std::vector<PartitionEntry> out;
+    auto devs = gucc::disk::list_block_devices();
+    if (!devs) {
+        return out;
+    }
+    for (auto& d : *devs) {
+        if (d.type != "part"sv || d.pkname.value_or("") != device) {
+            continue;
+        }
+        const auto start_bytes = d.start.value_or(0) * kSectorBytes;
+        const auto size_bytes  = d.size.value_or(0);
+        out.push_back(PartitionEntry{
+            .number      = trailing_number(d.name),
+            .start_bytes = start_bytes,
+            .end_bytes   = size_bytes > 0 ? start_bytes + size_bytes - 1 : start_bytes,
+            .size_bytes  = size_bytes,
+            .device      = d.name,
+            .fstype      = std::move(d.fstype),
+            .name        = {},
+            .flags       = derive_partition_flags(d),
+            .part_type   = d.parttypename.value_or(""),
+            .label       = d.label.value_or(""),
+            .uuid        = std::move(d.uuid),
+            .used_bytes  = d.fsused.value_or(0),
+        });
+    }
+    std::ranges::sort(out, {}, &PartitionEntry::start_bytes);
+    return out;
+}
+
+// Total size of a whole disk, in bytes (non-root, via lsblk).
+auto disk_total_bytes(std::string_view device) -> std::uint64_t {
+    if (auto disks = gucc::disk::list_disks()) {
+        for (const auto& d : *disks) {
+            if (d.device == device) {
+                return d.size;
+            }
+        }
+    }
+    return 0;
+}
+
+}  // namespace
+
+auto list_free_space(std::string_view device) noexcept -> std::vector<FreeSpaceRegion> {
+    // Derived from lsblk geometry so the view works without root. parted's
+    // precise `print free` still backs actuation (it runs as root at install).
+    std::vector<FreeSpaceRegion> out;
+    const auto total = disk_total_bytes(device);
+    if (total <= 2 * kEdgeReserveBytes) {
+        return out;
+    }
+    const auto parts    = collect_partitions(device);
+    const auto disk_end = total - kEdgeReserveBytes;  // last usable byte (exclusive of GPT backup)
+
+    auto emit_gap = [&out](std::uint64_t start, std::uint64_t end_exclusive) {
+        if (end_exclusive > start && (end_exclusive - start) >= kMinFreeBytes) {
+            out.push_back(FreeSpaceRegion{
+                .start_bytes = start,
+                .end_bytes   = end_exclusive - 1,
+                .size_bytes  = end_exclusive - start,
+            });
+        }
+    };
+
+    std::uint64_t cursor = kEdgeReserveBytes;  // first usable byte
+    for (const auto& p : parts) {
+        if (p.size_bytes == 0) {
+            continue;
+        }
+        emit_gap(cursor, p.start_bytes);
+        cursor = std::max(cursor, p.end_bytes + 1);
+    }
+    emit_gap(cursor, disk_end);
+    return out;
+}
+
+auto prepare_alongside_partition(std::string_view device,
+    std::uint64_t start_bytes, std::uint64_t end_bytes) noexcept
+    -> std::expected<std::string, std::string> {
+    auto res = gucc::disk::create_partition_in_region(device, start_bytes, end_bytes);
+    if (!res) {
+        return std::unexpected(std::move(res).error().context);
+    }
+    return std::move(res).value();
+}
+
+auto list_partitions(std::string_view device) noexcept -> std::vector<PartitionEntry> {
+    return collect_partitions(device);
+}
+
+auto shrinkable_bounds(std::string_view device, std::uint32_t number,
+    std::string_view fstype, std::uint64_t current_size_bytes) noexcept
+    -> std::expected<std::pair<std::uint64_t, std::uint64_t>, std::string> {
+    // Prefer lsblk's FSUSED (non-root) so the shrink slider has a floor even
+    // when parted/df would need root; fall back to a filesystem probe otherwise.
+    for (const auto& p : collect_partitions(device)) {
+        if (p.number == number && p.used_bytes > 0) {
+            return std::pair<std::uint64_t, std::uint64_t>{p.used_bytes, current_size_bytes};
+        }
+    }
+    const auto part = partition_path(device, number);
+    auto used = gucc::disk::filesystem_used_bytes(part, fstype);
+    if (!used) {
+        return std::unexpected(std::move(used).error().context);
+    }
+    return std::pair<std::uint64_t, std::uint64_t>{*used, current_size_bytes};
+}
+
+auto apply_partition_operations(std::string_view device, const std::vector<PartitionOp>& ops) noexcept
+    -> std::expected<std::string, std::string> {
+    std::string last_created;
+
+    for (const auto& op : ops) {
+        switch (op.kind) {
+        case PartitionOp::Kind::NewTable: {
+            if (auto r = gucc::disk::create_partition_table(device, op.table_type); !r) {
+                return std::unexpected(std::move(r).error().context);
+            }
+            break;
+        }
+        case PartitionOp::Kind::Create: {
+            auto created = gucc::disk::create_partition_in_region(device, op.start_bytes, op.end_bytes);
+            if (!created) {
+                return std::unexpected(std::move(created).error().context);
+            }
+            last_created = *created;
+            if (!op.fstype.empty()) {
+                if (auto r = gucc::disk::format_partition(last_created, op.fstype, op.label); !r) {
+                    return std::unexpected(std::move(r).error().context);
+                }
+            }
+            if (!op.flags.empty()) {
+                const auto num = trailing_number(last_created);
+                std::stringstream flags_in{op.flags};
+                std::string flag;
+                while (std::getline(flags_in, flag, ',')) {
+                    while (!flag.empty() && flag.front() == ' ') {
+                        flag.erase(flag.begin());
+                    }
+                    if (flag.empty()) {
+                        continue;
+                    }
+                    if (auto r = gucc::disk::set_partition_flag(device, num, flag, true); !r) {
+                        return std::unexpected(std::move(r).error().context);
+                    }
+                }
+            }
+            break;
+        }
+        case PartitionOp::Kind::Delete: {
+            if (auto r = gucc::disk::delete_partition(device, op.number); !r) {
+                return std::unexpected(std::move(r).error().context);
+            }
+            break;
+        }
+        case PartitionOp::Kind::Resize: {
+            const auto part = partition_path(device, op.number);
+            if (auto r = gucc::disk::shrink_partition(device, op.number, part, op.fstype, op.size_bytes, op.end_bytes); !r) {
+                return std::unexpected(std::move(r).error().context);
+            }
+            break;
+        }
+        case PartitionOp::Kind::Format: {
+            const auto part = partition_path(device, op.number);
+            if (auto r = gucc::disk::format_partition(part, op.fstype, op.label); !r) {
+                return std::unexpected(std::move(r).error().context);
+            }
+            break;
+        }
+        case PartitionOp::Kind::SetFlag: {
+            if (auto r = gucc::disk::set_partition_flag(device, op.number, op.flags, op.flag_state); !r) {
+                return std::unexpected(std::move(r).error().context);
+            }
+            break;
+        }
+        case PartitionOp::Kind::SetLabel: {
+            const auto part = partition_path(device, op.number);
+            if (auto r = gucc::disk::set_filesystem_label(part, op.fstype, op.label); !r) {
+                return std::unexpected(std::move(r).error().context);
+            }
+            break;
+        }
+        }
+    }
+    return last_created;
+}
+
+auto apply_partition_plan(std::string_view device, const std::vector<PartitionOp>& ops,
+    const std::vector<StagedMount>& mounts) noexcept
+    -> std::expected<MountSelections, std::string> {
+    // 1. Run the destructive ops; the last partition created is the install target.
+    std::string created_device;
+    if (!ops.empty()) {
+        auto applied = apply_partition_operations(device, ops);
+        if (!applied) {
+            return std::unexpected(std::move(applied).error());
+        }
+        created_device = std::move(*applied);
+    }
+
+    // 2. Lower the mounts into a PartitionPlan, resolving `created` rows to the
+    //    partition the ops just produced.
+    PartitionPlan plan{};
+    bool have_root = false;
+    for (const auto& m : mounts) {
+        std::string path = m.created ? created_device : m.device;
+        if (path.empty()) {
+            return std::unexpected(std::string{"could not resolve the device for mountpoint "} + m.mountpoint);
+        }
+        // Encrypt before format/mount: luksFormat + open the raw partition, then
+        // treat /dev/mapper/<name> as the device the filesystem lands on.
+        if (m.luks) {
+            if (auto enc = encrypt_partition(LuksFormatRequest{
+                    .device      = path,
+                    .mapper_name = m.luks_mapper_name,
+                    .passphrase  = m.luks_passphrase,
+                    .extra_flags = {},
+                    .version     = m.luks_version,
+                }); !enc) {
+                return std::unexpected(std::move(enc).error());
+            }
+            path = "/dev/mapper/" + m.luks_mapper_name;
+        }
+        if (m.mountpoint == "/") {
+            plan.root = RootPartitionSelection{
+                .device           = path,
+                .fstype           = m.fstype,
+                .mkfs_command     = {},
+                .mount_opts       = m.mount_opts,
+                .format_requested = m.format_requested,
+            };
+            have_root = true;
+        } else if (m.is_esp) {
+            plan.esp = EspSelection{
+                .device           = path,
+                .mountpoint       = m.mountpoint.empty() ? std::string{"/boot/efi"} : m.mountpoint,
+                .format_requested = m.format_requested,
+            };
+        } else {
+            plan.additional.push_back(AdditionalPartSelection{
+                .device           = path,
+                .mountpoint       = m.mountpoint,
+                .fstype           = m.fstype,
+                .mkfs_command     = {},
+                .mount_opts       = m.mount_opts,
+                .format_requested = m.format_requested,
+            });
+        }
+    }
+    if (!have_root) {
+        return std::unexpected(std::string{"the partition plan has no \"/\" mount"});
+    }
+    if (plan.root.fstype == "btrfs"sv) {
+        plan.btrfs_subvolumes = default_btrfs_layout();
+    }
+
+    // 3. Finalize into the MountSelections the orchestrator consumes.
+    return finalize_plan(std::move(plan));
 }
 
 auto default_zfs_layout(std::string_view zpool_name) noexcept

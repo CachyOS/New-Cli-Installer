@@ -111,6 +111,12 @@ struct InstallContext {
 
     bool encrypt_swap{false};
 
+    /// When set, the auto-partition root is LUKS-encrypted before it is mounted.
+    /// Only the auto-partition path consults this — explicit `mount_selections`
+    /// already carry their own (possibly mapper) root device.
+    std::optional<std::string> root_luks_passphrase;
+    bool root_luks_use_luks2{true};
+
     // Bootloader
     gucc::bootloader::BootloaderType bootloader{gucc::bootloader::BootloaderType::Grub};
 
@@ -123,6 +129,14 @@ struct InstallContext {
     std::string filesystem_name;
     std::string keymap{"us"};
     bool server_mode{};
+
+    /// Packages the user unchecked in the GUI's advanced desktop-package
+    /// selection. Filtered out of the desktop package list at install time.
+    std::vector<std::string> excluded_packages{};
+
+    /// Optional packages the user selected on the GUI Packages page (netinstall
+    /// groups / bundles), installed on top of base + desktop. Empty by default.
+    std::vector<std::string> additional_packages{};
 
     /// When true, run `chwd -a` against the target after the desktop step
     /// to install every hardware-driver profile applicable to the detected

@@ -6,6 +6,7 @@
 #include <expected>     // for expected
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <utility>      // for pair
 #include <vector>       // for vector
 
 /// @file partition_planner.hpp
@@ -91,6 +92,136 @@ struct DiskInventory {
 [[nodiscard]] auto inspect_existing_btrfs(std::string_view device) noexcept
     -> std::expected<std::vector<std::string>, std::string>;
 
+/// @brief An unallocated free region on a disk, in bytes.
+///
+/// Mirror of gucc::disk::FreeRegion so frontends don't pull in gucc headers.
+struct FreeSpaceRegion {
+    std::uint64_t start_bytes{};  ///< first byte of the gap
+    std::uint64_t end_bytes{};    ///< last byte of the gap (inclusive)
+    std::uint64_t size_bytes{};   ///< gap size in bytes
+};
+
+/// @brief List the unallocated free regions on a disk (non-destructive).
+///
+/// Powers the "install alongside" flow: the user picks a gap to install into
+/// rather than wiping the disk or shrinking an existing partition.
+[[nodiscard]] auto list_free_space(std::string_view device) noexcept
+    -> std::vector<FreeSpaceRegion>;
+
+/// @brief Create a root partition in a free region and return its device path.
+///
+/// Non-destructive to existing partitions. The returned path can be used as a
+/// Replace-style root device in a PartitionPlan (format it, mount at "/").
+[[nodiscard]] auto prepare_alongside_partition(std::string_view device,
+    std::uint64_t start_bytes, std::uint64_t end_bytes) noexcept
+    -> std::expected<std::string, std::string>;
+
+/// @brief An existing partition on a disk (mirror of gucc::disk::PartitionLayout,
+/// with the resolved device path the frontend operates on).
+struct PartitionEntry {
+    std::uint32_t number{};       ///< 1-based partition number
+    std::uint64_t start_bytes{};  ///< first byte
+    std::uint64_t end_bytes{};    ///< last byte (inclusive)
+    std::uint64_t size_bytes{};   ///< size in bytes
+    std::string device;           ///< resolved path (e.g. /dev/sda2 or /dev/nvme0n1p2)
+    std::string fstype;           ///< filesystem ("ext4", "ntfs", "" if none)
+    std::string name;             ///< GPT partition name
+    std::string flags;            ///< comma-separated flags ("boot, esp")
+    std::string part_type;        ///< human partition type ("EFI System", "Linux filesystem")
+    std::string label;            ///< filesystem label
+    std::string uuid;             ///< filesystem UUID
+    std::uint64_t used_bytes{};   ///< bytes in use on the filesystem (0 if unknown)
+};
+
+/// @brief Lists the existing partitions on a disk (powers the Manual editor's
+/// partition-bars view and the Alongside shrink slider). Non-destructive.
+[[nodiscard]] auto list_partitions(std::string_view device) noexcept
+    -> std::vector<PartitionEntry>;
+
+/// @brief The shrink range for a partition: {minimum, current} bytes. The minimum
+/// is the space the filesystem is actually using.
+[[nodiscard]] auto shrinkable_bounds(std::string_view device, std::uint32_t number,
+    std::string_view fstype, std::uint64_t current_size_bytes) noexcept
+    -> std::expected<std::pair<std::uint64_t, std::uint64_t>, std::string>;
+
+/// @brief One pending partition-table edit.
+struct PartitionOp {
+    enum class Kind : std::uint8_t {
+        Create,    ///< new partition in [start,end], optionally formatted/flagged
+        Delete,    ///< remove partition `number`
+        Resize,    ///< shrink/grow partition `number` (fs → size_bytes, end → end_bytes)
+        Format,    ///< (re)format partition `number` as fstype (+ label)
+        SetFlag,   ///< set/clear `flag` on partition `number`
+        SetLabel,  ///< set fs label on partition `number`
+        NewTable,  ///< write a fresh `table_type` partition table (wipes the disk)
+    };
+    Kind kind{};
+    std::uint32_t number{};       ///< target partition (Delete/Resize/Format/SetFlag/SetLabel)
+    std::uint64_t start_bytes{};  ///< Create
+    std::uint64_t end_bytes{};    ///< Create / Resize (new partition end)
+    std::uint64_t size_bytes{};   ///< Resize (new filesystem size)
+    std::string fstype;           ///< Create/Format/Resize
+    std::string label;            ///< Create/Format/SetLabel
+    std::string flags;            ///< Create (comma list) / SetFlag (single flag)
+    bool flag_state{true};        ///< SetFlag on/off
+    std::string table_type;       ///< NewTable ("gpt"/"msdos")
+};
+
+/// @brief Applies pending partition operations in order via the gucc partition
+/// layer, returning the device path of the last partition created (the typical
+/// install target for Alongside/Manual), or empty when none was created.
+///
+/// @warning Destructive. Ops referencing a `number` use the table as it stands
+/// when the op runs; the frontend should avoid interleaving deletes with
+/// number-based edits.
+[[nodiscard]] auto apply_partition_operations(std::string_view device,
+    const std::vector<PartitionOp>& ops) noexcept
+    -> std::expected<std::string, std::string>;
+
+/// @brief LUKS header version on disk.
+enum class LuksVersion : std::uint8_t {
+    Luks1,  ///< old header, only when the bootloader can't read LUKS2
+    Luks2,  ///< the normal choice
+};
+
+/// @brief One mount the frontend wants once the partition ops have been applied.
+///
+/// `created` rows refer to the partition produced by the (single) Create op in
+/// the staged op list — their device is resolved from apply_partition_operations'
+/// return value, so `device` is left empty. Existing rows carry their path.
+///
+/// When `luks` is set the (created) partition is luksFormat'd and opened as
+/// `luks_mapper_name` before it is formatted/mounted, so the matching Create op
+/// must leave its fstype empty (the raw partition is not pre-formatted) and this
+/// mount's `format_requested` must be true (the mapper gets the filesystem).
+struct StagedMount {
+    bool created{};                ///< true → device comes from the apply result
+    std::string device;            ///< existing partition path (when !created)
+    std::string mountpoint;        ///< "/", "/boot/efi", "/home", …
+    std::string fstype;            ///< filesystem for this mount
+    bool format_requested{};       ///< (re)format before mounting
+    std::string mount_opts;        ///< extra mount options
+    bool is_esp{};                 ///< this mount is the EFI system partition
+    bool luks{};                   ///< encrypt with LUKS before format/mount
+    std::string luks_passphrase;   ///< passphrase (when luks)
+    std::string luks_mapper_name;  ///< dm-crypt mapper name, no /dev/mapper/ prefix
+    LuksVersion luks_version{LuksVersion::Luks2};  ///< on-disk header version
+};
+
+/// @brief Apply pending partition ops, then lower the resulting layout into the
+/// MountSelections the orchestrator consumes — the destructive counterpart of
+/// finalize_plan, meant to run at install time (as root) off the UI thread.
+///
+/// Runs @p ops in order (the last Create is the install target), resolves the
+/// `created` StagedMount rows to that partition, builds a PartitionPlan (default
+/// btrfs subvolumes when root is btrfs) and finalizes it.
+///
+/// @warning Destructive (drives parted + fs tools). Requires root.
+[[nodiscard]] auto apply_partition_plan(std::string_view device,
+    const std::vector<PartitionOp>& ops,
+    const std::vector<StagedMount>& mounts) noexcept
+    -> std::expected<MountSelections, std::string>;
+
 /// @brief One row of a ZFS dataset layout.
 struct ZfsDatasetChoice {
     std::string dataset;  ///< dataset path
@@ -111,12 +242,6 @@ struct ZfsDatasetChoice {
     std::string_view zpool_name,
     std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
-
-/// @brief LUKS header version on disk.
-enum class LuksVersion : std::uint8_t {
-    Luks1,  ///< old header, only when the bootloader can't read LUKS2
-    Luks2,  ///< the normal choice
-};
 
 /// @brief What you need to format a new LUKS partition.
 ///

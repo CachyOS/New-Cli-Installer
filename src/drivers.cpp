@@ -71,7 +71,7 @@ void auto_install_drivers() noexcept {
 
 #ifdef NDEVENV
     if (!tui::detail::follow_process_log_task([&](gucc::utils::SubProcess& child) -> bool {
-            return gucc::chwd::install_available_profiles(mountpoint, child);
+            return gucc::chwd::install_available_profiles(mountpoint, child).has_value();
         })) {
         spdlog::error("Failed to install drivers");
         return;

@@ -73,6 +73,14 @@ using LogCallback = gucc::utils::SubProcess::LogLineCallback;
     std::stop_token stop_token) noexcept
     -> std::expected<void, std::string>;
 
+/// Install the optional packages selected on the GUI Packages page
+/// (@ref InstallContext::additional_packages). Runs regardless of server mode;
+/// no-op when none are selected.
+[[nodiscard]] auto additional(const InstallContext& ctx,
+    LogCallback log_cb,
+    std::stop_token stop_token) noexcept
+    -> std::expected<void, std::string>;
+
 /// Configure the installed display manager to autologin @p user.
 [[nodiscard]] auto autologin(const UserSettings& user,
     const InstallContext& ctx) noexcept

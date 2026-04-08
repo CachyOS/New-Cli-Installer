@@ -1,5 +1,6 @@
 #include "gucc/systemd_homed.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <string>  // for string
@@ -88,6 +89,7 @@ auto create_homed_user(const HomedUserConfig& config) noexcept -> Result<void> {
         return make_error(ErrorCode::InvalidArgument, "Cannot create homed user: username or password empty");
     }
 
+    logger::register_secret(config.password);
     spdlog::info("Creating homed user: {}", config.username);
     const auto& args = utils::join(generate_homectl_args(config), ' ');
     const auto& cmd  = fmt::format(FMT_COMPILE("NEWPASSWORD='{}' homectl create {} --password-change-now=true {}"), config.password, config.username, args);

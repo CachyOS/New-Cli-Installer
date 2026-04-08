@@ -32,6 +32,14 @@ struct BlockDevice {
     std::optional<std::string> partuuid;
     /// Size of the device in bytes.
     std::optional<std::uint64_t> size;
+    /// Partition start offset, in 512-byte sectors (partitions only).
+    std::optional<std::uint64_t> start;
+    /// Human-readable partition type (e.g. "EFI System", "Linux filesystem").
+    std::optional<std::string> parttypename;
+    /// Raw partition flags as reported by lsblk PARTFLAGS (e.g. "0x80...").
+    std::optional<std::string> partflags;
+    /// Used filesystem bytes, when lsblk can determine it (FSUSED).
+    std::optional<std::uint64_t> fsused;
 
     /// @brief Default constructor for BlockDevice.
     BlockDevice() = default;

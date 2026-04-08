@@ -16,6 +16,30 @@ inline void parse_toml_array(const toml::array* arr, std::vector<std::string>& v
     }
 }
 
+gucc::profile::NetinstallGroup parse_netinstall_group(const toml::table& tbl) noexcept {
+    using namespace std::string_view_literals;
+    gucc::profile::NetinstallGroup group{};
+    group.name        = std::string{tbl["name"].value_or(""sv)};
+    group.description = std::string{tbl["description"].value_or(""sv)};
+    group.icon        = std::string{tbl["icon"].value_or(""sv)};
+    group.selected    = tbl["selected"].value_or(false);
+    group.hidden      = tbl["hidden"].value_or(false);
+    group.critical    = tbl["critical"].value_or(false);
+    group.is_bundle   = tbl["bundle"].value_or(false);
+
+    if (const auto* pkgs = tbl["packages"].as_array(); pkgs != nullptr) {
+        parse_toml_array(pkgs, group.packages);
+    }
+    if (const auto* subs = tbl["subgroup"].as_array(); subs != nullptr) {
+        for (const auto& node_el : *subs) {
+            if (const auto* sub_tbl = node_el.as_table(); sub_tbl != nullptr) {
+                group.subgroups.emplace_back(parse_netinstall_group(*sub_tbl));
+            }
+        }
+    }
+    return group;
+}
+
 inline void parse_toml_service_array(const toml::array* arr, std::vector<gucc::profile::ServiceEntry>& vec) noexcept {
     if (arr == nullptr) {
         return;
@@ -108,6 +132,29 @@ auto parse_net_profiles(std::string_view config_content) noexcept -> std::option
         net_profiles.desktop_profiles.emplace_back(DesktopProfile{.profile_name = std::string{std::string_view{key}}, .packages = std::move(desktop_profile_packages)});
     }
     return std::make_optional<NetProfiles>(std::move(net_profiles));
+}
+
+auto parse_netinstall_groups(std::string_view config_content) noexcept -> std::optional<std::vector<NetinstallGroup>> {
+    toml::parse_result netprof = toml::parse(config_content);
+    if (netprof.failed()) {
+        spdlog::error("Failed to parse profiles: {}", netprof.error().description());
+        return std::nullopt;
+    }
+    const auto& netprof_table = std::move(netprof).table();
+
+    std::vector<NetinstallGroup> groups{};
+
+    // No netinstall section is valid: simply no optional groups offered.
+    const auto* group_arr = netprof_table["netinstall"]["group"].as_array();
+    if (group_arr == nullptr) {
+        return std::make_optional<std::vector<NetinstallGroup>>(std::move(groups));
+    }
+    for (const auto& node_el : *group_arr) {
+        if (const auto* tbl = node_el.as_table(); tbl != nullptr) {
+            groups.emplace_back(parse_netinstall_group(*tbl));
+        }
+    }
+    return std::make_optional<std::vector<NetinstallGroup>>(std::move(groups));
 }
 
 }  // namespace gucc::profile

@@ -119,15 +119,30 @@ auto is_volume_removable(std::string_view mountpoint) noexcept -> bool {
     return disk_info->is_removable;
 }
 
+auto bootloader_esp_layout(gucc::bootloader::BootloaderType bootloader,
+    std::string_view system_mode) noexcept -> EspLayout {
+    using gucc::bootloader::BootloaderType;
+    std::string_view size{"2GiB"sv};
+    if (bootloader == BootloaderType::Grub) {
+        size = "512MiB"sv;
+    } else if (bootloader == BootloaderType::Limine) {
+        size = "4GiB"sv;
+    }
+    return EspLayout{
+        .mountpoint = std::string{bootloader_default_mount(bootloader, system_mode)},
+        .size       = std::string{size},
+    };
+}
+
 auto auto_partition(std::string_view device, std::string_view system_mode,
     gucc::bootloader::BootloaderType bootloader, const ExecutionCallbacks& /*callbacks*/) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string> {
     spdlog::info("Running automatic partitioning");
 
-    const auto& boot_mountpoint = bootloader_default_mount(bootloader, system_mode);
-    const bool is_system_efi    = (system_mode == "UEFI"sv);
+    const auto esp           = bootloader_esp_layout(bootloader, system_mode);
+    const bool is_system_efi = (system_mode == "UEFI"sv);
 
-    auto partitions = gucc::disk::generate_default_partition_schema(device, boot_mountpoint, is_system_efi);
+    auto partitions = gucc::disk::generate_default_partition_schema(device, esp.mountpoint, is_system_efi, esp.size);
     if (partitions.empty()) {
         return std::unexpected("failed to generate default partition schema: it cannot be empty");
     }
@@ -167,13 +182,13 @@ auto default_zfs_datasets(std::string_view zpool_name) noexcept
 }
 
 auto zfs_auto_pres(std::string_view partition,
-    std::string_view zpool_name, std::string_view /*mountpoint*/) noexcept
+    std::string_view zpool_name, std::string_view /*mountpoint*/,
+    std::optional<std::string> passphrase) noexcept
     -> std::expected<gucc::fs::ZfsSetupConfig, std::string> {
-    // passphrase should be known at this time, e.g. passing as arg to zfs_auto_pres func
     gucc::fs::ZfsSetupConfig zfs_setup_config{
         .zpool_name    = std::string(zpool_name),
         .zpool_options = std::string(kDefaultZpoolOptions),
-        .passphrase    = std::nullopt,
+        .passphrase    = std::move(passphrase),
         .datasets      = default_zfs_datasets(zpool_name),
     };
 
@@ -182,6 +197,47 @@ auto zfs_auto_pres(std::string_view partition,
     }
 
     return zfs_setup_config;
+}
+
+auto apply_zfs_root_layout(std::string_view device, std::string_view zpool_name,
+    std::optional<std::string> passphrase, std::string_view system_mode,
+    gucc::bootloader::BootloaderType bootloader, std::string_view mountpoint,
+    const ExecutionCallbacks& callbacks) noexcept
+    -> std::expected<std::string, std::string> {
+    const bool is_system_efi = (system_mode == "UEFI"sv);
+
+    // 1. Lay down the partitions (ESP for UEFI + a pool partition), unformatted.
+    auto partitions = auto_partition(device, system_mode, bootloader, callbacks);
+    if (!partitions) {
+        return std::unexpected(partitions.error());
+    }
+    if (partitions->empty()) {
+        return std::unexpected("zfs layout produced no partitions");
+    }
+
+    // The pool lives on the last partition (root); the ESP, when present, is first.
+    const auto& pool_partition = partitions->back().device;
+
+    // 2. Create the zpool + datasets (optionally encrypted), then import with an
+    //    altroot so the datasets mount under `mountpoint`.
+    if (auto res = zfs_auto_pres(pool_partition, zpool_name, mountpoint, std::move(passphrase)); !res) {
+        return std::unexpected(res.error());
+    }
+    const auto& import_cmd = fmt::format(FMT_COMPILE("zpool import -R {} {}"), mountpoint, zpool_name);
+    if (!gucc::utils::exec_checked(import_cmd)) {
+        return std::unexpected(fmt::format("failed to import zpool {}", zpool_name));
+    }
+
+    // 3. Format + mount the ESP for UEFI installs.
+    if (is_system_efi) {
+        const auto esp         = bootloader_esp_layout(bootloader, system_mode);
+        const auto& esp_device = partitions->front().device;
+        if (auto esp_res = setup_esp_partition(esp_device, esp.mountpoint, mountpoint, true); !esp_res) {
+            return std::unexpected(esp_res.error());
+        }
+    }
+
+    return std::string{zpool_name};
 }
 
 auto zfs_create_zpool(std::string_view partition,
@@ -436,11 +492,19 @@ auto apply_root_partition(const RootPartitionSelection& selection,
     -> std::expected<RootPartitionResult, std::string> {
     // 1. Format if requested
     if (selection.format_requested) {
-        const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
-        if (!gucc::utils::exec_checked(mkfs_cmd)) {
-            return std::unexpected(fmt::format("failed to format root partition {} with {}", selection.device, selection.mkfs_command));
+        // Fall back to deriving the mkfs command from the fstype
+        std::string mkfs_program{selection.mkfs_command};
+        if (mkfs_program.empty()) {
+            mkfs_program = std::string{gucc::fs::get_mkfs_command(gucc::fs::string_to_filesystem_type(selection.fstype))};
         }
-        spdlog::info("Formatted {} with {}", selection.device, selection.mkfs_command);
+        if (mkfs_program.empty()) {
+            return std::unexpected(fmt::format("no mkfs command for root partition {} (fstype '{}')", selection.device, selection.fstype));
+        }
+        const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), mkfs_program, selection.device);
+        if (!gucc::utils::exec_checked(mkfs_cmd)) {
+            return std::unexpected(fmt::format("failed to format root partition {} with {}", selection.device, mkfs_program));
+        }
+        spdlog::info("Formatted {} with {}", selection.device, mkfs_program);
     }
 
     // 2. Mount root partition

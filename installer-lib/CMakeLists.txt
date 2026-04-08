@@ -13,6 +13,7 @@ add_library(${PROJECT_NAME}
    src/requirements.cpp include/cachyos/requirements.hpp
    src/installer_config.cpp include/cachyos/installer_config.hpp
    src/config.cpp include/cachyos/config.hpp
+   src/logging.cpp include/cachyos/logging.hpp
    src/disk.cpp include/cachyos/disk.hpp
    src/packages.cpp include/cachyos/packages.hpp
    src/bootloader.cpp include/cachyos/bootloader.hpp
@@ -31,6 +32,7 @@ add_library(${PROJECT_NAME}
    src/steps/machine_id.cpp
    src/steps/desktop.cpp
    src/steps/desktop_configure.cpp
+   src/steps/additional.cpp
    src/steps/autologin.cpp
    src/steps/chwd.cpp
    src/steps/network_carryover.cpp

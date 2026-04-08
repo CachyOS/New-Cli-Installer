@@ -1,4 +1,5 @@
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/subprocess.hpp"
 
 #include <sys/wait.h>  // for waitpid
@@ -30,7 +31,7 @@ void exec(const std::vector<std::string>& vec) noexcept {
     const bool dirty_cmd_run = utils::safe_getenv("DIRTY_CMD_RUN") == "1"sv;
 
     if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
-        spdlog::debug("[exec] cmd := {}", vec);
+        spdlog::debug("[exec] cmd := {}", logger::redact(fmt::format("{}", vec)));
     }
     if (dirty_cmd_run) {
         return;
@@ -62,7 +63,7 @@ auto exec(std::string_view command, bool interactive) noexcept -> std::string {
     const bool log_exec_cmds = utils::safe_getenv("LOG_EXEC_CMDS") == "1"sv;
 
     if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
-        spdlog::debug("[exec] cmd := '{}'", command);
+        spdlog::debug("[exec] cmd := '{}'", logger::redact(command));
     }
 
     if (interactive) {
@@ -102,7 +103,7 @@ void arch_chroot(std::string_view command, std::string_view mountpoint, bool int
 #ifdef NDEVENV
     utils::exec(cmd_formatted, interactive);
 #else
-    spdlog::info("Running with arch-chroot(interactive='{}'): '{}'", interactive, cmd_formatted);
+    spdlog::info("Running with arch-chroot(interactive='{}'): '{}'", interactive, logger::redact(cmd_formatted));
 #endif
 }
 
@@ -113,7 +114,7 @@ auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) 
 #ifdef NDEVENV
     return utils::exec_checked(cmd_formatted);
 #else
-    spdlog::info("Running with checked arch-chroot: '{}'", cmd_formatted);
+    spdlog::info("Running with checked arch-chroot: '{}'", logger::redact(cmd_formatted));
     return true;
 #endif
 }

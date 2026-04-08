@@ -290,7 +290,6 @@ packages = [
   "xed",
   "xfce4",
   "xfce4-battery-plugin",
-  "xfce4-datetime-plugin",
   "xfce4-mount-plugin",
   "xfce4-netload-plugin",
   "xfce4-notifyd",
@@ -423,41 +422,11 @@ packages = [
   "lightdm-gtk-greeter"
 ]
 
-[desktop.ukui]
-# should be equal to netinstall ukui section group in GUI installer
+[desktop.mangowm]
+# should be equal to netinstall MangoWM section group in GUI installer
 packages = [
   "sddm",
-  "thunar",
-  "thunar-archive-plugin",
-  "thunar-volman",
-  "peony",
-  "xfce4-terminal",
-  "qt5-ukui-platformtheme",
-  "ukui-biometric-auth",
-  "ukui-control-center",
-  "ukui-interface",
-  "ukui-media",
-  "ukui-menu",
-  "ukui-menus",
-  "ukui-notebook",
-  "ukui-panel",
-  "ukui-power-manager",
-  "ukui-screensaver",
-  "ukui-session-manager",
-  "ukui-settings-daemon",
-  "ukui-sidebar",
-  "ukui-system-monitor",
-  "ukui-themes",
-  "ukui-wallpapers",
-  "ukui-window-switch",
-  "mate-terminal",
-  "mate-system-monitor",
-  "mate-control-center",
-  "redshift",
-  "gnome-screenshot",
-  "accountsservice",
-  "gvfs",
-  "qt5-quickcontrols"
+  "cachyos-mangowc-dms"
 ]
 
 [desktop.qtile]
@@ -476,7 +445,7 @@ packages = [
   "flameshot",
   "gnome-themes-extra",
   "ttf-jetbrains-mono",
-  "ttf-font-awesome",
+  "otf-font-awesome",
   "picom",
   "ly"
 ]
@@ -552,7 +521,6 @@ packages = [
   "budgie-desktop",
   "budgie-desktop-view",
   "budgie-extras",
-  "budgie-screensaver",
   "eog",
   "evince",
   "file-roller",
@@ -624,4 +592,168 @@ packages = [
   "xorg-xinput",
   "xorg-xkill",
   "xorg-xrandr"
+]
+
+# Surfaced on the dedicated Packages page of the GUI installer. These are
+# *additional* packages on top of the base system + selected desktop; nothing
+# here is selected by default, so a user who doesn't care can click straight
+# through. `bundle = true` promotes a group to a card in the simple grid; every
+# group (and its subgroups) is also browsable in the advanced searchable tree.
+#
+# Per-group fields:
+#   name        display name (required)
+#   description one-line explanation shown under the name
+#   icon        material-symbol name for the grid card (optional)
+#   bundle      show as a card in the simple grid (default false)
+#   selected    checked by default (default false)
+#   hidden      never shown but installed when the parent is selected (default false)
+#   critical    locked-checked, cannot be unchecked (default false)
+#   packages    package names for this group
+#   subgroup    nested [[netinstall.group.subgroup]] tables (one level)
+
+[[netinstall.group]]
+name = "Gaming Support"
+description = "Steam, Lutris, Wine and the CachyOS gaming meta-packages."
+icon = "sports_esports"
+bundle = true
+selected = false
+packages = [
+  "cachyos-gaming-meta",
+  "cachyos-gaming-applications",
+]
+
+[[netinstall.group]]
+name = "Printing Support"
+description = "CUPS printing stack and printer configuration tools."
+icon = "print"
+bundle = true
+selected = false
+packages = [
+  "cups",
+  "cups-filters",
+  "cups-pdf",
+  "foomatic-db",
+  "foomatic-db-engine",
+  "foomatic-db-gutenprint-ppds",
+  "foomatic-db-nonfree",
+  "foomatic-db-nonfree-ppds",
+  "foomatic-db-ppds",
+  "ghostscript",
+  "gsfonts",
+  "gutenprint",
+  "system-config-printer",
+]
+
+[[netinstall.group]]
+name = "HP Printer / Scanner"
+description = "Extra drivers for HP printers and scanners (HPLIP)."
+icon = "scanner"
+bundle = true
+selected = false
+packages = [
+  "hplip",
+  "python-pyqt5",
+  "python-reportlab",
+]
+
+[[netinstall.group]]
+name = "Multimedia & Codecs"
+description = "Media players and audio/video codecs for everyday playback."
+icon = "movie"
+bundle = true
+selected = false
+packages = [
+  "vlc",
+  "mpv",
+  "ffmpeg",
+  "gst-plugins-good",
+  "gst-plugins-bad",
+  "gst-plugins-ugly",
+  "gst-libav",
+  "libdvdcss",
+]
+
+[[netinstall.group]]
+name = "Office Suite"
+description = "LibreOffice productivity suite with spell-checking."
+icon = "description"
+bundle = true
+selected = false
+packages = [
+  "libreoffice-fresh",
+  "hunspell",
+  "hunspell-en_us",
+]
+
+[[netinstall.group]]
+name = "Virtualization"
+description = "Run virtual machines with QEMU/KVM and virt-manager."
+icon = "computer"
+bundle = true
+selected = false
+packages = [
+  "qemu-full",
+  "libvirt",
+  "virt-manager",
+  "edk2-ovmf",
+  "dnsmasq",
+  "dmidecode",
+]
+
+[[netinstall.group]]
+name = "Accessibility Tools"
+description = "Screen reader and pointer aids for impaired vision."
+icon = "accessibility"
+bundle = true
+selected = false
+packages = [
+  "espeak-ng",
+  "orca",
+  "mousetweaks",
+]
+
+[[netinstall.group]]
+name = "Development Tools"
+description = "Compilers, version control and developer runtimes."
+icon = "code"
+bundle = true
+selected = false
+packages = [
+  "base-devel",
+  "git",
+  "github-cli",
+]
+
+[[netinstall.group.subgroup]]
+name = "Containers"
+description = "Docker and Podman container tooling."
+selected = false
+packages = [
+  "docker",
+  "docker-compose",
+  "docker-buildx",
+  "podman",
+]
+
+[[netinstall.group.subgroup]]
+name = "Language runtimes"
+description = "Popular programming-language toolchains."
+selected = false
+packages = [
+  "python-pip",
+  "nodejs",
+  "npm",
+  "jdk-openjdk",
+  "rustup",
+  "go",
+]
+
+[[netinstall.group.subgroup]]
+name = "Editors & IDEs"
+description = "Text editors and IDEs for coding."
+selected = false
+packages = [
+  "neovim",
+  "code",
+  "emacs",
 ]

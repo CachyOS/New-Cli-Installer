@@ -1,5 +1,6 @@
 #include "gucc/subprocess.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "third_party/subprocess.h"
 
 #include <cstdint>  // for int32_t
@@ -71,9 +72,6 @@ void SubProcess::append_log(std::string_view text) noexcept {
     {
         const std::lock_guard<std::mutex> lock(m_log_mutex);
         m_process_log.append(text);
-        if (!m_log_line_cb) {
-            return;
-        }
         m_line_buffer.append(text);
         std::size_t nl_pos{};
         while ((nl_pos = m_line_buffer.find('\n')) != std::string::npos) {
@@ -83,7 +81,14 @@ void SubProcess::append_log(std::string_view text) noexcept {
         cb_copy = m_log_line_cb;
     }
     for (const auto& line : ready_lines) {
-        cb_copy(line);
+        // Funnel every line of subprocess output through the shared logger so
+        // the file sink is the single source of truth across all frontends;
+        // the per-mode sinks (stdout / callback) then fan it out. Secrets are
+        // scrubbed before the line can reach any sink.
+        spdlog::info("{}", logger::redact(line));
+        if (cb_copy) {
+            cb_copy(line);
+        }
     }
 }
 

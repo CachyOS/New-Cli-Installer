@@ -6,6 +6,7 @@
 #include "widgets.hpp"
 
 // instlib
+#include "cachyos/logging.hpp"
 #include "cachyos/orchestrator.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/types.hpp"
@@ -287,13 +288,16 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     user.password = selections.user_pass;
     user.shell    = selections.user_shell;
 
+    // The wizard's ftxui screen has closed; from here simple mode behaves like
+    // the headless CLI installer. Stream the install to stdout (the file sink
+    // keeps the identical decorated log); progress is logged the same way.
+    cachyos::installer::logging::attach_stdout_sink();
     const cachyos::installer::ExecutionCallbacks callbacks{
         .on_progress = [last_msg = std::string{}](const cachyos::installer::ProgressEvent& ev) mutable {
             if (ev.type == cachyos::installer::ProgressEventType::Running && ev.message != last_msg) {
                 spdlog::info("[install] {}", ev.message);
                 last_msg = ev.message;
             } },
-        .on_log_line = [](std::string_view line) { fmt::print("{}\n", line); },
     };
 
     const auto result = cachyos::installer::run(ctx, sys, user, selections.root_pass, callbacks);

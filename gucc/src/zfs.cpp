@@ -1,5 +1,6 @@
 #include "gucc/zfs.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for find
@@ -123,6 +124,9 @@ auto zpool_set_property(std::string_view property, std::string_view pool_name) n
 }
 
 auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase) noexcept -> Result<void> {
+    if (passphrase.has_value()) {
+        logger::register_secret(*passphrase);
+    }
     const auto& zfs_zpool_cmd = [&]() {
         auto cmd = fmt::format(FMT_COMPILE("zpool create {}"), pool_options);
         if (passphrase.has_value()) {

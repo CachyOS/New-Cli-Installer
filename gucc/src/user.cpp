@@ -2,6 +2,7 @@
 #include "gucc/autologin.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>   // for find, contains
@@ -33,6 +34,7 @@ auto create_group(std::string_view group, std::string_view mountpoint, bool is_s
 }
 
 auto set_user_password(std::string_view username, std::string_view password, std::string_view mountpoint) noexcept -> Result<void> {
+    logger::register_secret(password);
     // TODO(vnepogodin): should encrypt user password properly here
     const auto& encrypted_passwd = utils::exec(fmt::format(FMT_COMPILE("openssl passwd {}"), password));
     const auto& password_set_cmd = fmt::format(FMT_COMPILE("usermod -p '{}' {}"), encrypted_passwd, username);
