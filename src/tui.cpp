@@ -538,16 +538,11 @@ void install_base() noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
 
-    // 1. Prompt for console keymap
+    // 1. Console keymap: reuse session keymap (set via prep_menu "Set Virtual Console").
+    // This avoids asking the user for the same information twice.
     {
-        static constexpr auto vc_keymap_body = "\nSelect the console keymap for the installed system.\nThis is required for correct password input during boot (e.g. LUKS).\n"sv;
-        const auto& keymap_choice            = select_vconsole_keymap(vc_keymap_body);
-        /* clang-format off */
-        if (keymap_choice.empty()) { return; }
-        /* clang-format on */
-
-        config_data["KEYMAP"] = keymap_choice;
-        spdlog::info("Console keymap for target: {}", keymap_choice);
+        const auto& current_keymap = std::get<std::string>(config_data["KEYMAP"]);
+        spdlog::info("Using console keymap for target: {}", current_keymap);
     }
 
     // 2. Select kernel(s) to install
