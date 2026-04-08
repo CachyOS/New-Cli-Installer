@@ -18,6 +18,7 @@ bool select_device() noexcept;
 void install_base() noexcept;
 void install_desktop() noexcept;
 void install_bootloader() noexcept;
+void select_bootloader_type() noexcept;
 
 // TODO(vnepogodin): make it HEADLESS.
 // Also we should move zfs creation related code to disk.cpp

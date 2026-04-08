@@ -741,6 +741,45 @@ void tweaks_menu() noexcept {
     detail::menu_widget(menu_entries, ok_callback, &selected, &screen, tweaks_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
 }
 
+void select_bootloader_type() noexcept {
+    auto* config_instance   = Config::instance();
+    auto& config_data       = config_instance->data();
+    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+
+    if (system_info == "BIOS"sv) {
+        config_data["BOOTLOADER"] = std::string{gucc::bootloader::bootloader_to_string(gucc::bootloader::BootloaderType::Grub)};
+        spdlog::info("BIOS mode: bootloader automatically set to GRUB");
+        return;
+    }
+
+    // UEFI: show bootloader selection menu
+    using gucc::bootloader::BootloaderType;
+    static constexpr auto bootloaderInfo = "Select the bootloader for the system.\nRefind can be used standalone or in conjunction with other bootloaders.\nGrub supports encrypted /boot partition and detects all bootable systems.\nSystemd-boot is very light and simple.\nLimine is lightweight with Btrfs snapshots support."sv;
+
+    static constexpr std::array bootloader_types = {
+        BootloaderType::Grub,
+        BootloaderType::Refind,
+        BootloaderType::SystemdBoot,
+        BootloaderType::Limine,
+    };
+    std::vector<std::string> menu_entries{};
+    menu_entries.reserve(bootloader_types.size());
+    for (const auto& bootloader_type : bootloader_types) {
+        menu_entries.emplace_back(gucc::bootloader::bootloader_to_string(bootloader_type));
+    }
+
+    auto screen = ScreenInteractive::Fullscreen();
+    std::int32_t selected{};
+    auto ok_callback = [&] {
+        const auto& bootloader_bl = bootloader_types[static_cast<std::size_t>(selected)];
+        config_data["BOOTLOADER"] = std::string{gucc::bootloader::bootloader_to_string(bootloader_bl)};
+        spdlog::info("Bootloader selected: {}", std::get<std::string>(config_data["BOOTLOADER"]));
+        screen.ExitLoopClosure()();
+    };
+
+    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, bootloaderInfo);
+}
+
 void install_bootloader() noexcept {
     /* clang-format off */
     if (!utils::check_base()) { return; }
@@ -762,41 +801,14 @@ void auto_partition() noexcept {
     auto& config_data     = config_instance->data();
 
     const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    auto& bootloader        = std::get<std::string>(config_data["BOOTLOADER"]);
+    const auto& bootloader  = std::get<std::string>(config_data["BOOTLOADER"]);
 
-    // If bootloader has not been selected yet, prompt user to select one.
-    // This is needed because auto-partition uses the bootloader to determine
-    // the boot mountpoint (/boot vs /boot/efi) and partition layout.
+    // Bootloader must be selected before partitioning.
     if (bootloader.empty()) {
-        const auto& menu_entries = [](const auto& bios_mode) -> std::vector<std::string> {
-            const auto& available_bootloaders = utils::available_bootloaders(bios_mode);
-
-            std::vector<std::string> result{};
-            result.reserve(available_bootloaders.size());
-
-            std::ranges::transform(available_bootloaders, std::back_inserter(result),
-                [](gucc::bootloader::BootloaderType bl) { return std::string{gucc::bootloader::bootloader_to_string(bl)}; });
-            return result;
-        }(system_info);
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            bootloader = menu_entries[static_cast<std::size_t>(selected)];
-            success    = true;
-            screen.ExitLoopClosure()();
-        };
-        static constexpr auto select_bl_body = "\nSelect a bootloader for automatic partitioning.\nThis determines boot partition mountpoint and size.\n"sv;
-        detail::menu_widget(menu_entries, ok_callback, &selected, &screen, select_bl_body);
-
-        if (!success || bootloader.empty()) {
-            spdlog::info("Bootloader selection cancelled, aborting auto-partition");
-            return;
-        }
-        spdlog::info("Selected bootloader for partitioning: {}", bootloader);
+        detail::msgbox_widget("\nPlease select a bootloader first (Prepare Installation -> Select Bootloader).\n");
+        return;
     }
+    spdlog::info("Using bootloader for partitioning: {}", bootloader);
 
     // Generate and apply partition schema
     auto partitions = utils::auto_partition();
@@ -853,13 +865,21 @@ bool select_device() noexcept {
 auto select_fs_and_cmd() noexcept -> std::optional<std::pair<std::string, std::string>> {
     using FsCmdPair = std::pair<std::string, std::string>;
 
-    const std::vector<FsCmdPair> menu_entries = {
-        {"skip", "Do not format -"},
-        {"btrfs", "btrfs mkfs.btrfs -f"},
-        {"ext4", "ext4 mkfs.ext4 -q"},
-        {"f2fs", "f2fs mkfs.f2fs -q"},
-        {"xfs", "xfs mkfs.xfs -f"},
+    // Build menu entries from gucc filesystem types (keep in sync with library)
+    const auto supported_fs_types = {
+        gucc::fs::FilesystemType::Btrfs,
+        gucc::fs::FilesystemType::Ext4,
+        gucc::fs::FilesystemType::F2fs,
+        gucc::fs::FilesystemType::Xfs,
     };
+
+    std::vector<FsCmdPair> menu_entries;
+    menu_entries.push_back({"skip", "Do not format -"});
+    for (const auto& fs_type : supported_fs_types) {
+        const auto& name = gucc::fs::filesystem_type_to_string(fs_type);
+        const auto& cmd = gucc::fs::get_mkfs_command(fs_type);
+        menu_entries.push_back({std::string{name}, std::string{name} + " " + std::string{cmd}});
+    }
 
     std::vector<std::string> menu_display_entries;
     menu_display_entries.reserve(menu_entries.size());
@@ -2382,6 +2402,7 @@ void system_rescue_menu() noexcept {
 void prep_menu() noexcept {
     const std::vector<std::string> menu_entries = {
         "Set Virtual Console",
+        "Select Bootloader",
         "List Devices (optional)",
         "Partition Disk",
         "RAID (optional)",
@@ -2404,40 +2425,43 @@ void prep_menu() noexcept {
             tui::select_keymap();
             break;
         case 1:
+            tui::select_bootloader_type();
+            break;
+        case 2:
             tui::show_devices();
             break;
-        case 2: {
+        case 3: {
             utils::umount_partitions();
             if (tui::select_device()) {
                 tui::create_partitions();
             }
             break;
         }
-        case 3:
+        case 4:
             SPDLOG_ERROR("Implement me!");
             break;
-        case 4:
+        case 5:
             tui::lvm_menu();
             break;
-        case 5:
+        case 6:
             tui::luks_menu_advanced();
             break;
-        case 6:
+        case 7:
             tui::zfs_menu();
             break;
-        case 7:
+        case 8:
             tui::mount_partitions();
             break;
-        case 8:
+        case 9:
             tui::configure_mirrorlist();
             break;
-        case 9:
+        case 10:
             tui::refresh_pacman_keys();
             break;
-        case 10:
+        case 11:
             tui::set_cache();
             break;
-        case 11:
+        case 12:
             tui::set_fsck_hook();
             break;
         default:
