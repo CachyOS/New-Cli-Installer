@@ -23,6 +23,9 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
 // Get desktop profile packages
 auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<std::string>>;
 
+// Get optional netinstall groups from net profiles
+auto get_netinstall_groups(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::NetinstallGroup>>;
+
 // Get base service list from net profiles
 auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>>;
 

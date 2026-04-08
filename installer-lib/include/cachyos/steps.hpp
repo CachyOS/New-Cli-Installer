@@ -63,6 +63,12 @@ namespace cachyos::installer::steps {
 [[nodiscard]] auto desktop_configure(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
+/// Install the optional packages selected on the GUI Packages page
+/// (@ref InstallContext::additional_packages). Runs regardless of server mode;
+/// no-op when none are selected.
+[[nodiscard]] auto additional(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Configure the installed display manager to autologin @p user.
 [[nodiscard]] auto autologin(const UserSettings& user,
     const InstallContext& ctx) noexcept

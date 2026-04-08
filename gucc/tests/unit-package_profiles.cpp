@@ -57,6 +57,92 @@ pacages = ["ca,"da","fa"
 packaes = ["cb","db",fb"]
 )"sv;
 
+static constexpr auto VALID_NETINSTALL_TEST = R"(
+[base-packages]
+packages = ["a","b"]
+
+[[netinstall.group]]
+name = "Gaming Support"
+description = "Steam and friends"
+icon = "sports_esports"
+bundle = true
+selected = false
+packages = ["steam","lutris"]
+
+[[netinstall.group]]
+name = "Common"
+description = "default common"
+selected = true
+critical = true
+packages = ["base"]
+
+  [[netinstall.group.subgroup]]
+  name = "Network"
+  description = "net tools"
+  selected = true
+  packages = ["networkmanager","wpa_supplicant"]
+
+  [[netinstall.group.subgroup]]
+  name = "Hidden bits"
+  description = "internal"
+  hidden = true
+  selected = true
+  packages = ["secret-pkg"]
+)"sv;
+
+TEST_CASE("netinstall groups test")
+{
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
+    SECTION("valid netinstall groups")
+    {
+        auto groups = gucc::profile::parse_netinstall_groups(VALID_NETINSTALL_TEST);
+        REQUIRE(groups);
+        REQUIRE_EQ(groups->size(), 2);
+
+        const auto& gaming = (*groups)[0];
+        REQUIRE_EQ(gaming.name, "Gaming Support");
+        REQUIRE_EQ(gaming.description, "Steam and friends");
+        REQUIRE_EQ(gaming.icon, "sports_esports");
+        REQUIRE_EQ(gaming.is_bundle, true);
+        REQUIRE_EQ(gaming.selected, false);
+        REQUIRE_EQ(gaming.critical, false);
+        REQUIRE_EQ(gaming.hidden, false);
+        REQUIRE_EQ(gaming.packages, std::vector<std::string>{"steam", "lutris"});
+        REQUIRE(gaming.subgroups.empty());
+
+        const auto& common = (*groups)[1];
+        REQUIRE_EQ(common.name, "Common");
+        REQUIRE_EQ(common.is_bundle, false);
+        REQUIRE_EQ(common.selected, true);
+        REQUIRE_EQ(common.critical, true);
+        REQUIRE_EQ(common.packages, std::vector<std::string>{"base"});
+        REQUIRE_EQ(common.subgroups.size(), 2);
+        REQUIRE_EQ(common.subgroups[0].name, "Network");
+        REQUIRE_EQ(common.subgroups[0].selected, true);
+        REQUIRE_EQ(common.subgroups[0].packages, std::vector<std::string>{"networkmanager", "wpa_supplicant"});
+        REQUIRE_EQ(common.subgroups[1].name, "Hidden bits");
+        REQUIRE_EQ(common.subgroups[1].hidden, true);
+        REQUIRE_EQ(common.subgroups[1].packages, std::vector<std::string>{"secret-pkg"});
+    }
+    SECTION("missing netinstall section yields empty list")
+    {
+        auto groups = gucc::profile::parse_netinstall_groups(VALID_PROFILE_TEST);
+        REQUIRE(groups);
+        REQUIRE(groups->empty());
+    }
+    SECTION("invalid document yields nullopt")
+    {
+        auto groups = gucc::profile::parse_netinstall_groups(INVALID_PROFILE_TEST);
+        REQUIRE(!groups);
+    }
+}
+
 TEST_CASE("package profiles test")
 {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {

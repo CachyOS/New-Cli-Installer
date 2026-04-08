@@ -1,8 +1,12 @@
 #include "cachyos/orchestrator.hpp"
 #include "cachyos/disk.hpp"
+#include "cachyos/partition_planner.hpp"
 #include "cachyos/steps.hpp"
+#include "cachyos/system.hpp"
 
 // import gucc
+#include "gucc/logger.hpp"
+#include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <cstdint>  // for uint8_t, uint32_t
@@ -49,6 +53,7 @@ enum class Step : std::uint8_t {
     MachineId,
     Desktop,
     DesktopConfigure,
+    Additional,
     Autologin,
     Chwd,
     NetworkCarryover,
@@ -73,6 +78,7 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Generating machine ID..."sv,
     "Installing desktop environment..."sv,
     "Configuring desktop environment..."sv,
+    "Installing additional packages..."sv,
     "Configuring autologin..."sv,
     "Installing hardware-driver profiles..."sv,
     "Carrying network connections forward..."sv,
@@ -171,6 +177,15 @@ auto run(InstallContext& ctx,
     using enum ProgressEventType;
     std::vector<std::string> warnings;
 
+    // Mask every passphrase before any sink can receive a line that quotes it.
+    // gucc scrubs at the exec layer too; this is defence-in-depth at the single
+    // entry point shared by the headless, simple-TUI and GUI frontends.
+    gucc::logger::register_secret(root_password);
+    gucc::logger::register_secret(user.password);
+    if (ctx.root_luks_passphrase) {
+        gucc::logger::register_secret(*ctx.root_luks_passphrase);
+    }
+
     // reset run state
     session.runner.reset_cancel();
 
@@ -226,6 +241,12 @@ auto run(InstallContext& ctx,
     begin_step(Step::Partition);
     if (auto res = steps::partition(ctx); !res) {
         return fail_step(session, Step::Partition, "Partitioning failed"sv, res.error(), std::move(warnings));
+    }
+
+    // Enable the CachyOS repos + keyring on the host.
+    if (auto repo = install_cachyos_repo(); !repo) {
+        spdlog::warn("install_cachyos_repo: {}", repo.error());
+        warnings.emplace_back(fmt::format("Repo setup: {}", repo.error()));
     }
 
     // Base system.
@@ -300,6 +321,15 @@ auto run(InstallContext& ctx,
     }
     begin_step(Step::DesktopConfigure);
     if (auto res = steps::desktop_configure(ctx); !res) {
+        warnings.emplace_back(res.error());
+    }
+
+    // Optional packages picked on the GUI Packages page (runs in server mode too).
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Additional, std::move(warnings));
+    }
+    begin_step(Step::Additional);
+    if (auto res = steps::additional(ctx); !res) {
         warnings.emplace_back(res.error());
     }
 

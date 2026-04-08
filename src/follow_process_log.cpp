@@ -19,7 +19,6 @@
 #include <ftxui/component/screen_interactive.hpp>  // for ScreenInteractive
 #include <ftxui/dom/elements.hpp>                  // for operator|, text, Element, hbox, bold, color, filler, separator, vbox, window, gauge, Fit, size, dim, EQUAL, WIDTH
 
-#include <fmt/core.h>
 #include <spdlog/spdlog.h>
 
 using namespace ftxui;  // NOLINT
@@ -99,38 +98,15 @@ auto follow_process_log_task(ProcessTask task, Decorator box_size) noexcept -> b
 }
 
 auto follow_process_log_task_stdout(ProcessTask task) noexcept -> bool {
-    using namespace std::chrono_literals;
-
-    std::atomic_bool task_status{true};
+    // Non-interactive run: the subprocess output is funnelled through the logger
+    // (gucc SubProcess::append_log) and emitted by whatever sinks are attached
+    // (stdout in headless / simple mode). There is no ftxui screen to drive and
+    // nothing to print here, so just run the task to completion.
     gucc::utils::SubProcess child{};
-
-    std::thread t([&]() {
-        if (!task(child)) {
-            spdlog::error("[follow_process_log_stdout] Task failed");
-            task_status = false;
-        }
-        child.running = false;
-    });
-
-    std::string::size_type last_printed{};
-    while (child.running) {
-        std::this_thread::sleep_for(0.05s);
-        const auto& log = child.get_log();
-
-        // NOTE: hackish
-        if (log.size() > last_printed) {
-            fmt::print("{}", std::string_view{log}.substr(last_printed));
-            last_printed = log.size();
-        }
-    }
-
-    const auto& log = child.get_log();
-    if (log.size() > last_printed) {
-        fmt::print("{}", std::string_view{log}.substr(last_printed));
-    }
-
-    if (t.joinable()) {
-        t.join();
+    const bool task_status = task(child);
+    child.running          = false;
+    if (!task_status) {
+        spdlog::error("[follow_process_log_stdout] Task failed");
     }
     return task_status;
 }
@@ -199,11 +175,10 @@ auto follow_step_widget(StepRunner runner, Decorator box_size) noexcept -> bool 
 }
 
 auto follow_step_stdout(StepRunner runner) noexcept -> bool {
+    // Non-interactive run: log lines flow through the logger's sinks, so we only
+    // drive the runner to completion with an empty per-line callback.
     std::stop_source stop_src;
-    auto log_cb = [](std::string_view line) {
-        fmt::println("{}", line);
-    };
-    if (!runner(std::move(log_cb), stop_src.get_token())) {
+    if (!runner(StepLogCallback{}, stop_src.get_token())) {
         spdlog::error("[follow_step_stdout] Task failed");
         return false;
     }

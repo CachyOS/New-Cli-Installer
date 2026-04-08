@@ -33,6 +33,21 @@ struct DesktopProfile {
     std::vector<std::string> packages{};
 };
 
+/// Optional "netinstall" package group surfaced on the GUI Packages page.
+/// Mirrors the recursive group tree of the Calamares netinstall module, but
+/// sourced from the same net-profiles TOML. Groups may nest via `subgroups`.
+struct NetinstallGroup {
+    std::string name{};
+    std::string description{};
+    std::string icon{};        // material-symbol name for the simple grid card
+    bool selected{false};      // checked by default
+    bool hidden{false};        // never shown, installed when the parent is selected
+    bool critical{false};      // locked-checked, cannot be unchecked
+    bool is_bundle{false};     // promoted to a card in the simple grid
+    std::vector<std::string> packages{};
+    std::vector<NetinstallGroup> subgroups{};
+};
+
 struct NetProfiles {
     BaseProfiles base_profiles{};
     std::vector<DesktopProfile> desktop_profiles{};
@@ -46,6 +61,10 @@ auto parse_desktop_profiles(std::string_view config_content) noexcept -> std::op
 
 // Parse net profiles
 auto parse_net_profiles(std::string_view config_content) noexcept -> std::optional<NetProfiles>;
+
+// Parse optional netinstall groups ([[netinstall.group]] tables). A missing
+// section yields an empty list; only a malformed document yields nullopt.
+auto parse_netinstall_groups(std::string_view config_content) noexcept -> std::optional<std::vector<NetinstallGroup>>;
 
 }  // namespace gucc::profile
 

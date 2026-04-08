@@ -64,6 +64,18 @@ auto get_blockdevice_from_json(const rapidjson::Value& doc) -> BlockDevice {
     if (doc.HasMember("size") && doc["size"].IsInt64()) {
         device.size = doc["size"].GetInt64();
     }
+    if (doc.HasMember("start") && doc["start"].IsInt64()) {
+        device.start = doc["start"].GetInt64();
+    }
+    if (doc.HasMember("parttypename") && doc["parttypename"].IsString()) {
+        device.parttypename = doc["parttypename"].GetString();
+    }
+    if (doc.HasMember("partflags") && doc["partflags"].IsString()) {
+        device.partflags = doc["partflags"].GetString();
+    }
+    if (doc.HasMember("fsused") && doc["fsused"].IsInt64()) {
+        device.fsused = doc["fsused"].GetInt64();
+    }
 
     return device;
 }
@@ -163,7 +175,7 @@ auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, st
 }
 
 auto list_block_devices() -> std::optional<std::vector<BlockDevice>> {
-    const auto& lsblk_output = utils::exec(R"cmd(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd");
+    const auto& lsblk_output = utils::exec(R"cmd(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,START,PARTTYPENAME,PARTFLAGS,FSUSED -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd");
     if (lsblk_output.empty()) {
         return std::nullopt;
     }

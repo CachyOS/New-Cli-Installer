@@ -26,6 +26,11 @@ namespace cachyos::installer {
 [[nodiscard]] auto configure_desktop_extras(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
+/// Installs the optional packages selected on the GUI Packages page
+/// (@ref InstallContext::additional_packages). No-op when none are selected.
+[[nodiscard]] auto install_additional(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Installs an arbitrary set of packages into the target system.
 [[nodiscard]] auto install_packages(const std::vector<std::string>& packages,
     std::string_view mountpoint, bool hostcache) noexcept

@@ -32,11 +32,11 @@ inline constexpr std::array available_desktops{
     "mate"sv,      // Mate
     "qtile"sv,     // Qtile
     "sway"sv,      // Sway
-    "ukui"sv,      // UKUI
+    "mangowm"sv,   // MangoWM
     "wayfire"sv,   // Wayfire
 };
 
-inline constexpr std::array available_filesystems{"ext4"sv, "btrfs"sv, "xfs"sv};
+inline constexpr std::array available_filesystems{"btrfs"sv, "xfs"sv, "ext4"sv, "f2fs"sv, "zfs"sv};
 
 inline constexpr std::array available_shells{"/bin/bash"sv, "/bin/zsh"sv, "/usr/bin/fish"sv};
 

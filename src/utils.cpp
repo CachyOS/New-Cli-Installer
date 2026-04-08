@@ -20,6 +20,7 @@
 #include "gucc/bootloader.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/lvm.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
@@ -172,8 +173,8 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     }
 
     const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
-    const auto task         = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::arch_chroot(command, mountpoint, child);
+    const auto task         = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::arch_chroot(command, mountpoint);
         if (!result) {
             spdlog::error("{}", result.error());
             return false;
@@ -305,7 +306,7 @@ auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
     }
 
 #ifdef NDEVENV
-    auto result = cachyos::installer::auto_partition(device_info, system_info, *bootloader_opt, {});
+    auto result = cachyos::installer::auto_partition(device_info, system_info, *bootloader_opt);
     if (!result) {
         spdlog::error("{}", result.error());
         return {};
@@ -356,6 +357,8 @@ void secure_wipe() noexcept {
 
 // Create user on the system
 void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept {
+    // Mask the password before anything (commands, subprocess output) can log it.
+    gucc::logger::register_secret(password);
     spdlog::info("default shell: [{}]", shell);
 
 #ifdef NDEVENV
@@ -512,7 +515,7 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
     const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
-        if (auto res = cachyos::installer::steps::base(ctx, std::move(log_cb), tok); !res) {
+        if (auto res = cachyos::installer::steps::base(ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
         }
@@ -553,11 +556,11 @@ void install_desktop(const std::string_view& desktop) noexcept {
     auto desktop_ctx    = ctx;
     desktop_ctx.desktop = std::string{desktop};
     const auto runner   = [&](auto log_cb, std::stop_token tok) -> bool {
-        if (auto res = cachyos::installer::steps::desktop(desktop_ctx, log_cb, tok); !res) {
+        if (auto res = cachyos::installer::steps::desktop(desktop_ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
         }
-        if (auto res = cachyos::installer::steps::desktop_configure(desktop_ctx, log_cb, tok); !res) {
+        if (auto res = cachyos::installer::steps::desktop_configure(desktop_ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
         }
@@ -652,7 +655,7 @@ void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
     const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
-        if (auto res = cachyos::installer::steps::bootloader(ctx, std::move(log_cb), tok); !res) {
+        if (auto res = cachyos::installer::steps::bootloader(ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
         }

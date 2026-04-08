@@ -12,6 +12,7 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
 
+#include <algorithm>    // for ranges::contains, erase_if
 #include <expected>     // for unexpected
 #include <fstream>      // for ofstream
 #include <string>       // for string
@@ -83,6 +84,19 @@ auto install_base(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     const auto& mountpoint = ctx.mountpoint;
 
+    // Refuse to pacstrap into an unprepared target. If the mountpoint has no SOURCE it
+    // is not actually a mounted filesystem — the partition/format step was skipped (e.g.
+    // the strategy never left its UseExisting default), and pacstrap would write
+    // gigabytes into the live ISO's RAM-backed overlay and OOM the machine. Prefer
+    // refusing over guessing.
+    const auto& mount_source = gucc::utils::trim(gucc::fs::utils::get_mountpoint_source(mountpoint));
+    if (mount_source.empty()) {
+        return std::unexpected(fmt::format(
+            "refusing to install base: target '{}' is not a mounted filesystem "
+            "(disk preparation did not run)", mountpoint));
+    }
+    spdlog::info("install base target '{}' is mounted from '{}'", mountpoint, mount_source);
+
     // Get the root filesystem type
     const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint);
     const auto fs_type          = gucc::fs::string_to_filesystem_type(root_filesystem);
@@ -140,6 +154,13 @@ auto install_desktop_packages(std::string_view desktop, const InstallContext& ct
         return std::unexpected("failed to get desktop package list");
     }
 
+    // Drop packages the user unchecked in the advanced selection.
+    if (!ctx.excluded_packages.empty()) {
+        std::erase_if(*pkg_list, [&ctx](const std::string& pkg) {
+            return std::ranges::contains(ctx.excluded_packages, pkg);
+        });
+    }
+
     spdlog::info("Preparing for desktop envs to install: '{}'", gucc::utils::join(*pkg_list, ' '));
 
     auto pkg_result = install_packages(*pkg_list, ctx.mountpoint, ctx.hostcache);
@@ -193,6 +214,16 @@ auto install_desktop(std::string_view desktop, const InstallContext& ctx) noexce
         return res;
     }
     return configure_desktop_extras(ctx);
+}
+
+auto install_additional(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string> {
+    /* clang-format off */
+    if (ctx.additional_packages.empty()) { return {}; }
+    /* clang-format on */
+
+    spdlog::info("Preparing for additional pkgs to install: '{}'", gucc::utils::join(ctx.additional_packages, ' '));
+    return install_packages(ctx.additional_packages, ctx.mountpoint, ctx.hostcache);
 }
 
 auto install_packages(const std::vector<std::string>& packages,

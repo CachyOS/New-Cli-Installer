@@ -1,4 +1,5 @@
 #include "cachyos/disk.hpp"
+#include "cachyos/partition_planner.hpp"
 #include "cachyos/steps.hpp"
 #include "cachyos/types.hpp"
 
@@ -7,6 +8,7 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 
+#include <algorithm>    // for ranges::find
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
@@ -123,6 +125,33 @@ auto partition(InstallContext& ctx) noexcept
             auto partitions       = auto_partition(layout.device, bios_mode, ctx.bootloader);
             if (!partitions) {
                 return std::unexpected(partitions.error());
+            }
+            // Optional full-disk LUKS on the auto-created root: format+open the root
+            // partition before it is formatted/mounted, then hand the mapper device to
+            // the mount step. apply_root_partition's query detects the LUKS mapping and
+            // records it, so fstab emits /etc/crypttab and the bootloader gets the
+            // cryptdevice cmdline. Without this the passphrase was stored but never used.
+            if (ctx.root_luks_passphrase && !ctx.root_luks_passphrase->empty()) {
+                auto root_part = std::ranges::find(*partitions, "/"sv, &gucc::fs::Partition::mountpoint);
+                if (root_part == partitions->end()) {
+                    return std::unexpected("auto layout produced no root partition to encrypt");
+                }
+                static constexpr auto root_mapper_name = "cryptroot"sv;
+                const partition_planner::LuksFormatRequest req{
+                    .device      = root_part->device,
+                    .mapper_name = std::string{root_mapper_name},
+                    .passphrase  = *ctx.root_luks_passphrase,
+                    .extra_flags = {},
+                    .version     = ctx.root_luks_use_luks2
+                        ? partition_planner::LuksVersion::Luks2
+                        : partition_planner::LuksVersion::Luks1,
+                };
+                if (auto enc = partition_planner::encrypt_partition(req); !enc) {
+                    return std::unexpected(fmt::format("failed to encrypt root partition '{}': {}",
+                        root_part->device, enc.error()));
+                }
+                root_part->device  = fmt::format("/dev/mapper/{}", root_mapper_name);
+                ctx.crypto.is_luks = true;
             }
             return record(mount_selections_from_auto(*partitions));
         },
