@@ -7,6 +7,7 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/lvm.hpp"
+#include "gucc/system_query.hpp"
 #include "gucc/zfs_query.hpp"
 
 #include <array>
@@ -28,27 +29,54 @@ namespace {
 // NOLINTNEXTLINE
 using namespace cachyos::installer::partition_planner;
 
+auto to_device_entry(gucc::disk::BlockDevice&& d) noexcept -> DeviceEntry {
+    return DeviceEntry{
+        .name        = std::move(d.name),
+        .type        = std::move(d.type),
+        .fstype      = std::move(d.fstype),
+        .label       = d.label.value_or(""),
+        .model       = d.model.value_or(""),
+        .size_bytes  = d.size.value_or(0),
+        .parent      = d.pkname.value_or(""),
+        .mountpoints = std::move(d.mountpoints),
+        .uuid        = std::move(d.uuid),
+        .partuuid    = d.partuuid.value_or(""),
+    };
+}
+
+auto from_disk_info(gucc::disk::DiskInfo&& d) noexcept -> DeviceEntry {
+    return DeviceEntry{
+        .name        = std::move(d.device),
+        .type        = std::string{"disk"},
+        .fstype      = {},
+        .label       = {},
+        .model       = d.model.value_or(""),
+        .size_bytes  = d.size,
+        .parent      = {},
+        .mountpoints = {},
+        .uuid        = {},
+        .partuuid    = {},
+    };
+}
+
 auto block_devices_inventory() noexcept -> std::vector<DeviceEntry> {
-    auto devs = gucc::disk::list_block_devices();
-    if (!devs) {
-        return {};
+    std::vector<DeviceEntry> out;
+
+    // Top-level disks first so a frontend that filters by `parent.empty()`
+    // gets a usable target-device list. `list_block_devices` filters disks
+    // out for legacy callers, so we pull them via `list_disks`.
+    if (auto disks = gucc::disk::list_disks()) {
+        out.reserve(disks->size());
+        for (auto& d : *disks) {
+            out.push_back(from_disk_info(std::move(d)));
+        }
     }
 
-    std::vector<DeviceEntry> out;
-    out.reserve(devs->size());
-    for (auto& d : *devs) {
-        out.push_back(DeviceEntry{
-            .name        = std::move(d.name),
-            .type        = std::move(d.type),
-            .fstype      = std::move(d.fstype),
-            .label       = d.label.value_or(""),
-            .model       = d.model.value_or(""),
-            .size_bytes  = d.size.value_or(0),
-            .parent      = d.pkname.value_or(""),
-            .mountpoints = std::move(d.mountpoints),
-            .uuid        = std::move(d.uuid),
-            .partuuid    = d.partuuid.value_or(""),
-        });
+    if (auto devs = gucc::disk::list_block_devices()) {
+        out.reserve(out.size() + devs->size());
+        for (auto& d : *devs) {
+            out.push_back(to_device_entry(std::move(d)));
+        }
     }
     return out;
 }
