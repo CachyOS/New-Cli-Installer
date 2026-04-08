@@ -333,8 +333,7 @@ constexpr std::array step_names{
     "Bootloader"sv,
     "Filesystem"sv,
     "Hostname"sv,
-    "Locale"sv,
-    "Keyboard Layout"sv,
+    "Locale & Keyboard"sv,
     "Timezone"sv,
     "Root Password"sv,
     "User Account"sv,
@@ -432,7 +431,7 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
                 return false;
             }
             break;
-        case 8:  // Root Password
+        case 7:  // Root Password
             if (inp_root_pass.empty()) {
                 error_msg = "Root password cannot be empty!";
                 return false;
@@ -442,7 +441,7 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
                 return false;
             }
             break;
-        case 9:  // User Account
+        case 8:  // User Account
             if (inp_user_name.empty()) {
                 error_msg = "Username cannot be empty!";
                 return false;
@@ -524,11 +523,27 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
     // Step 4: Hostname
     auto hostname_step = tui::detail::wizard_input_step("Enter your hostname:", &inp_hostname, "hostname", false, menu_on_enter);
 
-    // Step 5: Locale
-    auto locale_step = tui::detail::wizard_menu_step("Select your locale:", locale_list, &sel_locale, menu_on_enter);
-
-    // Step 6: Keyboard Layout
-    auto keymap_step = tui::detail::wizard_menu_step("Select your keyboard layout:", keymap_list, &sel_keymap, menu_on_enter);
+    // Step 5: Locale & Keyboard
+    auto locale_menu             = Menu(&locale_list, &sel_locale);
+    auto keymap_menu             = Menu(&keymap_list, &sel_keymap, make_menu_option());
+    auto locale_keymap_container = Container::Horizontal({locale_menu, keymap_menu});
+    auto locale_keymap_renderer  = Renderer(locale_keymap_container, [&] {
+        return vbox({
+            text("Select your locale and keyboard layout:") | bold,
+            separator(),
+            hbox({
+                vbox({
+                    text("Locale:") | bold,
+                    locale_menu->Render() | vscroll_indicator | frame | flex,
+                }) | flex,
+                separator(),
+                vbox({
+                    text("Keyboard Layout:") | bold,
+                    keymap_menu->Render() | vscroll_indicator | frame | flex,
+                }) | flex,
+            }) | flex,
+        });
+    });
 
     // Step 7: Timezone
     auto tz_region_menu = Menu(&tz_regions, &sel_tz_region);
@@ -674,19 +689,18 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
 
     // Tab container holding all steps
     auto tab = Container::Tab({
-                                  welcome_renderer,    // 0
-                                  device_step,         // 1
-                                  bootloader_step,     // 2
-                                  filesystem_step,     // 3
-                                  hostname_step,       // 4
-                                  locale_step,         // 5
-                                  keymap_step,         // 6
-                                  tz_renderer,         // 7
-                                  root_pass_renderer,  // 8
-                                  user_renderer,       // 9
-                                  kernel_step,         // 10
-                                  desktop_step,        // 11
-                                  summary_renderer,    // 12
+                                  welcome_renderer,        // 0
+                                  device_step,             // 1
+                                  bootloader_step,         // 2
+                                  filesystem_step,         // 3
+                                  hostname_step,           // 4
+                                  locale_keymap_renderer,  // 5
+                                  tz_renderer,             // 6
+                                  root_pass_renderer,      // 7
+                                  user_renderer,           // 8
+                                  kernel_step,             // 9
+                                  desktop_step,            // 10
+                                  summary_renderer,        // 11
                               },
         &current_step);
 
