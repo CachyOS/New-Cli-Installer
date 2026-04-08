@@ -1,0 +1,21 @@
+module noctalia.Widgets
+NButton 1.0 NButton.qml
+NText 1.0 NText.qml
+NIcon 1.0 NIcon.qml
+NLabel 1.0 NLabel.qml
+NHeader 1.0 NHeader.qml
+NTextInput 1.0 NTextInput.qml
+NComboBox 1.0 NComboBox.qml
+NCheckbox 1.0 NCheckbox.qml
+NRadioButton 1.0 NRadioButton.qml
+NToggle 1.0 NToggle.qml
+NBox 1.0 NBox.qml
+NScrollView 1.0 NScrollView.qml
+NListView 1.0 NListView.qml
+NSlideSwapView 1.0 NSlideSwapView.qml
+NLinearGauge 1.0 NLinearGauge.qml
+NBusyIndicator 1.0 NBusyIndicator.qml
+NCollapsible 1.0 NCollapsible.qml
+NDivider 1.0 NDivider.qml
+NIconButton 1.0 NIconButton.qml
+NSearchableComboBox 1.0 NSearchableComboBox.qml

@@ -143,6 +143,11 @@ if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
+option(BUILD_GUI "Build QML GUI installer" OFF)
+if(BUILD_GUI)
+   add_subdirectory(gui)
+endif()
+
 target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ${PROJECT_NAME}-config ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib)
 target_link_libraries(${PROJECT_NAME}-config PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt)
 if(NOT ENABLE_DEVENV)
