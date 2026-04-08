@@ -24,6 +24,7 @@ constexpr std::array kStepLabels{
     "Installing server profile packages..."sv,
     "Installing SSH keys..."sv,
     "Configuring server firewall..."sv,
+    "Installing additional packages..."sv,
     "Configuring autologin..."sv,
     "Installing hardware-driver profiles..."sv,
     "Carrying network connections forward..."sv,

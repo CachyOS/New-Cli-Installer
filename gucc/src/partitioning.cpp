@@ -1,20 +1,27 @@
 #include "gucc/partitioning.hpp"
+#include "gucc/block_devices.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition_config.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
 
 #include <algorithm>    // for stable_partition, any_of, count, count_if, find
 #include <array>        // for array
+#include <cstdint>      // for uint32_t, uint64_t
 #include <functional>   // for not_fn
+#include <initializer_list>  // for initializer_list
 #include <optional>     // for optional
 #include <ranges>       // for ranges::*
+#include <string>       // for string, to_string
 #include <string_view>  // for string_view
 #include <utility>      // for pair
 #include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
+
+#include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
 using namespace std::string_literals;
@@ -81,6 +88,52 @@ constexpr auto to_sfdisk_line(const gucc::fs::Partition& part, bool is_efi) noex
 
     line += "\n"s;
     return line;
+}
+
+// lsblk START unit, whatever the physical sector size
+constexpr std::uint64_t kSectorBytes{512};
+
+auto parted_argv(std::string_view device, std::initializer_list<std::string> args) -> std::vector<std::string> {
+    std::vector<std::string> argv{"/usr/bin/parted"s, "-s"s, "-a"s, "optimal"s, std::string{device}};
+    argv.append_range(args);
+    return argv;
+}
+
+// parted takes byte offsets only with an explicit unit
+auto bytes_arg(std::uint64_t bytes) -> std::string {
+    return fmt::format(FMT_COMPILE("{}B"), bytes);
+}
+
+// first number following @p label in a tool report
+constexpr auto number_after(std::string_view text, std::string_view label) noexcept -> std::optional<std::uint64_t> {
+    const auto at = text.find(label);
+    if (at == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const auto rest  = text.substr(at + label.size());
+    const auto first = rest.find_first_of("0123456789"sv);
+    if (first == std::string_view::npos) {
+        return std::nullopt;
+    }
+    return gucc::utils::parse_uint<std::uint64_t>(rest.substr(first));
+}
+
+auto resize_filesystem(std::string_view partition, std::string_view fstype, std::uint64_t new_size_bytes) noexcept -> gucc::Result<void> {
+    using gucc::fs::FilesystemType;
+    const auto part = std::string{partition};
+    if (gucc::fs::string_to_filesystem_type(fstype) == FilesystemType::Ext4) {
+        // resize2fs refuses a filesystem that was not just checked; exit 1 means errors were fixed
+        if (!gucc::utils::exec_checked(std::vector{"/usr/bin/e2fsck"s, "-f"s, "-y"s, part})) {
+            spdlog::warn("e2fsck reported problems on {}", partition);
+        }
+        // rounding down keeps the filesystem inside the partition
+        return gucc::utils::exec_or_error(std::vector{"/usr/bin/resize2fs"s, part, fmt::format(FMT_COMPILE("{}K"), new_size_bytes / 1024U)}, "resize filesystem"sv);
+    }
+    if (fstype == "ntfs"sv) {
+        // ntfsresize asks for confirmation on stdin
+        return gucc::utils::exec_or_error_with_input(std::vector{"/usr/bin/ntfsresize"s, "--force"s, "--no-progress-bar"s, "--size"s, std::to_string(new_size_bytes), part}, "y\n"sv, "resize filesystem"sv);
+    }
+    return gucc::make_error(gucc::ErrorCode::Unsupported, FMT_COMPILE("cannot shrink '{}' on {}"), fstype, partition);
 }
 
 }  // namespace
@@ -300,6 +353,106 @@ auto preview_partition_schema(const std::vector<fs::Partition>& partitions, std:
     preview += gen_sfdisk_command(partitions, is_efi);
 
     return preview;
+}
+
+auto create_partition_table(std::string_view device, std::string_view table_type) noexcept -> Result<void> {
+    return utils::exec_or_error(parted_argv(device, {"mklabel"s, std::string{table_type}}), "create partition table"sv);
+}
+
+auto create_partition(std::string_view device, std::uint64_t start_bytes, std::uint64_t end_bytes) noexcept -> Result<std::string> {
+    if (end_bytes <= start_bytes) {
+        return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("empty partition range [{}, {}] on {}"), start_bytes, end_bytes, device);
+    }
+    // the partition type is mandatory on msdos and the name on gpt
+    if (auto res = utils::exec_or_error(parted_argv(device, {"unit"s, "B"s, "mkpart"s, "primary"s, bytes_arg(start_bytes), bytes_arg(end_bytes)}), "create partition"sv); !res) {
+        return std::unexpected(std::move(res).error());
+    }
+    utils::settle_devices();
+
+    // the range was free, so whatever starts inside it is the new partition
+    const auto devices = list_block_devices();
+    if (!devices) {
+        return make_error(ErrorCode::SubprocessFailed, FMT_COMPILE("cannot list partitions of {}"), device);
+    }
+    const auto in_range = [device, start_bytes, end_bytes](const BlockDevice& dev) {
+        if (dev.type != "part"sv || dev.pkname != device || !dev.start) {
+            return false;
+        }
+        const auto start = *dev.start * kSectorBytes;
+        return start >= start_bytes && start <= end_bytes;
+    };
+    const auto* created = utils::find_if_ptr(*devices, in_range);
+    if (created == nullptr) {
+        return make_error(ErrorCode::NotFound, FMT_COMPILE("no new partition between {} and {} on {}"), start_bytes, end_bytes, device);
+    }
+    return created->name;
+}
+
+auto delete_partition(std::string_view device, std::uint32_t number) noexcept -> Result<void> {
+    return utils::exec_or_error(parted_argv(device, {"rm"s, std::to_string(number)}), "delete partition"sv);
+}
+
+auto set_partition_flag(std::string_view device, std::uint32_t number, std::string_view flag, bool state) noexcept -> Result<void> {
+    return utils::exec_or_error(parted_argv(device, {"set"s, std::to_string(number), std::string{flag}, state ? "on"s : "off"s}), "set partition flag"sv);
+}
+
+auto shrink_partition(std::string_view device, std::uint32_t number, std::string_view fstype,
+    std::uint64_t new_size_bytes, std::uint64_t new_end_bytes) noexcept -> Result<void> {
+    // filesystem first, so the table never cuts live data
+    if (auto res = resize_filesystem(insert_partition_number(device, number), fstype, new_size_bytes); !res) {
+        return res;
+    }
+    return utils::exec_or_error(parted_argv(device, {"unit"s, "B"s, "resizepart"s, std::to_string(number), bytes_arg(new_end_bytes)}), "resize partition"sv);
+}
+
+auto filesystem_used_bytes(std::string_view partition, std::string_view fstype) noexcept -> Result<std::uint64_t> {
+    const auto part = std::string{partition};
+    if (fs::string_to_filesystem_type(fstype) == fs::FilesystemType::Ext4) {
+        const auto out    = utils::query_output(std::vector{"/usr/bin/dumpe2fs"s, "-h"s, part}).value_or(""s);
+        const auto blocks = number_after(out, "Block count:"sv);
+        const auto free   = number_after(out, "Free blocks:"sv);
+        const auto size   = number_after(out, "Block size:"sv);
+        if (!blocks || !free || !size || *free > *blocks) {
+            return make_error(ErrorCode::ParseError, FMT_COMPILE("cannot read ext4 usage of {}"), partition);
+        }
+        return (*blocks - *free) * *size;
+    }
+    if (fstype == "ntfs"sv) {
+        const auto out = utils::query_output(std::vector{"/usr/bin/ntfsresize"s, "--info"s, "--force"s, "--no-progress-bar"s, part}).value_or(""s);
+        if (const auto min = number_after(out, "You might resize at"sv)) {
+            return *min;
+        }
+        return make_error(ErrorCode::ParseError, FMT_COMPILE("cannot read ntfs minimum size of {}"), partition);
+    }
+    return make_error(ErrorCode::Unsupported, FMT_COMPILE("no usage probe for '{}' on {}"), fstype, partition);
+}
+
+auto set_filesystem_label(std::string_view partition, std::string_view fstype, std::string_view label) noexcept -> Result<void> {
+    using fs::FilesystemType;
+    const auto part = std::string{partition};
+    const auto name = std::string{label};
+    std::vector<std::string> argv;
+    switch (fs::string_to_filesystem_type(fstype)) {
+    case FilesystemType::Ext4:
+        argv = {"/usr/bin/e2label"s, part, name};
+        break;
+    case FilesystemType::Btrfs:
+        argv = {"/usr/bin/btrfs"s, "filesystem"s, "label"s, part, name};
+        break;
+    case FilesystemType::Xfs:
+        argv = {"/usr/bin/xfs_admin"s, "-L"s, name, part};
+        break;
+    case FilesystemType::Vfat:
+        argv = {"/usr/bin/fatlabel"s, part, name};
+        break;
+    default:
+        if (fstype != "ntfs"sv) {
+            return make_error(ErrorCode::Unsupported, FMT_COMPILE("no label tool for '{}' on {}"), fstype, partition);
+        }
+        argv = {"/usr/bin/ntfslabel"s, part, name};
+        break;
+    }
+    return utils::exec_or_error(argv, "set filesystem label"sv);
 }
 
 }  // namespace gucc::disk

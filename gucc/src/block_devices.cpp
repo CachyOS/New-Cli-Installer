@@ -41,7 +41,10 @@ auto to_block_device(const rapidjson::Value& obj) -> BlockDevice {
     device.size      = json::uint64(obj, "size"sv);
     device.pttype    = json::owned_string(obj, "pttype"sv);
     device.transport = json::string(obj, "tran"sv).value_or(""sv);
-    device.removable = json::boolean(obj, "rm"sv).value_or(false);
+    device.removable    = json::boolean(obj, "rm"sv).value_or(false);
+    device.start        = json::uint64(obj, "start"sv);
+    device.parttypename = json::owned_string(obj, "parttypename"sv);
+    device.fsused       = json::uint64(obj, "fsused"sv);
 
     // previous util-linux provided only scalar MOUNTPOINT
     if (json::member(obj, "mountpoints"sv) != nullptr) {

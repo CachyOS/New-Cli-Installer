@@ -12,7 +12,7 @@
 #include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
-#include <utility>      // for forward, forward_like
+#include <utility>      // for forward, forward_like, pair
 #include <vector>       // for vector
 
 /// @file partition_planner.hpp
@@ -183,6 +183,90 @@ struct LuksOpenRequest {
 /// Version comes from LuksOpenRequest::version.
 [[nodiscard]] auto open_encrypted_partition(const LuksOpenRequest& req) noexcept
     -> std::expected<void, std::string>;
+
+/// @brief An unallocated gap on a disk.
+struct FreeSpaceRegion {
+    std::uint64_t start_bytes{};  ///< first byte
+    std::uint64_t end_bytes{};    ///< last byte, inclusive
+    std::uint64_t size_bytes{};
+};
+
+/// @brief Free gaps on @p device, derived from lsblk so it works without root.
+[[nodiscard]] auto list_free_space(std::string_view device) noexcept -> std::vector<FreeSpaceRegion>;
+
+/// @brief An existing partition on a disk.
+struct PartitionEntry {
+    std::uint32_t number{};       ///< 1-based partition number
+    std::uint64_t start_bytes{};  ///< first byte
+    std::uint64_t end_bytes{};    ///< last byte, inclusive
+    std::uint64_t size_bytes{};
+    std::string device;          ///< partition node, e.g. /dev/nvme0n1p2
+    std::string fstype;          ///< empty if none
+    std::string flags;           ///< parted-style, e.g. "boot, esp"
+    std::string part_type;       ///< e.g. "EFI System"
+    std::string label;           ///< filesystem label
+    std::uint64_t used_bytes{};  ///< 0 unless mounted
+};
+
+/// @brief Partitions of @p device ordered by start.
+[[nodiscard]] auto list_partitions(std::string_view device) noexcept -> std::vector<PartitionEntry>;
+
+/// @brief {minimum, current} size partition @p number can be shrunk between.
+[[nodiscard]] auto shrinkable_bounds(std::string_view device, std::uint32_t number,
+    std::string_view fstype, std::uint64_t current_size_bytes) noexcept
+    -> std::expected<std::pair<std::uint64_t, std::uint64_t>, std::string>;
+
+/// @brief One pending partition table edit.
+struct PartitionOp {
+    enum class Kind : std::uint8_t {
+        Create,    ///< new partition in [start_bytes, end_bytes], optionally formatted and flagged
+        Delete,    ///< remove `number`
+        Resize,    ///< shrink `number`: filesystem to size_bytes, partition end to end_bytes
+        Format,    ///< format `number` as fstype
+        SetFlag,   ///< set `flags` (a single flag) on `number` to flag_state
+        SetLabel,  ///< set filesystem label of `number`
+        NewTable,  ///< write an empty `table_type` table
+    };
+    Kind kind{};
+    std::uint32_t number{};
+    std::uint64_t start_bytes{};
+    std::uint64_t end_bytes{};
+    std::uint64_t size_bytes{};
+    std::string fstype;
+    std::string label;
+    std::string flags;  ///< comma list for Create
+    bool flag_state{true};
+    std::string table_type;  ///< "gpt" or "msdos"
+};
+
+/// @brief A mount wanted once the partition ops ran.
+///
+/// A `created` row is the partition made by the last Create op. With `luks`
+/// the partition is encrypted and opened as `luks_mapper_name` first, so its
+/// Create op must leave fstype empty and the row must request a format.
+struct StagedMount {
+    bool created{};          ///< device comes from the last Create op
+    std::string device;      ///< existing partition, when !created
+    std::string mountpoint;  ///< "/", "/boot/efi", "/home", ...
+    std::string fstype;
+    bool format_requested{};
+    std::string mount_opts;
+    bool is_esp{};
+    bool luks{};
+    std::string luks_passphrase;
+    std::string luks_mapper_name;  ///< without /dev/mapper/
+    LuksVersion luks_version{LuksVersion::Luks2};
+};
+
+/// @brief Run @p ops in order on @p device, then finalize @p mounts into
+/// the selections partition_strategy::ApplyLayout takes.
+///
+/// Ops that address a `number` see the table as it is when they run.
+/// @warning destructive, needs root.
+[[nodiscard]] auto apply_partition_plan(std::string_view device,
+    const std::vector<PartitionOp>& ops,
+    const std::vector<StagedMount>& mounts) noexcept
+    -> std::expected<MountSelections, std::string>;
 
 /// @brief All the layout choices a frontend wizard has collected.
 ///

@@ -9,9 +9,14 @@
 #include "gucc/luks.hpp"
 #include "gucc/lvm.hpp"
 #include "gucc/mount_partitions.hpp"
+#include "gucc/partition_config.hpp"
+#include "gucc/partitioning.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/system_query.hpp"
 #include "gucc/zfs_query.hpp"
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <random>
@@ -109,6 +114,87 @@ auto open_luks(LuksVersion version, std::string_view passphrase, std::string_vie
     -> std::expected<void, std::string> {
     return cachyos::installer::lift(gucc::crypto::luks_open(version, passphrase, device, mapper_name),
         fmt::format(FMT_COMPILE("failed to open LUKS partition {} as {}"), device, mapper_name));
+}
+
+// lsblk START unit, whatever the physical sector size
+constexpr std::uint64_t kSectorBytes{512};
+// MBR/GPT headers and alignment slack at either end of a disk
+constexpr std::uint64_t kEdgeReserveBytes{1024ULL * 1024ULL};
+// smaller gaps are alignment slack
+constexpr std::uint64_t kMinFreeBytes{1024ULL * 1024ULL};
+
+auto to_partition_entry(gucc::disk::BlockDevice dev) -> PartitionEntry {
+    const auto start = dev.start.value_or(0) * kSectorBytes;
+    const auto size  = dev.size.value_or(0);
+    auto part_type   = std::move(dev.parttypename).value_or("");
+    return PartitionEntry{
+        .number      = gucc::disk::parse_partition_number(dev.name),
+        .start_bytes = start,
+        .end_bytes   = size > 0 ? start + size - 1 : start,
+        .size_bytes  = size,
+        .device      = std::move(dev.name),
+        .fstype      = std::move(dev.fstype),
+        // the flags the Manual editor recognizes
+        .flags      = part_type == "EFI System"sv ? "boot, esp" : "",
+        .part_type  = std::move(part_type),
+        .label      = std::move(dev.label).value_or(""),
+        .used_bytes = dev.fsused.value_or(0),
+    };
+}
+
+auto lift_void(gucc::Result<void> res) -> std::expected<void, std::string> {
+    return cachyos::installer::lift(std::move(res));
+}
+
+auto apply_partition_op(std::string_view device, const PartitionOp& op, std::string& last_created) -> std::expected<void, std::string> {
+    using Kind      = PartitionOp::Kind;
+    const auto part = gucc::disk::insert_partition_number(device, op.number);
+    switch (op.kind) {
+    case Kind::NewTable:
+        return lift_void(gucc::disk::create_partition_table(device, op.table_type));
+    case Kind::Delete:
+        return lift_void(gucc::disk::delete_partition(device, op.number));
+    case Kind::Resize:
+        return lift_void(gucc::disk::shrink_partition(device, op.number, op.fstype, op.size_bytes, op.end_bytes));
+    case Kind::Format:
+        if (auto res = lift_void(gucc::fs::format_partition(part, gucc::fs::string_to_filesystem_type(op.fstype))); !res || op.label.empty()) {
+            return res;
+        }
+        return lift_void(gucc::disk::set_filesystem_label(part, op.fstype, op.label));
+    case Kind::SetFlag:
+        return lift_void(gucc::disk::set_partition_flag(device, op.number, op.flags, op.flag_state));
+    case Kind::SetLabel:
+        return lift_void(gucc::disk::set_filesystem_label(part, op.fstype, op.label));
+    case Kind::Create:
+        break;
+    }
+
+    auto created = cachyos::installer::lift(gucc::disk::create_partition(device, op.start_bytes, op.end_bytes));
+    if (!created) {
+        return std::unexpected(std::move(created).error());
+    }
+    last_created = *std::move(created);
+    if (!op.fstype.empty()) {
+        if (auto res = lift_void(gucc::fs::format_partition(last_created, gucc::fs::string_to_filesystem_type(op.fstype))); !res) {
+            return res;
+        }
+        if (!op.label.empty()) {
+            if (auto res = lift_void(gucc::disk::set_filesystem_label(last_created, op.fstype, op.label)); !res) {
+                return res;
+            }
+        }
+    }
+    const auto number = gucc::disk::parse_partition_number(last_created);
+    for (const auto flag : gucc::utils::make_split_view(op.flags, ',')) {
+        const auto name = gucc::utils::trim(flag);
+        if (name.empty()) {
+            continue;
+        }
+        if (auto res = lift_void(gucc::disk::set_partition_flag(device, number, name, true)); !res) {
+            return res;
+        }
+    }
+    return {};
 }
 
 }  // namespace
@@ -248,6 +334,107 @@ auto finalize_plan(PartitionPlan plan) noexcept
 
     out.btrfs_subvolumes = convert_subvolumes<gucc::fs::BtrfsSubvolume>(std::move(plan.btrfs_subvolumes));
     return out;
+}
+
+auto list_partitions(std::string_view device) noexcept -> std::vector<PartitionEntry> {
+    auto devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        return {};
+    }
+    auto partitions = *std::move(devices)
+        | std::ranges::views::as_rvalue
+        | std::ranges::views::filter([device](const gucc::disk::BlockDevice& dev) { return dev.type == "part"sv && dev.pkname == device; })
+        | std::ranges::views::transform(to_partition_entry)
+        | std::ranges::to<std::vector<PartitionEntry>>();
+    std::ranges::sort(partitions, {}, &PartitionEntry::start_bytes);
+    return partitions;
+}
+
+auto list_free_space(std::string_view device) noexcept -> std::vector<FreeSpaceRegion> {
+    const auto total = gucc::disk::query_block_device(device)
+                           .and_then([](const gucc::disk::BlockDevice& dev) { return dev.size; })
+                           .value_or(0);
+    if (total <= 2 * kEdgeReserveBytes) {
+        return {};
+    }
+
+    std::vector<FreeSpaceRegion> gaps;
+    const auto add_gap = [&gaps](std::uint64_t start, std::uint64_t end_exclusive) {
+        if (end_exclusive > start && end_exclusive - start >= kMinFreeBytes) {
+            gaps.push_back({.start_bytes = start, .end_bytes = end_exclusive - 1, .size_bytes = end_exclusive - start});
+        }
+    };
+    auto cursor = kEdgeReserveBytes;
+    for (const auto& part : list_partitions(device)) {
+        if (part.size_bytes == 0) {
+            continue;
+        }
+        add_gap(cursor, part.start_bytes);
+        cursor = std::max(cursor, part.end_bytes + 1);
+    }
+    add_gap(cursor, total - kEdgeReserveBytes);
+    return gaps;
+}
+
+auto shrinkable_bounds(std::string_view device, std::uint32_t number,
+    std::string_view fstype, std::uint64_t current_size_bytes) noexcept
+    -> std::expected<std::pair<std::uint64_t, std::uint64_t>, std::string> {
+    // lsblk knows the usage of mounted filesystems only
+    const auto partitions = list_partitions(device);
+    const auto* entry     = gucc::utils::find_ptr(partitions, number, &PartitionEntry::number);
+    if (entry != nullptr && entry->used_bytes > 0) {
+        return std::pair{entry->used_bytes, current_size_bytes};
+    }
+    return lift(gucc::disk::filesystem_used_bytes(gucc::disk::insert_partition_number(device, number), fstype))
+        .transform([current_size_bytes](std::uint64_t used) { return std::pair{used, current_size_bytes}; });
+}
+
+auto apply_partition_plan(std::string_view device, const std::vector<PartitionOp>& ops,
+    const std::vector<StagedMount>& mounts) noexcept
+    -> std::expected<MountSelections, std::string> {
+    std::string created;
+    for (const auto& op : ops) {
+        if (auto res = apply_partition_op(device, op, created); !res) {
+            return std::unexpected(std::move(res).error());
+        }
+    }
+
+    PartitionPlan plan{};
+    bool has_root{};
+    for (const auto& mount : mounts) {
+        auto path = mount.created ? created : mount.device;
+        if (path.empty()) {
+            return std::unexpected(fmt::format(FMT_COMPILE("no device for mountpoint '{}'"), mount.mountpoint));
+        }
+        if (mount.luks) {
+            const LuksFormatRequest luks{
+                .device      = path,
+                .mapper_name = mount.luks_mapper_name,
+                .passphrase  = mount.luks_passphrase,
+                .extra_flags = {},
+                .version     = mount.luks_version,
+            };
+            if (auto res = encrypt_partition(luks); !res) {
+                return std::unexpected(std::move(res).error());
+            }
+            path = gucc::disk::mapper_path(mount.luks_mapper_name);
+        }
+        if (mount.mountpoint == "/"sv) {
+            plan.root = {.device = std::move(path), .fstype = mount.fstype, .mkfs_command = {}, .mount_opts = mount.mount_opts, .format_requested = mount.format_requested};
+            has_root  = true;
+        } else if (mount.is_esp) {
+            plan.esp = {.device = std::move(path), .mountpoint = mount.mountpoint.empty() ? "/boot/efi" : mount.mountpoint, .format_requested = mount.format_requested};
+        } else {
+            plan.additional.push_back({.device = std::move(path), .mountpoint = mount.mountpoint, .fstype = mount.fstype, .mkfs_command = {}, .mount_opts = mount.mount_opts, .format_requested = mount.format_requested});
+        }
+    }
+    if (!has_root) {
+        return std::unexpected(std::string{"the partition plan has no '/' mount"});
+    }
+    if (plan.root.fstype == "btrfs"sv) {
+        plan.btrfs_subvolumes = default_btrfs_layout();
+    }
+    return finalize_plan(std::move(plan));
 }
 
 }  // namespace cachyos::installer::partition_planner

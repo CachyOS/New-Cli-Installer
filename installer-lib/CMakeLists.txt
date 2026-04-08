@@ -38,6 +38,7 @@ cos_add_library(${PROJECT_NAME} EXPORT_MACRO CACHYOS_INSTALLER EXPORT_HEADER cac
    src/steps/desktop.cpp
    src/steps/desktop_configure.cpp
    src/steps/server_packages.cpp
+   src/steps/additional_packages.cpp
    src/steps/ssh_keys.cpp
    src/steps/server_firewall.cpp
    src/steps/autologin.cpp

@@ -19,7 +19,7 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
 
-#include <algorithm>    // for ranges::find
+#include <algorithm>    // for ranges::find, ranges::contains
 #include <expected>     // for unexpected
 #include <filesystem>   // for exists
 #include <string>       // for string
@@ -105,6 +105,10 @@ void collect_group_packages(const gucc::profile::NetinstallGroup& group, std::ve
     }
 }
 
+void drop_excluded(std::vector<std::string>& packages, const InstallContext& ctx) noexcept {
+    std::erase_if(packages, [&ctx](const std::string& pkg) { return std::ranges::contains(ctx.excluded_packages, pkg); });
+}
+
 }  // namespace
 
 namespace cachyos::installer {
@@ -143,6 +147,7 @@ auto install_base(const InstallContext& ctx) noexcept
     if (!pkg_list.has_value()) {
         return std::unexpected("failed to get base package list");
     }
+    drop_excluded(*pkg_list, ctx);
     const auto& base_pkgs = gucc::utils::join(*pkg_list, ' ');
     spdlog::info("Preparing for pkgs to install: '{}'", base_pkgs);
 
@@ -178,6 +183,7 @@ auto install_desktop_packages(std::string_view desktop, const InstallContext& ct
     if (!pkg_list.has_value()) {
         return std::unexpected("failed to get desktop package list");
     }
+    drop_excluded(*pkg_list, ctx);
     return install_with_netinstall(std::move(*pkg_list), ctx);
 }
 

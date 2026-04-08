@@ -7,6 +7,7 @@
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
 
+#include <cstdint>      // for uint32_t, uint64_t
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -50,6 +51,28 @@ auto validate_partition_schema(const std::vector<fs::Partition>& partitions, std
 /// @param is_efi Whether the system is UEFI
 /// @return Formatted string showing what will be created
 auto preview_partition_schema(const std::vector<fs::Partition>& partitions, std::string_view device, bool is_efi) noexcept -> std::string;
+
+/// Writes an empty @p table_type ("gpt"/"msdos") table.
+/// @warning drops every partition on @p device.
+auto create_partition_table(std::string_view device, std::string_view table_type) noexcept -> Result<void>;
+
+/// Creates a partition inside the free byte range [@p start_bytes, @p end_bytes].
+/// @return device node of the new partition.
+auto create_partition(std::string_view device, std::uint64_t start_bytes, std::uint64_t end_bytes) noexcept -> Result<std::string>;
+
+auto delete_partition(std::string_view device, std::uint32_t number) noexcept -> Result<void>;
+
+auto set_partition_flag(std::string_view device, std::uint32_t number, std::string_view flag, bool state) noexcept -> Result<void>;
+
+/// Shrinks the filesystem to @p new_size_bytes, then moves the partition end to @p new_end_bytes.
+/// Only ext4 and ntfs can be shrunk offline.
+auto shrink_partition(std::string_view device, std::uint32_t number, std::string_view fstype,
+    std::uint64_t new_size_bytes, std::uint64_t new_end_bytes) noexcept -> Result<void>;
+
+/// Bytes the unmounted filesystem on @p partition occupies, ext4 and ntfs only.
+auto filesystem_used_bytes(std::string_view partition, std::string_view fstype) noexcept -> Result<std::uint64_t>;
+
+auto set_filesystem_label(std::string_view partition, std::string_view fstype, std::string_view label) noexcept -> Result<void>;
 
 }  // namespace gucc::disk
 

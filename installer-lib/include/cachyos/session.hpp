@@ -34,6 +34,7 @@ enum class StepId : std::uint8_t {
     ServerPackages,
     SshKeys,
     ServerFirewall,
+    AdditionalPackages,
     Autologin,
     Chwd,
     NetworkCarryover,

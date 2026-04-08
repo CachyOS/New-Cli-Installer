@@ -76,6 +76,10 @@ namespace cachyos::installer::steps {
 [[nodiscard]] auto server_packages(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
+/// Install @ref InstallContext::additional_packages.
+[[nodiscard]] auto additional_packages(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Setup ssh access.
 [[nodiscard]] auto ssh_keys(const UserSettings& user,
     const InstallContext& ctx) noexcept
