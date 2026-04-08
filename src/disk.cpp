@@ -10,6 +10,7 @@
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
+#include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/lvm.hpp"
 #include "gucc/partition.hpp"
@@ -652,6 +653,102 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
     config_data["PARTITION_SCHEMA"] = std::move(partitions);
 
     return true;
+}
+
+auto mount_partition_headless() noexcept -> bool {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto& partition  = std::get<std::string>(config_data["PARTITION"]);
+    const auto& mount_dev  = std::get<std::string>(config_data["MOUNT"]);
+    const auto& fstype     = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
+
+    // Get default mount options based on fs type and device
+    const bool is_ssd         = gucc::disk::is_device_ssd(partition);
+    const auto& fs_type       = gucc::fs::string_to_filesystem_type(fstype);
+    auto mount_opts           = gucc::fs::get_default_mount_opts(fs_type, is_ssd);
+    config_data["MOUNT_OPTS"] = mount_opts;
+
+    if (!utils::mount_partition(partition, mountpoint, mount_dev, mount_opts)) {
+        spdlog::error("Failed to mount current partition {}", partition);
+        return false;
+    }
+
+    // Remove from partition list
+    auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
+    auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
+    std::erase_if(partitions, [&partition](std::string_view x) { return gucc::utils::contains(x, partition); });
+    number_partitions -= 1;
+
+    return true;
+}
+
+void make_esp_headless(std::vector<gucc::fs::Partition>& partitions,
+    std::string_view part_name,
+    gucc::bootloader::BootloaderType bootloader_type,
+    bool reformat_part,
+    std::string_view boot_part_mountpoint) noexcept {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+    const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
+
+    /* clang-format off */
+    if (sys_info != "UEFI"sv) { return; }
+    /* clang-format on */
+
+    auto& partition = std::get<std::string>(config_data["PARTITION"]);
+    partition       = std::string{part_name};
+
+    const auto& uefi_mount    = boot_part_mountpoint.empty()
+        ? utils::bootloader_default_mount(bootloader_type, sys_info)
+        : boot_part_mountpoint;
+    config_data["UEFI_MOUNT"] = std::string{uefi_mount};
+    config_data["UEFI_PART"]  = partition;
+
+    // If it is already a fat/vfat partition, skip formatting
+    const bool is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), partition));
+    const bool do_format   = !is_fat_part && reformat_part;
+
+    // Apply ESP
+    utils::EspSelection esp_selection{
+        .device           = partition,
+        .mountpoint       = std::string{uefi_mount},
+        .format_requested = do_format,
+    };
+    if (!utils::apply_esp_selection(esp_selection, partitions, true)) {
+        spdlog::error("Failed to apply ESP actions");
+    }
+}
+
+auto build_partition_with_luks(std::string_view device,
+    std::string_view mountpoint,
+    std::string_view fstype,
+    std::string_view mount_opts) noexcept -> gucc::fs::Partition {
+    auto* config_instance = Config::instance();
+    auto& config_data     = config_instance->data();
+
+    auto part_struct = gucc::fs::Partition{
+        .fstype     = std::string{fstype},
+        .mountpoint = std::string{mountpoint},
+        .device     = std::string{device},
+        .mount_opts = std::string{mount_opts},
+    };
+
+    const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
+    part_struct.uuid_str  = part_uuid;
+
+    // get luks information about the current partition
+    const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
+    const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
+    if (!luks_name.empty()) {
+        part_struct.luks_mapper_name = luks_name;
+    }
+    if (!luks_uuid.empty()) {
+        part_struct.luks_uuid = luks_uuid;
+    }
+
+    return part_struct;
 }
 
 }  // namespace utils

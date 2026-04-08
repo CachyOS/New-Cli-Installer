@@ -1,6 +1,7 @@
 #ifndef DISK_HPP
 #define DISK_HPP
 
+#include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/partition.hpp"
 
@@ -84,6 +85,18 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
 
 // Mounts partitions
 [[nodiscard]] auto apply_mount_selections(const MountSelections& selections) noexcept -> bool;
+
+// Mount the "current" partition from config state using auto-detected defaults.
+auto mount_partition_headless() noexcept -> bool;
+
+// Setup ESP partition in headless mode (no TUI interaction).
+auto make_esp_headless(std::vector<gucc::fs::Partition>& partitions, std::string_view part_name,
+    gucc::bootloader::BootloaderType bootloader_type, bool reformat_part = true,
+    std::string_view boot_part_mountpoint = {}) noexcept -> void;
+
+// Build a Partition struct with UUID and LUKS info populated from config state.
+auto build_partition_with_luks(std::string_view device, std::string_view mountpoint,
+    std::string_view fstype, std::string_view mount_opts) noexcept -> gucc::fs::Partition;
 
 auto lvm_show_vg() noexcept -> std::vector<std::pair<std::string, std::string>>;
 

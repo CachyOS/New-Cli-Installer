@@ -10,7 +10,6 @@
 #include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/chwd.hpp"
-#include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/mount_partitions.hpp"
@@ -73,68 +72,6 @@ struct UserSelections {
     std::vector<std::string> ready_partitions;
 };
 
-void make_esp(std::vector<gucc::fs::Partition>& partitions, std::string_view part_name, gucc::bootloader::BootloaderType bootloader_type,
-    bool reformat_part = true, std::string_view boot_part_mountpoint = "(empty)"sv) noexcept {
-
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
-
-    /* clang-format off */
-    if (sys_info != "UEFI"sv) { return; }
-    /* clang-format on */
-
-    auto& partition = std::get<std::string>(config_data["PARTITION"]);
-    partition       = std::string{part_name};
-
-    const auto& uefi_mount    = (boot_part_mountpoint == "(empty)"sv)
-        ? utils::bootloader_default_mount(bootloader_type, sys_info)
-        : boot_part_mountpoint;
-    config_data["UEFI_MOUNT"] = std::string{uefi_mount};
-    config_data["UEFI_PART"]  = partition;
-
-    // If it is already a fat/vfat partition, skip formatting
-    const bool is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), partition));
-    const bool do_format   = !is_fat_part && reformat_part;
-
-    // Apply ESP
-    utils::EspSelection esp_selection{
-        .device           = partition,
-        .mountpoint       = std::string{uefi_mount},
-        .format_requested = do_format,
-    };
-    if (!utils::apply_esp_selection(esp_selection, partitions, true)) {
-        spdlog::error("Failed to apply ESP actions");
-        return;
-    }
-}
-
-// Mount a partition without any TUI interaction (force/headless mode)
-void mount_current_partition_headless() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& partition  = std::get<std::string>(config_data["PARTITION"]);
-    const auto& mount_dev  = std::get<std::string>(config_data["MOUNT"]);
-    const auto& fstype     = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
-
-    // Get default mount options based on fs type and device
-    const bool is_ssd         = gucc::disk::is_device_ssd(partition);
-    const auto& fs_type       = gucc::fs::string_to_filesystem_type(fstype);
-    auto mount_opts           = gucc::fs::get_default_mount_opts(fs_type, is_ssd);
-    config_data["MOUNT_OPTS"] = mount_opts;
-
-    if (!utils::mount_partition(partition, mountpoint, mount_dev, mount_opts)) {
-        spdlog::error("Failed to mount current partition {}", partition);
-    }
-
-    // Remove from partition list (same as confirm_mount with force=true)
-    auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-    auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
-    std::erase_if(partitions, [&partition](std::string_view x) { return gucc::utils::contains(x, partition); });
-    number_partitions -= 1;
-}
 
 auto make_partitions_prepared(std::string_view bootloader_str, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts) -> bool {
     auto* config_instance = Config::instance();
@@ -170,7 +107,7 @@ auto make_partitions_prepared(std::string_view bootloader_str, std::string_view 
         if (part_type == "boot"sv) {
             config_data["UEFI_MOUNT"] = part_mountpoint;
             config_data["UEFI_PART"]  = part_name;
-            make_esp(partitions, part_name, *bootloader_opt, true, part_mountpoint);
+            utils::make_esp_headless(partitions, part_name, *bootloader_opt, true, part_mountpoint);
             utils::get_cryptroot();
             utils::get_cryptboot();
             spdlog::info("boot partition: name={}", part_name);
@@ -183,25 +120,10 @@ auto make_partitions_prepared(std::string_view bootloader_str, std::string_view 
             spdlog::info("root partition: {}", part_name);
 
             utils::select_filesystem(root_fs);
-            mount_current_partition_headless();
+            utils::mount_partition_headless();
 
-            auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = root_part, .mount_opts = std::string{mount_opts_info}};
-
-            const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
-            part_struct.uuid_str  = part_uuid;
-
-            // get luks information about the current partition
-            const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
-            const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
-            if (!luks_name.empty()) {
-                part_struct.luks_mapper_name = luks_name;
-            }
-            if (!luks_uuid.empty()) {
-                part_struct.luks_uuid = luks_uuid;
-            }
-
+            auto part_struct = utils::build_partition_with_luks(root_part, part_mountpoint, part_fs, mount_opts_info);
             utils::dump_partition_to_log(part_struct);
-
             partitions.emplace_back(std::move(part_struct));
 
             // If the root partition is btrfs, offer to create subvolumes
@@ -243,25 +165,10 @@ auto make_partitions_prepared(std::string_view bootloader_str, std::string_view 
             spdlog::info("additional partition: {}", part_name);
 
             utils::select_filesystem(part_fs);
-            mount_current_partition_headless();
+            utils::mount_partition_headless();
 
-            auto part_struct = gucc::fs::Partition{.fstype = part_fs, .mountpoint = part_mountpoint, .device = part_name, .mount_opts = std::string{mount_opts_info}};
-
-            const auto& part_uuid = gucc::fs::utils::get_device_uuid(part_struct.device);
-            part_struct.uuid_str  = part_uuid;
-
-            // get luks information about the current partition
-            const auto& luks_name = std::get<std::string>(config_data["LUKS_NAME"]);
-            const auto& luks_uuid = std::get<std::string>(config_data["LUKS_UUID"]);
-            if (!luks_name.empty()) {
-                part_struct.luks_mapper_name = luks_name;
-            }
-            if (!luks_uuid.empty()) {
-                part_struct.luks_uuid = luks_uuid;
-            }
-
+            auto part_struct = utils::build_partition_with_luks(part_name, part_mountpoint, part_fs, mount_opts_info);
             utils::dump_partition_to_log(part_struct);
-
             partitions.emplace_back(std::move(part_struct));
 
             // Determine if a separate /boot is used.
@@ -338,6 +245,9 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     utils::set_hostname(selections.hostname);
     utils::set_locale(selections.locale);
     utils::set_xkbmap(selections.xkbmap);
+    // Derive vconsole keymap from X11 keymap selection.
+    // Most base X11 layouts (us, de, fr, etc.) are valid vconsole keymap names.
+    config_data["KEYMAP"] = selections.xkbmap;
     utils::set_timezone(selections.timezone);
     utils::set_hw_clock("utc"sv);
 
