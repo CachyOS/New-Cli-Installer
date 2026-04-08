@@ -193,6 +193,11 @@ struct InstallContext {
     /// Optional netinstall group names.
     std::vector<std::string> netinstall_groups;
 
+    /// Installed in one transaction after the desktop or server packages.
+    std::vector<std::string> additional_packages;
+    /// Dropped from the base and desktop package lists.
+    std::vector<std::string> excluded_packages;
+
     // Network profiles
     std::string net_profiles_url{kDefaultNetProfilesUrl};
     std::string net_profiles_fallback_url{kDefaultNetProfilesFallbackUrl};

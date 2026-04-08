@@ -3,6 +3,8 @@
 
 #include "cachyos/orchestrator.hpp"
 
+#include <algorithm>  // for ranges::contains, ranges::find
+
 using namespace std::string_view_literals;
 
 TEST_CASE("parse_pacman_progress")
@@ -66,5 +68,25 @@ TEST_CASE("parse_pacman_progress")
         const auto res = parse_pacman_progress("noise (3/4) more noise"sv);
         REQUIRE(res.has_value());
         CHECK(*res == doctest::Approx(0.75));
+    }
+}
+
+TEST_CASE("plan_steps additional packages")
+{
+    using cachyos::installer::StepId;
+    cachyos::installer::InstallContext ctx{};
+
+    SECTION("skipped without packages")
+    {
+        CHECK_FALSE(std::ranges::contains(cachyos::installer::plan_steps(ctx), StepId::AdditionalPackages));
+    }
+    SECTION("after the desktop packages and before users")
+    {
+        ctx.additional_packages = {"vlc"};
+        const auto plan         = cachyos::installer::plan_steps(ctx);
+        const auto at           = [&plan](StepId step) { return std::ranges::find(plan, step) - plan.begin(); };
+        REQUIRE(std::ranges::contains(plan, StepId::AdditionalPackages));
+        CHECK(at(StepId::Desktop) < at(StepId::AdditionalPackages));
+        CHECK(at(StepId::AdditionalPackages) < at(StepId::Users));
     }
 }

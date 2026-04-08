@@ -1,0 +1,5 @@
+module noctalia.Commons
+singleton Style 1.0 Style.qml
+singleton Color 1.0 Color.qml
+singleton Icons 1.0 Icons.qml
+singleton IconsTabler 1.0 IconsTabler.qml

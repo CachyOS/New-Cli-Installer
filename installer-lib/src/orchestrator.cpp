@@ -155,6 +155,9 @@ auto plan_steps(const InstallContext& ctx) noexcept -> std::vector<StepId> {
     if (ctx.resolved_server) {
         plan.append_range(std::initializer_list{StepId::ServerPackages, StepId::ServerFirewall});
     }
+    if (!ctx.additional_packages.empty()) {
+        plan.push_back(StepId::AdditionalPackages);
+    }
     // after the system packages, so the login shell and groups exist
     plan.push_back(StepId::Users);
     if (ctx.resolved_server) {
@@ -206,6 +209,8 @@ auto run_step(StepId step, const InstallRequest& request) noexcept -> StepOutcom
         return from_expected(steps::desktop_configure(ctx), step);
     case StepId::ServerPackages:
         return from_expected(steps::server_packages(ctx), step);
+    case StepId::AdditionalPackages:
+        return from_expected(steps::additional_packages(ctx), step);
     case StepId::SshKeys:
         return from_expected(steps::ssh_keys(request.user, ctx), step);
     case StepId::ServerFirewall:

@@ -44,6 +44,12 @@ struct BlockDevice {
     std::string transport;
     /// Removable media.
     bool removable{false};
+    /// Partition start in 512-byte sectors, partitions only.
+    std::optional<std::uint64_t> start;
+    /// Human partition type (e.g. EFI System), partitions only.
+    std::optional<std::string> parttypename;
+    /// Bytes used by the filesystem, mounted filesystems only.
+    std::optional<std::uint64_t> fsused;
 
     /// @brief Default constructor for BlockDevice.
     BlockDevice() = default;
@@ -119,7 +125,7 @@ constexpr auto strip_device_prefix(std::string_view device) noexcept -> std::str
 namespace gucc::disk::detail {
 
 /// Common lsblk parsed fields.
-inline constexpr std::string_view kLsblkColumns{"NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,RM,TRAN"};
+inline constexpr std::string_view kLsblkColumns{"NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,RM,TRAN,START,PARTTYPENAME,FSUSED"};
 
 auto parse_lsblk_json(std::string_view json_output) noexcept -> std::optional<std::vector<BlockDevice>>;
 
