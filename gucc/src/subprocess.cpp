@@ -26,12 +26,14 @@ SubProcess::SubProcess() : m_impl(std::make_unique<Impl>()) { }
 SubProcess::~SubProcess() = default;
 
 SubProcess::SubProcess(SubProcess&& other) noexcept
-  : m_impl(std::move(other.m_impl)),
-    m_process_log([&] {
-        const std::lock_guard<std::mutex> lock(other.m_log_mutex);
-        return std::move(other.m_process_log);
-    }()) {
+  : m_impl(std::move(other.m_impl)) {
     running.store(other.running.load());
+    // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
+    const std::lock_guard<std::mutex> lock(other.m_log_mutex);
+    m_process_log = std::move(other.m_process_log);
+    m_line_buffer = std::move(other.m_line_buffer);
+    m_log_line_cb = std::move(other.m_log_line_cb);
+    // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
 }
 
 auto SubProcess::operator=(SubProcess&& other) noexcept -> SubProcess& {
@@ -40,6 +42,8 @@ auto SubProcess::operator=(SubProcess&& other) noexcept -> SubProcess& {
         running.store(other.running.load());
         const std::scoped_lock lock(m_log_mutex, other.m_log_mutex);
         m_process_log = std::move(other.m_process_log);
+        m_line_buffer = std::move(other.m_line_buffer);
+        m_log_line_cb = std::move(other.m_log_line_cb);
     }
     return *this;
 }
@@ -62,8 +66,30 @@ auto SubProcess::get_log() const noexcept -> std::string {
 }
 
 void SubProcess::append_log(std::string_view text) noexcept {
+    LogLineCallback cb_copy;
+    std::vector<std::string> ready_lines;
+    {
+        const std::lock_guard<std::mutex> lock(m_log_mutex);
+        m_process_log.append(text);
+        if (!m_log_line_cb) {
+            return;
+        }
+        m_line_buffer.append(text);
+        std::size_t nl_pos{};
+        while ((nl_pos = m_line_buffer.find('\n')) != std::string::npos) {
+            ready_lines.emplace_back(m_line_buffer, 0, nl_pos);
+            m_line_buffer.erase(0, nl_pos + 1);
+        }
+        cb_copy = m_log_line_cb;
+    }
+    for (const auto& line : ready_lines) {
+        cb_copy(line);
+    }
+}
+
+void SubProcess::set_log_line_callback(LogLineCallback cb) noexcept {
     const std::lock_guard<std::mutex> lock(m_log_mutex);
-    m_process_log += text;
+    m_log_line_cb = std::move(cb);
 }
 
 auto exec_follow(const std::vector<std::string>& vec, SubProcess& child, bool async) noexcept -> bool {

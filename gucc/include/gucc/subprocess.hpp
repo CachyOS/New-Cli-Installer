@@ -2,6 +2,7 @@
 #define SUBPROCESS_HPP
 
 #include <atomic>       // for atomic_bool
+#include <functional>   // for function
 #include <memory>       // for unique_ptr
 #include <mutex>        // for mutex
 #include <string>       // for string
@@ -13,6 +14,8 @@ namespace gucc::utils {
 // Wrapper around thirdparty subprocess handle
 class SubProcess final {
  public:
+    using LogLineCallback = std::function<void(std::string_view)>;
+
     SubProcess();
     ~SubProcess();
 
@@ -37,8 +40,13 @@ class SubProcess final {
     /// @brief Get a snapshot of the accumulated log.
     [[nodiscard]] auto get_log() const noexcept -> std::string;
 
-    /// @brief Append text to the accumulated log.
+    /// @brief Append text to the accumulated log. Triggers the per-line
+    /// callback (if set) for every complete line in the partial-line buffer.
     void append_log(std::string_view text) noexcept;
+
+    /// @brief Subscribe to per-line log output.
+    /// Pass an empty callback to unsubscribe.
+    void set_log_line_callback(LogLineCallback cb) noexcept;
 
     /// @brief Whether the subprocess is still running.
     std::atomic_bool running{true};
@@ -51,6 +59,8 @@ class SubProcess final {
 
     mutable std::mutex m_log_mutex;
     std::string m_process_log;
+    std::string m_line_buffer;
+    LogLineCallback m_log_line_cb;
 };
 
 /// @brief Execute command args via subprocess with async combined stdout+stderr.
