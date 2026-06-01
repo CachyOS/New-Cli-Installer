@@ -142,6 +142,7 @@ auto run(InstallContext& ctx,
     }
     {
         gucc::utils::SubProcess child;
+        child.set_log_line_callback(callbacks.on_log_line);
         if (auto res = create_user(user, mountpoint, ctx.hostcache, child); !res) {
             spdlog::error("create_user: {}", res.error());
             warnings.emplace_back(fmt::format("create_user: {}", res.error()));
@@ -152,6 +153,7 @@ auto run(InstallContext& ctx,
     emit_progress(callbacks, Running, 5, "Installing base system (this may take a while)...");
     {
         gucc::utils::SubProcess child;
+        child.set_log_line_callback(callbacks.on_log_line);
         if (auto res = install_base(ctx, child); !res) {
             emit_progress(callbacks, Failed, 5, "Base install failed");
             return make_failure(fmt::format("Base install failed: {}", res.error()), std::move(warnings));
@@ -162,6 +164,7 @@ auto run(InstallContext& ctx,
     emit_progress(callbacks, Running, 6, "Installing desktop environment...");
     if (!ctx.server_mode && !ctx.desktop.empty()) {
         gucc::utils::SubProcess child;
+        child.set_log_line_callback(callbacks.on_log_line);
         if (auto res = install_desktop(ctx.desktop, ctx, child); !res) {
             spdlog::error("install_desktop: {}", res.error());
             warnings.emplace_back(fmt::format("install_desktop: {}", res.error()));
@@ -172,6 +175,7 @@ auto run(InstallContext& ctx,
     emit_progress(callbacks, Running, 7, "Installing bootloader...");
     {
         gucc::utils::SubProcess child;
+        child.set_log_line_callback(callbacks.on_log_line);
         if (auto res = install_bootloader(ctx, child); !res) {
             spdlog::error("install_bootloader: {}", res.error());
             warnings.emplace_back(fmt::format("install_bootloader: {}", res.error()));
