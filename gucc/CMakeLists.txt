@@ -45,6 +45,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/mount_partitions.cpp include/gucc/mount_partitions.hpp
    src/hwclock.cpp include/gucc/hwclock.hpp
    src/machine_id.cpp include/gucc/machine_id.hpp
+   src/keyboard.cpp include/gucc/keyboard.hpp
    src/package_profiles.cpp include/gucc/package_profiles.hpp
    src/fetch_file.cpp include/gucc/fetch_file.hpp
    src/package_list.cpp include/gucc/package_list.hpp
