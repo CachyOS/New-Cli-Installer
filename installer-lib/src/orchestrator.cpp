@@ -14,6 +14,7 @@
 #include <cstdint>      // for uint8_t, uint32_t
 #include <filesystem>   // for copy_file, exists
 #include <optional>     // for optional
+#include <stop_token>   // for stop_token, stop_callback
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
@@ -100,6 +101,20 @@ auto fail_step(const ExecutionCallbacks& cb,
     return ValidationResult{
         .success  = false,
         .errors   = {fmt::format("{}: {}", label, error)},
+        .warnings = std::move(prior_warnings),
+    };
+}
+
+/// Emit a Cancelled event for the step we were about to run and return a
+/// ValidationResult tagged as cancelled.
+auto cancel_result(const ExecutionCallbacks& cb,
+    Step s,
+    std::vector<std::string> prior_warnings) noexcept -> ValidationResult {
+    constexpr auto kCancelled = "Cancelled by user"sv;
+    emit_progress(cb, ProgressEventType::Cancelled, step_index(s), kCancelled);
+    return ValidationResult{
+        .success  = false,
+        .errors   = {std::string{kCancelled}},
         .warnings = std::move(prior_warnings),
     };
 }
@@ -194,7 +209,8 @@ auto run(InstallContext& ctx,
     const SystemSettings& sys,
     const UserSettings& user,
     std::string_view root_password,
-    const ExecutionCallbacks& callbacks) noexcept -> ValidationResult {
+    const ExecutionCallbacks& callbacks,
+    std::stop_token stop_token) noexcept -> ValidationResult {
     using enum ProgressEventType;
     const auto mountpoint = ctx.mountpoint;
     std::vector<std::string> warnings;
@@ -203,6 +219,9 @@ auto run(InstallContext& ctx,
     emit_progress(callbacks, Started, 0, "Starting installation..."sv);
 
     // Step 1: Unmount any existing partitions on the target.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Umount, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::Umount);
     if (auto res = umount_partitions(mountpoint, ctx.zfs_zpool_names, ctx.swap_device); !res) {
         spdlog::warn("umount_partitions (pre-install): {}", res.error());
@@ -210,6 +229,9 @@ auto run(InstallContext& ctx,
     }
 
     // Step 2: Auto-partition and mount.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Partition, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::Partition);
     {
         const auto& bios_mode = ctx.system_mode == InstallContext::SystemMode::UEFI ? "UEFI"sv : "BIOS"sv;
@@ -229,18 +251,27 @@ auto run(InstallContext& ctx,
     }
 
     // Step 3: Generate fstab.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Fstab, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::Fstab);
     if (auto res = generate_fstab(mountpoint); !res) {
         return fail_step(callbacks, Step::Fstab, "fstab generation failed"sv, res.error(), std::move(warnings));
     }
 
     // Step 4: Apply system settings (hostname, locale, keymap, timezone, hw_clock).
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::SystemSettings, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::SystemSettings);
     if (auto res = apply_system_settings(sys, mountpoint); !res) {
         return fail_step(callbacks, Step::SystemSettings, "System settings failed"sv, res.error(), std::move(warnings));
     }
 
     // Step 5: Root password + user account.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Users, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::Users);
     if (auto res = set_root_password(root_password, mountpoint); !res) {
         spdlog::error("set_root_password: {}", res.error());
@@ -249,6 +280,7 @@ auto run(InstallContext& ctx,
     {
         gucc::utils::SubProcess child;
         child.set_log_line_callback(step_log_callback(callbacks, Step::Users));
+        const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
         if (auto res = create_user(user, mountpoint, ctx.hostcache, child); !res) {
             spdlog::error("create_user: {}", res.error());
             warnings.emplace_back(fmt::format("create_user: {}", res.error()));
@@ -256,20 +288,31 @@ auto run(InstallContext& ctx,
     }
 
     // Step 6: Base system.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Base, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::Base);
     {
         gucc::utils::SubProcess child;
         child.set_log_line_callback(step_log_callback(callbacks, Step::Base));
+        const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
         if (auto res = install_base(ctx, child); !res) {
+            if (stop_token.stop_requested()) {
+                return cancel_result(callbacks, Step::Base, std::move(warnings));
+            }
             return fail_step(callbacks, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
         }
     }
 
     // Step 7: Desktop (skipped in server mode).
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Desktop, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::Desktop);
     if (!ctx.server_mode && !ctx.desktop.empty()) {
         gucc::utils::SubProcess child;
         child.set_log_line_callback(step_log_callback(callbacks, Step::Desktop));
+        const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
         if (auto res = install_desktop(ctx.desktop, ctx, child); !res) {
             spdlog::error("install_desktop: {}", res.error());
             warnings.emplace_back(fmt::format("install_desktop: {}", res.error()));
@@ -277,10 +320,14 @@ auto run(InstallContext& ctx,
     }
 
     // Step 8: Bootloader.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Bootloader, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::Bootloader);
     {
         gucc::utils::SubProcess child;
         child.set_log_line_callback(step_log_callback(callbacks, Step::Bootloader));
+        const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
         if (auto res = install_bootloader(ctx, child); !res) {
             spdlog::error("install_bootloader: {}", res.error());
             warnings.emplace_back(fmt::format("install_bootloader: {}", res.error()));
@@ -288,6 +335,9 @@ auto run(InstallContext& ctx,
     }
 
     // Step 9: Detect post-install crypto state and stash it on the context for kernel-params use.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::DetectCrypto, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::DetectCrypto);
     if (auto res = detect_crypto_root(mountpoint); res) {
         ctx.crypto.is_luks   = res->is_luks;
@@ -300,6 +350,9 @@ auto run(InstallContext& ctx,
     }
 
     // Step 10: Enable systemd services.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::EnableServices, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::EnableServices);
     if (auto res = enable_services(ctx); !res) {
         spdlog::error("enable_services: {}", res.error());
@@ -307,6 +360,9 @@ auto run(InstallContext& ctx,
     }
 
     // Step 11: Final validation.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::FinalValidation, std::move(warnings));
+    }
     emit_step_running(callbacks, Step::FinalValidation);
     {
         auto check = final_check(ctx);

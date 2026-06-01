@@ -75,6 +75,7 @@ enum class ProgressEventType : std::uint8_t {
     Running,
     Completed,
     Failed,
+    Cancelled,
 };
 
 /// A progress event emitted during long-running operations.
