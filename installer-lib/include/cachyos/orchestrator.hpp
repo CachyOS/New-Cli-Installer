@@ -3,9 +3,13 @@
 
 #include "cachyos/types.hpp"
 
+#include <optional>     // for optional
 #include <string_view>  // for string_view
 
 namespace cachyos::installer {
+
+/// Parses a pacman-style "(  N/M)" progress prefix from a log line.
+[[nodiscard]] auto parse_pacman_progress(std::string_view line) noexcept -> std::optional<double>;
 
 /// Runs the full install sequence from a populated context.
 ///

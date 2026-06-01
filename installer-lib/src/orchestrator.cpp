@@ -7,9 +7,13 @@
 #include "cachyos/validation.hpp"
 
 // import gucc
+#include "gucc/string_utils.hpp"
 #include "gucc/subprocess.hpp"
 
+#include <array>        // for array
+#include <cstdint>      // for uint8_t, uint32_t
 #include <filesystem>   // for copy_file, exists
+#include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
@@ -26,21 +30,78 @@ namespace {
 // NOLINTNEXTLINE
 using namespace cachyos::installer;
 
-constexpr int kTotalSteps = 12;
+enum class Step : std::uint8_t {
+    Umount,
+    Partition,
+    Fstab,
+    SystemSettings,
+    Users,
+    Base,
+    Desktop,
+    Bootloader,
+    DetectCrypto,
+    EnableServices,
+    FinalValidation,
+    Cleanup,
+    Count,
+};
+
+constexpr std::int32_t kTotalSteps = static_cast<std::int32_t>(Step::Count);
+
+constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
+    "Unmounting existing partitions..."sv,
+    "Partitioning and mounting..."sv,
+    "Generating fstab..."sv,
+    "Configuring system settings..."sv,
+    "Creating user accounts..."sv,
+    "Installing base system (this may take a while)..."sv,
+    "Installing desktop environment..."sv,
+    "Installing bootloader..."sv,
+    "Detecting encryption state..."sv,
+    "Enabling system services..."sv,
+    "Running final validation..."sv,
+    "Cleaning up..."sv,
+};
+
+constexpr auto step_index(Step s) noexcept {
+    return static_cast<std::int32_t>(s);
+}
+
+constexpr auto step_message(Step s) noexcept -> std::string_view {
+    return kStepMessages[static_cast<std::size_t>(s)];
+}
 
 auto emit_progress(const ExecutionCallbacks& cb,
     ProgressEventType type,
-    int step,
+    std::int32_t step,
     std::string_view message) noexcept -> void {
     if (!cb.on_progress) {
         return;
     }
-    const double fraction = static_cast<double>(step) / static_cast<double>(kTotalSteps);
+    const auto fraction = static_cast<double>(step) / static_cast<double>(kTotalSteps);
     cb.on_progress(ProgressEvent{
         .type     = type,
         .message  = std::string{message},
         .fraction = fraction,
     });
+}
+
+void emit_step_running(const ExecutionCallbacks& cb, Step s) noexcept {
+    emit_progress(cb, ProgressEventType::Running, step_index(s), step_message(s));
+}
+
+/// Emit a Failed event and return a ValidationResult with the formatted error.
+auto fail_step(const ExecutionCallbacks& cb,
+    Step s,
+    std::string_view label,
+    std::string_view error,
+    std::vector<std::string> prior_warnings) noexcept -> ValidationResult {
+    emit_progress(cb, ProgressEventType::Failed, step_index(s), label);
+    return ValidationResult{
+        .success  = false,
+        .errors   = {fmt::format("{}: {}", label, error)},
+        .warnings = std::move(prior_warnings),
+    };
 }
 
 auto mount_selections_from_auto(const std::vector<gucc::fs::Partition>& partitions) noexcept -> MountSelections {
@@ -68,17 +129,66 @@ auto mount_selections_from_auto(const std::vector<gucc::fs::Partition>& partitio
     return mounts;
 }
 
-auto make_failure(std::string message, std::vector<std::string> prior_warnings) noexcept -> ValidationResult {
-    return ValidationResult{
-        .success  = false,
-        .errors   = {std::move(message)},
-        .warnings = std::move(prior_warnings),
+/// Builds a log-line callback for a step that forwards lines to the user's
+/// sink and, when a pacman progress line is recognised, emits an intra-step
+/// Running event scaled into this step's slice of the overall progress bar.
+auto step_log_callback(const ExecutionCallbacks& cb, Step s) noexcept
+    -> gucc::utils::SubProcess::LogLineCallback {
+    if (!cb.on_log_line && !cb.on_progress) {
+        return {};
+    }
+    const auto idx = step_index(s);
+    auto msg       = std::string{step_message(s)};
+    return [&cb, idx, msg = std::move(msg)](std::string_view line) {
+        if (cb.on_log_line) {
+            cb.on_log_line(line);
+        }
+        if (!cb.on_progress) {
+            return;
+        }
+        const auto frac = parse_pacman_progress(line);
+        if (!frac) {
+            return;
+        }
+        constexpr auto total    = static_cast<double>(kTotalSteps);
+        const double base       = static_cast<double>(idx) / total;
+        const double step_width = 1.0 / total;
+        cb.on_progress(ProgressEvent{
+            .type     = ProgressEventType::Running,
+            .message  = msg,
+            .fraction = base + (*frac * step_width),
+        });
     };
 }
 
 }  // namespace
 
 namespace cachyos::installer {
+
+auto parse_pacman_progress(std::string_view line) noexcept -> std::optional<double> {
+    const auto open = line.find('(');
+    if (open == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const auto slash = line.find('/', open + 1);
+    if (slash == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const auto close = line.find(')', slash + 1);
+    if (close == std::string_view::npos) {
+        return std::nullopt;
+    }
+
+    const auto num_str   = gucc::utils::trim(line.substr(open + 1, slash - open - 1));
+    const auto denom_str = gucc::utils::trim(line.substr(slash + 1, close - slash - 1));
+
+    const auto num   = gucc::utils::parse_uint<std::uint32_t>(num_str);
+    const auto denom = gucc::utils::parse_uint<std::uint32_t>(denom_str);
+    if (!num || !denom || *denom == 0 || *num > *denom) {
+        return std::nullopt;
+    }
+    return static_cast<double>(*num) / static_cast<double>(*denom);
+}
 
 auto run(InstallContext& ctx,
     const SystemSettings& sys,
@@ -90,30 +200,28 @@ auto run(InstallContext& ctx,
     std::vector<std::string> warnings;
 
     spdlog::info("Install orchestrator starting...");
-    emit_progress(callbacks, Started, 0, "Starting installation...");
+    emit_progress(callbacks, Started, 0, "Starting installation..."sv);
 
     // Step 1: Unmount any existing partitions on the target.
-    emit_progress(callbacks, Running, 0, "Unmounting existing partitions...");
+    emit_step_running(callbacks, Step::Umount);
     if (auto res = umount_partitions(mountpoint, ctx.zfs_zpool_names, ctx.swap_device); !res) {
         spdlog::warn("umount_partitions (pre-install): {}", res.error());
         warnings.emplace_back(fmt::format("Pre-install unmount: {}", res.error()));
     }
 
     // Step 2: Auto-partition and mount.
-    emit_progress(callbacks, Running, 1, "Partitioning and mounting...");
+    emit_step_running(callbacks, Step::Partition);
     {
         const auto& bios_mode = ctx.system_mode == InstallContext::SystemMode::UEFI ? "UEFI"sv : "BIOS"sv;
-        auto partitions             = auto_partition(ctx.device, bios_mode, ctx.bootloader, callbacks);
+        auto partitions       = auto_partition(ctx.device, bios_mode, ctx.bootloader, callbacks);
         if (!partitions) {
-            emit_progress(callbacks, Failed, 1, "Auto-partition failed");
-            return make_failure(fmt::format("Auto-partition failed: {}", partitions.error()), std::move(warnings));
+            return fail_step(callbacks, Step::Partition, "Auto-partition failed"sv, partitions.error(), std::move(warnings));
         }
 
         const auto mounts = mount_selections_from_auto(*partitions);
         auto mount_res    = apply_mount_selections(mounts, mountpoint);
         if (!mount_res) {
-            emit_progress(callbacks, Failed, 1, "Mount failed");
-            return make_failure(fmt::format("Mount failed: {}", mount_res.error()), std::move(warnings));
+            return fail_step(callbacks, Step::Partition, "Mount failed"sv, mount_res.error(), std::move(warnings));
         }
 
         ctx.partition_schema = std::move(mount_res->partitions);
@@ -121,28 +229,26 @@ auto run(InstallContext& ctx,
     }
 
     // Step 3: Generate fstab.
-    emit_progress(callbacks, Running, 2, "Generating fstab...");
+    emit_step_running(callbacks, Step::Fstab);
     if (auto res = generate_fstab(mountpoint); !res) {
-        emit_progress(callbacks, Failed, 2, "fstab generation failed");
-        return make_failure(fmt::format("fstab generation failed: {}", res.error()), std::move(warnings));
+        return fail_step(callbacks, Step::Fstab, "fstab generation failed"sv, res.error(), std::move(warnings));
     }
 
     // Step 4: Apply system settings (hostname, locale, keymap, timezone, hw_clock).
-    emit_progress(callbacks, Running, 3, "Configuring system settings...");
+    emit_step_running(callbacks, Step::SystemSettings);
     if (auto res = apply_system_settings(sys, mountpoint); !res) {
-        emit_progress(callbacks, Failed, 3, "System settings failed");
-        return make_failure(fmt::format("System settings failed: {}", res.error()), std::move(warnings));
+        return fail_step(callbacks, Step::SystemSettings, "System settings failed"sv, res.error(), std::move(warnings));
     }
 
     // Step 5: Root password + user account.
-    emit_progress(callbacks, Running, 4, "Creating user accounts...");
+    emit_step_running(callbacks, Step::Users);
     if (auto res = set_root_password(root_password, mountpoint); !res) {
         spdlog::error("set_root_password: {}", res.error());
         warnings.emplace_back(fmt::format("set_root_password: {}", res.error()));
     }
     {
         gucc::utils::SubProcess child;
-        child.set_log_line_callback(callbacks.on_log_line);
+        child.set_log_line_callback(step_log_callback(callbacks, Step::Users));
         if (auto res = create_user(user, mountpoint, ctx.hostcache, child); !res) {
             spdlog::error("create_user: {}", res.error());
             warnings.emplace_back(fmt::format("create_user: {}", res.error()));
@@ -150,21 +256,20 @@ auto run(InstallContext& ctx,
     }
 
     // Step 6: Base system.
-    emit_progress(callbacks, Running, 5, "Installing base system (this may take a while)...");
+    emit_step_running(callbacks, Step::Base);
     {
         gucc::utils::SubProcess child;
-        child.set_log_line_callback(callbacks.on_log_line);
+        child.set_log_line_callback(step_log_callback(callbacks, Step::Base));
         if (auto res = install_base(ctx, child); !res) {
-            emit_progress(callbacks, Failed, 5, "Base install failed");
-            return make_failure(fmt::format("Base install failed: {}", res.error()), std::move(warnings));
+            return fail_step(callbacks, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
         }
     }
 
     // Step 7: Desktop (skipped in server mode).
-    emit_progress(callbacks, Running, 6, "Installing desktop environment...");
+    emit_step_running(callbacks, Step::Desktop);
     if (!ctx.server_mode && !ctx.desktop.empty()) {
         gucc::utils::SubProcess child;
-        child.set_log_line_callback(callbacks.on_log_line);
+        child.set_log_line_callback(step_log_callback(callbacks, Step::Desktop));
         if (auto res = install_desktop(ctx.desktop, ctx, child); !res) {
             spdlog::error("install_desktop: {}", res.error());
             warnings.emplace_back(fmt::format("install_desktop: {}", res.error()));
@@ -172,10 +277,10 @@ auto run(InstallContext& ctx,
     }
 
     // Step 8: Bootloader.
-    emit_progress(callbacks, Running, 7, "Installing bootloader...");
+    emit_step_running(callbacks, Step::Bootloader);
     {
         gucc::utils::SubProcess child;
-        child.set_log_line_callback(callbacks.on_log_line);
+        child.set_log_line_callback(step_log_callback(callbacks, Step::Bootloader));
         if (auto res = install_bootloader(ctx, child); !res) {
             spdlog::error("install_bootloader: {}", res.error());
             warnings.emplace_back(fmt::format("install_bootloader: {}", res.error()));
@@ -183,7 +288,7 @@ auto run(InstallContext& ctx,
     }
 
     // Step 9: Detect post-install crypto state and stash it on the context for kernel-params use.
-    emit_progress(callbacks, Running, 8, "Detecting encryption state...");
+    emit_step_running(callbacks, Step::DetectCrypto);
     if (auto res = detect_crypto_root(mountpoint); res) {
         ctx.crypto.is_luks   = res->is_luks;
         ctx.crypto.is_lvm    = res->is_lvm;
@@ -195,14 +300,14 @@ auto run(InstallContext& ctx,
     }
 
     // Step 10: Enable systemd services.
-    emit_progress(callbacks, Running, 9, "Enabling system services...");
+    emit_step_running(callbacks, Step::EnableServices);
     if (auto res = enable_services(ctx); !res) {
         spdlog::error("enable_services: {}", res.error());
         warnings.emplace_back(fmt::format("enable_services: {}", res.error()));
     }
 
     // Step 11: Final validation.
-    emit_progress(callbacks, Running, 10, "Running final validation...");
+    emit_step_running(callbacks, Step::FinalValidation);
     {
         auto check = final_check(ctx);
         for (auto& err : check.errors) {
@@ -216,7 +321,7 @@ auto run(InstallContext& ctx,
     }
 
     // Step 12: Copy install log into target and unmount.
-    emit_progress(callbacks, Running, 11, "Cleaning up...");
+    emit_step_running(callbacks, Step::Cleanup);
     {
         constexpr auto kLogSource = "/tmp/cachyos-install.log"sv;
         if (fs::exists(kLogSource)) {
@@ -234,7 +339,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(fmt::format("Final umount: {}", res.error()));
     }
 
-    emit_progress(callbacks, Completed, kTotalSteps, "Installation complete!");
+    emit_progress(callbacks, Completed, kTotalSteps, "Installation complete!"sv);
     spdlog::info("Install orchestrator finished.");
 
     return ValidationResult{

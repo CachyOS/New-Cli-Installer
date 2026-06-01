@@ -35,7 +35,7 @@ foreach(file ${files})
         $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
     )
     target_include_directories(${testcase} PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR} ${CMAKE_SOURCE_DIR}/gucc/tests)
-    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc doctest::doctest)
+    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib doctest::doctest)
     if(NOT ENABLE_DEVENV)
       target_link_libraries(${testcase} PRIVATE cpr::cpr)
     endif()
