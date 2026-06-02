@@ -48,6 +48,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/keyboard.cpp include/gucc/keyboard.hpp
    src/display_manager.cpp include/gucc/display_manager.hpp
    src/plymouth.cpp include/gucc/plymouth.hpp
+   src/network.cpp include/gucc/network.hpp
    src/package_profiles.cpp include/gucc/package_profiles.hpp
    src/fetch_file.cpp include/gucc/fetch_file.hpp
    src/package_list.cpp include/gucc/package_list.hpp
