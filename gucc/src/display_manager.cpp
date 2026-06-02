@@ -135,23 +135,18 @@ auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> boo
     std::string rewritten;
     rewritten.reserve(contents.size() + picked->size());
 
-    const std::string_view view{contents};
-    std::size_t pos = 0;
-    while (pos <= view.size()) {
-        const auto eol  = view.find('\n', pos);
-        const auto end  = eol == std::string_view::npos ? view.size() : eol;
-        const auto line = view.substr(pos, end - pos);
-        if (line.contains("greeter-session="sv)) {
-            rewritten += "greeter-session=";
-            rewritten += *picked;
-        } else {
-            rewritten.append(line);
-        }
-        if (eol == std::string_view::npos) {
-            break;
-        }
+    auto transformed = std::ranges::views::split(std::string_view{contents}, '\n')
+        | std::ranges::views::transform([](auto&& chunk) { return std::string_view{chunk}; })
+        | std::ranges::views::filter([](std::string_view line) { return !line.empty(); })
+        | std::ranges::views::transform([&picked](std::string_view line) -> std::string {
+              if (line.contains("greeter-session="sv)) {
+                  return fmt::format("greeter-session={}", *picked);
+              }
+              return std::string{line};
+          });
+    for (const auto& line : transformed) {
+        rewritten.append(line);
         rewritten += '\n';
-        pos = eol + 1;
     }
 
     if (!file_utils::create_file_for_overwrite(conf_path, rewritten)) {
