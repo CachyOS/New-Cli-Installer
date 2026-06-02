@@ -7,6 +7,8 @@
 #include "cachyos/validation.hpp"
 
 // import gucc
+#include "gucc/machine_id.hpp"
+#include "gucc/network.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/subprocess.hpp"
 
@@ -38,7 +40,9 @@ enum class Step : std::uint8_t {
     SystemSettings,
     Users,
     Base,
+    MachineId,
     Desktop,
+    NetworkCarryover,
     Bootloader,
     DetectCrypto,
     EnableServices,
@@ -47,7 +51,8 @@ enum class Step : std::uint8_t {
     Count,
 };
 
-constexpr std::int32_t kTotalSteps = static_cast<std::int32_t>(Step::Count);
+constexpr auto kTotalSteps = static_cast<std::int32_t>(Step::Count);
+constexpr auto kHostNmDir  = "/etc/NetworkManager/system-connections"sv;
 
 constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Unmounting existing partitions..."sv,
@@ -56,7 +61,9 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Configuring system settings..."sv,
     "Creating user accounts..."sv,
     "Installing base system (this may take a while)..."sv,
+    "Generating machine ID..."sv,
     "Installing desktop environment..."sv,
+    "Carrying network connections forward..."sv,
     "Installing bootloader..."sv,
     "Detecting encryption state..."sv,
     "Enabling system services..."sv,
@@ -304,7 +311,17 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 7: Desktop (skipped in server mode).
+    // Step 7: Replace the live-ISO machine-id with a fresh one for the target.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::MachineId, std::move(warnings));
+    }
+    emit_step_running(callbacks, Step::MachineId);
+    if (!gucc::machine_id::reset(mountpoint)) {
+        spdlog::warn("machine_id::reset failed for '{}'", mountpoint);
+        warnings.emplace_back("machine_id reset failed");
+    }
+
+    // Step 8: Desktop (skipped in server mode).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Desktop, std::move(warnings));
     }
@@ -319,7 +336,20 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 8: Bootloader.
+    // Step 9: Carry the live ISO's NetworkManager connection profiles into the target.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::NetworkCarryover, std::move(warnings));
+    }
+    emit_step_running(callbacks, Step::NetworkCarryover);
+    {
+        const auto copied = gucc::network::copy_connections_from(kHostNmDir, mountpoint);
+        if (copied < 0) {
+            spdlog::warn("network: copy_connections_from failed");
+            warnings.emplace_back("network connection carryover failed");
+        }
+    }
+
+    // Step 10: Bootloader.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Bootloader, std::move(warnings));
     }

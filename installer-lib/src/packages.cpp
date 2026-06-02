@@ -1,30 +1,27 @@
 #include "cachyos/packages.hpp"
 
 // import gucc
+#include "gucc/display_manager.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/install.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/package_list.hpp"
 #include "gucc/package_profiles.hpp"
+#include "gucc/plymouth.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/subprocess.hpp"
 #include "gucc/systemd_services.hpp"
 
-#include <algorithm>    // for any_of
 #include <expected>     // for unexpected
-#include <filesystem>   // for exists, directory_iterator
 #include <fstream>      // for ofstream
-#include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
-#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
-namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
 namespace {
@@ -70,41 +67,11 @@ auto apply_services(const std::vector<gucc::profile::ServiceEntry>& services, st
     return true;
 }
 
-auto enable_service_if_exists(std::string_view service, std::string_view mountpoint) noexcept -> bool {
-    if (!gucc::services::systemd_unit_exists(service, mountpoint)) {
-        return false;
-    }
-    if (gucc::services::enable_systemd_service(service, mountpoint)) {
-        spdlog::info("Enabled service '{}'", service);
-        return true;
-    }
-    return false;
-}
-
 auto make_net_profs_info(const InstallContext& ctx) noexcept -> gucc::package::NetProfileInfo {
     return {
         .net_profs_url          = ctx.net_profiles_url,
         .net_profs_fallback_url = ctx.net_profiles_fallback_url,
     };
-}
-
-void set_lightdm_greeter(std::string_view mountpoint) noexcept {
-    const auto& xgreeters_path = fmt::format(FMT_COMPILE("{}/usr/share/xgreeters"), mountpoint);
-    /* clang-format off */
-    if (!fs::exists(xgreeters_path)) { return; }
-    /* clang-format on */
-    for (const auto& name : fs::directory_iterator{xgreeters_path}) {
-        const auto& temp = name.path().filename().string();
-        if (!temp.starts_with("lightdm-"sv) && !temp.ends_with("-greeter"sv)) {
-            continue;
-        }
-        /* clang-format on */
-        if (temp == "lightdm-gtk-greeter"sv) {
-            continue;
-        }
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -i -e 's/^.*greeter-session=.*/greeter-session={}/' {}/etc/lightdm/lightdm.conf"), temp, mountpoint));
-        break;
-    }
 }
 
 }  // namespace
@@ -184,12 +151,11 @@ auto install_desktop(std::string_view desktop, const InstallContext& ctx,
     }
 
     // Configure plymouth if installed by desktop packages
-    const auto plymouth_path = fmt::format(FMT_COMPILE("{}/usr/bin/plymouth"), mountpoint);
-    if (::fs::exists(plymouth_path)) {
+    if (gucc::plymouth::is_installed(mountpoint)) {
         spdlog::info("Plymouth detected in target, configuring boot splash");
 
         // Set plymouth theme
-        if (!gucc::utils::arch_chroot_follow("plymouth-set-default-theme cachyos-bootanimation"sv, mountpoint, child)) {
+        if (!gucc::plymouth::set_default_theme("cachyos-bootanimation"sv, mountpoint)) {
             spdlog::error("Failed to set plymouth theme");
         }
 
@@ -276,24 +242,14 @@ auto enable_services(const InstallContext& ctx) noexcept
 
     // Display manager detection (desktop mode only)
     if (!ctx.server_mode) {
-        const std::vector<std::string_view> dm_services{"plasmalogin", "lightdm", "sddm", "gdm", "lxdm", "ly", "cosmic-greeter"};
-        // Only attempt DM enablement if at least one DM unit exists on target.
-        const auto has_any_dm = std::ranges::any_of(dm_services, [=](auto&& service) {
-            return gucc::services::systemd_unit_exists(service, mountpoint);
-        });
-        const auto is_enabled = std::ranges::any_of(dm_services, [=](auto&& service) {
-            return enable_service_if_exists(service, mountpoint);
-        });
-        if (has_any_dm) {
-            if (!is_enabled) {
-                spdlog::error("Failed to enable any of the DM services");
-            }
-        } else {
+        const auto detected = gucc::display_manager::detect_installed(mountpoint);
+        if (!detected) {
             spdlog::debug("No display manager units found on target yet. Skipping DM enablement..");
+        } else if (!gucc::display_manager::enable(*detected, mountpoint)) {
+            spdlog::error("Failed to enable display manager '{}'", gucc::display_manager::to_string(*detected));
         }
-
-        if (gucc::services::systemd_unit_exists("lightdm"sv, mountpoint)) {
-            set_lightdm_greeter(mountpoint);
+        if (detected == gucc::display_manager::Kind::Lightdm) {
+            gucc::display_manager::configure_lightdm_greeter(mountpoint);
         }
     }
 
