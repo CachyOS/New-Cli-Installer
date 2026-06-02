@@ -180,3 +180,46 @@ TEST_CASE("luks_swap::add_fstab_entry")
         REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
     }
 }
+
+TEST_CASE("luks_swap::replace_swap_in_fstab")
+{
+    install_silent_logger();
+
+    SECTION("drops a raw-device swap line and appends the mapper entry")
+    {
+        TempRoot root;
+        fs::create_directories(root.path() / "etc");
+        gucc::file_utils::create_file_for_overwrite(
+            (root.path() / "etc" / "fstab").string(),
+            "UUID=root / btrfs defaults 0 0\nUUID=swapuuid none swap defaults 0 0\n"sv);
+
+        REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
+
+        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
+        REQUIRE(body.contains("UUID=root / btrfs defaults 0 0\n"sv));
+        REQUIRE_FALSE(body.contains("UUID=swapuuid"sv));
+        REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
+    }
+    SECTION("leaves comments and non-swap lines intact")
+    {
+        TempRoot root;
+        fs::create_directories(root.path() / "etc");
+        gucc::file_utils::create_file_for_overwrite(
+            (root.path() / "etc" / "fstab").string(),
+            "# managed by genfstab\nUUID=root / btrfs defaults 0 0\n# UUID=old none swap defaults 0 0\n"sv);
+
+        REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
+
+        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
+        REQUIRE(body.contains("# managed by genfstab\n"sv));
+        REQUIRE(body.contains("# UUID=old none swap defaults 0 0\n"sv));
+        REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
+    }
+    SECTION("creates /etc/fstab from scratch when missing")
+    {
+        TempRoot root;
+        REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
+        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
+        REQUIRE_EQ(body, "/dev/mapper/swap none swap defaults 0 0\n");
+    }
+}

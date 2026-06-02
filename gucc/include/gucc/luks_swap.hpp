@@ -41,6 +41,9 @@ auto add_crypttab_entry(const RandomKeyConfig& cfg,
 /// <root>/etc/fstab.
 auto add_fstab_entry(std::string_view mapper_name, std::string_view root_mountpoint) noexcept -> bool;
 
+/// Replace any existing swap line in fstab with the crypttab mapper entry.
+auto replace_swap_in_fstab(std::string_view mapper_name, std::string_view root_mountpoint) noexcept -> bool;
+
 }  // namespace gucc::luks_swap
 
 #endif  // LUKS_SWAP_HPP

@@ -51,6 +51,8 @@ struct InstallContext {
     std::string uefi_mount;
     std::vector<std::string> zfs_zpool_names;
 
+    bool encrypt_swap{false};
+
     // Bootloader
     gucc::bootloader::BootloaderType bootloader{gucc::bootloader::BootloaderType::Grub};
 

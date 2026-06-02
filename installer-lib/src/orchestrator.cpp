@@ -7,6 +7,7 @@
 #include "cachyos/validation.hpp"
 
 // import gucc
+#include "gucc/luks_swap.hpp"
 #include "gucc/machine_id.hpp"
 #include "gucc/network.hpp"
 #include "gucc/string_utils.hpp"
@@ -37,6 +38,7 @@ enum class Step : std::uint8_t {
     Umount,
     Partition,
     Fstab,
+    EncryptSwap,
     SystemSettings,
     Users,
     Base,
@@ -58,6 +60,7 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Unmounting existing partitions..."sv,
     "Partitioning and mounting..."sv,
     "Generating fstab..."sv,
+    "Configuring encrypted swap..."sv,
     "Configuring system settings..."sv,
     "Creating user accounts..."sv,
     "Installing base system (this may take a while)..."sv,
@@ -266,7 +269,26 @@ auto run(InstallContext& ctx,
         return fail_step(callbacks, Step::Fstab, "fstab generation failed"sv, res.error(), std::move(warnings));
     }
 
-    // Step 4: Apply system settings (hostname, locale, keymap, timezone, hw_clock).
+    // Step 4: Optional LUKS swap.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::EncryptSwap, std::move(warnings));
+    }
+    emit_step_running(callbacks, Step::EncryptSwap);
+    if (ctx.encrypt_swap && !ctx.swap_device.empty()) {
+        const gucc::luks_swap::RandomKeyConfig swap_cfg{
+            .source_device = ctx.swap_device,
+        };
+        if (!gucc::luks_swap::add_crypttab_entry(swap_cfg, mountpoint)) {
+            spdlog::warn("luks_swap: failed to add crypttab entry for {}", ctx.swap_device);
+            warnings.emplace_back("luks_swap crypttab entry failed");
+        }
+        if (!gucc::luks_swap::replace_swap_in_fstab(swap_cfg.mapper_name, mountpoint)) {
+            spdlog::warn("luks_swap: failed to rewrite fstab swap entry for /dev/mapper/{}", swap_cfg.mapper_name);
+            warnings.emplace_back("luks_swap fstab rewrite failed");
+        }
+    }
+
+    // Step 5: Apply system settings (hostname, locale, keymap, timezone, hw_clock).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::SystemSettings, std::move(warnings));
     }
@@ -275,7 +297,7 @@ auto run(InstallContext& ctx,
         return fail_step(callbacks, Step::SystemSettings, "System settings failed"sv, res.error(), std::move(warnings));
     }
 
-    // Step 5: Root password + user account.
+    // Step 6: Root password + user account.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Users, std::move(warnings));
     }
@@ -294,7 +316,7 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 6: Base system.
+    // Step 7: Base system.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Base, std::move(warnings));
     }
@@ -311,7 +333,7 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 7: Replace the live-ISO machine-id with a fresh one for the target.
+    // Step 8: Replace the live-ISO machine-id with a fresh one for the target.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::MachineId, std::move(warnings));
     }
@@ -321,7 +343,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back("machine_id reset failed");
     }
 
-    // Step 8: Desktop (skipped in server mode).
+    // Step 9: Desktop (skipped in server mode).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Desktop, std::move(warnings));
     }
@@ -336,7 +358,7 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 9: Carry the live ISO's NetworkManager connection profiles into the target.
+    // Step 10: Carry the live ISO's NetworkManager connection profiles into the target.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::NetworkCarryover, std::move(warnings));
     }
@@ -349,7 +371,7 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 10: Bootloader.
+    // Step 11: Bootloader.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Bootloader, std::move(warnings));
     }
@@ -364,7 +386,7 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 9: Detect post-install crypto state and stash it on the context for kernel-params use.
+    // Step 12: Detect post-install crypto state and stash it on the context for kernel-params use.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::DetectCrypto, std::move(warnings));
     }
@@ -379,7 +401,7 @@ auto run(InstallContext& ctx,
         spdlog::warn("detect_crypto_root: {}", res.error());
     }
 
-    // Step 10: Enable systemd services.
+    // Step 13: Enable systemd services.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::EnableServices, std::move(warnings));
     }
@@ -389,7 +411,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(fmt::format("enable_services: {}", res.error()));
     }
 
-    // Step 11: Final validation.
+    // Step 14: Final validation.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::FinalValidation, std::move(warnings));
     }
@@ -406,7 +428,7 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 12: Copy install log into target and unmount.
+    // Step 15: Copy install log into target and unmount.
     emit_step_running(callbacks, Step::Cleanup);
     {
         constexpr auto kLogSource = "/tmp/cachyos-install.log"sv;

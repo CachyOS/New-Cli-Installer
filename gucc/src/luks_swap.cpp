@@ -30,8 +30,30 @@ auto line_owns_name(std::string_view line, std::string_view name) noexcept -> bo
     return next == ' ' || next == '\t';
 }
 
+auto field_at(std::string_view line, std::size_t index) noexcept -> std::string_view {
+    auto rest = utils::ltrim(line);
+    for (std::size_t i = 0; i < index; ++i) {
+        const auto sp = rest.find_first_of(" \t"sv);
+        if (sp == std::string_view::npos) {
+            return {};
+        }
+        rest = utils::ltrim(rest.substr(sp));
+    }
+    const auto sp = rest.find_first_of(" \t"sv);
+    return rest.substr(0, sp == std::string_view::npos ? rest.size() : sp);
+}
+
+auto is_swap_type_line(std::string_view line) noexcept -> bool {
+    const auto trimmed = utils::ltrim(line);
+    if (trimmed.empty() || trimmed.starts_with('#')) {
+        return false;
+    }
+    return field_at(trimmed, 2) == "swap"sv;
+}
+
+template <typename ShouldDrop>
 auto rewrite_with_entry(std::string_view path,
-    std::string_view first_field,
+    ShouldDrop should_drop,
     std::string_view new_line) noexcept -> bool {
     const fs::path target{path};
     std::error_code ec;
@@ -50,8 +72,8 @@ auto rewrite_with_entry(std::string_view path,
     rewritten.reserve(existing.size() + new_line.size());
     auto kept = std::ranges::views::split(std::string_view{existing}, '\n')
         | std::ranges::views::transform([](auto&& chunk) { return std::string_view{chunk}; })
-        | std::ranges::views::filter([first_field](std::string_view line) {
-              return !line.empty() && !line_owns_name(line, first_field);
+        | std::ranges::views::filter([&should_drop](std::string_view line) {
+              return !line.empty() && !should_drop(line);
           });
     for (const auto line : kept) {
         rewritten.append(line);
@@ -87,14 +109,24 @@ auto make_fstab_line(std::string_view mapper_name) noexcept -> std::string {
 auto add_crypttab_entry(const RandomKeyConfig& cfg,
     std::string_view root_mountpoint) noexcept -> bool {
     const auto path = (fs::path{root_mountpoint} / "etc" / "crypttab").string();
-    return rewrite_with_entry(path, cfg.mapper_name, make_crypttab_line(cfg));
+    return rewrite_with_entry(path,
+        [name = cfg.mapper_name](std::string_view line) { return line_owns_name(line, name); },
+        make_crypttab_line(cfg));
 }
 
 auto add_fstab_entry(std::string_view mapper_name,
     std::string_view root_mountpoint) noexcept -> bool {
     const auto path  = (fs::path{root_mountpoint} / "etc" / "fstab").string();
     const auto first = fmt::format(FMT_COMPILE("/dev/mapper/{}"), mapper_name);
-    return rewrite_with_entry(path, first, make_fstab_line(mapper_name));
+    return rewrite_with_entry(path,
+        [&first](std::string_view line) { return line_owns_name(line, first); },
+        make_fstab_line(mapper_name));
+}
+
+auto replace_swap_in_fstab(std::string_view mapper_name,
+    std::string_view root_mountpoint) noexcept -> bool {
+    const auto path = (fs::path{root_mountpoint} / "etc" / "fstab").string();
+    return rewrite_with_entry(path, is_swap_type_line, make_fstab_line(mapper_name));
 }
 
 }  // namespace gucc::luks_swap
