@@ -115,6 +115,7 @@ add_executable(${PROJECT_NAME}
    src/installer_data.hpp
    src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
+   src/installer_config_adapter.cpp src/installer_config_adapter.hpp
    src/main.cpp
    )
 add_library(${PROJECT_NAME}-config
