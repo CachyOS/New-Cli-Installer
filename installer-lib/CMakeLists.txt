@@ -18,6 +18,21 @@ add_library(${PROJECT_NAME}
    src/validation.cpp include/cachyos/validation.hpp
    src/installer_data.cpp include/cachyos/installer_data.hpp
    src/orchestrator.cpp include/cachyos/orchestrator.hpp
+   include/cachyos/steps.hpp
+   src/steps/umount.cpp
+   src/steps/fstab.cpp
+   src/steps/encrypt_swap.cpp
+   src/steps/system_settings.cpp
+   src/steps/users.cpp
+   src/steps/base.cpp
+   src/steps/machine_id.cpp
+   src/steps/desktop.cpp
+   src/steps/network_carryover.cpp
+   src/steps/bootloader.cpp
+   src/steps/detect_crypto.cpp
+   src/steps/enable_services.cpp
+   src/steps/final_validation.cpp
+   src/steps/cleanup.cpp
    include/cachyos/types.hpp
    include/cachyos/installer.hpp
    )

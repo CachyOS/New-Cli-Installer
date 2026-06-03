@@ -1,31 +1,25 @@
 #include "cachyos/orchestrator.hpp"
-#include "cachyos/bootloader.hpp"
-#include "cachyos/config.hpp"
-#include "cachyos/crypto.hpp"
 #include "cachyos/disk.hpp"
-#include "cachyos/packages.hpp"
-#include "cachyos/validation.hpp"
+#include "cachyos/steps.hpp"
 
 // import gucc
-#include "gucc/luks_swap.hpp"
-#include "gucc/machine_id.hpp"
-#include "gucc/network.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/subprocess.hpp"
 
+#include <cstdint>  // for uint8_t, uint32_t
+
+#include <algorithm>    // for move
 #include <array>        // for array
-#include <cstdint>      // for uint8_t, uint32_t
-#include <filesystem>   // for copy_file, exists
+#include <iterator>     // for back_inserter
 #include <optional>     // for optional
-#include <stop_token>   // for stop_token, stop_callback
+#include <ranges>       // for ranges::*
+#include <stop_token>   // for stop_token
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
 
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
-
-namespace fs = std::filesystem;
 
 using namespace std::string_view_literals;
 
@@ -54,7 +48,6 @@ enum class Step : std::uint8_t {
 };
 
 constexpr auto kTotalSteps = static_cast<std::int32_t>(Step::Count);
-constexpr auto kHostNmDir  = "/etc/NetworkManager/system-connections"sv;
 
 constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Unmounting existing partitions..."sv,
@@ -233,7 +226,7 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::Umount, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Umount);
-    if (auto res = umount_partitions(mountpoint, ctx.zfs_zpool_names, ctx.swap_device); !res) {
+    if (auto res = steps::umount(ctx); !res) {
         spdlog::warn("umount_partitions (pre-install): {}", res.error());
         warnings.emplace_back(fmt::format("Pre-install unmount: {}", res.error()));
     }
@@ -265,7 +258,7 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::Fstab, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Fstab);
-    if (auto res = generate_fstab(mountpoint); !res) {
+    if (auto res = steps::fstab(ctx); !res) {
         return fail_step(callbacks, Step::Fstab, "fstab generation failed"sv, res.error(), std::move(warnings));
     }
 
@@ -274,26 +267,14 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::EncryptSwap, std::move(warnings));
     }
     emit_step_running(callbacks, Step::EncryptSwap);
-    if (ctx.encrypt_swap && !ctx.swap_device.empty()) {
-        const gucc::luks_swap::RandomKeyConfig swap_cfg{
-            .source_device = ctx.swap_device,
-        };
-        if (!gucc::luks_swap::add_crypttab_entry(swap_cfg, mountpoint)) {
-            spdlog::warn("luks_swap: failed to add crypttab entry for {}", ctx.swap_device);
-            warnings.emplace_back("luks_swap crypttab entry failed");
-        }
-        if (!gucc::luks_swap::replace_swap_in_fstab(swap_cfg.mapper_name, mountpoint)) {
-            spdlog::warn("luks_swap: failed to rewrite fstab swap entry for /dev/mapper/{}", swap_cfg.mapper_name);
-            warnings.emplace_back("luks_swap fstab rewrite failed");
-        }
-    }
+    std::ranges::move(steps::encrypt_swap(ctx), std::back_inserter(warnings));
 
     // Step 5: Apply system settings (hostname, locale, keymap, timezone, hw_clock).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::SystemSettings, std::move(warnings));
     }
     emit_step_running(callbacks, Step::SystemSettings);
-    if (auto res = apply_system_settings(sys, mountpoint); !res) {
+    if (auto res = steps::system_settings(sys, ctx); !res) {
         return fail_step(callbacks, Step::SystemSettings, "System settings failed"sv, res.error(), std::move(warnings));
     }
 
@@ -302,35 +283,20 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::Users, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Users);
-    if (auto res = set_root_password(root_password, mountpoint); !res) {
-        spdlog::error("set_root_password: {}", res.error());
-        warnings.emplace_back(fmt::format("set_root_password: {}", res.error()));
-    }
-    {
-        gucc::utils::SubProcess child;
-        child.set_log_line_callback(step_log_callback(callbacks, Step::Users));
-        const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
-        if (auto res = create_user(user, mountpoint, ctx.hostcache, child); !res) {
-            spdlog::error("create_user: {}", res.error());
-            warnings.emplace_back(fmt::format("create_user: {}", res.error()));
-        }
-    }
+    std::ranges::move(
+        steps::users(user, root_password, ctx, step_log_callback(callbacks, Step::Users), stop_token),
+        std::back_inserter(warnings));
 
     // Step 7: Base system.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Base, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Base);
-    {
-        gucc::utils::SubProcess child;
-        child.set_log_line_callback(step_log_callback(callbacks, Step::Base));
-        const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
-        if (auto res = install_base(ctx, child); !res) {
-            if (stop_token.stop_requested()) {
-                return cancel_result(callbacks, Step::Base, std::move(warnings));
-            }
-            return fail_step(callbacks, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
+    if (auto res = steps::base(ctx, step_log_callback(callbacks, Step::Base), stop_token); !res) {
+        if (stop_token.stop_requested()) {
+            return cancel_result(callbacks, Step::Base, std::move(warnings));
         }
+        return fail_step(callbacks, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
     }
 
     // Step 8: Replace the live-ISO machine-id with a fresh one for the target.
@@ -338,9 +304,8 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::MachineId, std::move(warnings));
     }
     emit_step_running(callbacks, Step::MachineId);
-    if (!gucc::machine_id::reset(mountpoint)) {
-        spdlog::warn("machine_id::reset failed for '{}'", mountpoint);
-        warnings.emplace_back("machine_id reset failed");
+    if (auto res = steps::machine_id(ctx); !res) {
+        warnings.emplace_back(res.error());
     }
 
     // Step 9: Desktop (skipped in server mode).
@@ -348,14 +313,8 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::Desktop, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Desktop);
-    if (!ctx.server_mode && !ctx.desktop.empty()) {
-        gucc::utils::SubProcess child;
-        child.set_log_line_callback(step_log_callback(callbacks, Step::Desktop));
-        const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
-        if (auto res = install_desktop(ctx.desktop, ctx, child); !res) {
-            spdlog::error("install_desktop: {}", res.error());
-            warnings.emplace_back(fmt::format("install_desktop: {}", res.error()));
-        }
+    if (auto res = steps::desktop(ctx, step_log_callback(callbacks, Step::Desktop), stop_token); !res) {
+        warnings.emplace_back(res.error());
     }
 
     // Step 10: Carry the live ISO's NetworkManager connection profiles into the target.
@@ -363,12 +322,8 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::NetworkCarryover, std::move(warnings));
     }
     emit_step_running(callbacks, Step::NetworkCarryover);
-    {
-        const auto copied = gucc::network::copy_connections_from(kHostNmDir, mountpoint);
-        if (copied < 0) {
-            spdlog::warn("network: copy_connections_from failed");
-            warnings.emplace_back("network connection carryover failed");
-        }
+    if (steps::network_carryover(ctx) < 0) {
+        warnings.emplace_back("network connection carryover failed");
     }
 
     // Step 11: Bootloader.
@@ -376,14 +331,8 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::Bootloader, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Bootloader);
-    {
-        gucc::utils::SubProcess child;
-        child.set_log_line_callback(step_log_callback(callbacks, Step::Bootloader));
-        const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
-        if (auto res = install_bootloader(ctx, child); !res) {
-            spdlog::error("install_bootloader: {}", res.error());
-            warnings.emplace_back(fmt::format("install_bootloader: {}", res.error()));
-        }
+    if (auto res = steps::bootloader(ctx, step_log_callback(callbacks, Step::Bootloader), stop_token); !res) {
+        warnings.emplace_back(res.error());
     }
 
     // Step 12: Detect post-install crypto state and stash it on the context for kernel-params use.
@@ -391,24 +340,16 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::DetectCrypto, std::move(warnings));
     }
     emit_step_running(callbacks, Step::DetectCrypto);
-    if (auto res = detect_crypto_root(mountpoint); res) {
-        ctx.crypto.is_luks   = res->is_luks;
-        ctx.crypto.is_lvm    = res->is_lvm;
-        ctx.crypto.luks_dev  = res->luks_dev;
-        ctx.crypto.luks_name = res->luks_name;
-        ctx.crypto.luks_uuid = res->luks_uuid;
-    } else {
-        spdlog::warn("detect_crypto_root: {}", res.error());
-    }
+
+    [[maybe_unused]] const auto crypto_res = steps::detect_crypto(ctx);
 
     // Step 13: Enable systemd services.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::EnableServices, std::move(warnings));
     }
     emit_step_running(callbacks, Step::EnableServices);
-    if (auto res = enable_services(ctx); !res) {
-        spdlog::error("enable_services: {}", res.error());
-        warnings.emplace_back(fmt::format("enable_services: {}", res.error()));
+    if (auto res = steps::enable_services(ctx); !res) {
+        warnings.emplace_back(res.error());
     }
 
     // Step 14: Final validation.
@@ -417,35 +358,18 @@ auto run(InstallContext& ctx,
     }
     emit_step_running(callbacks, Step::FinalValidation);
     {
-        auto check = final_check(ctx);
+        auto check = steps::final_validation(ctx);
         for (auto& err : check.errors) {
-            spdlog::error("final_check: {}", err);
             warnings.emplace_back(fmt::format("final_check: {}", std::move(err)));
         }
         for (auto& warn : check.warnings) {
-            spdlog::warn("final_check: {}", warn);
             warnings.emplace_back(fmt::format("final_check: {}", std::move(warn)));
         }
     }
 
     // Step 15: Copy install log into target and unmount.
     emit_step_running(callbacks, Step::Cleanup);
-    {
-        constexpr auto kLogSource = "/tmp/cachyos-install.log"sv;
-        if (fs::exists(kLogSource)) {
-            const auto dest = mountpoint + "/cachyos-install.log";
-            std::error_code ec;
-            fs::copy_file(kLogSource, dest, fs::copy_options::overwrite_existing, ec);
-            if (ec) {
-                spdlog::warn("copy install log: {}", ec.message());
-            }
-        }
-    }
-
-    if (auto res = umount_partitions(mountpoint, ctx.zfs_zpool_names, ctx.swap_device); !res) {
-        spdlog::warn("Final umount: {}", res.error());
-        warnings.emplace_back(fmt::format("Final umount: {}", res.error()));
-    }
+    std::ranges::move(steps::cleanup(ctx), std::back_inserter(warnings));
 
     emit_progress(callbacks, Completed, kTotalSteps, "Installation complete!"sv);
     spdlog::info("Install orchestrator finished.");

@@ -10,6 +10,7 @@
 #include "cachyos/disk.hpp"
 #include "cachyos/orchestrator.hpp"
 #include "cachyos/packages.hpp"
+#include "cachyos/steps.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/types.hpp"
 #include "cachyos/validation.hpp"
