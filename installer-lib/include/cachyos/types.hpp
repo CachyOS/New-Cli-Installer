@@ -15,6 +15,56 @@
 
 namespace cachyos::installer {
 
+/// User-supplied root-partition choice consumed by the mount step.
+struct RootPartitionSelection {
+    std::string device;
+    std::string fstype;
+    std::string mkfs_command;
+    std::string mount_opts;
+    bool format_requested{};
+};
+
+/// User-supplied swap choice (none, swapfile, or partition).
+struct SwapSelection {
+    enum class Type : std::uint8_t {
+        None,
+        Swapfile,
+        Partition
+    };
+
+    Type type{Type::None};
+    std::string device;
+    std::string swapfile_size;
+    bool needs_mkswap{};
+};
+
+/// User-supplied EFI System Partition choice.
+struct EspSelection {
+    std::string device;
+    std::string mountpoint;
+    bool format_requested{};
+};
+
+/// User-supplied additional partition (e.g. /home, /var).
+struct AdditionalPartSelection {
+    std::string device;
+    std::string mountpoint;
+    std::string fstype;
+    std::string mkfs_command;
+    std::string mount_opts;
+    bool format_requested{};
+};
+
+/// Full set of partition/mount choices, produced by a frontend planner and
+/// consumed by the orchestrator's `Partition` step.
+struct MountSelections {
+    RootPartitionSelection root;
+    SwapSelection swap;
+    EspSelection esp;
+    std::vector<AdditionalPartSelection> additional;
+    std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
+};
+
 /// Crypto/LUKS/LVM state detected from the system.
 struct CryptoState {
     bool is_luks{};
@@ -50,6 +100,10 @@ struct InstallContext {
     std::string swap_device;
     std::string uefi_mount;
     std::vector<std::string> zfs_zpool_names;
+
+    /// When set, the orchestrator's Partition step uses these selections as-is
+    /// and skips `auto_partition`.
+    std::optional<MountSelections> mount_selections;
 
     bool encrypt_swap{false};
 

@@ -231,20 +231,27 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(fmt::format("Pre-install unmount: {}", res.error()));
     }
 
-    // Step 2: Auto-partition and mount.
+    // Step 2: Uses caller-supplied partition schema when present,
+    // otherwise falls back to auto_partition.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Partition, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Partition);
     {
-        const auto& bios_mode = ctx.system_mode == InstallContext::SystemMode::UEFI ? "UEFI"sv : "BIOS"sv;
-        auto partitions       = auto_partition(ctx.device, bios_mode, ctx.bootloader, callbacks);
-        if (!partitions) {
-            return fail_step(callbacks, Step::Partition, "Auto-partition failed"sv, partitions.error(), std::move(warnings));
+        MountSelections mounts;
+        if (ctx.mount_selections) {
+            mounts = std::move(*ctx.mount_selections);
+            ctx.mount_selections.reset();
+        } else {
+            const auto& bios_mode = ctx.system_mode == InstallContext::SystemMode::UEFI ? "UEFI"sv : "BIOS"sv;
+            auto partitions       = auto_partition(ctx.device, bios_mode, ctx.bootloader, callbacks);
+            if (!partitions) {
+                return fail_step(callbacks, Step::Partition, "Auto-partition failed"sv, partitions.error(), std::move(warnings));
+            }
+            mounts = mount_selections_from_auto(*partitions);
         }
 
-        const auto mounts = mount_selections_from_auto(*partitions);
-        auto mount_res    = apply_mount_selections(mounts, mountpoint);
+        auto mount_res = apply_mount_selections(mounts, mountpoint);
         if (!mount_res) {
             return fail_step(callbacks, Step::Partition, "Mount failed"sv, mount_res.error(), std::move(warnings));
         }

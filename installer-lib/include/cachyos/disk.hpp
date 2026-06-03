@@ -22,52 +22,6 @@ class SubProcess;
 
 namespace cachyos::installer {
 
-/// Re-export disk selection types from the TUI layer for use by the library.
-/// TODO(vnepogodin): refactor later.
-struct RootPartitionSelection {
-    std::string device;
-    std::string fstype;
-    std::string mkfs_command;
-    std::string mount_opts;
-    bool format_requested{};
-};
-
-struct SwapSelection {
-    enum class Type : std::uint8_t {
-        None,
-        Swapfile,
-        Partition
-    };
-
-    Type type{Type::None};
-    std::string device;
-    std::string swapfile_size;
-    bool needs_mkswap{};
-};
-
-struct EspSelection {
-    std::string device;
-    std::string mountpoint;
-    bool format_requested{};
-};
-
-struct AdditionalPartSelection {
-    std::string device;
-    std::string mountpoint;
-    std::string fstype;
-    std::string mkfs_command;
-    std::string mount_opts;
-    bool format_requested{};
-};
-
-struct MountSelections {
-    RootPartitionSelection root;
-    SwapSelection swap;
-    EspSelection esp;
-    std::vector<AdditionalPartSelection> additional;
-    std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
-};
-
 /// Result of mounting a single partition with LUKS/LVM detection.
 struct MountPartitionResult {
     std::int32_t is_luks{};
