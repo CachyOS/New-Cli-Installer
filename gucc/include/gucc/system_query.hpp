@@ -35,8 +35,8 @@ struct PartitionInfo final {
     std::optional<std::string> partuuid;
     /// Partition size in bytes
     std::uint64_t size{0};
-    /// Mountpoint if mounted
-    std::optional<std::string> mountpoint;
+    /// Mountpoints (multiple for btrfs subvolumes on same partition)
+    std::vector<std::string> mountpoints;
     /// Whether the partition is currently mounted
     bool is_mounted{false};
     /// Partition number on the disk

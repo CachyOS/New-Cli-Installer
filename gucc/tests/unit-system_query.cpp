@@ -241,7 +241,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "gpt",
                     "rm": false,
                     "ro": false,
@@ -277,7 +277,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "gpt",
                     "rm": false,
                     "ro": false,
@@ -292,7 +292,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                             "label": "EFI",
                             "uuid": "ABCD-1234",
                             "partuuid": "12345678-1234-1234-1234-123456789abc",
-                            "mountpoint": "/boot/efi",
+                            "mountpoints": ["/boot/efi"],
                             "pttype": null,
                             "rm": false,
                             "ro": false,
@@ -307,7 +307,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                             "label": "CachyOS",
                             "uuid": "87654321-4321-4321-4321-210987654321",
                             "partuuid": "87654321-1234-1234-1234-123456789def",
-                            "mountpoint": "/",
+                            "mountpoints": ["/"],
                             "pttype": null,
                             "rm": false,
                             "ro": false,
@@ -336,7 +336,8 @@ TEST_CASE("parse_lsblk_disks_json test")
         CHECK(p1.uuid.value() == "ABCD-1234"sv);
         CHECK(p1.partuuid.value() == "12345678-1234-1234-1234-123456789abc"sv);
         CHECK(p1.size == 536870912ULL);
-        CHECK(p1.mountpoint.value() == "/boot/efi"sv);
+        CHECK(p1.mountpoints.size() == 1);
+        CHECK(p1.mountpoints[0] == "/boot/efi"sv);
         CHECK(p1.is_mounted == true);
         CHECK(p1.part_number == 1);
 
@@ -345,7 +346,8 @@ TEST_CASE("parse_lsblk_disks_json test")
         CHECK(p2.fstype == "btrfs"sv);
         CHECK(p2.label.value() == "CachyOS"sv);
         CHECK(p2.uuid.value() == "87654321-4321-4321-4321-210987654321"sv);
-        CHECK(p2.mountpoint.value() == "/"sv);
+        CHECK(p2.mountpoints.size() == 1);
+        CHECK(p2.mountpoints[0] == "/"sv);
         CHECK(p2.is_mounted == true);
         CHECK(p2.part_number == 2);
     }
@@ -362,7 +364,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "gpt",
                     "rm": false,
                     "ro": false,
@@ -377,7 +379,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "gpt",
                     "rm": false,
                     "ro": false,
@@ -406,7 +408,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "dos",
                     "rm": true,
                     "ro": false,
@@ -437,7 +439,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "gpt",
                     "rm": false,
                     "ro": false,
@@ -467,7 +469,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "gpt",
                     "rm": false,
                     "ro": false,
@@ -482,7 +484,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": null,
                     "rm": true,
                     "ro": false,
@@ -497,7 +499,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": "/snap/core/1234",
+                    "mountpoints": ["/snap/core/1234"],
                     "pttype": null,
                     "rm": false,
                     "ro": true,
@@ -524,7 +526,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "gpt",
                     "rm": false,
                     "ro": false,
@@ -539,7 +541,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                             "label": "DataPartition",
                             "uuid": "11111111-1111-1111-1111-111111111111",
                             "partuuid": "22222222-2222-2222-2222-222222222222",
-                            "mountpoint": null,
+                            "mountpoints": [],
                             "pttype": null,
                             "rm": false,
                             "ro": false,
@@ -556,7 +558,7 @@ TEST_CASE("parse_lsblk_disks_json test")
 
         const auto& part = disks[0].partitions[0];
         CHECK(part.device == "/dev/sda1"sv);
-        CHECK(!part.mountpoint.has_value());
+        CHECK(part.mountpoints.empty());
         CHECK(part.is_mounted == false);
         CHECK(part.part_number == 1);
     }
@@ -573,7 +575,7 @@ TEST_CASE("parse_lsblk_disks_json test")
                     "label": null,
                     "uuid": null,
                     "partuuid": null,
-                    "mountpoint": null,
+                    "mountpoints": [],
                     "pttype": "gpt",
                     "rm": false,
                     "ro": false,

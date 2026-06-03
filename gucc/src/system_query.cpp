@@ -12,6 +12,7 @@
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include <spdlog/spdlog.h>
 
@@ -71,9 +72,16 @@ auto get_partition_from_json(const rapidjson::Value& doc) -> gucc::disk::Partiti
     if (doc.HasMember("size") && doc["size"].IsInt64()) {
         part.size = static_cast<std::uint64_t>(doc["size"].GetInt64());
     }
-    if (doc.HasMember("mountpoint") && doc["mountpoint"].IsString()) {
-        part.mountpoint = doc["mountpoint"].GetString();
-        part.is_mounted = true;
+    if (doc.HasMember("mountpoints") && doc["mountpoints"].IsArray()) {
+        for (const auto& mp : doc["mountpoints"].GetArray()) {
+            if (mp.IsString()) {
+                std::string_view mp_str = mp.GetString();
+                if (!mp_str.empty()) {
+                    part.mountpoints.emplace_back(mp_str);
+                }
+            }
+        }
+        part.is_mounted = !part.mountpoints.empty();
     }
 
     part.part_number = gucc::disk::parse_partition_number(part.device);
@@ -255,7 +263,7 @@ auto parse_lsblk_disks_json(std::string_view json_output) noexcept -> std::vecto
 auto list_disks() noexcept -> std::optional<std::vector<DiskInfo>> {
     // Query all disk devices with their partitions
     const auto& lsblk_output = utils::exec(
-        R"(lsblk -J -b -o NAME,TYPE,SIZE,MODEL,FSTYPE,LABEL,UUID,PARTUUID,MOUNTPOINT,PTTYPE,RM,RO,TRAN -p)"sv);
+        R"(lsblk -J -b -o NAME,TYPE,SIZE,MODEL,FSTYPE,LABEL,UUID,PARTUUID,MOUNTPOINTS,PTTYPE,RM,RO,TRAN -p)"sv);
 
     if (lsblk_output.empty()) {
         spdlog::error("Failed to get lsblk output");
@@ -272,7 +280,7 @@ auto list_disks() noexcept -> std::optional<std::vector<DiskInfo>> {
 
 auto get_disk_info(std::string_view device) noexcept -> std::optional<DiskInfo> {
     const auto& lsblk_output = utils::exec(
-        fmt::format(FMT_COMPILE(R"(lsblk -J -b -o NAME,TYPE,SIZE,MODEL,FSTYPE,LABEL,UUID,PARTUUID,MOUNTPOINT,PTTYPE,RM,RO,TRAN -p {})"), device));
+        fmt::format(FMT_COMPILE(R"(lsblk -J -b -o NAME,TYPE,SIZE,MODEL,FSTYPE,LABEL,UUID,PARTUUID,MOUNTPOINTS,PTTYPE,RM,RO,TRAN -p {})"), device));
 
     if (lsblk_output.empty()) {
         spdlog::error("Failed to get lsblk output for device: {}", device);
@@ -308,7 +316,7 @@ auto get_partition_schema(std::string_view disk_device) noexcept -> std::vector<
         fs::Partition p{};
         p.device     = part.device;
         p.fstype     = part.fstype;
-        p.mountpoint = part.mountpoint.value_or("");
+        p.mountpoint = part.mountpoints.empty() ? ""s : part.mountpoints.front();
         p.uuid_str   = part.uuid.value_or("");
         // size needs to be converted to human readable format for sfdisk
         if (part.size > 0) {
@@ -376,12 +384,12 @@ auto format_device_table() noexcept -> std::string {
         return {};
     }
 
-    auto result = fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", "NAME", "MODEL", "TYPE", "FSTYPE", "SIZE", "MOUNTPOINT");
+    auto result = fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", "NAME", "MODEL", "TYPE", "FSTYPE", "SIZE", "MOUNTPOINTS");
     for (const auto& disk : *disks) {
         const auto& model = disk.model.value_or("");
         result += fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", disk.device, model, "disk", "", format_size(disk.size), "");
         for (const auto& part : disk.partitions) {
-            const auto& mp = part.mountpoint.value_or("");
+            const auto& mp = part.mountpoints.empty() ? ""s : fmt::format("{}", fmt::join(part.mountpoints, ", "));
             result += fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", part.device, "", "part", part.fstype, format_size(part.size), mp);
         }
     }
