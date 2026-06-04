@@ -117,17 +117,17 @@ auto create_user(const UserSettings& settings, std::string_view mountpoint,
         }
     }
 
-    // TODO(vnepogodin): should be customizable from some sort of config
-    // instead of hardcoding??
     const gucc::user::UserInfo user_info{
         .username      = settings.username,
         .password      = settings.password,
         .shell         = settings.shell,
         .sudoers_group = "wheel"sv,
     };
-    const std::vector default_user_groups{"wheel"s, "rfkill"s, "sys"s, "users"s, "lp"s, "video"s, "network"s, "storage"s, "audio"s};
 
-    if (!gucc::user::create_new_user(user_info, default_user_groups, mountpoint)) {
+    static const std::vector kDefaultUserGroups{"wheel"s, "rfkill"s, "sys"s, "users"s, "lp"s, "video"s, "network"s, "storage"s, "audio"s};
+    const auto& groups = settings.groups.empty() ? kDefaultUserGroups : settings.groups;
+
+    if (!gucc::user::create_new_user(user_info, groups, mountpoint)) {
         return std::unexpected("failed to create user");
     }
 
