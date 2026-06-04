@@ -256,4 +256,33 @@ auto open_encrypted_partition(const LuksOpenRequest& req) noexcept
     return {};
 }
 
+auto finalize_plan(PartitionPlan plan) noexcept
+    -> std::expected<MountSelections, std::string> {
+    if (plan.root.device.empty()) {
+        return std::unexpected(std::string{"root device is empty"});
+    }
+    if (plan.root.fstype.empty()) {
+        return std::unexpected(std::string{"root fstype is empty"});
+    }
+    if (plan.swap.type == SwapSelection::Type::Partition && plan.swap.device.empty()) {
+        return std::unexpected(std::string{"swap partition selected, but device is empty"});
+    }
+
+    MountSelections out;
+    out.root       = std::move(plan.root);
+    out.swap       = std::move(plan.swap);
+    out.esp        = std::move(plan.esp);
+    out.additional = std::move(plan.additional);
+
+    out.btrfs_subvolumes.reserve(plan.btrfs_subvolumes.size());
+    for (auto& choice : plan.btrfs_subvolumes) {
+        out.btrfs_subvolumes.push_back(gucc::fs::BtrfsSubvolume{
+            .subvolume  = std::move(choice.subvolume),
+            .mountpoint = std::move(choice.mountpoint),
+        });
+    }
+
+    return out;
+}
+
 }  // namespace cachyos::installer::partition_planner

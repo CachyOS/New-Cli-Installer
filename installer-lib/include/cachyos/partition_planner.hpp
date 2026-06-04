@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cachyos/types.hpp"
+
 #include <cstdint>      // for uint64_t
 #include <expected>     // for expected
 #include <string>       // for string
@@ -127,5 +129,23 @@ struct LuksOpenRequest {
 /// Open an existing LUKS1 partition.
 [[nodiscard]] auto open_encrypted_partition(const LuksOpenRequest& req) noexcept
     -> std::expected<void, std::string>;
+
+/// Aggregated layout decisions accumulated by a frontend wizard. Pass to
+/// `finalize_plan` to produce the `MountSelections` the orchestrator's
+/// `Partition` step consumes via `InstallContext::mount_selections`.
+///
+/// For a LUKS-encrypted root, set `root.device` to the opened mapper path
+/// (e.g. `/dev/mapper/cryptroot`).
+struct PartitionPlan {
+    RootPartitionSelection root;
+    SwapSelection swap;
+    EspSelection esp;
+    std::vector<AdditionalPartSelection> additional;
+    std::vector<BtrfsSubvolumeChoice> btrfs_subvolumes;
+};
+
+/// Translate a `PartitionPlan` into the `MountSelections`
+[[nodiscard]] auto finalize_plan(PartitionPlan plan) noexcept
+    -> std::expected<MountSelections, std::string>;
 
 }  // namespace cachyos::installer::partition_planner
