@@ -230,9 +230,11 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::Umount, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Umount);
-    if (auto res = steps::umount(ctx); !res) {
-        spdlog::warn("umount_partitions (pre-install): {}", res.error());
-        warnings.emplace_back(fmt::format("Pre-install unmount: {}", res.error()));
+    if (!ctx.prepartitioned) {
+        if (auto res = steps::umount(ctx); !res) {
+            spdlog::warn("umount_partitions (pre-install): {}", res.error());
+            warnings.emplace_back(fmt::format("Pre-install unmount: {}", res.error()));
+        }
     }
 
     // Step 2: Uses caller-supplied partition schema when present,
@@ -241,7 +243,7 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::Partition, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Partition);
-    {
+    if (!ctx.prepartitioned) {
         MountSelections mounts;
         if (ctx.mount_selections) {
             mounts = std::move(*ctx.mount_selections);

@@ -105,6 +105,10 @@ struct InstallContext {
     /// and skips `auto_partition`.
     std::optional<MountSelections> mount_selections;
 
+    /// When true, partitions are already formatted *and mounted* at
+    /// `mountpoint` by the caller.
+    bool prepartitioned{false};
+
     bool encrypt_swap{false};
 
     // Bootloader
