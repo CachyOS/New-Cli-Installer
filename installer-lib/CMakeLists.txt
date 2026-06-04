@@ -18,6 +18,7 @@ add_library(${PROJECT_NAME}
    src/validation.cpp include/cachyos/validation.hpp
    src/installer_data.cpp include/cachyos/installer_data.hpp
    src/orchestrator.cpp include/cachyos/orchestrator.hpp
+   src/partition_planner.cpp include/cachyos/partition_planner.hpp
    include/cachyos/steps.hpp
    src/steps/umount.cpp
    src/steps/fstab.cpp
