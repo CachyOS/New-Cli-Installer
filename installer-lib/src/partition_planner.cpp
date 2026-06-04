@@ -4,12 +4,21 @@
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/btrfs_query.hpp"
+#include "gucc/io_utils.hpp"
 #include "gucc/lvm.hpp"
 #include "gucc/zfs_query.hpp"
 
 #include <array>
+#include <filesystem>
+#include <random>
 #include <string_view>
+#include <system_error>
 #include <utility>
+
+#include <fmt/compile.h>
+#include <fmt/format.h>
+
+#include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
 
@@ -136,6 +145,46 @@ auto suggest_mountpoint_for_subvolume(std::string_view subvol_path) noexcept -> 
     std::string out{"/"};
     out.append(stem);
     return out;
+}
+
+auto inspect_existing_btrfs(std::string_view device) noexcept
+    -> std::expected<std::vector<std::string>, std::string> {
+    if (device.empty()) {
+        return std::unexpected(std::string{"device is empty"});
+    }
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const auto scratch = fs::temp_directory_path() / fmt::format("cachyos-btrfs-inspect-{}", std::random_device{}());
+
+    fs::create_directories(scratch, ec);
+    if (ec) {
+        return std::unexpected(fmt::format("failed to create scratch dir: {}", ec.message()));
+    }
+
+    // discovery only, never modify the source FS.
+    const auto mount_cmd = fmt::format(FMT_COMPILE("mount -t btrfs -o ro '{}' '{}' 2>/dev/null"),
+        device, scratch.string());
+    if (!gucc::utils::exec_checked(mount_cmd)) {
+        fs::remove_all(scratch, ec);
+        return std::unexpected(fmt::format("failed to mount {} for inspection", device));
+    }
+
+    auto subvols = gucc::fs::list_btrfs_subvolumes(scratch.string(), ""sv);
+
+    // a left-over mount is recoverable
+    const auto umount_cmd = fmt::format(FMT_COMPILE("umount '{}' 2>/dev/null"), scratch.string());
+    if (!gucc::utils::exec_checked(umount_cmd)) {
+        spdlog::warn("inspect_existing_btrfs: failed to unmount scratch at {}", scratch.string());
+    }
+    fs::remove_all(scratch, ec);
+
+    std::vector<std::string> paths;
+    paths.reserve(subvols.size());
+    for (auto& subvol : subvols) {
+        paths.push_back(std::move(subvol.subvolume));
+    }
+    return paths;
 }
 
 }  // namespace cachyos::installer::partition_planner

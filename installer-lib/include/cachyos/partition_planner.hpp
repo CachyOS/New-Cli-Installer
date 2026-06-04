@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>      // for uint64_t
+#include <expected>     // for expected
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -67,5 +68,10 @@ struct DiskInventory {
 /// Suggest a mountpoint for a single subvolume path.
 [[nodiscard]] auto suggest_mountpoint_for_subvolume(std::string_view subvol_path) noexcept
     -> std::string;
+
+/// Inspect an unmounted btrfs partition: temp-mount read-only, list its
+/// subvolumes, unmount.
+[[nodiscard]] auto inspect_existing_btrfs(std::string_view device) noexcept
+    -> std::expected<std::vector<std::string>, std::string>;
 
 }  // namespace cachyos::installer::partition_planner
