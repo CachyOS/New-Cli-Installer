@@ -1,9 +1,11 @@
 #include "cachyos/validation.hpp"
 
 // import gucc
+#include "gucc/bootloader.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 
+#include <array>        // for array
 #include <charconv>     // for from_chars
 #include <filesystem>   // for exists
 #include <string>       // for string
@@ -24,6 +26,26 @@ inline T to_int(const std::string_view& str) {
     std::from_chars(str.data(), str.data() + str.size(), result);
     return result;
 }
+
+[[nodiscard]] auto bootloader_installed(const cachyos::installer::InstallContext& ctx) noexcept -> bool {
+    using gucc::bootloader::BootloaderType;
+    switch (ctx.bootloader) {
+    case BootloaderType::Grub:
+        return gucc::utils::exec_checked(
+            fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), ctx.mountpoint));
+    case BootloaderType::Refind:
+        return gucc::utils::exec_checked(
+            fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq refind &> /dev/null"), ctx.mountpoint));
+    case BootloaderType::Limine:
+        return gucc::utils::exec_checked(
+            fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq limine &> /dev/null"), ctx.mountpoint));
+    case BootloaderType::SystemdBoot:
+        // Check both common ESP mount points (loader.conf lives at ESP root).
+        return fs::exists(fmt::format(FMT_COMPILE("{}/boot/loader/loader.conf"), ctx.mountpoint))
+            || fs::exists(fmt::format(FMT_COMPILE("{}/boot/efi/loader/loader.conf"), ctx.mountpoint));
+    }
+    return false;
+}
 }  // namespace
 
 namespace cachyos::installer {
@@ -37,10 +59,21 @@ auto check_base_installed(std::string_view mountpoint) noexcept -> bool {
         return false;
     }
 
-    // TODO(vnepogodin): invalidate base install
-    // checking just for pacman is not enough
-    const auto& pacman_path = fmt::format(FMT_COMPILE("{}/usr/bin/pacman"), mountpoint);
-    return fs::exists(pacman_path);
+    // A complete base install ships at least these. Missing any one means
+    // pacstrap didn't finish or the target FS was wiped between steps.
+    static constexpr std::array<std::string_view, 5> kBaseMarkers{
+        "/usr/bin/pacman"sv,
+        "/usr/bin/bash"sv,
+        "/usr/bin/systemctl"sv,
+        "/etc/pacman.conf"sv,
+        "/etc/passwd"sv,
+    };
+    for (const auto& rel : kBaseMarkers) {
+        if (!fs::exists(fmt::format(FMT_COMPILE("{}{}"), mountpoint, rel))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 auto final_check(const InstallContext& ctx) noexcept -> ValidationResult {
@@ -54,13 +87,10 @@ auto final_check(const InstallContext& ctx) noexcept -> ValidationResult {
         return result;
     }
 
-    // Check if bootloader is installed (BIOS only)
-    // TODO(vnepogodin): should check for all bootloaders
-    if (ctx.system_mode == InstallContext::SystemMode::BIOS) {
-        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), ctx.mountpoint))) {
-            result.success = false;
-            result.errors.emplace_back("Bootloader is not installed");
-        }
+    // Check if the configured bootloader is installed.
+    if (!bootloader_installed(ctx)) {
+        result.success = false;
+        result.errors.emplace_back("Bootloader is not installed");
     }
 
     // Check if fstab is generated
