@@ -95,4 +95,37 @@ struct ZfsDatasetChoice {
     std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
 
+/// Inputs to format a new LUKS-encrypted partition. All three string fields
+/// must be non-empty; @ref extra_flags is optional.
+struct LuksFormatRequest {
+    /// Block device to format. Will be overwritten.
+    std::string device;
+    /// dm-crypt mapper name (no `/dev/mapper/` prefix).
+    std::string mapper_name;
+    /// Passphrase used both to format and to immediately reopen the device.
+    std::string passphrase;
+    /// Extra flags appended to `cryptsetup luksFormat`. Leave empty for
+    /// CachyOS defaults.
+    std::string extra_flags;
+};
+
+/// Inputs to open an already-encrypted LUKS partition.
+struct LuksOpenRequest {
+    /// Existing LUKS-formatted block device.
+    std::string device;
+    /// dm-crypt mapper name (no `/dev/mapper/` prefix).
+    std::string mapper_name;
+    /// Passphrase that unlocks the device.
+    std::string passphrase;
+};
+
+/// Format @p req.device as LUKS1 with the given passphrase and extra flags,
+/// then immediately open it.
+[[nodiscard]] auto encrypt_partition(const LuksFormatRequest& req) noexcept
+    -> std::expected<void, std::string>;
+
+/// Open an existing LUKS1 partition.
+[[nodiscard]] auto open_encrypted_partition(const LuksOpenRequest& req) noexcept
+    -> std::expected<void, std::string>;
+
 }  // namespace cachyos::installer::partition_planner

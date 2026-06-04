@@ -5,6 +5,7 @@
 #include "gucc/block_devices.hpp"
 #include "gucc/btrfs_query.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/luks.hpp"
 #include "gucc/lvm.hpp"
 #include "gucc/zfs_query.hpp"
 
@@ -90,6 +91,22 @@ auto lvm_groups_inventory() noexcept -> std::vector<ExistingLvmGroup> {
         });
     }
     return out;
+}
+
+[[nodiscard]] auto validate_luks_inputs(std::string_view device,
+    std::string_view mapper_name,
+    std::string_view passphrase) noexcept
+    -> std::expected<void, std::string> {
+    if (device.empty()) {
+        return std::unexpected(std::string{"device is empty"});
+    }
+    if (mapper_name.empty()) {
+        return std::unexpected(std::string{"mapper_name is empty"});
+    }
+    if (passphrase.empty()) {
+        return std::unexpected(std::string{"passphrase is empty"});
+    }
+    return {};
 }
 
 }  // namespace
@@ -208,6 +225,33 @@ auto prepare_default_zpool(std::string_view partition,
     auto res = cachyos::installer::zfs_auto_pres(partition, zpool_name, mountpoint);
     if (!res) {
         return std::unexpected(std::move(res).error());
+    }
+    return {};
+}
+
+auto encrypt_partition(const LuksFormatRequest& req) noexcept
+    -> std::expected<void, std::string> {
+    if (auto v = validate_luks_inputs(req.device, req.mapper_name, req.passphrase); !v) {
+        return v;
+    }
+    if (!gucc::crypto::luks1_format(req.passphrase, req.device, req.extra_flags)) {
+        return std::unexpected(fmt::format("failed to format LUKS partition {}", req.device));
+    }
+    if (!gucc::crypto::luks1_open(req.passphrase, req.device, req.mapper_name)) {
+        return std::unexpected(fmt::format("failed to open LUKS partition {} as {}",
+            req.device, req.mapper_name));
+    }
+    return {};
+}
+
+auto open_encrypted_partition(const LuksOpenRequest& req) noexcept
+    -> std::expected<void, std::string> {
+    if (auto v = validate_luks_inputs(req.device, req.mapper_name, req.passphrase); !v) {
+        return v;
+    }
+    if (!gucc::crypto::luks1_open(req.passphrase, req.device, req.mapper_name)) {
+        return std::unexpected(fmt::format("failed to open LUKS partition {} as {}",
+            req.device, req.mapper_name));
     }
     return {};
 }
