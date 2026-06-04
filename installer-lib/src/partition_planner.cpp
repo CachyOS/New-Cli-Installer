@@ -47,11 +47,11 @@ auto btrfs_subvolumes_inventory(const std::vector<DeviceEntry>& devices) noexcep
     -> std::vector<ExistingBtrfsSubvolume> {
     std::vector<ExistingBtrfsSubvolume> out;
     for (const auto& dev : devices) {
-        if (dev.fstype != "btrfs") {
+        if (dev.fstype != "btrfs"sv) {
             continue;
         }
         for (const auto& mp : dev.mountpoints) {
-            for (auto& subvol : gucc::fs::list_btrfs_subvolumes(mp, "")) {
+            for (auto& subvol : gucc::fs::list_btrfs_subvolumes(mp, ""sv)) {
                 out.push_back(ExistingBtrfsSubvolume{
                     .device    = dev.name,
                     .subvolume = std::move(subvol.subvolume),
@@ -94,6 +94,48 @@ auto discover() noexcept -> DiskInventory {
     inv.zfs_pools        = zfs_pools_inventory();
     inv.lvm_groups       = lvm_groups_inventory();
     return inv;
+}
+
+auto default_btrfs_layout() noexcept -> std::vector<BtrfsSubvolumeChoice> {
+    auto src = cachyos::installer::default_btrfs_subvolumes();
+    std::vector<BtrfsSubvolumeChoice> out;
+    out.reserve(src.size());
+    for (auto& subvol : src) {
+        out.push_back(BtrfsSubvolumeChoice{
+            .subvolume  = std::move(subvol.subvolume),
+            .mountpoint = std::move(subvol.mountpoint),
+        });
+    }
+    return out;
+}
+
+auto suggest_mountpoint_for_subvolume(std::string_view subvol_path) noexcept -> std::string {
+    const auto name = subvol_path.starts_with('/') ? subvol_path.substr(1) : subvol_path;
+    if (name.empty()) {
+        return {};
+    }
+
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 8> kKnown{{
+        {"@"sv, "/"sv},
+        {"@home"sv, "/home"sv},
+        {"@root"sv, "/root"sv},
+        {"@srv"sv, "/srv"sv},
+        {"@cache"sv, "/var/cache"sv},
+        {"@tmp"sv, "/var/tmp"sv},
+        {"@log"sv, "/var/log"sv},
+        {"@snapshots"sv, "/.snapshots"sv},
+    }};
+    for (const auto& [subvolname, subvolpath] : kKnown) {
+        if (name == subvolname) {
+            return std::string{subvolpath};
+        }
+    }
+
+    // Unknown subvolume. /@
+    const auto stem = name.starts_with('@') ? name.substr(1) : name;
+    std::string out{"/"};
+    out.append(stem);
+    return out;
 }
 
 }  // namespace cachyos::installer::partition_planner
