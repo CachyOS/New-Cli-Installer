@@ -71,6 +71,23 @@ add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PUBLIC project_warnings project_options spdlog::spdlog fmt::fmt tomlplusplus::tomlplusplus cpr::cpr)
 
+option(GUCC_BUILD_TOOLS "Build GUCC CLI tools" OFF)
+if(GUCC_BUILD_TOOLS)
+   add_executable(gucc-disk-query tools/gucc-disk-query.cpp)
+   target_link_libraries(gucc-disk-query PRIVATE project_warnings project_options gucc::gucc spdlog::spdlog fmt::fmt)
+
+   add_executable(gucc-btrfs-query tools/gucc-btrfs-query.cpp)
+   target_link_libraries(gucc-btrfs-query PRIVATE project_warnings project_options gucc::gucc spdlog::spdlog fmt::fmt)
+
+   add_executable(gucc-zfs-query tools/gucc-zfs-query.cpp)
+   target_link_libraries(gucc-zfs-query PRIVATE project_warnings project_options gucc::gucc spdlog::spdlog fmt::fmt)
+
+   install(
+      TARGETS gucc-disk-query gucc-btrfs-query gucc-zfs-query
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+   )
+endif()
+
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
