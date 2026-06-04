@@ -131,10 +131,9 @@ auto install_base(const InstallContext& ctx, gucc::utils::SubProcess& child) noe
     return {};
 }
 
-auto install_desktop(std::string_view desktop, const InstallContext& ctx,
+auto install_desktop_packages(std::string_view desktop, const InstallContext& ctx,
     gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string> {
-    // Fetch desktop package list
     const auto net_profs_info = make_net_profs_info(ctx);
     auto pkg_list             = gucc::package::get_pkglist_desktop(desktop, net_profs_info);
     if (!pkg_list.has_value()) {
@@ -143,23 +142,25 @@ auto install_desktop(std::string_view desktop, const InstallContext& ctx,
 
     spdlog::info("Preparing for desktop envs to install: '{}'", gucc::utils::join(*pkg_list, ' '));
 
-    // Install desktop packages
-    const auto& mountpoint = ctx.mountpoint;
-    auto pkg_result        = install_packages(*pkg_list, mountpoint, ctx.hostcache, child);
+    auto pkg_result = install_packages(*pkg_list, ctx.mountpoint, ctx.hostcache, child);
     if (!pkg_result) {
         return std::unexpected(pkg_result.error());
     }
+    return {};
+}
 
-    // Configure plymouth if installed by desktop packages
+auto configure_desktop_extras(const InstallContext& ctx,
+    gucc::utils::SubProcess& child) noexcept
+    -> std::expected<void, std::string> {
+    const auto& mountpoint = ctx.mountpoint;
+
     if (gucc::plymouth::is_installed(mountpoint)) {
         spdlog::info("Plymouth detected in target, configuring boot splash");
 
-        // Set plymouth theme
         if (!gucc::plymouth::set_default_theme("cachyos-bootanimation"sv, mountpoint)) {
             spdlog::error("Failed to set plymouth theme");
         }
 
-        // Reconfigure initcpio with plymouth hook and rebuild initramfs
         const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
         const auto fs_type          = gucc::fs::string_to_filesystem_type(filesystem_type);
 
@@ -180,12 +181,20 @@ auto install_desktop(std::string_view desktop, const InstallContext& ctx,
         }
     }
 
-    // Additionally call it to enable desktop services
     auto svc_result = enable_services(ctx);
     if (!svc_result) {
         spdlog::warn("Failed to enable services: {}", svc_result.error());
     }
     return {};
+}
+
+auto install_desktop(std::string_view desktop, const InstallContext& ctx,
+    gucc::utils::SubProcess& child) noexcept
+    -> std::expected<void, std::string> {
+    if (auto res = install_desktop_packages(desktop, ctx, child); !res) {
+        return res;
+    }
+    return configure_desktop_extras(ctx, child);
 }
 
 auto install_packages(const std::vector<std::string>& packages,

@@ -59,9 +59,16 @@ using LogCallback = gucc::utils::SubProcess::LogLineCallback;
 [[nodiscard]] auto machine_id(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
-/// Install the selected desktop environment. No-op in server mode or when
-/// no desktop is selected.
+/// Install the selected desktop environment packages.
+/// No-op in server mode or when no desktop is selected.
 [[nodiscard]] auto desktop(const InstallContext& ctx,
+    LogCallback log_cb,
+    std::stop_token stop_token) noexcept
+    -> std::expected<void, std::string>;
+
+/// Post-pacstrap desktop configuration.
+/// No-op in server mode or when no desktop is selected.
+[[nodiscard]] auto desktop_configure(const InstallContext& ctx,
     LogCallback log_cb,
     std::stop_token stop_token) noexcept
     -> std::expected<void, std::string>;

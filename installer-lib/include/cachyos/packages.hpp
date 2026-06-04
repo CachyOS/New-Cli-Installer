@@ -24,6 +24,16 @@ namespace cachyos::installer {
     gucc::utils::SubProcess& child) noexcept
     -> std::expected<void, std::string>;
 
+/// Pacstrap phase only.
+[[nodiscard]] auto install_desktop_packages(std::string_view desktop, const InstallContext& ctx,
+    gucc::utils::SubProcess& child) noexcept
+    -> std::expected<void, std::string>;
+
+/// Configure plymouth (when installed) and enable desktop systemd services.
+[[nodiscard]] auto configure_desktop_extras(const InstallContext& ctx,
+    gucc::utils::SubProcess& child) noexcept
+    -> std::expected<void, std::string>;
+
 /// Installs an arbitrary set of packages into the target system.
 [[nodiscard]] auto install_packages(const std::vector<std::string>& packages,
     std::string_view mountpoint, bool hostcache,

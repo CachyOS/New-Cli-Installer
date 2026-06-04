@@ -28,6 +28,7 @@ add_library(${PROJECT_NAME}
    src/steps/base.cpp
    src/steps/machine_id.cpp
    src/steps/desktop.cpp
+   src/steps/desktop_configure.cpp
    src/steps/chwd.cpp
    src/steps/network_carryover.cpp
    src/steps/bootloader.cpp

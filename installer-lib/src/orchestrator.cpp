@@ -38,6 +38,7 @@ enum class Step : std::uint8_t {
     Base,
     MachineId,
     Desktop,
+    DesktopConfigure,
     Chwd,
     NetworkCarryover,
     Bootloader,
@@ -60,6 +61,7 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Installing base system (this may take a while)..."sv,
     "Generating machine ID..."sv,
     "Installing desktop environment..."sv,
+    "Configuring desktop environment..."sv,
     "Installing hardware-driver profiles..."sv,
     "Carrying network connections forward..."sv,
     "Installing bootloader..."sv,
@@ -317,7 +319,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 9: Desktop (skipped in server mode).
+    // Step 9: Desktop pacstrap (skipped in server mode).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Desktop, std::move(warnings));
     }
@@ -326,7 +328,16 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 10: chwd hardware-driver profiles (opt-in).
+    // Step 10: Desktop post-install config (plymouth + service enable).
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::DesktopConfigure, std::move(warnings));
+    }
+    emit_step_running(callbacks, Step::DesktopConfigure);
+    if (auto res = steps::desktop_configure(ctx, step_log_callback(callbacks, Step::DesktopConfigure), stop_token); !res) {
+        warnings.emplace_back(res.error());
+    }
+
+    // Step 11: chwd hardware-driver profiles (opt-in).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Chwd, std::move(warnings));
     }
