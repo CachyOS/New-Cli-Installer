@@ -329,7 +329,7 @@ auto run(InstallContext& ctx,
         return cancel_result(callbacks, Step::NetworkCarryover, std::move(warnings));
     }
     emit_step_running(callbacks, Step::NetworkCarryover);
-    if (steps::network_carryover(ctx) < 0) {
+    if (ctx.carry_live_network && steps::network_carryover(ctx) < 0) {
         warnings.emplace_back("network connection carryover failed");
     }
 

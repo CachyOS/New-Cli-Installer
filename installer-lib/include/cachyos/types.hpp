@@ -123,6 +123,9 @@ struct InstallContext {
     // Network profiles
     std::string net_profiles_url{"https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/net-profiles.toml"};
     std::string net_profiles_fallback_url{"file:///var/lib/cachyos-installer/net-profiles.toml"};
+
+    /// Carry the live ISO's NetworkManager system-connections into the target.
+    bool carry_live_network{true};
 };
 
 /// Progress event types reported by library operations.

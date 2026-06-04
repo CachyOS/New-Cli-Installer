@@ -125,8 +125,8 @@ auto create_user(const UserSettings& settings, std::string_view mountpoint,
     };
 
     static const std::vector kDefaultUserGroups{"wheel"s, "rfkill"s, "sys"s, "users"s, "lp"s, "video"s, "network"s, "storage"s, "audio"s};
-    const auto& groups = settings.groups.empty() ? kDefaultUserGroups : settings.groups;
 
+    const auto& groups = settings.groups.empty() ? kDefaultUserGroups : settings.groups;
     if (!gucc::user::create_new_user(user_info, groups, mountpoint)) {
         return std::unexpected("failed to create user");
     }
