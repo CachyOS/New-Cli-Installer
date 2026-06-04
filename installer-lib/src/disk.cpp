@@ -154,11 +154,9 @@ auto secure_wipe(std::string_view device, gucc::utils::SubProcess& child) noexce
     return {};
 }
 
-auto zfs_auto_pres(std::string_view partition,
-    std::string_view zpool_name, std::string_view /*mountpoint*/) noexcept
-    -> std::expected<gucc::fs::ZfsSetupConfig, std::string> {
-
-    const std::vector<gucc::fs::ZfsDataset> default_zfs_datasets{
+auto default_zfs_datasets(std::string_view zpool_name) noexcept
+    -> std::vector<gucc::fs::ZfsDataset> {
+    return {
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT"), zpool_name), .mountpoint = "none"s},
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos"), zpool_name), .mountpoint = "none"s},
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zpool_name), .mountpoint = "/"s},
@@ -166,13 +164,17 @@ auto zfs_auto_pres(std::string_view partition,
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zpool_name), .mountpoint = "/var/cache"s},
         gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zpool_name), .mountpoint = "/var/log"s},
     };
+}
 
+auto zfs_auto_pres(std::string_view partition,
+    std::string_view zpool_name, std::string_view /*mountpoint*/) noexcept
+    -> std::expected<gucc::fs::ZfsSetupConfig, std::string> {
     // passphrase should be known at this time, e.g. passing as arg to zfs_auto_pres func
     gucc::fs::ZfsSetupConfig zfs_setup_config{
         .zpool_name    = std::string(zpool_name),
         .zpool_options = std::string(kDefaultZpoolOptions),
         .passphrase    = std::nullopt,
-        .datasets      = default_zfs_datasets,
+        .datasets      = default_zfs_datasets(zpool_name),
     };
 
     if (!gucc::fs::zfs_create_with_config(partition, zfs_setup_config)) {

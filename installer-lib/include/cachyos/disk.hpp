@@ -1,5 +1,4 @@
-#ifndef CACHYOS_INSTALLER_DISK_HPP
-#define CACHYOS_INSTALLER_DISK_HPP
+#pragma once
 
 #include "cachyos/types.hpp"
 
@@ -29,8 +28,8 @@ struct MountPartitionResult {
     std::string luks_name;
     std::string luks_dev;
     std::string luks_uuid;
-    std::string fstype;  // detected filesystem type at mountpoint
-    std::string uuid;    // device UUID
+    std::string fstype;
+    std::string uuid;
 };
 
 /// Result of applying swap selection.
@@ -54,6 +53,10 @@ struct MountApplicationResult {
 
 /// Returns the default set of btrfs subvolumes used by CachyOS.
 [[nodiscard]] auto default_btrfs_subvolumes() noexcept -> std::vector<gucc::fs::BtrfsSubvolume>;
+
+/// Returns the default set of ZFS datasets used by CachyOS for a given pool.
+[[nodiscard]] auto default_zfs_datasets(std::string_view zpool_name) noexcept
+    -> std::vector<gucc::fs::ZfsDataset>;
 
 /// Returns available mount options for a given filesystem type.
 [[nodiscard]] auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string>;
@@ -136,5 +139,3 @@ void load_filesystem_module(std::string_view fstype) noexcept;
 [[nodiscard]] auto list_non_crypt() noexcept -> std::string;
 
 }  // namespace cachyos::installer
-
-#endif  // CACHYOS_INSTALLER_DISK_HPP

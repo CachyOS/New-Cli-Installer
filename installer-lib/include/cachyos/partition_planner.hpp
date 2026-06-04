@@ -74,4 +74,25 @@ struct DiskInventory {
 [[nodiscard]] auto inspect_existing_btrfs(std::string_view device) noexcept
     -> std::expected<std::vector<std::string>, std::string>;
 
+/// One entry in a ZFS dataset layout.
+struct ZfsDatasetChoice {
+    /// Dataset path.
+    std::string dataset;
+    /// Mountpoint or the literal "none"
+    /// for container datasets that should not be mounted.
+    std::string mountpoint;
+};
+
+/// CachyOS canonical ZFS dataset layout for a given zpool name.
+[[nodiscard]] auto default_zfs_layout(std::string_view zpool_name) noexcept
+    -> std::vector<ZfsDatasetChoice>;
+
+/// Create a zpool on @p partition populated with the CachyOS default
+/// dataset layout, then export+reimport with altroot at @p mountpoint so
+/// subsequent install steps see the datasets mounted under it.
+[[nodiscard]] auto prepare_default_zpool(std::string_view partition,
+    std::string_view zpool_name,
+    std::string_view mountpoint) noexcept
+    -> std::expected<void, std::string>;
+
 }  // namespace cachyos::installer::partition_planner

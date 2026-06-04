@@ -187,4 +187,29 @@ auto inspect_existing_btrfs(std::string_view device) noexcept
     return paths;
 }
 
+auto default_zfs_layout(std::string_view zpool_name) noexcept
+    -> std::vector<ZfsDatasetChoice> {
+    auto src = cachyos::installer::default_zfs_datasets(zpool_name);
+    std::vector<ZfsDatasetChoice> out;
+    out.reserve(src.size());
+    for (auto& dataset : src) {
+        out.push_back(ZfsDatasetChoice{
+            .dataset    = std::move(dataset.zpath),
+            .mountpoint = std::move(dataset.mountpoint),
+        });
+    }
+    return out;
+}
+
+auto prepare_default_zpool(std::string_view partition,
+    std::string_view zpool_name,
+    std::string_view mountpoint) noexcept
+    -> std::expected<void, std::string> {
+    auto res = cachyos::installer::zfs_auto_pres(partition, zpool_name, mountpoint);
+    if (!res) {
+        return std::unexpected(std::move(res).error());
+    }
+    return {};
+}
+
 }  // namespace cachyos::installer::partition_planner
