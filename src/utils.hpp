@@ -29,15 +29,7 @@ void clear_screen() noexcept;
 void inst_needed(const std::string_view& pkg) noexcept;
 void secure_wipe() noexcept;
 auto auto_partition() noexcept -> std::vector<gucc::fs::Partition>;
-void generate_fstab() noexcept;
-void set_hostname(const std::string_view& hostname) noexcept;
-void set_locale(const std::string_view& locale) noexcept;
-void set_xkbmap(const std::string_view& xkbmap) noexcept;
-void set_keymap(std::string_view keymap) noexcept;
-void set_timezone(const std::string_view& timezone) noexcept;
-void set_hw_clock(const std::string_view& clock_type) noexcept;
 void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept;
-void set_root_password(const std::string_view& password) noexcept;
 [[nodiscard]] bool check_mount() noexcept;
 [[nodiscard]] bool check_base() noexcept;
 [[nodiscard]] auto list_mounted() noexcept -> std::string;
@@ -74,8 +66,6 @@ void enable_autologin(const std::string_view& dm, const std::string_view& userna
 auto parse_config() noexcept -> bool;
 auto setup_luks_keyfile() noexcept -> bool;
 void grub_mkconfig() noexcept;
-void enable_services() noexcept;
-void final_check() noexcept;
 
 template <typename T = std::int32_t>
     requires std::numeric_limits<T>::is_integer

@@ -10,6 +10,13 @@
 #include "utils.hpp"
 #include "widgets.hpp"
 
+// instlib
+#include "cachyos/config.hpp"
+#include "cachyos/disk.hpp"
+#include "cachyos/packages.hpp"
+#include "cachyos/types.hpp"
+#include "cachyos/validation.hpp"
+
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
@@ -68,9 +75,22 @@ bool exit_done() noexcept {
     const auto& mountpoint                = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& target_mnt                = fmt::format(FMT_COMPILE("findmnt --list -o TARGET | grep {} 2>/dev/null"), mountpoint);
     if (!target_mnt.empty()) {
-        utils::final_check();
-        const auto& checklist = std::get<std::string>(config_data["CHECKLIST"]);
-        const auto& do_close  = detail::yesno_widget(fmt::format(FMT_COMPILE("{}{}\n"), close_inst_body, checklist), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
+        const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
+        cachyos::installer::InstallContext check_ctx{};
+        check_ctx.mountpoint  = mountpoint;
+        check_ctx.system_mode = (system_info == "UEFI"sv)
+            ? cachyos::installer::InstallContext::SystemMode::UEFI
+            : cachyos::installer::InstallContext::SystemMode::BIOS;
+        const auto check      = cachyos::installer::final_check(check_ctx);
+        std::string checklist;
+        for (const auto& err : check.errors) {
+            checklist += fmt::format(FMT_COMPILE("- {}\n"), err);
+        }
+        for (const auto& warn : check.warnings) {
+            checklist += fmt::format(FMT_COMPILE("- {}\n"), warn);
+        }
+        config_data["CHECKLIST"] = checklist;
+        const auto& do_close     = detail::yesno_widget(fmt::format(FMT_COMPILE("{}{}\n"), close_inst_body, checklist), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
         /* clang-format off */
         if (!do_close) { return false; }
         /* clang-format on */
@@ -105,7 +125,13 @@ void generate_fstab() noexcept {
     if (!do_set_fstab) { return; }
     /* clang-format on */
 
-    utils::generate_fstab();
+#ifdef NDEVENV
+    if (auto res = cachyos::installer::generate_fstab(utils::get_mountpoint()); !res) {
+        spdlog::error("Failed to generate fstab: {}", res.error());
+    }
+#else
+    spdlog::info("Generating fstab on {}", utils::get_mountpoint());
+#endif
 }
 
 // Set system hostname
@@ -121,7 +147,13 @@ void set_hostname() noexcept {
     if (hostname.empty()) { return; }
     /* clang-format on */
 
-    utils::set_hostname(hostname);
+    spdlog::info("Setting hostname {}", hostname);
+#ifdef NDEVENV
+    const cachyos::installer::SystemSettings hostname_settings{.hostname = hostname};
+    if (auto res = cachyos::installer::apply_system_settings(hostname_settings, utils::get_mountpoint()); !res) {
+        spdlog::error("Failed to set hostname: {}", res.error());
+    }
+#endif
 }
 
 // Set system language
@@ -153,7 +185,13 @@ void set_locale() noexcept {
     if (locale.empty()) { return; }
     /* clang-format on */
 
-    utils::set_locale(locale);
+    spdlog::info("Selected locale: {}", locale);
+#ifdef NDEVENV
+    const cachyos::installer::SystemSettings locale_settings{.locale = locale};
+    if (auto res = cachyos::installer::apply_system_settings(locale_settings, utils::get_mountpoint()); !res) {
+        spdlog::error("Failed to set locale: {}", res.error());
+    }
+#endif
 }
 
 // Set keymap for X11
@@ -188,7 +226,13 @@ void set_xkbmap() noexcept {
     if (!success) { return; }
     /* clang-format on */
 
-    utils::set_xkbmap(xkbmap_choice);
+    spdlog::info("Selected xkbmap: {}", xkbmap_choice);
+#ifdef NDEVENV
+    const cachyos::installer::SystemSettings xkb_settings{.xkbmap = xkbmap_choice};
+    if (auto res = cachyos::installer::apply_system_settings(xkb_settings, utils::get_mountpoint()); !res) {
+        spdlog::error("Failed to set xkbmap: {}", res.error());
+    }
+#endif
 }
 
 auto select_vconsole_keymap(std::string_view body_text) noexcept -> std::string {
@@ -246,7 +290,18 @@ void select_keymap() noexcept {
     if (keymap_choice.empty()) { return; }
     /* clang-format on */
 
-    utils::set_keymap(keymap_choice);
+    spdlog::info("Selected keymap: {}", keymap_choice);
+    {
+        auto* config_instance = Config::instance();
+        auto& config_data     = config_instance->data();
+        config_data["KEYMAP"] = std::string{keymap_choice};
+    }
+#ifdef NDEVENV
+    const cachyos::installer::SystemSettings keymap_settings{.keymap = std::string{keymap_choice}};
+    if (auto res = cachyos::installer::apply_system_settings(keymap_settings, utils::get_mountpoint()); !res) {
+        spdlog::error("Failed to set keymap: {}", res.error());
+    }
+#endif
 }
 
 // Set Zone and Sub-Zone
@@ -297,7 +352,13 @@ bool set_timezone() noexcept {
     if (!do_set_timezone) { return false; }
     /* clang-format on */
 
-    utils::set_timezone(timezone);
+    spdlog::info("Timezone is set to {}", timezone);
+#ifdef NDEVENV
+    const cachyos::installer::SystemSettings tz_settings{.timezone = timezone};
+    if (auto res = cachyos::installer::apply_system_settings(tz_settings, utils::get_mountpoint()); !res) {
+        spdlog::error("Failed to set timezone: {}", res.error());
+    }
+#endif
 
     return true;
 }
@@ -309,7 +370,20 @@ void set_hw_clock() noexcept {
     std::int32_t selected{};
     auto ok_callback = [&] {
         const auto& clock_type = menu_entries[static_cast<std::size_t>(selected)];
-        utils::set_hw_clock(clock_type);
+        spdlog::info("Clock type is: {}", clock_type);
+#ifdef NDEVENV
+        cachyos::installer::SystemSettings hw_settings{};
+        if (clock_type == "utc"sv) {
+            hw_settings.hw_clock = cachyos::installer::SystemSettings::HwClock::UTC;
+        } else if (clock_type == "localtime"sv) {
+            hw_settings.hw_clock = cachyos::installer::SystemSettings::HwClock::Localtime;
+        }
+        if (hw_settings.hw_clock.has_value()) {
+            if (auto res = cachyos::installer::apply_system_settings(hw_settings, utils::get_mountpoint()); !res) {
+                spdlog::error("Failed to set hw clock: {}", res.error());
+            }
+        }
+#endif
         screen.ExitLoopClosure()();
     };
 
@@ -338,7 +412,11 @@ void set_root_password() noexcept {
         detail::msgbox_widget(PassErrBody);
         tui::set_root_password();
     }
-    utils::set_root_password(pass);
+#ifdef NDEVENV
+    if (auto res = cachyos::installer::set_root_password(pass, utils::get_mountpoint()); !res) {
+        spdlog::error("Failed to set root password: {}", res.error());
+    }
+#endif
 }
 
 // Create user on the system

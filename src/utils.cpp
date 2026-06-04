@@ -352,99 +352,6 @@ void secure_wipe() noexcept {
 #endif
 }
 
-void generate_fstab() noexcept {
-    const auto& mountpoint = utils::get_mountpoint();
-#ifdef NDEVENV
-    auto result = cachyos::installer::generate_fstab(mountpoint);
-    if (!result) {
-        spdlog::error("Failed to generate fstab: {}", result.error());
-    }
-#else
-    spdlog::info("Generating fstab on {}", mountpoint);
-#endif
-}
-
-// Set system hostname
-void set_hostname(const std::string_view& hostname) noexcept {
-    spdlog::info("Setting hostname {}", hostname);
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings settings{.hostname = std::string{hostname}};
-    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) {
-        spdlog::error("Failed to set hostname: {}", result.error());
-    }
-#endif
-}
-
-// Set system language
-void set_locale(const std::string_view& locale) noexcept {
-    spdlog::info("Selected locale: {}", locale);
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings settings{.locale = std::string{locale}};
-    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) {
-        spdlog::error("Failed to set locale: {}", result.error());
-    }
-#endif
-}
-
-void set_xkbmap(const std::string_view& xkbmap) noexcept {
-    spdlog::info("Selected xkbmap: {}", xkbmap);
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings settings{.xkbmap = std::string{xkbmap}};
-    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) {
-        spdlog::error("Failed to set xkbmap: {}", result.error());
-    }
-#endif
-}
-
-void set_keymap(std::string_view selected_keymap) noexcept {
-    spdlog::info("Selected keymap: {}", selected_keymap);
-
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    config_data["KEYMAP"] = std::string{selected_keymap};
-
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings settings{.keymap = std::string{selected_keymap}};
-    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) {
-        spdlog::error("Failed to set keymap: {}", result.error());
-    }
-#endif
-}
-
-void set_timezone(const std::string_view& timezone) noexcept {
-    spdlog::info("Timezone is set to {}", timezone);
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings settings{.timezone = std::string{timezone}};
-    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) {
-        spdlog::error("Failed to set timezone: {}", result.error());
-    }
-#endif
-}
-
-void set_hw_clock(const std::string_view& clock_type) noexcept {
-    spdlog::info("Clock type is: {}", clock_type);
-#ifdef NDEVENV
-    cachyos::installer::SystemSettings settings{};
-    if (clock_type == "utc"sv) {
-        settings.hw_clock = cachyos::installer::SystemSettings::HwClock::UTC;
-    } else if (clock_type == "localtime"sv) {
-        settings.hw_clock = cachyos::installer::SystemSettings::HwClock::Localtime;
-    } else {
-        spdlog::error("Unknown clock type {}", clock_type);
-        return;
-    }
-    auto result = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint());
-    if (!result) {
-        spdlog::error("Failed to set hw clock: {}", result.error());
-    }
-#endif
-}
-
 // Create user on the system
 void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept {
     spdlog::info("default shell: [{}]", shell);
@@ -477,18 +384,6 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
     }
 #else
     spdlog::debug("user := {}, password := {}", user, password);
-#endif
-}
-
-// Set password for root user
-void set_root_password(const std::string_view& password) noexcept {
-#ifdef NDEVENV
-    auto result = cachyos::installer::set_root_password(password, utils::get_mountpoint());
-    if (!result) {
-        spdlog::error("Failed to set root password: {}", result.error());
-    }
-#else
-    spdlog::debug("root password := {}", password);
 #endif
 }
 
@@ -1136,42 +1031,6 @@ auto setup_luks_keyfile() noexcept -> bool {
 void grub_mkconfig() noexcept {
     utils::arch_chroot("grub-mkconfig -o /boot/grub/grub.cfg");
     // check_for_error "grub-mkconfig" $?
-}
-
-void enable_services() noexcept {
-#ifdef NDEVENV
-    auto ctx    = utils::build_install_context();
-    auto result = cachyos::installer::enable_services(ctx);
-    if (!result) {
-        spdlog::error("Failed to enable services: {}", result.error());
-    }
-#endif
-}
-
-void final_check() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    config_data["CHECKLIST"] = "";
-    auto& checklist          = std::get<std::string>(config_data["CHECKLIST"]);
-
-    // Build InstallContext from Config for the library call
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    const auto& mountpoint  = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    cachyos::installer::InstallContext ctx{};
-    ctx.mountpoint  = mountpoint;
-    ctx.system_mode = (system_info == "UEFI"sv)
-        ? cachyos::installer::InstallContext::SystemMode::UEFI
-        : cachyos::installer::InstallContext::SystemMode::BIOS;
-
-    const auto& result = cachyos::installer::final_check(ctx);
-    for (const auto& err : result.errors) {
-        checklist += fmt::format(FMT_COMPILE("- {}\n"), err);
-    }
-    for (const auto& warn : result.warnings) {
-        checklist += fmt::format(FMT_COMPILE("- {}\n"), warn);
-    }
 }
 
 }  // namespace utils
