@@ -38,6 +38,7 @@ enum class Step : std::uint8_t {
     Base,
     MachineId,
     Desktop,
+    Chwd,
     NetworkCarryover,
     Bootloader,
     DetectCrypto,
@@ -59,6 +60,7 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Installing base system (this may take a while)..."sv,
     "Generating machine ID..."sv,
     "Installing desktop environment..."sv,
+    "Installing hardware-driver profiles..."sv,
     "Carrying network connections forward..."sv,
     "Installing bootloader..."sv,
     "Detecting encryption state..."sv,
@@ -324,7 +326,16 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 10: Carry the live ISO's NetworkManager connection profiles into the target.
+    // Step 10: chwd hardware-driver profiles (opt-in).
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Chwd, std::move(warnings));
+    }
+    emit_step_running(callbacks, Step::Chwd);
+    if (auto res = steps::chwd(ctx, step_log_callback(callbacks, Step::Chwd), stop_token); !res) {
+        warnings.emplace_back(res.error());
+    }
+
+    // Step 11: Carry the live ISO's NetworkManager connection profiles into the target.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::NetworkCarryover, std::move(warnings));
     }

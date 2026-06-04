@@ -120,6 +120,11 @@ struct InstallContext {
     std::string keymap{"us"};
     bool server_mode{};
 
+    /// When true, run `chwd -a` against the target after the desktop step
+    /// to install every hardware-driver profile applicable to the detected
+    /// hardware.
+    bool install_chwd_profiles{false};
+
     // Network profiles
     std::string net_profiles_url{"https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/net-profiles.toml"};
     std::string net_profiles_fallback_url{"file:///var/lib/cachyos-installer/net-profiles.toml"};

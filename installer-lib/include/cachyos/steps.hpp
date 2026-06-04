@@ -66,6 +66,13 @@ using LogCallback = gucc::utils::SubProcess::LogLineCallback;
     std::stop_token stop_token) noexcept
     -> std::expected<void, std::string>;
 
+/// Install every chwd hardware-driver profile applicable to the target's
+/// detected hardware.
+[[nodiscard]] auto chwd(const InstallContext& ctx,
+    LogCallback log_cb,
+    std::stop_token stop_token) noexcept
+    -> std::expected<void, std::string>;
+
 /// Carry the live ISO's NetworkManager profiles into the target.
 /// Returns the number of profiles copied; -1 on I/O failure.
 auto network_carryover(const InstallContext& ctx) noexcept -> std::int32_t;
