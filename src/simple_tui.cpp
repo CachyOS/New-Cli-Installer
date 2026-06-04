@@ -5,6 +5,11 @@
 #include "utils.hpp"
 #include "widgets.hpp"
 
+// instlib
+#include "cachyos/orchestrator.hpp"
+#include "cachyos/system.hpp"
+#include "cachyos/types.hpp"
+
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/bootloader.hpp"
@@ -72,18 +77,19 @@ struct UserSelections {
     std::vector<std::string> ready_partitions;
 };
 
-auto make_partitions_prepared(std::string_view bootloader_str, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts) -> bool {
+auto make_partitions_prepared(std::string_view bootloader_str, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts)
+    -> std::optional<std::vector<gucc::fs::Partition>> {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
     /* clang-format off */
-    if (ready_parts.empty()) { spdlog::error("Invalid use! ready parts empty."); return false; }
+    if (ready_parts.empty()) { spdlog::error("Invalid use! ready parts empty."); return std::nullopt; }
     /* clang-format on */
 
     const auto& bootloader_opt = gucc::bootloader::bootloader_from_string(bootloader_str);
     if (!bootloader_opt) {
         spdlog::error("Unknown bootloader: {}", bootloader_str);
-        return false;
+        return std::nullopt;
     }
 
     const auto& mountpoint_info = utils::get_mountpoint();
@@ -193,7 +199,7 @@ auto make_partitions_prepared(std::string_view bootloader_str, std::string_view 
     const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
     const auto& sys_info    = std::get<std::string>(config_data["SYSTEM"]);
     spdlog::info("{}\n", gucc::disk::preview_partition_schema(partitions, device_info, sys_info == "UEFI"sv));
-    return true;
+    return partitions;
 }
 
 // Load all selections from config (headless mode)
@@ -232,52 +238,73 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
     utils::umount_partitions();
 
-    if (!make_partitions_prepared(selections.bootloader, selections.filesystem, selections.mount_options, selections.ready_partitions)) {
+    auto partitions = make_partitions_prepared(selections.bootloader, selections.filesystem, selections.mount_options, selections.ready_partitions);
+    if (!partitions) {
         utils::umount_partitions();
         return;
     }
 
-    // at this point we should have everything already mounted
-    utils::generate_fstab();
-
-    // System configuration
-    utils::set_hostname(selections.hostname);
-    utils::set_locale(selections.locale);
-    utils::set_xkbmap(selections.xkbmap);
-    // Derive vconsole keymap from X11 keymap selection.
-    // Most base X11 layouts (us, de, fr, etc.) are valid vconsole keymap names.
-    config_data["KEYMAP"] = selections.xkbmap;
-    utils::set_timezone(selections.timezone);
-    utils::set_hw_clock("utc"sv);
-
-    // User configuration
-    utils::set_root_password(selections.root_pass);
-    utils::create_new_user(selections.user_name, selections.user_pass, selections.user_shell);
-
-    // Install process
-    utils::install_base(selections.kernel);
-
-    if (!selections.server_mode) {
-        utils::install_desktop(selections.desktop);
-    }
-
-    // Bootloader
+    // Build the orchestrator context from the wizard's collected selections.
     const auto& bootloader_type = gucc::bootloader::bootloader_from_string(selections.bootloader);
-    if (bootloader_type) {
-        utils::install_bootloader(*bootloader_type);
-    } else {
+    if (!bootloader_type) {
         spdlog::error("Unknown bootloader: {}", selections.bootloader);
+        utils::umount_partitions();
+        return;
     }
 
-    // Hardware drivers
-#ifdef NDEVENV
-    if (!selections.server_mode) {
-        tui::detail::follow_process_log_task_stdout([&](gucc::utils::SubProcess& child) -> bool {
-            return gucc::chwd::install_available_profiles(mountpoint, child);
-        });
-        std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
+    const auto sysinfo = cachyos::installer::detect_system();
+    if (!sysinfo) {
+        spdlog::error("detect_system failed: {}", sysinfo.error());
+        utils::umount_partitions();
+        return;
     }
-#endif
+
+    cachyos::installer::InstallContext ctx{};
+    ctx.system_mode           = sysinfo->system_mode;
+    ctx.mountpoint            = mountpoint;
+    ctx.hostcache             = std::get<std::int32_t>(config_data["hostcache"]) != 0;
+    ctx.bootloader            = *bootloader_type;
+    ctx.kernel                = selections.kernel;
+    ctx.desktop               = selections.desktop;
+    ctx.filesystem_name       = selections.filesystem;
+    ctx.keymap                = selections.xkbmap;
+    ctx.server_mode           = selections.server_mode;
+    ctx.install_chwd_profiles = !selections.server_mode;
+    ctx.prepartitioned        = true;
+    ctx.partition_schema      = std::move(*partitions);
+
+    cachyos::installer::SystemSettings sys{};
+    sys.hostname = selections.hostname;
+    sys.locale   = selections.locale;
+    sys.xkbmap   = selections.xkbmap;
+    // Most base X11 layouts (us, de, fr, ...) are valid vconsole names too.
+    sys.keymap   = selections.xkbmap;
+    sys.timezone = selections.timezone;
+    sys.hw_clock = cachyos::installer::SystemSettings::HwClock::UTC;
+
+    cachyos::installer::UserSettings user{};
+    user.username = selections.user_name;
+    user.password = selections.user_pass;
+    user.shell    = selections.user_shell;
+
+    const cachyos::installer::ExecutionCallbacks callbacks{
+        .on_progress = [last_msg = std::string{}](const cachyos::installer::ProgressEvent& ev) mutable {
+            if (ev.type == cachyos::installer::ProgressEventType::Running && ev.message != last_msg) {
+                spdlog::info("[install] {}", ev.message);
+                last_msg = ev.message;
+            } },
+        .on_log_line = [](std::string_view line) { fmt::print("{}\n", line); },
+    };
+
+    const auto result = cachyos::installer::run(ctx, sys, user, selections.root_pass, callbacks);
+    if (!result.success) {
+        for (const auto& err : result.errors) {
+            spdlog::error("install: {}", err);
+        }
+    }
+    for (const auto& warn : result.warnings) {
+        spdlog::warn("install: {}", warn);
+    }
 
     // Post-install script
     if (!selections.post_install.empty()) {
@@ -287,17 +314,8 @@ void apply_user_selections(const UserSelections& selections) noexcept {
         gucc::utils::exec(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), selections.post_install), true);
     }
 
-    // Final cleanup
-    utils::final_check();
-
-#ifdef NDEVENV
-    // Copy log to installed system
-    namespace fs = std::filesystem;
-    if (fs::exists("/tmp/cachyos-install.log")) {
-        fs::copy_file("/tmp/cachyos-install.log", fmt::format(FMT_COMPILE("{}/cachyos-install.log"), mountpoint), fs::copy_options::overwrite_existing);
-    }
-    utils::umount_partitions();
-#endif
+    // The orchestrators steps already validate the install,
+    // copy the log into the target, and unmount partitions.
 
     // Print completion summary
     fmt::print("\n");
@@ -628,31 +646,36 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
 
     // Helper to get current selection strings
     auto get_selected_device = [&]() -> std::string {
-        if (device_list.empty())
+        if (device_list.empty()) {
             return "";
+        }
         return installer::data::parse_device_name(device_list[static_cast<std::size_t>(sel_device)]);
     };
     auto get_selected_bootloader = [&]() -> std::string {
-        if (bootloader_list.empty())
+        if (bootloader_list.empty()) {
             return "";
+        }
         return bootloader_list[static_cast<std::size_t>(sel_bootloader)];
     };
     auto get_selected_filesystem = [&]() -> std::string {
         return filesystem_list[static_cast<std::size_t>(sel_filesystem)];
     };
     auto get_selected_locale = [&]() -> std::string {
-        if (locale_list.empty())
+        if (locale_list.empty()) {
             return "";
+        }
         return locale_list[static_cast<std::size_t>(sel_locale)];
     };
     auto get_selected_keymap = [&]() -> std::string {
-        if (keymap_list.empty())
+        if (keymap_list.empty()) {
             return "";
+        }
         return keymap_list[static_cast<std::size_t>(sel_keymap)];
     };
     auto get_selected_timezone = [&]() -> std::string {
-        if (tz_regions.empty() || tz_zones.empty())
+        if (tz_regions.empty() || tz_zones.empty()) {
             return "";
+        }
         return fmt::format("{}/{}", tz_regions[static_cast<std::size_t>(sel_tz_region)],
             tz_zones[static_cast<std::size_t>(sel_tz_zone)]);
     };
@@ -660,8 +683,9 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
         return kernel_list[static_cast<std::size_t>(sel_kernel)];
     };
     auto get_selected_desktop = [&]() -> std::string {
-        if (server_mode)
+        if (server_mode) {
             return "---";
+        }
         return desktop_list[static_cast<std::size_t>(sel_desktop)];
     };
 
@@ -886,8 +910,9 @@ void menu_simple() noexcept {
 
     // Run wizard
     auto selections = run_wizard();
-    if (!selections)
-        return;  // cancelled
+    if (!selections) {
+        return;
+    }
 
     // Apply selections
     prepare_disk_state(*selections);
