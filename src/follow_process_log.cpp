@@ -5,10 +5,13 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/subprocess.hpp"
 
-#include <atomic>  // for atomic_bool
-#include <chrono>  // for chrono_literals
-#include <string>  // for string, operator<<, to_string
-#include <thread>  // for this_thread, thread
+#include <atomic>      // for atomic_bool
+#include <chrono>      // for chrono_literals
+#include <mutex>       // for mutex, lock_guard
+#include <stop_token>  // for stop_source, stop_token
+#include <string>      // for string
+#include <thread>      // for this_thread, thread
+#include <utility>     // for move
 
 #include <ftxui/component/component.hpp>          // for Renderer, Button
 #include <ftxui/component/component_options.hpp>  // for ButtonOption, Inpu...
@@ -130,6 +133,81 @@ auto follow_process_log_task_stdout(ProcessTask task) noexcept -> bool {
         t.join();
     }
     return task_status;
+}
+
+auto follow_step_widget(StepRunner runner, Decorator box_size) noexcept -> bool {
+    using namespace std::chrono_literals;
+
+    std::atomic_bool task_status{true};
+    std::atomic_bool task_done{false};
+    std::stop_source stop_src;
+
+    std::mutex log_mtx;
+    std::string accumulated;
+
+    auto screen = ScreenInteractive::Fullscreen();
+
+    auto log_cb = [&](std::string_view line) {
+        {
+            const std::lock_guard lk{log_mtx};
+            accumulated.append(line);
+            accumulated.push_back('\n');
+        }
+        screen.PostEvent(Event::Custom);
+    };
+
+    std::thread worker([&] {
+        if (!runner(log_cb, stop_src.get_token())) {
+            spdlog::error("[follow_step] Task failed");
+            task_status = false;
+        }
+        task_done = true;
+        screen.PostEvent(Event::Custom);
+    });
+
+    auto handle_exit = [&] {
+        if (!task_done) {
+            // cancel in-flight work
+            stop_src.request_stop();
+            return;
+        }
+        screen.ExitLoopClosure()();
+    };
+
+    auto button_back = Button("Back", handle_exit, ButtonOption::WithoutBorder());
+    auto container   = Container::Horizontal({button_back});
+
+    auto renderer = Renderer(container, [&] {
+        std::string snapshot;
+        {
+            const std::lock_guard lk{log_mtx};
+            snapshot = accumulated;
+        }
+        return tui::detail::centered_widget(container, "New CLI Installer",
+            tui::detail::multiline_text(gucc::utils::make_multiline(snapshot, true)) | box_size | vscroll_indicator | yframe | flex);
+    });
+
+    screen.Loop(renderer);
+
+    if (!task_done) {
+        stop_src.request_stop();
+    }
+    if (worker.joinable()) {
+        worker.join();
+    }
+    return task_status;
+}
+
+auto follow_step_stdout(StepRunner runner) noexcept -> bool {
+    std::stop_source stop_src;
+    auto log_cb = [](std::string_view line) {
+        fmt::println("{}", line);
+    };
+    if (!runner(std::move(log_cb), stop_src.get_token())) {
+        spdlog::error("[follow_step_stdout] Task failed");
+        return false;
+    }
+    return true;
 }
 
 }  // namespace tui::detail

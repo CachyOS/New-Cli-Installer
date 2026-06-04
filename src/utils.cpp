@@ -12,6 +12,7 @@
 #include "cachyos/crypto.hpp"
 #include "cachyos/disk.hpp"
 #include "cachyos/packages.hpp"
+#include "cachyos/steps.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/validation.hpp"
 
@@ -369,18 +370,22 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
         .password = std::string{password},
         .shell    = std::string{shell},
     };
-    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::create_user(settings, mountpoint, hostcache, child);
-        if (!result) {
-            spdlog::error("{}", result.error());
+    // Direct create_user (not steps::users — that one couples to
+    // set_root_password, which is its own menu action in the advanced TUI).
+    const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
+        gucc::utils::SubProcess child;
+        child.set_log_line_callback(std::move(log_cb));
+        const std::stop_callback on_cancel(tok, [&child] { child.terminate(); });
+        if (auto res = cachyos::installer::create_user(settings, mountpoint, hostcache, child); !res) {
+            spdlog::error("{}", res.error());
             return false;
         }
         return true;
     };
     if (simple_mode || headless_mode) {
-        tui::detail::follow_process_log_task_stdout(task);
+        tui::detail::follow_step_stdout(runner);
     } else {
-        tui::detail::follow_process_log_task(task);
+        tui::detail::follow_step_widget(runner);
     }
 #else
     spdlog::debug("user := {}, password := {}", user, password);
@@ -516,20 +521,19 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
-    const auto install_task = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::install_base(ctx, child);
-        if (!result) {
-            spdlog::error("{}", result.error());
+    const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
+        if (auto res = cachyos::installer::steps::base(ctx, std::move(log_cb), tok); !res) {
+            spdlog::error("{}", res.error());
             return false;
         }
         return true;
     };
     if (simple_mode || headless_mode) {
-        if (!tui::detail::follow_process_log_task_stdout(install_task)) {
+        if (!tui::detail::follow_step_stdout(runner)) {
             spdlog::error("Failed to install base");
         }
     } else {
-        if (!tui::detail::follow_process_log_task(install_task)) {
+        if (!tui::detail::follow_step_widget(runner)) {
             spdlog::error("Failed to install base");
         }
     }
@@ -552,24 +556,32 @@ void install_desktop(const std::string_view& desktop) noexcept {
 
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
-    const auto install_task   = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::install_desktop(desktop, ctx, child);
-        if (!result) {
-            spdlog::error("{}", result.error());
+
+    // Two-phase: pacstrap (steps::desktop) then plymouth+services
+    // (steps::desktop_configure). Both stream through the same log sink so
+    // the user sees the full install in one screen instead of two.
+    auto desktop_ctx     = ctx;
+    desktop_ctx.desktop  = std::string{desktop};
+    const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
+        if (auto res = cachyos::installer::steps::desktop(desktop_ctx, log_cb, tok); !res) {
+            spdlog::error("{}", res.error());
+            return false;
+        }
+        if (auto res = cachyos::installer::steps::desktop_configure(desktop_ctx, log_cb, tok); !res) {
+            spdlog::error("{}", res.error());
             return false;
         }
         return true;
     };
     if (simple_mode || headless_mode) {
-        if (!tui::detail::follow_process_log_task_stdout(install_task)) {
+        if (!tui::detail::follow_step_stdout(runner)) {
             spdlog::error("Failed to install desktop");
         }
     } else {
-        if (!tui::detail::follow_process_log_task(install_task)) {
+        if (!tui::detail::follow_step_widget(runner)) {
             spdlog::error("Failed to install desktop");
         }
     }
-    // NOTE: enable_services() is called internally by the library
 #else
     spdlog::info("[install_desktop] desktop: {}", desktop);
 #endif
@@ -649,20 +661,19 @@ void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
-    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::install_bootloader(ctx, child);
-        if (!result) {
-            spdlog::error("{}", result.error());
+    const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
+        if (auto res = cachyos::installer::steps::bootloader(ctx, std::move(log_cb), tok); !res) {
+            spdlog::error("{}", res.error());
             return false;
         }
         return true;
     };
     if (simple_mode || headless_mode) {
-        if (!tui::detail::follow_process_log_task_stdout(task)) {
+        if (!tui::detail::follow_step_stdout(runner)) {
             spdlog::error("Failed to install bootloader");
         }
     } else {
-        if (!tui::detail::follow_process_log_task(task)) {
+        if (!tui::detail::follow_step_widget(runner)) {
             spdlog::error("Failed to install bootloader");
         }
     }
