@@ -10,6 +10,7 @@ project(cachyos-installer-lib
 
 add_library(${PROJECT_NAME}
    src/system.cpp include/cachyos/system.hpp
+   src/requirements.cpp include/cachyos/requirements.hpp
    src/config.cpp include/cachyos/config.hpp
    src/disk.cpp include/cachyos/disk.hpp
    src/packages.cpp include/cachyos/packages.hpp
@@ -44,3 +45,7 @@ add_library(cachyos::installer-lib ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PUBLIC gucc::gucc)
 target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt cpr::cpr)
+
+if(COS_INSTALLER_BUILD_TESTS)
+   add_subdirectory(tests)
+endif()
