@@ -1,7 +1,6 @@
 #include "definitions.hpp"               // for error_inter
 #include "global_storage.hpp"            // for Config
 #include "installer_config.hpp"          // for parse_installer_config
-#include "installer_config_adapter.hpp"  // for installer_config_to_inputs
 #include "tui.hpp"                       // for init
 #include "utils.hpp"                     // for exec, check_root
 

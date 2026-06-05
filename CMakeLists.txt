@@ -115,7 +115,6 @@ add_executable(${PROJECT_NAME}
    src/installer_data.hpp
    src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
-   src/installer_config_adapter.cpp src/installer_config_adapter.hpp
    src/main.cpp
    )
 add_library(${PROJECT_NAME}-config
@@ -145,7 +144,7 @@ if(COS_INSTALLER_BUILD_TESTS)
 endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ${PROJECT_NAME}-config ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib)
-target_link_libraries(${PROJECT_NAME}-config PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt)
+target_link_libraries(${PROJECT_NAME}-config PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt gucc::gucc cachyos::installer-lib)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
 endif()

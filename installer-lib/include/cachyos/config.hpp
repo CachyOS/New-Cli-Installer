@@ -14,6 +14,13 @@ class SubProcess;
 
 namespace cachyos::installer {
 
+struct InstallerInputs {
+    InstallContext ctx;
+    SystemSettings sys;
+    UserSettings user;
+    std::string root_password;
+};
+
 /// Applies system settings (hostname, locale, keymap, timezone, hw_clock) to the installed system.
 [[nodiscard]] auto apply_system_settings(const SystemSettings& settings, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;

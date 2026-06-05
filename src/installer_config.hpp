@@ -1,6 +1,8 @@
 #ifndef INSTALLER_CONFIG_HPP
 #define INSTALLER_CONFIG_HPP
 
+#include "cachyos/config.hpp"
+
 #include <cstdint>      // for int32_t
 #include <expected>     // for expected
 #include <optional>     // for optional
@@ -91,6 +93,10 @@ struct InstallerConfig {
 
 /// Returns default InstallerConfig with sensible defaults.
 [[nodiscard]] auto get_default_config() noexcept -> InstallerConfig;
+
+/// Translate a parsed settings `InstallerConfig`.
+[[nodiscard]] auto installer_config_to_inputs(const InstallerConfig& cfg) noexcept
+    -> std::expected<cachyos::installer::InstallerInputs, std::string>;
 
 }  // namespace installer
 
