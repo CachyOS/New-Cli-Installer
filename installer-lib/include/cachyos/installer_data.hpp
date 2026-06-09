@@ -20,7 +20,6 @@ inline constexpr std::array available_desktops{
     "kde"sv,       // KDE Plasma
     "gnome"sv,     // Gnome
     "xfce"sv,      // Xfce4
-    "bspwm"sv,     // BSPWM (empty)
     "budgie"sv,    // Budgie
     "cinnamon"sv,  // Cinnamon
     "cosmic"sv,    // Cosmic
@@ -30,7 +29,6 @@ inline constexpr std::array available_desktops{
     "lxde"sv,      // LXDE
     "lxqt"sv,      // LXQT
     "mate"sv,      // Mate
-    "openbox"sv,   // Openbox
     "qtile"sv,     // Qtile
     "sway"sv,      // Sway
     "ukui"sv,      // UKUI
