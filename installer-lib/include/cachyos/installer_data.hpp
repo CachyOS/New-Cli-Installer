@@ -40,6 +40,40 @@ inline constexpr std::array available_filesystems{"ext4"sv, "btrfs"sv, "xfs"sv};
 
 inline constexpr std::array available_shells{"/bin/bash"sv, "/bin/zsh"sv, "/usr/bin/fish"sv};
 
+// see forbidden user names from calamares
+inline constexpr std::array forbidden_logins{
+    "adm"sv,
+    "bin"sv,
+    "daemon"sv,
+    "dbus"sv,
+    "ftp"sv,
+    "games"sv,
+    "halt"sv,
+    "http"sv,
+    "lp"sv,
+    "mail"sv,
+    "man"sv,
+    "news"sv,
+    "nobody"sv,
+    "ntp"sv,
+    "operator"sv,
+    "polkitd"sv,
+    "postfix"sv,
+    "root"sv,
+    "rtkit"sv,
+    "shutdown"sv,
+    "sync"sv,
+    "sys"sv,
+    "systemd-coredump"sv,
+    "systemd-network"sv,
+    "systemd-resolve"sv,
+    "systemd-timesync"sv,
+    "uucp"sv,
+    "uuidd"sv,
+};
+
+inline constexpr std::array forbidden_hostnames{"localhost"sv};
+
 // helper for vector
 template <std::size_t N>
 inline auto to_vec(const std::array<std::string_view, N>& arr) -> std::vector<std::string> {
