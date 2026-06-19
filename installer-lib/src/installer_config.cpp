@@ -1,4 +1,4 @@
-#include "installer_config.hpp"
+#include "cachyos/installer_config.hpp"
 
 #include "cachyos/system.hpp"
 
@@ -46,7 +46,7 @@ namespace {
 
 }  // namespace
 
-namespace installer {
+namespace cachyos::installer {
 
 auto partition_type_from_string(std::string_view type_str) noexcept
     -> std::optional<PartitionType> {
@@ -422,4 +422,4 @@ auto installer_config_to_inputs(const InstallerConfig& cfg) noexcept
     return inputs;
 }
 
-}  // namespace installer
+}  // namespace cachyos::installer

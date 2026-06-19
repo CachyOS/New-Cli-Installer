@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest_compatibility.h"
 
-#include "installer_config.hpp"
+#include "cachyos/installer_config.hpp"
 
 #include <string>
 #include <string_view>
@@ -23,7 +23,7 @@ TEST_CASE("installer config parsing")
 
     SECTION("empty config returns defaults")
     {
-        auto result = installer::parse_installer_config(""sv);
+        auto result = cachyos::installer::parse_installer_config(""sv);
         REQUIRE(result.has_value());
 
         auto& config = *result;
@@ -69,7 +69,7 @@ TEST_CASE("installer config parsing")
             "post_install": "/root/script.sh"
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(result.has_value());
 
         auto& config = *result;
@@ -83,11 +83,11 @@ TEST_CASE("installer config parsing")
         REQUIRE_EQ(config.partitions[0].name, "/dev/nvme0n1p1"sv);
         REQUIRE_EQ(config.partitions[0].mountpoint, "/boot"sv);
         REQUIRE_EQ(config.partitions[0].fs_name, "vfat"sv);
-        REQUIRE_EQ(config.partitions[0].type, installer::PartitionType::Boot);
+        REQUIRE_EQ(config.partitions[0].type, cachyos::installer::PartitionType::Boot);
 
         REQUIRE_EQ(config.partitions[1].name, "/dev/nvme0n1p2"sv);
         REQUIRE_EQ(config.partitions[1].fs_name, "btrfs"sv);
-        REQUIRE_EQ(config.partitions[1].type, installer::PartitionType::Root);
+        REQUIRE_EQ(config.partitions[1].type, cachyos::installer::PartitionType::Root);
 
         REQUIRE_EQ(config.hostname, "cachyos"sv);
         REQUIRE_EQ(config.locale, "en_US"sv);
@@ -106,7 +106,7 @@ TEST_CASE("installer config parsing")
     {
         constexpr auto json = R"({"headless_mode": false})"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("menus"sv));
     }
@@ -114,7 +114,7 @@ TEST_CASE("installer config parsing")
     {
         constexpr auto json = R"({broken json)"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("parse error"sv));
     }
@@ -133,7 +133,7 @@ TEST_CASE("installer config parsing")
             ]
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("Invalid partition type"sv));
     }
@@ -152,7 +152,7 @@ TEST_CASE("installer config parsing")
             ]
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("fs_name"sv));
     }
@@ -171,7 +171,7 @@ TEST_CASE("installer config parsing")
             ]
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(result.has_value());
         REQUIRE_EQ(result->partitions.size(), 1);
         REQUIRE_EQ(result->partitions[0].fs_name, "btrfs"sv);
@@ -183,7 +183,7 @@ TEST_CASE("installer config parsing")
             "server_mode": true
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(result.has_value());
         REQUIRE(result->server_mode);
     }
@@ -194,7 +194,7 @@ TEST_CASE("installer config parsing")
             "headless_mode": "yes"
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("headless_mode"sv));
         REQUIRE(result.error().contains("boolean"sv));
@@ -206,7 +206,7 @@ TEST_CASE("installer config parsing")
             "partitions": "not an array"
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("partitions"sv));
         REQUIRE(result.error().contains("array"sv));
@@ -217,19 +217,19 @@ TEST_CASE("headless config validation")
 {
     SECTION("non-headless mode always validates")
     {
-        installer::InstallerConfig config{};
+        cachyos::installer::InstallerConfig config{};
         config.headless_mode = false;
 
-        auto result = installer::validate_headless_config(config);
+        auto result = cachyos::installer::validate_headless_config(config);
         REQUIRE(result.has_value());
     }
     SECTION("headless mode with all fields validates")
     {
-        installer::InstallerConfig config{};
+        cachyos::installer::InstallerConfig config{};
         config.headless_mode = true;
         config.device = "/dev/sda"s;
         config.fs_name = "ext4"s;
-        config.partitions.push_back({"/dev/sda1"s, "/"s, "100G"s, "ext4"s, installer::PartitionType::Root});
+        config.partitions.push_back({"/dev/sda1"s, "/"s, "100G"s, "ext4"s, cachyos::installer::PartitionType::Root});
         config.hostname = "myhost"s;
         config.locale = "en_US"s;
         config.xkbmap = "us"s;
@@ -242,15 +242,15 @@ TEST_CASE("headless config validation")
         config.desktop = "kde"s;
         config.bootloader = "grub"s;
 
-        auto result = installer::validate_headless_config(config);
+        auto result = cachyos::installer::validate_headless_config(config);
         REQUIRE(result.has_value());
     }
     SECTION("headless mode missing device fails")
     {
-        installer::InstallerConfig config{};
+        cachyos::installer::InstallerConfig config{};
         config.headless_mode = true;
         config.fs_name = "ext4"s;
-        config.partitions.push_back({"/dev/sda1"s, "/"s, "100G"s, "ext4"s, installer::PartitionType::Root});
+        config.partitions.push_back({"/dev/sda1"s, "/"s, "100G"s, "ext4"s, cachyos::installer::PartitionType::Root});
         config.hostname = "myhost"s;
         config.locale = "en_US"s;
         config.xkbmap = "us"s;
@@ -263,17 +263,17 @@ TEST_CASE("headless config validation")
         config.desktop = "kde"s;
         config.bootloader = "grub"s;
 
-        auto result = installer::validate_headless_config(config);
+        auto result = cachyos::installer::validate_headless_config(config);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("device"sv));
     }
     SECTION("headless mode missing user fields fails")
     {
-        installer::InstallerConfig config{};
+        cachyos::installer::InstallerConfig config{};
         config.headless_mode = true;
         config.device = "/dev/sda"s;
         config.fs_name = "ext4"s;
-        config.partitions.push_back({"/dev/sda1"s, "/"s, "100G"s, "ext4"s, installer::PartitionType::Root});
+        config.partitions.push_back({"/dev/sda1"s, "/"s, "100G"s, "ext4"s, cachyos::installer::PartitionType::Root});
         config.hostname = "myhost"s;
         config.locale = "en_US"s;
         config.xkbmap = "us"s;
@@ -283,13 +283,13 @@ TEST_CASE("headless config validation")
         config.desktop = "kde"s;
         config.bootloader = "grub"s;
 
-        auto result = installer::validate_headless_config(config);
+        auto result = cachyos::installer::validate_headless_config(config);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("user_name"sv));
     }
     SECTION("headless mode empty partitions fails")
     {
-        installer::InstallerConfig config{};
+        cachyos::installer::InstallerConfig config{};
         config.headless_mode = true;
         config.device = "/dev/sda"s;
         config.fs_name = "ext4"s;
@@ -305,7 +305,7 @@ TEST_CASE("headless config validation")
         config.desktop = "kde"s;
         config.bootloader = "grub"s;
 
-        auto result = installer::validate_headless_config(config);
+        auto result = cachyos::installer::validate_headless_config(config);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("partitions"sv));
     }
@@ -315,22 +315,22 @@ TEST_CASE("partition type conversions")
 {
     SECTION("string to partition type")
     {
-        REQUIRE_EQ(installer::partition_type_from_string("root"), installer::PartitionType::Root);
-        REQUIRE_EQ(installer::partition_type_from_string("boot"), installer::PartitionType::Boot);
-        REQUIRE_EQ(installer::partition_type_from_string("additional"), installer::PartitionType::Additional);
-        REQUIRE(!installer::partition_type_from_string("invalid").has_value());
+        REQUIRE_EQ(cachyos::installer::partition_type_from_string("root"), cachyos::installer::PartitionType::Root);
+        REQUIRE_EQ(cachyos::installer::partition_type_from_string("boot"), cachyos::installer::PartitionType::Boot);
+        REQUIRE_EQ(cachyos::installer::partition_type_from_string("additional"), cachyos::installer::PartitionType::Additional);
+        REQUIRE(!cachyos::installer::partition_type_from_string("invalid").has_value());
     }
     SECTION("partition type to string")
     {
-        REQUIRE_EQ(installer::partition_type_to_string(installer::PartitionType::Root), "root"sv);
-        REQUIRE_EQ(installer::partition_type_to_string(installer::PartitionType::Boot), "boot"sv);
-        REQUIRE_EQ(installer::partition_type_to_string(installer::PartitionType::Additional), "additional"sv);
+        REQUIRE_EQ(cachyos::installer::partition_type_to_string(cachyos::installer::PartitionType::Root), "root"sv);
+        REQUIRE_EQ(cachyos::installer::partition_type_to_string(cachyos::installer::PartitionType::Boot), "boot"sv);
+        REQUIRE_EQ(cachyos::installer::partition_type_to_string(cachyos::installer::PartitionType::Additional), "additional"sv);
     }
 }
 
 TEST_CASE("default config")
 {
-    auto config = installer::get_default_config();
+    auto config = cachyos::installer::get_default_config();
 
     REQUIRE_EQ(config.menus, 2);
     REQUIRE(!config.headless_mode);
@@ -357,7 +357,7 @@ TEST_CASE("subvolumes config parsing")
             "subvolumes": "default"
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(result.has_value());
         REQUIRE(result->use_default_subvolumes);
         REQUIRE(result->subvolumes.empty());
@@ -373,7 +373,7 @@ TEST_CASE("subvolumes config parsing")
             ]
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(result.has_value());
         REQUIRE(!result->use_default_subvolumes);
         REQUIRE_EQ(result->subvolumes.size(), 3);
@@ -390,7 +390,7 @@ TEST_CASE("subvolumes config parsing")
             "menus": 2
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(result.has_value());
         REQUIRE(result->use_default_subvolumes);
         REQUIRE(result->subvolumes.empty());
@@ -402,7 +402,7 @@ TEST_CASE("subvolumes config parsing")
             "subvolumes": "custom"
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("default"sv));
     }
@@ -413,7 +413,7 @@ TEST_CASE("subvolumes config parsing")
             "subvolumes": 42
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("subvolumes"sv));
     }
@@ -426,7 +426,7 @@ TEST_CASE("subvolumes config parsing")
             ]
         })"sv;
 
-        auto result = installer::parse_installer_config(json);
+        auto result = cachyos::installer::parse_installer_config(json);
         REQUIRE(!result.has_value());
         REQUIRE(result.error().contains("mountpoint"sv));
     }

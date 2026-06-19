@@ -10,7 +10,7 @@
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
-namespace installer {
+namespace cachyos::installer {
 
 /// Valid partition types.
 enum class PartitionType : std::uint8_t {
@@ -98,6 +98,6 @@ struct InstallerConfig {
 [[nodiscard]] auto installer_config_to_inputs(const InstallerConfig& cfg) noexcept
     -> std::expected<cachyos::installer::InstallerInputs, std::string>;
 
-}  // namespace installer
+}  // namespace cachyos::installer
 
 #endif  // INSTALLER_CONFIG_HPP

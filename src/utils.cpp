@@ -2,7 +2,6 @@
 #include "definitions.hpp"
 #include "disk.hpp"
 #include "global_storage.hpp"
-#include "installer_config.hpp"
 #include "tui.hpp"
 #include "widgets.hpp"
 
@@ -11,6 +10,7 @@
 #include "cachyos/config.hpp"
 #include "cachyos/crypto.hpp"
 #include "cachyos/disk.hpp"
+#include "cachyos/installer_config.hpp"
 #include "cachyos/packages.hpp"
 #include "cachyos/steps.hpp"
 #include "cachyos/system.hpp"
@@ -560,9 +560,9 @@ void install_desktop(const std::string_view& desktop) noexcept {
     // Two-phase: pacstrap (steps::desktop) then plymouth+services
     // (steps::desktop_configure). Both stream through the same log sink so
     // the user sees the full install in one screen instead of two.
-    auto desktop_ctx     = ctx;
-    desktop_ctx.desktop  = std::string{desktop};
-    const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
+    auto desktop_ctx    = ctx;
+    desktop_ctx.desktop = std::string{desktop};
+    const auto runner   = [&](auto log_cb, std::stop_token tok) -> bool {
         if (auto res = cachyos::installer::steps::desktop(desktop_ctx, log_cb, tok); !res) {
             spdlog::error("{}", res.error());
             return false;
@@ -911,7 +911,7 @@ bool parse_config() noexcept {
     const auto file_content         = gucc::file_utils::read_whole_file(file_path);
 
     // 2. Parse JSON using installer_config library.
-    auto parse_result = installer::parse_installer_config(file_content);
+    auto parse_result = cachyos::installer::parse_installer_config(file_content);
     if (!parse_result) {
         if (file_content.empty()) {
             fmt::print(stderr, "Config not found running with defaults\n");
@@ -925,7 +925,7 @@ bool parse_config() noexcept {
 
     // 3. Validate headless mode requirements.
     if (config.headless_mode) {
-        auto validation = installer::validate_headless_config(config);
+        auto validation = cachyos::installer::validate_headless_config(config);
         if (!validation) {
             fmt::print(stderr, "{}\n", validation.error());
             return false;
@@ -961,7 +961,7 @@ bool parse_config() noexcept {
         for (const auto& part : config.partitions) {
             auto&& part_data = fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"),
                 part.name, part.mountpoint, part.size, part.fs_name,
-                installer::partition_type_to_string(part.type));
+                cachyos::installer::partition_type_to_string(part.type));
             ready_parts.push_back(std::move(part_data));
         }
         config_data["READY_PARTITIONS"] = std::move(ready_parts);

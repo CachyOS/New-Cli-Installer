@@ -117,10 +117,6 @@ add_executable(${PROJECT_NAME}
    src/tui.cpp src/tui.hpp
    src/main.cpp
    )
-add_library(${PROJECT_NAME}-config
-   src/installer_config.cpp src/installer_config.hpp
-   )
-
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
 set_project_warnings(project_warnings)
@@ -143,8 +139,7 @@ if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ${PROJECT_NAME}-config ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib)
-target_link_libraries(${PROJECT_NAME}-config PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt gucc::gucc cachyos::installer-lib)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
 endif()

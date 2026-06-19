@@ -1,10 +1,10 @@
-#include "definitions.hpp"               // for error_inter
-#include "global_storage.hpp"            // for Config
-#include "installer_config.hpp"          // for parse_installer_config
-#include "tui.hpp"                       // for init
-#include "utils.hpp"                     // for exec, check_root
+#include "definitions.hpp"     // for error_inter
+#include "global_storage.hpp"  // for Config
+#include "tui.hpp"             // for init
+#include "utils.hpp"           // for exec, check_root
 
 // import cachyos
+#include "cachyos/installer_config.hpp"
 #include "cachyos/orchestrator.hpp"
 #include "cachyos/system.hpp"
 
@@ -66,7 +66,7 @@ int main() {
     {
         const auto json = gucc::file_utils::read_whole_file("settings.json");
         if (!json.empty()) {
-            const auto parsed = installer::parse_installer_config(json);
+            const auto parsed = cachyos::installer::parse_installer_config(json);
             if (parsed && parsed->headless_mode) {
                 logger->sinks().push_back(std::make_shared<spdlog::sinks::stderr_color_sink_mt>());
 
@@ -85,12 +85,12 @@ int main() {
                     spdlog::warn("install_cachyos_repo: {}", repo.error());
                 }
 
-                if (const auto v = installer::validate_headless_config(*parsed); !v) {
+                if (const auto v = cachyos::installer::validate_headless_config(*parsed); !v) {
                     error_inter("Headless config validation failed: {}\n", v.error());
                     spdlog::shutdown();
                     return -1;
                 }
-                auto inputs = installer::installer_config_to_inputs(*parsed);
+                auto inputs = cachyos::installer::installer_config_to_inputs(*parsed);
                 if (!inputs) {
                     error_inter("Headless config conversion failed: {}\n", inputs.error());
                     spdlog::shutdown();
