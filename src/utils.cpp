@@ -403,27 +403,17 @@ void find_partitions() noexcept {
     auto& number_partitions          = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
     const auto& include_part         = std::get<std::string>(config_data["INCLUDE_PART"]);
 
-    // get the list of partitions and also include the zvols since it is common to mount filesystems directly on them.  It should be safe to include them here since they present as block devices.
-    static constexpr auto other_piece = R"(sed 's/part$/\/dev\//g' | sed 's/lvm$\|crypt$/\/dev\/mapper\//g' | awk '{print $3$1 " " $2}' | awk '!/mapper/{a[++i]=$0;next}1;END{while(x<length(a))print a[++x]}' ; zfs list -Ht volume -o name,volsize 2>/dev/null | awk '{printf "/dev/zvol/%s %s\n", $1, $2}')";
-    const auto& partitions_tmp        = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -lno NAME,SIZE,TYPE | grep '{}' | {}"), include_part, other_piece));
+    std::vector<std::string> include_types{};
+    for (const auto* type : {"part", "lvm", "crypt"}) {
+        if (include_part.contains(type)) {
+            include_types.emplace_back(type);
+        }
+    }
 
-    spdlog::info("found partitions:\n{}", partitions_tmp);
-
-    // create a raid partition list
-    // old_ifs="$IFS"
-    // IFS=$'\n'
-    // raid_partitions=($(lsblk -lno NAME,SIZE,TYPE | grep raid | awk '{print $1,$2}' | uniq))
-    // IFS="$old_ifs"
-
-    // add raid partitions to partition_list
-    // for i in "${raid_partitions[@]}"
-    // do
-    //    partition_list="${partition_list} /dev/md/${i}"
-    // done
-
-    const auto& partition_list = gucc::utils::make_multiline(partitions_tmp, true);
-    config_data["PARTITIONS"]  = partition_list;
-    number_partitions          = static_cast<std::int32_t>(partition_list.size());
+    const auto& partition_list = gucc::disk::list_mountable_partitions(include_types);
+    spdlog::info("found partitions:\n{}", fmt::join(partition_list, "\n"));
+    config_data["PARTITIONS"] = partition_list;
+    number_partitions         = static_cast<std::int32_t>(partition_list.size());
 
     // for test delete /dev:sda8
     // delete_partition_in_list "/dev/sda8"

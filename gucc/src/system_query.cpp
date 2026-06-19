@@ -1,6 +1,8 @@
 #include "gucc/system_query.hpp"
+#include "gucc/block_devices.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for find_if, transform
 #include <charconv>   // for from_chars
@@ -393,6 +395,43 @@ auto format_device_table() noexcept -> std::string {
             result += fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", part.device, "", "part", part.fstype, format_size(part.size), mp);
         }
     }
+    return result;
+}
+
+auto list_mountable_partitions(const std::vector<std::string>& include_types) noexcept -> std::vector<std::string> {
+    std::vector<std::string> result{};
+
+    const auto& devices = list_block_devices();
+    if (devices) {
+        const auto append_of_type = [&](std::string_view type) {
+            if (std::ranges::find(include_types, type) == std::ranges::end(include_types)) {
+                return;
+            }
+            for (const auto& dev : *devices) {
+                if (dev.type != type) {
+                    continue;
+                }
+                const auto& size_str = dev.size.has_value() ? format_size(*dev.size) : std::string{};
+                result.emplace_back(fmt::format(FMT_COMPILE("{} {}"), dev.name, size_str));
+            }
+        };
+        append_of_type("crypt"sv);
+        append_of_type("lvm"sv);
+        append_of_type("part"sv);
+    }
+
+    // always append ZFS zvols
+    static constexpr auto zvol_list_cmd = "zfs list -Ht volume -o name,volsize 2>/dev/null"sv;
+    const auto& zvols_raw               = utils::exec(zvol_list_cmd);
+    for (const auto& line : utils::make_multiline(zvols_raw)) {
+        const auto& fields = utils::make_multiline_view(line, false, '\t');
+        if (fields.empty()) {
+            continue;
+        }
+        const auto& volsize = (fields.size() > 1) ? fields[1] : std::string_view{};
+        result.emplace_back(fmt::format(FMT_COMPILE("/dev/zvol/{} {}"), fields[0], volsize));
+    }
+
     return result;
 }
 

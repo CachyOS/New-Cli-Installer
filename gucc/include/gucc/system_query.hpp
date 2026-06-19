@@ -92,6 +92,11 @@ auto list_partitions(std::string_view disk_device) noexcept -> std::vector<Parti
 /// @return vector of fs::Partition objects suitable for schema editing
 auto get_partition_schema(std::string_view disk_device) noexcept -> std::vector<fs::Partition>;
 
+/// @brief Lists partitions/volumes suitable for mounting as "device size" display strings.
+/// @param include_types Device types to include.
+/// @return Vector of display strings.
+auto list_mountable_partitions(const std::vector<std::string>& include_types) noexcept -> std::vector<std::string>;
+
 /// @brief Formats a size in bytes to human-readable string
 /// @param bytes Size in bytes
 /// @return Human-readable size string
