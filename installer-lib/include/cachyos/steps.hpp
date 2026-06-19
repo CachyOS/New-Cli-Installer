@@ -73,6 +73,11 @@ using LogCallback = gucc::utils::SubProcess::LogLineCallback;
     std::stop_token stop_token) noexcept
     -> std::expected<void, std::string>;
 
+/// Configure the installed display manager to autologin @p user.
+[[nodiscard]] auto autologin(const UserSettings& user,
+    const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Install every chwd hardware-driver profile applicable to the target's
 /// detected hardware.
 [[nodiscard]] auto chwd(const InstallContext& ctx,

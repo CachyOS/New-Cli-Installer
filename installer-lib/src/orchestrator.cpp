@@ -39,6 +39,7 @@ enum class Step : std::uint8_t {
     MachineId,
     Desktop,
     DesktopConfigure,
+    Autologin,
     Chwd,
     NetworkCarryover,
     Bootloader,
@@ -62,6 +63,7 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Generating machine ID..."sv,
     "Installing desktop environment..."sv,
     "Configuring desktop environment..."sv,
+    "Configuring autologin..."sv,
     "Installing hardware-driver profiles..."sv,
     "Carrying network connections forward..."sv,
     "Installing bootloader..."sv,
@@ -339,7 +341,16 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 11: chwd hardware-driver profiles (opt-in).
+    // Step 11: Autologin.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Autologin, std::move(warnings));
+    }
+    emit_step_running(callbacks, Step::Autologin);
+    if (auto res = steps::autologin(user, ctx); !res) {
+        warnings.emplace_back(res.error());
+    }
+
+    // Step 12: chwd hardware-driver profiles (opt-in).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Chwd, std::move(warnings));
     }

@@ -198,6 +198,7 @@ struct UserSettings {
     /// Supplementary groups added to the new user. Empty falls back to the
     /// CachyOS default; pass an explicit list to override.
     std::vector<std::string> groups;
+    bool autologin{};
 };
 
 }  // namespace cachyos::installer
