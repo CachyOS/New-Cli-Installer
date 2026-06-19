@@ -671,7 +671,7 @@ void make_esp_headless(std::vector<gucc::fs::Partition>& partitions,
     config_data["UEFI_PART"]  = partition;
 
     // If it is already a fat/vfat partition, skip formatting
-    const bool is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), partition));
+    const bool is_fat_part = gucc::fs::utils::get_device_fstype(partition) == "vfat"sv;
     const bool do_format   = !is_fat_part && reformat_part;
 
     // Apply ESP

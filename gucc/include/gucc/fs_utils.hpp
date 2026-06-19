@@ -15,6 +15,9 @@ auto get_mountpoint_source(std::string_view mountpoint) noexcept -> std::string;
 // Get UUID of device/partition
 auto get_device_uuid(std::string_view device) noexcept -> std::string;
 
+// Get FSTYPE of a device/partition
+auto get_device_fstype(std::string_view device) noexcept -> std::string;
+
 }  // namespace gucc::fs::utils
 
 #endif  // FS_UTILS_HPP

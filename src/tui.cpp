@@ -1715,7 +1715,7 @@ void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
 
     // If it is already a fat/vfat partition...
     bool do_boot_partition{};
-    const auto& is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), partition));
+    const bool is_fat_part = gucc::fs::utils::get_device_fstype(partition) == "vfat"sv;
     if (!is_fat_part) {
         const auto& content = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), partition);
         do_boot_partition   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
@@ -1979,7 +1979,7 @@ auto select_esp_info() noexcept -> std::optional<utils::EspSelection> {
     }
 
     // Check if already fat/vfat
-    const auto& is_fat_part = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("fsck -N {} | grep -q fat"), selection.device));
+    const bool is_fat_part = gucc::fs::utils::get_device_fstype(selection.device) == "vfat"sv;
     if (!is_fat_part) {
         const auto& content        = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), selection.device);
         selection.format_requested = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
