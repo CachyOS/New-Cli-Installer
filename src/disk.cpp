@@ -10,6 +10,7 @@
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
+#include "gucc/btrfs_query.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/lvm.hpp"
@@ -65,7 +66,7 @@ auto default_btrfs_subvolumes() noexcept -> std::vector<gucc::fs::BtrfsSubvolume
 auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& subvolumes, const RootPartitionSelection& selection, std::string_view mountpoint_info, std::vector<gucc::fs::Partition>& partition_schema) noexcept -> bool {
     if (subvolumes.empty() && !selection.format_requested) {
         // check for existing subvols if we are not formatting the disk
-        const auto& exist_subvols = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info));
+        const auto& exist_subvols = gucc::fs::list_btrfs_subvolumes(mountpoint_info, ""sv);
         if (!exist_subvols.empty()) {
             spdlog::info("Found existing btrfs subvolumes, mounting them automatically");
             if (!utils::mount_existing_subvols(partition_schema)) {
@@ -183,25 +184,24 @@ auto mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexce
     spdlog::debug("mount_existing_subvols: opts:={}; ssd:={}; {}", fs_opts, is_ssd, root_mountpoint);
 
 #ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list {} 2>/dev/null | cut -d' ' -f9 > /tmp/.subvols"), root_mountpoint), true);
+    // List existing subvolumes while the filesystem is still mounted, then unmount.
+    const auto& exist_subvols = gucc::fs::list_btrfs_subvolumes(root_mountpoint, ""sv);
     if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint))) {
         spdlog::error("Failed to unmount {}", root_mountpoint);
         return false;
     }
 
-    const auto& subvol_list = gucc::utils::make_multiline(gucc::utils::exec("cat /tmp/.subvols"sv));
-
     // Get mountpoints of subvolumes
     std::vector<gucc::fs::BtrfsSubvolume> subvolumes{};
-    for (auto&& subvol : subvol_list) {
+    for (const auto& exist_subvol : exist_subvols) {
         // Ask for mountpoint
-        const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending {}).\n"), subvol, root_mountpoint);
+        const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending {}).\n"), exist_subvol.subvolume, root_mountpoint);
         std::string mountpoint{"/"};
         if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
             return true;
         }
         mountpoint = std::string{gucc::utils::trim(mountpoint)};
-        subvolumes.push_back(gucc::fs::BtrfsSubvolume{.subvolume = std::move(subvol), .mountpoint = std::move(mountpoint)});
+        subvolumes.push_back(gucc::fs::BtrfsSubvolume{.subvolume = exist_subvol.subvolume, .mountpoint = std::move(mountpoint)});
     }
 
     // TODO(vnepogodin): add confirmation for selected mountpoint for particular subvolume
@@ -430,8 +430,7 @@ auto apply_root_partition_actions(const RootPartitionSelection& selection, const
 
     // Handle existing btrfs subvolume detection (requires TUI interaction)
     if (btrfs_subvols.empty() && !selection.format_requested) {
-        const auto& exist_subvols = gucc::utils::exec(
-            fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mountpoint_info));
+        const auto& exist_subvols = gucc::fs::list_btrfs_subvolumes(mountpoint_info, ""sv);
         if (!exist_subvols.empty()) {
             spdlog::info("Found existing btrfs subvolumes, mounting them automatically");
             if (!utils::mount_existing_subvols(partition_schema)) {
