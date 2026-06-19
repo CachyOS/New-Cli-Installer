@@ -210,6 +210,51 @@ auto zfs_create_zpool(std::string_view partition,
     return {};
 }
 
+auto apply_additional_partitions(const std::vector<AdditionalPartSelection>& additional,
+    std::string_view mountpoint, std::vector<gucc::fs::Partition>& partitions) noexcept
+    -> std::expected<std::int32_t, std::string> {
+    std::int32_t lvm_sep_boot{};
+
+    for (const auto& part_select : additional) {
+        if (part_select.format_requested) {
+            const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), part_select.mkfs_command, part_select.device);
+            if (!gucc::utils::exec_checked(mkfs_cmd)) {
+                return std::unexpected(fmt::format("failed to format {} with {}", part_select.device, part_select.mkfs_command));
+            }
+            spdlog::info("Formatted {} with {}", part_select.device, part_select.mkfs_command);
+        }
+
+        auto mount_res = mount_partition(part_select.device, mountpoint, part_select.mountpoint, part_select.mount_opts);
+        if (!mount_res) {
+            return std::unexpected(mount_res.error());
+        }
+
+        auto part = gucc::fs::Partition{
+            .fstype     = mount_res->fstype.empty() ? part_select.fstype : mount_res->fstype,
+            .mountpoint = part_select.mountpoint,
+            .device     = part_select.device,
+            .mount_opts = part_select.mount_opts,
+        };
+        part.uuid_str = std::move(mount_res->uuid);
+        apply_luks_info(*mount_res, part);
+        partitions.emplace_back(std::move(part));
+
+        // Detect separate /boot for grub configuration
+        if (part_select.mountpoint == "/boot"sv) {
+            lvm_sep_boot             = 1;
+            const auto& boot_devices = gucc::disk::list_block_devices();
+            if (boot_devices) {
+                const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, part_select.device);
+                if (boot_dev && boot_dev->type == "lvm"sv) {
+                    lvm_sep_boot = 2;
+                }
+            }
+        }
+    }
+
+    return lvm_sep_boot;
+}
+
 auto apply_mount_selections(const MountSelections& selections,
     std::string_view mountpoint) noexcept
     -> std::expected<MountApplicationResult, std::string> {
@@ -234,42 +279,11 @@ auto apply_mount_selections(const MountSelections& selections,
     }
 
     // 3. Additional partitions
-    for (const auto& part_select : selections.additional) {
-        if (part_select.format_requested) {
-            const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), part_select.mkfs_command, part_select.device);
-            if (!gucc::utils::exec_checked(mkfs_cmd)) {
-                return std::unexpected(fmt::format("failed to format {} with {}", part_select.device, part_select.mkfs_command));
-            }
-            spdlog::info("Formatted {} with {}", part_select.device, part_select.mkfs_command);
-        }
-
-        auto mount_res = mount_partition(part_select.device, mountpoint, part_select.mountpoint, part_select.mount_opts);
-        if (!mount_res) {
-            return std::unexpected(mount_res.error());
-        }
-
-        auto part = gucc::fs::Partition{
-            .fstype     = mount_res->fstype.empty() ? part_select.fstype : mount_res->fstype,
-            .mountpoint = part_select.mountpoint,
-            .device     = part_select.device,
-            .mount_opts = part_select.mount_opts,
-        };
-        part.uuid_str = std::move(mount_res->uuid);
-        apply_luks_info(*mount_res, part);
-        result.partitions.emplace_back(std::move(part));
-
-        // Detect separate /boot for Grub configuration
-        if (part_select.mountpoint == "/boot"sv) {
-            result.lvm_sep_boot      = 1;
-            const auto& boot_devices = gucc::disk::list_block_devices();
-            if (boot_devices) {
-                const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, part_select.device);
-                if (boot_dev && boot_dev->type == "lvm"sv) {
-                    result.lvm_sep_boot = 2;
-                }
-            }
-        }
+    auto additional_res = apply_additional_partitions(selections.additional, mountpoint, result.partitions);
+    if (!additional_res) {
+        return std::unexpected(additional_res.error());
     }
+    result.lvm_sep_boot = *additional_res;
 
     // 4. ESP
     if (!selections.esp.device.empty()) {

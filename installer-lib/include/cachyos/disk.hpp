@@ -88,6 +88,13 @@ struct MountApplicationResult {
     std::string_view mountpoint) noexcept
     -> std::expected<MountApplicationResult, std::string>;
 
+/// Formats (when requested) and mounts the given additional partitions, appending the
+/// resulting partition structs to `partitions`. Returns the lvm_sep_boot indicator
+/// (0 = none, 1 = separate /boot, 2 = separate lvm /boot).
+[[nodiscard]] auto apply_additional_partitions(const std::vector<AdditionalPartSelection>& additional,
+    std::string_view mountpoint, std::vector<gucc::fs::Partition>& partitions) noexcept
+    -> std::expected<std::int32_t, std::string>;
+
 /// Creates btrfs subvolumes according to the selection.
 [[nodiscard]] auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& subvols,
     const RootPartitionSelection& selection,

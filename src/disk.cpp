@@ -8,7 +8,6 @@
 #include "cachyos/disk.hpp"
 
 // import gucc
-#include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/btrfs_query.hpp"
 #include "gucc/fs_utils.hpp"
@@ -497,42 +496,21 @@ auto apply_mount_selections_interactive(const MountSelections& selections) noexc
 
     // 3. Apply additional partitions
     const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    for (const auto& p : selections.additional) {
-        if (p.format_requested) {
 #ifdef NDEVENV
-            const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), p.mkfs_command, p.device);
-            if (!gucc::utils::exec_checked(mkfs_cmd)) {
-                spdlog::error("Failed to format {} with {}", p.device, p.mkfs_command);
-                return false;
-            }
-            spdlog::info("Formatted {} with {}", p.device, p.mkfs_command);
-#else
-            spdlog::info("[DRY-RUN] Would format {} with {}", p.device, p.mkfs_command);
-#endif
-        }
-
-#ifdef NDEVENV
-        auto mount_res = cachyos::installer::mount_partition(p.device, mountpoint_info, p.mountpoint, p.mount_opts);
-        if (!mount_res) {
-            spdlog::error("{}", mount_res.error());
+    {
+        const auto& lib_additional = convert_additional_selections(selections.additional);
+        auto additional_res        = cachyos::installer::apply_additional_partitions(lib_additional, mountpoint_info, partitions);
+        if (!additional_res) {
+            spdlog::error("{}", additional_res.error());
             return false;
         }
-
-        auto part_struct = gucc::fs::Partition{
-            .fstype     = mount_res->fstype.empty() ? p.fstype : mount_res->fstype,
-            .mountpoint = p.mountpoint,
-            .device     = p.device,
-            .mount_opts = p.mount_opts,
-        };
-        part_struct.uuid_str = mount_res->uuid;
-        if (mount_res->is_luks && !mount_res->luks_name.empty()) {
-            part_struct.luks_mapper_name = mount_res->luks_name;
-        }
-        if (mount_res->is_luks && !mount_res->luks_uuid.empty()) {
-            part_struct.luks_uuid = mount_res->luks_uuid;
-        }
-        store_luks_config(config_data, *mount_res);
+        config_data["LVM_SEP_BOOT"] = *additional_res;
+    }
 #else
+    for (const auto& p : selections.additional) {
+        if (p.format_requested) {
+            spdlog::info("[DRY-RUN] Would format {} with {}", p.device, p.mkfs_command);
+        }
         spdlog::info("[DRY-RUN] Would mount {} at {}{}", p.device, mountpoint_info, p.mountpoint);
         auto part_struct = gucc::fs::Partition{
             .fstype     = p.fstype,
@@ -540,26 +518,13 @@ auto apply_mount_selections_interactive(const MountSelections& selections) noexc
             .device     = p.device,
             .mount_opts = p.mount_opts,
         };
-#endif
         utils::dump_partition_to_log(part_struct);
-        // insert partition
         partitions.emplace_back(std::move(part_struct));
-
-        // Determine if a separate /boot is used.
-        // 0 = no separate boot,
-        // 1 = separate non-lvm boot,
-        // 2 = separate lvm boot. For Grub configuration
         if (p.mountpoint == "/boot"sv) {
             config_data["LVM_SEP_BOOT"] = 1;
-            const auto& boot_devices    = gucc::disk::list_block_devices();
-            if (boot_devices) {
-                const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, p.device);
-                if (boot_dev && boot_dev->type == "lvm"sv) {
-                    config_data["LVM_SEP_BOOT"] = 2;
-                }
-            }
         }
     }
+#endif
 
     // 4. Apply ESP
     if (!apply_esp_selection(selections.esp, partitions)) {
