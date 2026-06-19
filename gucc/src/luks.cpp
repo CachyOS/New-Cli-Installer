@@ -10,6 +10,7 @@
 
 namespace gucc::crypto {
 
+// TODO(vnepogodin): they are mostly equal. refactor this shit
 auto luks1_open(std::string_view luks_pass, std::string_view partition, std::string_view luks_name) noexcept -> bool {
     auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup open --type luks1 {} {} &>/dev/null"), luks_pass, partition, luks_name);
     return utils::exec_checked(cmd);
@@ -17,6 +18,16 @@ auto luks1_open(std::string_view luks_pass, std::string_view partition, std::str
 
 auto luks1_format(std::string_view luks_pass, std::string_view partition, std::string_view additional_flags) noexcept -> bool {
     auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup -q {} --type luks1 luksFormat {} &>/dev/null"), luks_pass, additional_flags, partition);
+    return utils::exec_checked(cmd);
+}
+
+auto luks2_open(std::string_view luks_pass, std::string_view partition, std::string_view luks_name) noexcept -> bool {
+    auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup open --type luks2 {} {} &>/dev/null"), luks_pass, partition, luks_name);
+    return utils::exec_checked(cmd);
+}
+
+auto luks2_format(std::string_view luks_pass, std::string_view partition, std::string_view additional_flags) noexcept -> bool {
+    auto cmd = fmt::format(FMT_COMPILE("echo '{}' | cryptsetup -q {} --type luks2 luksFormat {} &>/dev/null"), luks_pass, additional_flags, partition);
     return utils::exec_checked(cmd);
 }
 
