@@ -9,6 +9,7 @@ gucc_test_names = [
     'btrfs',
     'crypto_detection',
     'crypttab_gen',
+    'error',
     'fetch_file',
     'fstab_gen',
     'grub_config_gen',
