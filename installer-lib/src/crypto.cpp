@@ -140,8 +140,8 @@ auto setup_luks_keyfile(std::string_view mountpoint) noexcept
         fmt::format(FMT_COMPILE("cryptsetup luksDump '{}' | grep 'ENABLED' | wc -l"), partition));
     if (to_int(lukskeys_str) < 4) {
         const auto keyfile_path = fmt::format(FMT_COMPILE("{}/crypto_keyfile.bin"), mountpoint);
-        if (!gucc::crypto::luks1_setup_keyfile(keyfile_path, mountpoint, partition, "--pbkdf-force-iterations 200000")) {
-            return std::unexpected("failed to setup luks1 keyfile");
+        if (auto res = gucc::crypto::luks1_setup_keyfile(keyfile_path, mountpoint, partition, "--pbkdf-force-iterations 200000"); !res) {
+            return std::unexpected(gucc::to_string(res.error()));
         }
     }
     return {};
