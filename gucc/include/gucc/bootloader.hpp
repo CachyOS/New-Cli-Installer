@@ -76,16 +76,16 @@ struct GrubInstallConfig final {
 
 struct SystemdBootInstallConfig final {
     bool is_removable{};
-    std::string_view root_mountpoint;
-    std::string_view efi_directory;
+    std::string root_mountpoint;
+    std::string efi_directory;
 };
 
 struct LimineInstallConfig final {
     bool is_efi{true};
     bool is_removable{};
-    std::string_view root_mountpoint;
-    std::string_view boot_mountpoint;
-    const std::vector<std::string>& kernel_params;
+    std::string root_mountpoint;
+    std::string boot_mountpoint;
+    std::vector<std::string> kernel_params;
     // BIOS-specific: the device to install limine to
     std::optional<std::string> bios_device{};
     // ESP path for /etc/default/limine
@@ -94,10 +94,10 @@ struct LimineInstallConfig final {
 
 struct RefindInstallConfig final {
     bool is_removable{};
-    std::string_view root_mountpoint;
-    std::string_view boot_mountpoint;
-    const std::vector<std::string>& extra_kernel_versions;
-    const std::vector<std::string>& kernel_params;
+    std::string root_mountpoint;
+    std::string boot_mountpoint;
+    std::vector<std::string> extra_kernel_versions;
+    std::vector<std::string> kernel_params;
 };
 
 // Generate grub config into string
