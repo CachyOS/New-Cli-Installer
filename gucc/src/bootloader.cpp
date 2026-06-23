@@ -1,4 +1,5 @@
 #include "gucc/bootloader.hpp"
+#include "detail/initcpio_impl.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
@@ -182,6 +183,7 @@ auto parse_grub_line(const gucc::bootloader::GrubConfig& grub_config, std::strin
 
 namespace gucc::bootloader {
 
+// TODO(vnepogodin): refactor that with staticmap enum
 auto bootloader_from_string(std::string_view name) noexcept -> std::optional<BootloaderType> {
     /* clang-format off */
     if (name == "grub"sv) return BootloaderType::Grub; // NOLINT
@@ -192,6 +194,7 @@ auto bootloader_from_string(std::string_view name) noexcept -> std::optional<Boo
     return std::nullopt;
 }
 
+// TODO(vnepogodin): refactor that with staticmap enum
 auto bootloader_to_string(BootloaderType type) noexcept -> std::string_view {
     switch (type) {
     case BootloaderType::Grub:

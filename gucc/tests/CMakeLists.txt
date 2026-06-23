@@ -21,6 +21,7 @@ foreach(file ${files})
     string(REGEX REPLACE "unit-([^$]+)" "test-\\1" testcase ${file_basename})
 
     add_executable(${testcase} $<TARGET_OBJECTS:doctest_main> ${file})
+    target_include_directories(${testcase} PRIVATE ${GUCC_TOP_DIR}/gucc/src)
     target_compile_definitions(${testcase} PRIVATE DOCTEST_CONFIG_SUPER_FAST_ASSERTS)
     target_compile_options(${testcase} PRIVATE
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal>

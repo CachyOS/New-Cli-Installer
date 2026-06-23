@@ -1,4 +1,5 @@
 #include "gucc/initcpio.hpp"
+#include "detail/initcpio_impl.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/string_utils.hpp"
 

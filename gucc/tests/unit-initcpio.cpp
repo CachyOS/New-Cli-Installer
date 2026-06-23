@@ -1,5 +1,6 @@
 #include "doctest_compatibility.h"
 
+#include "detail/initcpio_impl.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/logger.hpp"

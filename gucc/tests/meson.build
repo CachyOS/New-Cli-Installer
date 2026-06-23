@@ -37,7 +37,7 @@ foreach t : gucc_test_names
         files('unit-' + t + '.cpp'),
         dependencies: [deps, doctest],
         link_with: [gucc_lib, doctest_main_lib],
-        include_directories: [include_directories('../include')],
+        include_directories: [include_directories('../include'), include_directories('../src')],
         install: false,
     )
     test('test-' + t, test_exe)
