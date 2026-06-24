@@ -49,11 +49,11 @@ Include = /etc/pacman.d/cachyos-v4-mirrorlist
 Include = /etc/pacman.d/cachyos-v4-mirrorlist
 )"sv;
 
-auto add_arch_specific_repo(std::string_view isa_level, std::string_view repo_name, const std::vector<std::string>& isa_levels, std::string_view repos_data) noexcept -> bool {
+auto add_arch_specific_repo(std::string_view isa_level, std::string_view repo_name, const std::vector<std::string>& isa_levels, std::string_view repos_data) noexcept -> gucc::Result<void> {
     // Check if the repo ISA level is supported by the CPU
     if (!std::ranges::contains(isa_levels, isa_level)) {
         spdlog::warn("{} is not supported", isa_level);
-        return true;
+        return {};
     }
     spdlog::info("{} is supported", isa_level);
 
@@ -61,7 +61,7 @@ auto add_arch_specific_repo(std::string_view isa_level, std::string_view repo_na
     const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf"sv);
     if (std::ranges::contains(repo_list, fmt::format(FMT_COMPILE("[{}]"), repo_name))) {
         spdlog::info("'{}' is already added!", repo_name);
-        return true;
+        return {};
     }
 
     // Common pacmanconf working paths
@@ -72,8 +72,7 @@ auto add_arch_specific_repo(std::string_view isa_level, std::string_view repo_na
     // Create local(working) copy of pacmanconf
     std::error_code err{};
     if (!fs::copy_file(pacman_conf, pacman_conf_cachyos, err)) {
-        spdlog::error("Failed to copy pacman config [{}]", err.message());
-        return false;
+        return gucc::make_error(gucc::ErrorCode::FileIo, fmt::format("Failed to copy pacman config [{}]", err.message()));
     }
 
     // Add repo to local(working) copy of pacmanconf
@@ -83,73 +82,56 @@ auto add_arch_specific_repo(std::string_view isa_level, std::string_view repo_na
     spdlog::info("backup old config");
     fs::rename(pacman_conf, pacman_conf_path_backup, err);
     if (err) {
-        spdlog::error("Failed to backup old config {}->{}: {}", pacman_conf, pacman_conf_path_backup, err.message());
-        return false;
+        return gucc::make_error(gucc::ErrorCode::FileIo, fmt::format("Failed to backup old config {}->{}: {}", pacman_conf, pacman_conf_path_backup, err.message()));
     }
 
     // Replace system pacmanconf with new one
     spdlog::info("CachyOS {} Repo changed", repo_name);
     fs::rename(pacman_conf_cachyos, pacman_conf, err);
     if (err) {
-        spdlog::error("Failed to move local pacman conf into system {}->{}: {}", pacman_conf_cachyos, pacman_conf, err.message());
-        return false;
+        return gucc::make_error(gucc::ErrorCode::FileIo, fmt::format("Failed to move local pacman conf into system {}->{}: {}", pacman_conf_cachyos, pacman_conf, err.message()));
     }
-    return true;
+    return {};
 }
 
 }  // namespace
 
 namespace gucc::repos {
 
-auto install_cachyos_repos() noexcept -> bool {
+auto install_cachyos_repos() noexcept -> Result<void> {
     // fetch cachyos keyring, in some cases required on the ISO
     if (!utils::exec_checked("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com 2>>/tmp/cachyos-install.log &>/dev/null"sv)) {
-        spdlog::error("Failed to receive repo keys with pacman-key");
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, "Failed to receive repo keys with pacman-key");
     }
     if (!utils::exec_checked("pacman-key --lsign-key F3B607488DB35A47 2>>/tmp/cachyos-install.log &>/dev/null"sv)) {
-        spdlog::error("Failed to locally sign repo keys with pacman-key");
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, "Failed to locally sign repo keys with pacman-key");
     }
 
     // fetch supported CPU ISA levels
     const auto& isa_levels = cpu::get_isa_levels();
-    if (!add_arch_specific_repo("x86_64"sv, "cachyos"sv, isa_levels, CACHYOS_V1_REPO_STR)) {
-        spdlog::error("Failed to add x86_64 cachyos repo");
-        return false;
+    if (auto res = add_arch_specific_repo("x86_64"sv, "cachyos"sv, isa_levels, CACHYOS_V1_REPO_STR); !res) {
+        return res;
     }
 
     // Oracle VM doesn't support ISA levels
     if (utils::exec_checked("systemd-detect-virt | grep -q oracle"sv)) {
         spdlog::info("Oracle VM detected. skipping ISA specific repos");
-        return true;
+        return {};
     }
 
     // 1. check ZNVER4/ZNVER5
     if (std::ranges::contains(isa_levels, "znver4"sv)) {
-        if (!add_arch_specific_repo("znver4"sv, "cachyos-znver4"sv, isa_levels, CACHYOS_ZNVER4_REPO_STR)) {
-            spdlog::error("Failed to add znver4 cachyos repo");
-            return false;
-        }
-        return true;
+        return add_arch_specific_repo("znver4"sv, "cachyos-znver4"sv, isa_levels, CACHYOS_ZNVER4_REPO_STR);
     }
     // 2. check x86_64_v4
     if (std::ranges::contains(isa_levels, "x86_64_v4"sv)) {
-        if (!add_arch_specific_repo("x86_64_v4"sv, "cachyos-v4"sv, isa_levels, CACHYOS_V4_REPO_STR)) {
-            spdlog::error("Failed to add v4 cachyos repo");
-            return false;
-        }
-        return true;
+        return add_arch_specific_repo("x86_64_v4"sv, "cachyos-v4"sv, isa_levels, CACHYOS_V4_REPO_STR);
     }
     // 3. check x86_64_v3
     if (std::ranges::contains(isa_levels, "x86_64_v3"sv)) {
-        if (!add_arch_specific_repo("x86_64_v3"sv, "cachyos-v3"sv, isa_levels, CACHYOS_V3_REPO_STR)) {
-            spdlog::error("Failed to add v3 cachyos repo");
-            return false;
-        }
-        return true;
+        return add_arch_specific_repo("x86_64_v3"sv, "cachyos-v3"sv, isa_levels, CACHYOS_V3_REPO_STR);
     }
-    return true;
+    return {};
 }
 
 }  // namespace gucc::repos

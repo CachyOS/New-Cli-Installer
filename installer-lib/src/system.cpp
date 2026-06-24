@@ -103,8 +103,8 @@ auto install_cachyos_repo() noexcept -> std::expected<void, std::string> {
     const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
     spdlog::info("install_cachyos_repo: repo_list := '{}'", repo_list);
 
-    if (!gucc::repos::install_cachyos_repos()) {
-        return std::unexpected("failed to install cachyos repos");
+    if (auto res = gucc::repos::install_cachyos_repos(); !res) {
+        return std::unexpected(fmt::format("failed to install cachyos repos: {}", res.error().context));
     }
     if (!gucc::utils::exec_checked("yes | pacman -Sy --noconfirm"sv)) {
         return std::unexpected("failed to refresh pacman databases");

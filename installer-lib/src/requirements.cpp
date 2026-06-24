@@ -157,9 +157,7 @@ static auto power(const RequirementsConfig&) noexcept -> Requirement {
     for (const auto& entry : fs::directory_iterator{kPowerSupplyPath, ec}) {
         const auto type = read_first_line(entry.path() / "type");
         if (type == "Battery"sv) {
-            // Skip peripherals (wireless mice/keyboards/headsets); they
-            // report scope=Device. System batteries report scope=System
-            // or omit the attribute on older drivers.
+            // Skip peripherals
             if (read_first_line(entry.path() / "scope") == "Device"sv) {
                 continue;
             }
