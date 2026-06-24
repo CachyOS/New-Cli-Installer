@@ -18,23 +18,26 @@ using namespace std::string_literals;
 
 namespace gucc::mount {
 
-auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts) noexcept -> bool {
-    if (!mount_opts.empty()) {
-        return utils::exec_checked(fmt::format(FMT_COMPILE("mount -o {} {} {}"), mount_opts, partition, mount_dir));
+auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts) noexcept -> Result<void> {
+    const auto& cmd = !mount_opts.empty()
+        ? fmt::format(FMT_COMPILE("mount -o {} {} {}"), mount_opts, partition, mount_dir)
+        : fmt::format(FMT_COMPILE("mount {} {}"), partition, mount_dir);
+    if (!utils::exec_checked(cmd)) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to mount {} at {}", partition, mount_dir));
     }
-    return utils::exec_checked(fmt::format(FMT_COMPILE("mount {} {}"), partition, mount_dir));
+    return {};
 }
 
-auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int32_t& is_lvm, std::string& luks_name, std::string& luks_dev, std::string& luks_uuid) noexcept -> bool {
+auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int32_t& is_lvm, std::string& luks_name, std::string& luks_dev, std::string& luks_uuid) noexcept -> Result<void> {
     const auto& devices = disk::list_block_devices();
     if (!devices) {
-        return false;
+        return make_error(ErrorCode::NotFound, "failed to list block devices");
     }
 
     // Identify if mounted partition is crypto
     const auto& crypto = disk::detect_crypto_for_device(*devices, partition);
     if (!crypto || !crypto->is_luks) {
-        return false;
+        return make_error(ErrorCode::NotFound, fmt::format("partition {} is not LUKS", partition));
     }
 
     is_luks   = true;
@@ -46,10 +49,10 @@ auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int
     if (!crypto->luks_dev.empty()) {
         luks_dev = fmt::format(FMT_COMPILE("{} {}"), luks_dev, crypto->luks_dev);
     }
-    return true;
+    return {};
 }
 
-auto setup_esp_partition(std::string_view device, std::string_view mountpoint, std::string_view base_mountpoint, bool format, bool is_ssd) noexcept -> std::optional<fs::Partition> {
+auto setup_esp_partition(std::string_view device, std::string_view mountpoint, std::string_view base_mountpoint, bool format, bool is_ssd) noexcept -> Result<fs::Partition> {
     const auto& full_mountpoint = fmt::format(FMT_COMPILE("{}{}"), base_mountpoint, mountpoint);
 
     // Format esp part if requested
@@ -57,7 +60,7 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
         const auto& mkfs_cmd = fs::get_mkfs_command(fs::FilesystemType::Vfat);
         if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} {} &>/dev/null"), mkfs_cmd, device))) {
             spdlog::error("Failed to format ESP partition {} with {}", device, mkfs_cmd);
-            return std::nullopt;
+            return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to format ESP partition {}", device));
         }
         spdlog::info("Formatted ESP partition {} with {}", device, mkfs_cmd);
     }
@@ -67,14 +70,14 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
     std::filesystem::create_directories(full_mountpoint, err);
     if (err) {
         spdlog::error("Failed to create ESP directory {}: {}", full_mountpoint, err.message());
-        return std::nullopt;
+        return make_error(ErrorCode::FileIo, fmt::format("failed to create ESP directory {}: {}", full_mountpoint, err.message()));
     }
 
     // Mount the partition
     const auto& boot_opts = fs::get_default_mount_opts(fs::FilesystemType::Vfat, is_ssd);
-    if (!mount_partition(device, full_mountpoint, boot_opts)) {
+    if (auto res = mount_partition(device, full_mountpoint, boot_opts); !res) {
         spdlog::error("Failed to mount ESP {} at {}", device, full_mountpoint);
-        return std::nullopt;
+        return make_error(res.error().code, std::move(res.error().context));
     }
 
     // Construct Partition struct

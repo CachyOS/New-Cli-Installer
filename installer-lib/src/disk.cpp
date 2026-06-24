@@ -329,7 +329,7 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint,
     const bool is_boot_ssd = gucc::disk::is_device_ssd(device);
     auto boot_part_struct  = gucc::mount::setup_esp_partition(device, mountpoint, root_mountpoint, format_requested, is_boot_ssd);
     if (!boot_part_struct) {
-        return std::unexpected(fmt::format("failed to setup ESP partition {}", device));
+        return std::unexpected(gucc::to_string(boot_part_struct.error()));
     }
     return std::move(*boot_part_struct);
 }
@@ -373,8 +373,8 @@ auto mount_partition(std::string_view partition, std::string_view mountpoint,
 
     // TODO(vnepogodin): use libmount instead.
     // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
-    if (!gucc::mount::mount_partition(partition, mount_dir, mount_opts)) {
-        return std::unexpected(fmt::format("failed to mount partition {} at {} with opts '{}'", partition, mount_dir, mount_opts));
+    if (auto res = gucc::mount::mount_partition(partition, mount_dir, mount_opts); !res) {
+        return std::unexpected(fmt::format("failed to mount partition {} at {} with opts '{}': {}", partition, mount_dir, mount_opts, gucc::to_string(res.error())));
     }
 
     // Actual mounted device may differ from partition (e.g. for mapper devices)
@@ -382,7 +382,7 @@ auto mount_partition(std::string_view partition, std::string_view mountpoint,
     const auto& query_device   = mounted_device.empty() ? partition : mounted_device;
 
     MountPartitionResult result{};
-    // query_partition returns false for non-LUKS partitions. can be ignored
+    // returns negative for non-LUKS. ignore
     gucc::mount::query_partition(query_device, result.is_luks, result.is_lvm,
         result.luks_name, result.luks_dev, result.luks_uuid);
 
