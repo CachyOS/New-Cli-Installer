@@ -10,8 +10,8 @@ using namespace std::string_literals;
 namespace cachyos::installer::steps {
 
 auto machine_id(const InstallContext& ctx) noexcept -> std::expected<void, std::string> {
-    if (!gucc::machine_id::reset(ctx.mountpoint)) {
-        spdlog::warn("machine_id::reset failed for '{}'", ctx.mountpoint);
+    if (auto res = gucc::machine_id::reset(ctx.mountpoint); !res) {
+        spdlog::warn("machine_id::reset failed for '{}': {}", ctx.mountpoint, gucc::to_string(res.error()));
         return std::unexpected("machine_id reset failed"s);
     }
     return {};

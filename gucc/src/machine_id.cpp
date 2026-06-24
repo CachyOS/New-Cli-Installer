@@ -11,62 +11,56 @@ namespace fs = std::filesystem;
 
 namespace gucc::machine_id::detail {
 
-auto clear_existing(std::string_view root_mountpoint) noexcept -> bool {
+auto clear_existing(std::string_view root_mountpoint) noexcept -> Result<void> {
     const fs::path root{root_mountpoint};
     std::error_code ec;
     fs::remove(root / "etc" / "machine-id", ec);
     if (ec) {
-        spdlog::error("machine_id: failed to remove /etc/machine-id under '{}': {}", root_mountpoint, ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to remove /etc/machine-id under '{}': {}", root_mountpoint, ec.message()));
     }
     fs::remove(root / "var" / "lib" / "dbus" / "machine-id", ec);
     if (ec) {
-        spdlog::error("machine_id: failed to remove /var/lib/dbus/machine-id under '{}': {}", root_mountpoint, ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to remove /var/lib/dbus/machine-id under '{}': {}", root_mountpoint, ec.message()));
     }
-    return true;
+    return {};
 }
 
-auto link_dbus_to_etc(std::string_view root_mountpoint) noexcept -> bool {
+auto link_dbus_to_etc(std::string_view root_mountpoint) noexcept -> Result<void> {
     const fs::path root{root_mountpoint};
     const auto dbus_path = root / "var" / "lib" / "dbus" / "machine-id";
 
     std::error_code ec;
     fs::create_directories(dbus_path.parent_path(), ec);
     if (ec) {
-        spdlog::error("machine_id: failed to create {}: {}", dbus_path.parent_path().string(), ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to create {}: {}", dbus_path.parent_path().string(), ec.message()));
     }
     // Replace any leftover regular file or stale symlink.
     fs::remove(dbus_path, ec);
     if (ec) {
-        spdlog::error("machine_id: failed to clear {}: {}", dbus_path.string(), ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to clear {}: {}", dbus_path.string(), ec.message()));
     }
     fs::create_symlink("/etc/machine-id", dbus_path, ec);
     if (ec) {
-        spdlog::error("machine_id: failed to symlink {} -> /etc/machine-id: {}", dbus_path.string(), ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to symlink {} -> /etc/machine-id: {}", dbus_path.string(), ec.message()));
     }
-    return true;
+    return {};
 }
 
 }  // namespace gucc::machine_id::detail
 
 namespace gucc::machine_id {
 
-auto reset(std::string_view root_mountpoint) noexcept -> bool {
-    if (!detail::clear_existing(root_mountpoint)) {
-        return false;
+auto reset(std::string_view root_mountpoint) noexcept -> Result<void> {
+    if (auto res = detail::clear_existing(root_mountpoint); !res) {
+        return res;
     }
 
     // TODO(vnepogodin): expose a wrapper around systemd-firstboot
     // to seed several first-boot settings in single call.
 
-    const auto cmd = fmt::format("systemd-machine-id-setup --root={}", root_mountpoint);
+    const auto cmd = fmt::format("systemd-machine-id-setup --root={} &>/dev/null", root_mountpoint);
     if (!utils::exec_checked(cmd)) {
-        spdlog::error("machine_id: systemd-machine-id-setup failed for root '{}'", root_mountpoint);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("machine_id: systemd-machine-id-setup failed for root '{}'", root_mountpoint));
     }
 
     return detail::link_dbus_to_etc(root_mountpoint);
