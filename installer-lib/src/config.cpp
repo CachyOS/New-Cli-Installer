@@ -52,8 +52,8 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     // Hostname
     if (!settings.hostname.empty()) {
         spdlog::info("Setting hostname {}", settings.hostname);
-        if (!gucc::user::set_hostname(settings.hostname, mountpoint)) {
-            return std::unexpected("failed to set hostname");
+        if (auto res = gucc::user::set_hostname(settings.hostname, mountpoint); !res) {
+            return std::unexpected(gucc::to_string(res.error()));
         }
     }
 
@@ -127,8 +127,8 @@ auto create_user(const UserSettings& settings, std::string_view mountpoint,
     static const std::vector kDefaultUserGroups{"wheel"s, "rfkill"s, "sys"s, "users"s, "lp"s, "video"s, "network"s, "storage"s, "audio"s};
 
     const auto& groups = settings.groups.empty() ? kDefaultUserGroups : settings.groups;
-    if (!gucc::user::create_new_user(user_info, groups, mountpoint)) {
-        return std::unexpected("failed to create user");
+    if (auto res = gucc::user::create_new_user(user_info, groups, mountpoint); !res) {
+        return std::unexpected(gucc::to_string(res.error()));
     }
 
     return {};
@@ -136,8 +136,8 @@ auto create_user(const UserSettings& settings, std::string_view mountpoint,
 
 auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    if (!gucc::user::set_root_password(password, mountpoint)) {
-        return std::unexpected("failed to set root password");
+    if (auto res = gucc::user::set_root_password(password, mountpoint); !res) {
+        return std::unexpected(gucc::to_string(res.error()));
     }
     return {};
 }

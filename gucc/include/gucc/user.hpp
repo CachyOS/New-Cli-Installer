@@ -1,6 +1,8 @@
 #ifndef USER_HPP
 #define USER_HPP
 
+#include "gucc/error.hpp"
+
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -26,25 +28,25 @@ struct UserAllInfo final {
 };
 
 // Create group on the system
-auto create_group(std::string_view group, std::string_view mountpoint, bool is_system = false) noexcept -> bool;
+auto create_group(std::string_view group, std::string_view mountpoint, bool is_system = false) noexcept -> Result<void>;
 
 // Set user password on the system
-auto set_user_password(std::string_view username, std::string_view password, std::string_view mountpoint) noexcept -> bool;
+auto set_user_password(std::string_view username, std::string_view password, std::string_view mountpoint) noexcept -> Result<void>;
 
 // Create user on the system
-auto create_new_user(const user::UserInfo& user_info, const std::vector<std::string>& default_groups, std::string_view mountpoint) noexcept -> bool;
+auto create_new_user(const user::UserInfo& user_info, const std::vector<std::string>& default_groups, std::string_view mountpoint) noexcept -> Result<void>;
 
 // Set system hostname
-auto set_hostname(std::string_view hostname, std::string_view mountpoint) noexcept -> bool;
+auto set_hostname(std::string_view hostname, std::string_view mountpoint) noexcept -> Result<void>;
 
 // Set system hosts
-auto set_hosts(std::string_view hostname, std::string_view mountpoint) noexcept -> bool;
+auto set_hosts(std::string_view hostname, std::string_view mountpoint) noexcept -> Result<void>;
 
 // Set password for root user
-auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept -> bool;
+auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept -> Result<void>;
 
 // Setup user environment from provided data
-auto setup_user_environment(const UserAllInfo& info, std::string_view mountpoint) noexcept -> bool;
+auto setup_user_environment(const UserAllInfo& info, std::string_view mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::user
 
