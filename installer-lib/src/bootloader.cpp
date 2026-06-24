@@ -226,10 +226,10 @@ auto install_grub_uefi(const InstallContext& ctx, std::string_view bootid,
         spdlog::warn("grub_installer.sh: {}", chroot_result.error());
     }
 
-    if (!gucc::bootloader::install_grub(grub_config_struct, grub_install_config_struct, mountpoint)) {
+    if (auto res = gucc::bootloader::install_grub(grub_config_struct, grub_install_config_struct, mountpoint); !res) {
         umount("/mnt/hostlvm");
         fs::remove("/mnt/hostlvm", err);
-        return std::unexpected("failed to install grub");
+        return std::unexpected(gucc::to_string(res.error()));
     }
     umount("/mnt/hostlvm");
     fs::remove("/mnt/hostlvm", err);
@@ -312,8 +312,8 @@ auto install_grub_bios(const InstallContext& ctx, gucc::utils::SubProcess& child
     umount("/mnt/hostlvm");
     fs::remove("/mnt/hostlvm", err);
 
-    if (!gucc::bootloader::install_grub(grub_config_struct, grub_install_config_struct, mountpoint)) {
-        return std::unexpected("failed to install grub");
+    if (auto res = gucc::bootloader::install_grub(grub_config_struct, grub_install_config_struct, mountpoint); !res) {
+        return std::unexpected(gucc::to_string(res.error()));
     }
     return {};
 }
@@ -347,8 +347,8 @@ auto install_refind(const InstallContext& ctx, gucc::utils::SubProcess& child) n
         .kernel_params         = *kernel_params,
     };
 
-    if (!gucc::bootloader::install_refind(refind_install_config)) {
-        return std::unexpected("failed to install refind");
+    if (auto res = gucc::bootloader::install_refind(refind_install_config); !res) {
+        return std::unexpected(gucc::to_string(res.error()));
     }
 
     spdlog::info("Created rEFInd config:");
@@ -381,8 +381,8 @@ auto install_systemd_boot(const InstallContext& ctx, gucc::utils::SubProcess& ch
         .root_mountpoint = mountpoint,
         .efi_directory   = uefi_mount,
     };
-    if (!gucc::bootloader::install_systemd_boot(sdboot_config)) {
-        return std::unexpected("failed to install systemd-boot");
+    if (auto res = gucc::bootloader::install_systemd_boot(sdboot_config); !res) {
+        return std::unexpected(gucc::to_string(res.error()));
     }
 
     spdlog::info("Systemd-boot was installed");
@@ -439,8 +439,8 @@ auto install_limine(const InstallContext& ctx, gucc::utils::SubProcess& child) n
     }
 
     // Start limine install & configuration
-    if (!gucc::bootloader::install_limine(limine_install_config)) {
-        return std::unexpected("failed to install Limine");
+    if (auto res = gucc::bootloader::install_limine(limine_install_config); !res) {
+        return std::unexpected(gucc::to_string(res.error()));
     }
 
     // Integrate Snapper support for btrfs

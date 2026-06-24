@@ -1,6 +1,8 @@
 #ifndef BOOTLOADER_HPP
 #define BOOTLOADER_HPP
 
+#include "gucc/error.hpp"
+
 #include <cstdint>
 
 #include <optional>     // for optional
@@ -104,25 +106,25 @@ struct RefindInstallConfig final {
 auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string;
 
 // Writes grub config to file on the system
-auto write_grub_config(const GrubConfig& grub_config, std::string_view root_mountpoint) noexcept -> bool;
+auto write_grub_config(const GrubConfig& grub_config, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 // Installs and configures grub on system
-auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_install_config, std::string_view root_mountpoint) noexcept -> bool;
+auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_install_config, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 // Installs & configures systemd-boot on system
-auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> bool;
+auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> Result<void>;
 
 // Generate refind config into system
 auto gen_refind_config(const std::vector<std::string>& kernel_params) noexcept -> std::string;
 
 // Edit refind config with provided extra kernel strings
-auto refind_write_extra_kern_strings(std::string_view file_path, const std::vector<std::string>& extra_kernel_versions) noexcept -> bool;
+auto refind_write_extra_kern_strings(std::string_view file_path, const std::vector<std::string>& extra_kernel_versions) noexcept -> Result<void>;
 
 // Installs & configures refind on system
-auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -> bool;
+auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -> Result<void>;
 
 // Installs Limine on system
-auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> bool;
+auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> Result<void>;
 
 // Generate /etc/default/limine (limine entry) content
 auto gen_limine_entry_config(const std::vector<std::string>& kernel_params, std::optional<std::string_view> esp_path = std::nullopt) noexcept -> std::string;
