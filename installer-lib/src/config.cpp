@@ -28,13 +28,13 @@ auto apply_hw_clock(SystemSettings::HwClock hw_clock, std::string_view mountpoin
     spdlog::info("Setting hw_clock: {}", (hw_clock == SystemSettings::HwClock::UTC) ? "utc"sv : "localtime"sv);
     switch (hw_clock) {
     case SystemSettings::HwClock::UTC: {
-        if (!gucc::hwclock::set_hwclock_utc(mountpoint)) {
+        if (auto res = gucc::hwclock::set_hwclock_utc(mountpoint); !res) {
             return std::unexpected("failed to set UTC hwclock");
         }
         break;
     }
     case SystemSettings::HwClock::Localtime: {
-        if (!gucc::hwclock::set_hwclock_localtime(mountpoint)) {
+        if (auto res = gucc::hwclock::set_hwclock_localtime(mountpoint); !res) {
             return std::unexpected("failed to set localtime hwclock");
         }
         break;
