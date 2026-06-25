@@ -11,7 +11,7 @@ using namespace std::string_view_literals;
 
 namespace gucc::user {
 
-auto enable_autologin(std::string_view displaymanager, std::string_view username, std::string_view root_mountpoint) noexcept -> bool {
+auto enable_autologin(std::string_view displaymanager, std::string_view username, std::string_view root_mountpoint) noexcept -> Result<void> {
     // TODO(vnepogodin): check for failed commands
 
     // enable autologin
@@ -27,14 +27,12 @@ auto enable_autologin(std::string_view displaymanager, std::string_view username
 
         // create autologin group
         if (!user::create_group("autologin"sv, root_mountpoint, true)) {
-            spdlog::error("Failed to create autologin group");
-            return false;
+            return make_error(ErrorCode::SubprocessFailed, "Failed to create autologin group");
         }
         // add group to user
         const auto& groupadd_cmd = fmt::format(FMT_COMPILE("gpasswd -a {} autologin"), username);
         if (!utils::arch_chroot_checked(groupadd_cmd, root_mountpoint)) {
-            spdlog::error("Failed to add autologin group to user: {}", username);
-            return false;
+            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to add autologin group to user: {}", username));
         }
     } else if (displaymanager == "plasmalogin"sv) {
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' {}/etc/plasmalogin.conf"), username, root_mountpoint));
@@ -44,7 +42,7 @@ auto enable_autologin(std::string_view displaymanager, std::string_view username
         utils::exec(fmt::format(FMT_COMPILE("sed -i 's/^# autologin=dgod/autologin={}/g' {}/etc/lxdm/lxdm.conf"), username, root_mountpoint));
     }
 
-    return true;
+    return {};
 }
 
 }  // namespace gucc::user

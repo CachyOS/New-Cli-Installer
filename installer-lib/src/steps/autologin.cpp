@@ -26,8 +26,8 @@ auto autologin(const UserSettings& user, const InstallContext& ctx) noexcept -> 
     }
 
     const auto dm_name = gucc::display_manager::to_string(*dm);
-    if (!gucc::user::enable_autologin(dm_name, user.username, ctx.mountpoint)) {
-        return std::unexpected(fmt::format("enable_autologin failed for dm={} user={}", dm_name, user.username));
+    if (auto res = gucc::user::enable_autologin(dm_name, user.username, ctx.mountpoint); !res) {
+        return std::unexpected(fmt::format("enable_autologin failed for dm={} user={}: {}", dm_name, user.username, res.error().context));
     }
     return {};
 }
