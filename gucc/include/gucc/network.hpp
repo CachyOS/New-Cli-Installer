@@ -1,6 +1,8 @@
 #ifndef NETWORK_HPP
 #define NETWORK_HPP
 
+#include "gucc/error.hpp"
+
 #include <cstdint>      // for uint8_t
 #include <optional>     // for optional
 #include <string>       // for string
@@ -92,7 +94,7 @@ struct WifiPskConfig {
 /// <root>/etc/NetworkManager/system-connections/<filename>.
 auto write_connection(std::string_view filename,
     std::string_view body,
-    std::string_view root_mountpoint) noexcept -> bool;
+    std::string_view root_mountpoint) noexcept -> Result<void>;
 
 /// Copy every .nmconnection file from @p source_dir into the target's
 /// NetworkManager system-connections directory. Each copied file is

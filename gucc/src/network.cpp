@@ -134,26 +134,23 @@ auto make_wifi_psk_profile(std::string_view id,
 
 auto write_connection(std::string_view filename,
     std::string_view body,
-    std::string_view root_mountpoint) noexcept -> bool {
+    std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto target_dir = fs::path{root_mountpoint} / kSystemConnectionsRel;
     std::error_code ec;
     fs::create_directories(target_dir, ec);
     if (ec) {
-        spdlog::error("network: failed to create {}: {}", target_dir.string(), ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("network: failed to create {}: {}", target_dir.string(), ec.message()));
     }
     const auto target_path = (target_dir / fs::path{filename}).string();
     if (!file_utils::create_file_for_overwrite(target_path, body)) {
-        spdlog::error("network: failed to write {}", target_path);
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("network: failed to write {}", target_path));
     }
     fs::permissions(target_path, kConnectionMode, fs::perm_options::replace, ec);
     if (ec) {
-        spdlog::error("network: failed to set 0600 on {}: {}", target_path, ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("network: failed to set 0600 on {}: {}", target_path, ec.message()));
     }
     spdlog::info("network: connection written to {}", target_path);
-    return true;
+    return {};
 }
 
 auto copy_connections_from(std::string_view source_dir,
