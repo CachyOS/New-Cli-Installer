@@ -6,7 +6,7 @@
 #include <algorithm>  // for contains, for_each
 #include <ranges>     // for ranges::*
 
-#include <spdlog/spdlog.h>
+#include <fmt/format.h>
 
 using namespace std::string_view_literals;
 
@@ -33,12 +33,11 @@ auto get_available_profile_names() noexcept -> std::vector<std::string> {
     return filtered_profile_names;
 }
 
-auto install_available_profiles(std::string_view root_mountpoint, utils::SubProcess& child) noexcept -> bool {
+auto install_available_profiles(std::string_view root_mountpoint, utils::SubProcess& child) noexcept -> Result<void> {
     if (!utils::arch_chroot_follow("chwd -a -f"sv, root_mountpoint, child)) {
-        spdlog::error("Failed to run chwd -a -f on {}", root_mountpoint);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run chwd -a -f on {}", root_mountpoint));
     }
-    return true;
+    return {};
 }
 
 }  // namespace gucc::chwd

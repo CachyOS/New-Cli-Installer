@@ -1,6 +1,8 @@
 #ifndef CHWD_HPP
 #define CHWD_HPP
 
+#include "gucc/error.hpp"
+
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -18,7 +20,7 @@ auto get_all_profile_names() noexcept -> std::vector<std::string>;
 auto get_available_profile_names() noexcept -> std::vector<std::string>;
 
 // Installs possible profiles for the hardware using chwd -a
-auto install_available_profiles(std::string_view root_mountpoint, utils::SubProcess& child) noexcept -> bool;
+auto install_available_profiles(std::string_view root_mountpoint, utils::SubProcess& child) noexcept -> Result<void>;
 
 }  // namespace gucc::chwd
 

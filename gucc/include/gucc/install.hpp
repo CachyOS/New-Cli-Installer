@@ -1,6 +1,7 @@
 #ifndef INSTALL_HPP
 #define INSTALL_HPP
 
+#include "gucc/error.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/subprocess.hpp"
@@ -30,7 +31,7 @@ struct InstallConfig {
     std::vector<std::string> services_to_enable{};
 };
 
-[[nodiscard]] auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcept -> bool;
+[[nodiscard]] auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcept -> Result<void>;
 
 }  // namespace gucc::install
 

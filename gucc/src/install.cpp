@@ -1,5 +1,6 @@
 #include "gucc/install.hpp"
 #include "gucc/chwd.hpp"
+#include "gucc/error.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
 #include "gucc/initcpio.hpp"
@@ -70,17 +71,15 @@ auto run_rate_mirrors(gucc::utils::SubProcess& child) noexcept -> bool {
 
 namespace gucc::install {
 
-auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcept -> bool {
+auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcept -> Result<void> {
     const auto& mountpoint = config.mountpoint;
 
     // Validate required fields
     if (config.keymap.empty()) {
-        spdlog::error("keymap must not be empty");
-        return false;
+        return make_error(ErrorCode::InvalidArgument, fmt::format("keymap must not be empty"));
     }
     if (config.mountpoint.empty()) {
-        spdlog::error("mountpoint must not be empty");
-        return false;
+        return make_error(ErrorCode::InvalidArgument, fmt::format("mountpoint must not be empty"));
     }
 
     // 1. Create obligatory directories on target
@@ -88,28 +87,24 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
         std::error_code ec;
         ::fs::create_directories(fmt::format(FMT_COMPILE("{}/etc"), mountpoint), ec);
         if (ec) {
-            spdlog::error("Failed to create /etc directory on target: {}", ec.message());
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("Failed to create /etc directory on target: {}", ec.message()));
         }
     }
 
     // 2. Set console keymap (needed for mkinitcpio hook)
     spdlog::info("Setting up vconsole");
     if (auto res = gucc::locale::set_keymap(config.keymap, mountpoint); !res) {
-        spdlog::error("Failed to set keymap '{}': {}", config.keymap, res.error().context);
-        return false;
+        return res;
     }
 
     // 3. Rate mirrors before install
     if (!run_rate_mirrors(child)) {
-        spdlog::error("Failed to update rate-mirrors");
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to update rate-mirrors"));
     }
 
     // 4. Run pacstrap
     if (!gucc::utils::run_pacstrap(mountpoint, config.packages, config.hostcache, child)) {
-        spdlog::error("pacstrap failed");
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("pacstrap failed"));
     }
 
     // 5. Copy host files into target
@@ -118,43 +113,37 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
         std::error_code ec;
         ::fs::copy_file(src, dst, ::fs::copy_options::overwrite_existing, ec);
         if (ec) {
-            spdlog::error("Failed to copy '{}' -> '{}': {}", src, dst, ec.message());
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("Failed to copy '{}' -> '{}': {}", src, dst, ec.message()));
         }
     }
 
     // 6. Configure mkinitcpio
     const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
-    if (!gucc::initcpio::setup_initcpio_config(initcpio_path, config.initcpio_config)) {
-        spdlog::error("Failed to setup initcpio config");
-        return false;
+    if (auto res = gucc::initcpio::setup_initcpio_config(initcpio_path, config.initcpio_config); !res) {
+        return res;
     }
 
     // 7. Regenerate initramfs with the new mkinitcpio config
     spdlog::info("Regenerating initramfs...");
     if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint, child)) {
-        spdlog::error("Failed to regenerate initramfs");
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to regenerate initramfs"));
     }
 
     // 8. Generate fstab
     if (!gucc::fs::run_genfstab_on_mount(mountpoint)) {
-        spdlog::error("Failed to generate fstab");
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to generate fstab"));
     }
 
     // 9. Install hardware drivers
-    if (!gucc::chwd::install_available_profiles(mountpoint, child)) {
-        spdlog::error("Failed to install chwd drivers");
-        return false;
+    if (auto res = gucc::chwd::install_available_profiles(mountpoint, child); !res) {
+        return res;
     }
 
     // 9. Enable required systemd services for the configuration
     if (config.is_zfs) {
         for (auto&& service_name : {"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv}) {
             if (!gucc::services::enable_systemd_service(service_name, mountpoint)) {
-                spdlog::error("Failed to enable required ZFS service '{}'", service_name);
-                return false;
+                return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to enable required ZFS service '{}'", service_name));
             }
         }
     }
@@ -162,17 +151,18 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
     // 10. Enable additional services from config
     for (const auto& service_name : config.services_to_enable) {
         if (!gucc::services::enable_systemd_service(service_name, mountpoint)) {
-            spdlog::error("Failed to enable service '{}'", service_name);
-            return false;
+            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to enable service '{}'", service_name));
         }
     }
 
     // 11. ZFS-specific: copy zpool cachefile
     if (config.is_zfs) {
-        return copy_zfs_cachefile(mountpoint);
+        if (!copy_zfs_cachefile(mountpoint)) {
+            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to copy ZFS zpool cachefile"));
+        }
     }
 
-    return true;
+    return {};
 }
 
 }  // namespace gucc::install
