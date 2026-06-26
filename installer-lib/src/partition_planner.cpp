@@ -234,12 +234,18 @@ auto encrypt_partition(const LuksFormatRequest& req) noexcept
     if (auto v = validate_luks_inputs(req.device, req.mapper_name, req.passphrase); !v) {
         return v;
     }
-    if (!gucc::crypto::luks1_format(req.passphrase, req.device, req.extra_flags)) {
-        return std::unexpected(fmt::format("failed to format LUKS partition {}", req.device));
+    const auto format_ok = req.version == LuksVersion::Luks2
+        ? gucc::crypto::luks2_format(req.passphrase, req.device, req.extra_flags)
+        : gucc::crypto::luks1_format(req.passphrase, req.device, req.extra_flags);
+    if (!format_ok) {
+        return std::unexpected(fmt::format("failed to format LUKS partition {}: {}", req.device, format_ok.error().context));
     }
-    if (!gucc::crypto::luks1_open(req.passphrase, req.device, req.mapper_name)) {
-        return std::unexpected(fmt::format("failed to open LUKS partition {} as {}",
-            req.device, req.mapper_name));
+    const auto open_ok = req.version == LuksVersion::Luks2
+        ? gucc::crypto::luks2_open(req.passphrase, req.device, req.mapper_name)
+        : gucc::crypto::luks1_open(req.passphrase, req.device, req.mapper_name);
+    if (!open_ok) {
+        return std::unexpected(fmt::format("failed to open LUKS partition {} as {}: {}",
+            req.device, req.mapper_name, open_ok.error().context));
     }
     return {};
 }
@@ -249,9 +255,12 @@ auto open_encrypted_partition(const LuksOpenRequest& req) noexcept
     if (auto v = validate_luks_inputs(req.device, req.mapper_name, req.passphrase); !v) {
         return v;
     }
-    if (!gucc::crypto::luks1_open(req.passphrase, req.device, req.mapper_name)) {
-        return std::unexpected(fmt::format("failed to open LUKS partition {} as {}",
-            req.device, req.mapper_name));
+    const auto res = req.version == LuksVersion::Luks2
+        ? gucc::crypto::luks2_open(req.passphrase, req.device, req.mapper_name)
+        : gucc::crypto::luks1_open(req.passphrase, req.device, req.mapper_name);
+    if (!res) {
+        return std::unexpected(fmt::format("failed to open LUKS partition {} as {}: {}",
+            req.device, req.mapper_name, res.error().context));
     }
     return {};
 }
