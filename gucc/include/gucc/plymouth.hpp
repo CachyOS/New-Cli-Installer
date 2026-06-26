@@ -1,6 +1,8 @@
 #ifndef PLYMOUTH_HPP
 #define PLYMOUTH_HPP
 
+#include "gucc/error.hpp"
+
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -15,7 +17,7 @@ namespace gucc::plymouth {
 
 /// Set the system default boot-splash theme by invoking
 /// `plymouth-set-default-theme <theme>` inside the target chroot.
-auto set_default_theme(std::string_view theme, std::string_view root_mountpoint) noexcept -> bool;
+auto set_default_theme(std::string_view theme, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::plymouth
 

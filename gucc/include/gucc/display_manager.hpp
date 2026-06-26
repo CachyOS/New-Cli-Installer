@@ -1,6 +1,8 @@
 #ifndef DISPLAY_MANAGER_HPP
 #define DISPLAY_MANAGER_HPP
 
+#include "gucc/error.hpp"
+
 #include <cstdint>      // for uint8_t
 #include <optional>     // for optional
 #include <span>         // for span
@@ -35,8 +37,8 @@ enum class Kind : std::uint8_t {
 [[nodiscard]] auto detect_installed(std::string_view root_mountpoint) noexcept -> std::optional<Kind>;
 
 /// Enables the DM systemd unit on the target.
-/// Returns false when the unit doesn't exist or systemctl enable fails.
-auto enable(Kind kind, std::string_view root_mountpoint) noexcept -> bool;
+/// Fails when the unit doesn't exist or systemctl enable fails.
+auto enable(Kind kind, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 /// Pick a non-default LightDM greeter by scanning @p xgreeters_dir.
 /// When multiple greeters are present the lexicographically first one is
@@ -46,7 +48,7 @@ auto enable(Kind kind, std::string_view root_mountpoint) noexcept -> bool;
 
 /// Configure LightDM to use a non-default greeter when one is installed
 /// on the target.
-auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> bool;
+auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::display_manager
 

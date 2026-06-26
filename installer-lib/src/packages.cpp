@@ -28,6 +28,15 @@ namespace {
 
 using cachyos::installer::InstallContext;
 
+auto apply_service_action(const gucc::profile::ServiceEntry& service, std::string_view mountpoint) noexcept -> gucc::Result<void> {
+    if (service.is_user_service) {
+        return gucc::services::enable_user_systemd_service(service.name, mountpoint);
+    } else if (service.action == gucc::profile::ServiceAction::Disable) {
+        return gucc::services::disable_systemd_service(service.name, mountpoint);
+    }
+    return gucc::services::enable_systemd_service(service.name, mountpoint);
+}
+
 auto apply_services(const std::vector<gucc::profile::ServiceEntry>& services, std::string_view mountpoint) noexcept -> bool {
     for (const auto& entry : services) {
         if (!gucc::services::systemd_unit_exists(entry.name, mountpoint)) {
@@ -44,24 +53,17 @@ auto apply_services(const std::vector<gucc::profile::ServiceEntry>& services, st
             }
             continue;
         }
-        bool ok = false;
-        if (entry.is_user_service) {
-            ok = gucc::services::enable_user_systemd_service(entry.name, mountpoint);
-        } else if (entry.action == gucc::profile::ServiceAction::Disable) {
-            ok = gucc::services::disable_systemd_service(entry.name, mountpoint);
-        } else {
-            ok = gucc::services::enable_systemd_service(entry.name, mountpoint);
-        }
-        if (ok) {
+        auto res = apply_service_action(entry, mountpoint);
+        if (res) {
             const auto& status_str = (entry.action == gucc::profile::ServiceAction::Disable)
                 ? "disabled"sv
                 : "enabled"sv;
             spdlog::info("{} service '{}'", status_str, entry.name);
         } else if (entry.is_urgent) {
-            spdlog::error("failed to configure required service '{}'", entry.name);
+            spdlog::error("failed to configure required service '{}': {}", entry.name, res.error().context);
             return false;
         } else {
-            spdlog::warn("failed to configure optional service '{}'", entry.name);
+            spdlog::warn("failed to configure optional service '{}': {}", entry.name, res.error().context);
         }
     }
     return true;
@@ -157,8 +159,8 @@ auto configure_desktop_extras(const InstallContext& ctx,
     if (gucc::plymouth::is_installed(mountpoint)) {
         spdlog::info("Plymouth detected in target, configuring boot splash");
 
-        if (!gucc::plymouth::set_default_theme("cachyos-bootanimation"sv, mountpoint)) {
-            spdlog::error("Failed to set plymouth theme");
+        if (auto res = gucc::plymouth::set_default_theme("cachyos-bootanimation"sv, mountpoint); !res) {
+            spdlog::error("Failed to set plymouth theme: {}", res.error().context);
         }
 
         const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
@@ -254,11 +256,13 @@ auto enable_services(const InstallContext& ctx) noexcept
         const auto detected = gucc::display_manager::detect_installed(mountpoint);
         if (!detected) {
             spdlog::debug("No display manager units found on target yet. Skipping DM enablement..");
-        } else if (!gucc::display_manager::enable(*detected, mountpoint)) {
-            spdlog::error("Failed to enable display manager '{}'", gucc::display_manager::to_string(*detected));
+        } else if (auto res = gucc::display_manager::enable(*detected, mountpoint); !res) {
+            spdlog::error("Failed to enable display manager '{}': {}", gucc::display_manager::to_string(*detected), res.error().context);
         }
         if (detected == gucc::display_manager::Kind::Lightdm) {
-            gucc::display_manager::configure_lightdm_greeter(mountpoint);
+            if (auto res = gucc::display_manager::configure_lightdm_greeter(mountpoint); !res) {
+                spdlog::error("Failed to configure lightdm greeter: {}", res.error().context);
+            }
         }
     }
 

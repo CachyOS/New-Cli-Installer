@@ -48,14 +48,13 @@ auto list_themes(std::string_view root_mountpoint) noexcept -> std::vector<std::
     return themes;
 }
 
-auto set_default_theme(std::string_view theme, std::string_view root_mountpoint) noexcept -> bool {
+auto set_default_theme(std::string_view theme, std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto cmd = fmt::format(FMT_COMPILE("plymouth-set-default-theme {}"), theme);
     if (!utils::arch_chroot_checked(cmd, root_mountpoint)) {
-        spdlog::error("plymouth: failed to set default theme to '{}' on '{}'", theme, root_mountpoint);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("plymouth: failed to set default theme to '{}' on '{}'", theme, root_mountpoint));
     }
     spdlog::info("plymouth: default theme set to '{}'", theme);
-    return true;
+    return {};
 }
 
 }  // namespace gucc::plymouth

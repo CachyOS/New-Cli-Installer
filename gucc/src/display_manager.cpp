@@ -11,6 +11,7 @@
 #include <system_error>
 #include <vector>
 
+#include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
 namespace fs = std::filesystem;
@@ -38,6 +39,7 @@ auto known_kinds() noexcept -> std::span<const Kind> {
     return {kPreferred};
 }
 
+// TODO(vnepogodin): refactor using staticmap
 auto to_string(Kind k) noexcept -> std::string_view {
     switch (k) {
     case Kind::Gdm:
@@ -76,18 +78,16 @@ auto detect_installed(std::string_view root_mountpoint) noexcept -> std::optiona
     return *it;
 }
 
-auto enable(Kind kind, std::string_view root_mountpoint) noexcept -> bool {
+auto enable(Kind kind, std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto unit = to_string(kind);
     if (!services::systemd_unit_exists(unit, root_mountpoint)) {
-        spdlog::debug("display_manager: unit '{}' not present on target, skipping enable", unit);
-        return false;
+        return make_error(ErrorCode::NotFound, fmt::format("display_manager: unit '{}' not present on target, skipping enable", unit));
     }
     if (!services::enable_systemd_service(unit, root_mountpoint)) {
-        spdlog::error("display_manager: failed to enable '{}'", unit);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("display_manager: failed to enable '{}'", unit));
     }
     spdlog::info("display_manager: enabled '{}'", unit);
-    return true;
+    return {};
 }
 
 auto pick_lightdm_greeter(std::string_view xgreeters_dir) noexcept -> std::optional<std::string> {
@@ -117,18 +117,18 @@ auto pick_lightdm_greeter(std::string_view xgreeters_dir) noexcept -> std::optio
     return candidates.front();
 }
 
-auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> bool {
+auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto xgreeters_dir = (fs::path{root_mountpoint} / "usr" / "share" / "xgreeters").string();
     const auto picked        = pick_lightdm_greeter(xgreeters_dir);
     if (!picked) {
-        return true;
+        return {};
     }
 
     const auto conf_path = (fs::path{root_mountpoint} / "etc" / "lightdm" / "lightdm.conf").string();
     std::error_code ec;
     if (!fs::exists(conf_path, ec)) {
         spdlog::debug("display_manager: {} absent, skipping greeter config", conf_path);
-        return true;
+        return {};
     }
 
     const auto contents = file_utils::read_whole_file(conf_path);
@@ -150,11 +150,10 @@ auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> boo
     }
 
     if (!file_utils::create_file_for_overwrite(conf_path, rewritten)) {
-        spdlog::error("display_manager: failed to write {}", conf_path);
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("display_manager: failed to write {}", conf_path));
     }
     spdlog::info("display_manager: lightdm greeter set to '{}'", *picked);
-    return true;
+    return {};
 }
 
 }  // namespace gucc::display_manager
