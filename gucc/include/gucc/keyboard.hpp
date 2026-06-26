@@ -1,6 +1,8 @@
 #ifndef KEYBOARD_HPP
 #define KEYBOARD_HPP
 
+#include "gucc/error.hpp"
+
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -45,8 +47,8 @@ struct Config {
 /// Apply the keyboard configuration to the target system rooted at
 /// @p root_mountpoint.
 /// A config with both unset succeeds without touching the target.
-/// Returns false on any filesystem error.
-auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> bool;
+/// Returns an error on any filesystem error.
+auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::keyboard
 

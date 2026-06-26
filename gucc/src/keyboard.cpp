@@ -56,7 +56,7 @@ auto make_x11_keymap_conf(std::string_view layout,
     return body;
 }
 
-auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> bool {
+auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> Result<void> {
     const fs::path root{root_mountpoint};
 
     if (cfg.console_keymap) {
@@ -65,13 +65,11 @@ auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> bool
         std::error_code ec;
         fs::create_directories(etc_dir, ec);
         if (ec) {
-            spdlog::error("keyboard: failed to create {}: {}", etc_dir.string(), ec.message());
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("keyboard: failed to create {}: {}", etc_dir.string(), ec.message()));
         }
         const auto body = make_vconsole_conf(*cfg.console_keymap, as_view(cfg.console_font));
         if (!file_utils::create_file_for_overwrite(vconsole_path, body)) {
-            spdlog::error("keyboard: failed to write {}", vconsole_path);
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("keyboard: failed to write {}", vconsole_path));
         }
         spdlog::info("keyboard: vconsole.conf written to {}", vconsole_path);
     }
@@ -82,19 +80,17 @@ auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> bool
         std::error_code ec;
         fs::create_directories(xorg_dir, ec);
         if (ec) {
-            spdlog::error("keyboard: failed to create {}: {}", xorg_dir.string(), ec.message());
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("keyboard: failed to create {}: {}", xorg_dir.string(), ec.message()));
         }
         const auto body = make_x11_keymap_conf(*cfg.x11_layout,
             as_view(cfg.x11_model), as_view(cfg.x11_variant), as_view(cfg.x11_options));
         if (!file_utils::create_file_for_overwrite(conf_path, body)) {
-            spdlog::error("keyboard: failed to write {}", conf_path);
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("keyboard: failed to write {}", conf_path));
         }
         spdlog::info("keyboard: X11 keymap written to {}", conf_path);
     }
 
-    return true;
+    return {};
 }
 
 }  // namespace gucc::keyboard
