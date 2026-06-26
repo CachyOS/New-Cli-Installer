@@ -77,27 +77,24 @@ auto detect_lvm() noexcept -> LvmInfo {
     return info;
 }
 
-auto activate_lvm() noexcept -> bool {
+auto activate_lvm() noexcept -> Result<void> {
     // Load dm-mod kernel module
     if (!utils::exec_checked("modprobe -v dm-mod &>>/tmp/cachyos-install.log")) {
-        spdlog::error("Failed to load dm-mod kernel module");
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to load dm-mod kernel module"));
     }
 
     // Scan for volume groups
     if (!utils::exec_checked("vgscan -v 1>/dev/null 2>>/tmp/cachyos-install.log")) {
-        spdlog::error("Failed to scan for volume groups");
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to scan for volume groups"));
     }
 
     // Activate all volume groups
     if (!utils::exec_checked("vgchange -ay -v 1>/dev/null 2>>/tmp/cachyos-install.log")) {
-        spdlog::error("Failed to activate logical volumes");
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to activate logical volumes"));
     }
 
     spdlog::info("LVM volumes activated successfully");
-    return true;
+    return {};
 }
 
 auto show_volume_groups() noexcept -> std::vector<std::pair<std::string, std::string>> {

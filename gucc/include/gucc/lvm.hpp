@@ -1,6 +1,8 @@
 #ifndef LVM_HPP
 #define LVM_HPP
 
+#include "gucc/error.hpp"
+
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for pair
@@ -23,7 +25,7 @@ struct LvmInfo {
 auto detect_lvm() noexcept -> LvmInfo;
 
 // Activate LVM volumes (load dm-mod, vgscan, vgchange)
-auto activate_lvm() noexcept -> bool;
+auto activate_lvm() noexcept -> Result<void>;
 
 // Show volume groups with their sizes
 auto show_volume_groups() noexcept -> std::vector<std::pair<std::string, std::string>>;

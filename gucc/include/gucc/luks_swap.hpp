@@ -1,6 +1,8 @@
 #ifndef LUKS_SWAP_HPP
 #define LUKS_SWAP_HPP
 
+#include "gucc/error.hpp"
+
 #include <cstdint>      // for uint32_t
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -35,14 +37,14 @@ struct RandomKeyConfig {
 
 /// Append the crypttab entry for @p cfg to <root>/etc/crypttab.
 auto add_crypttab_entry(const RandomKeyConfig& cfg,
-    std::string_view root_mountpoint) noexcept -> bool;
+    std::string_view root_mountpoint) noexcept -> Result<void>;
 
 /// Append the fstab entry for /dev/mapper/<mapper_name> to
 /// <root>/etc/fstab.
-auto add_fstab_entry(std::string_view mapper_name, std::string_view root_mountpoint) noexcept -> bool;
+auto add_fstab_entry(std::string_view mapper_name, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 /// Replace any existing swap line in fstab with the crypttab mapper entry.
-auto replace_swap_in_fstab(std::string_view mapper_name, std::string_view root_mountpoint) noexcept -> bool;
+auto replace_swap_in_fstab(std::string_view mapper_name, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::luks_swap
 

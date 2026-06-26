@@ -54,13 +54,12 @@ auto is_swap_type_line(std::string_view line) noexcept -> bool {
 template <typename ShouldDrop>
 auto rewrite_with_entry(std::string_view path,
     ShouldDrop should_drop,
-    std::string_view new_line) noexcept -> bool {
+    std::string_view new_line) noexcept -> Result<void> {
     const fs::path target{path};
     std::error_code ec;
     fs::create_directories(target.parent_path(), ec);
     if (ec) {
-        spdlog::error("luks_swap: failed to create {}: {}", target.parent_path().string(), ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("luks_swap: failed to create {}: {}", target.parent_path().string(), ec.message()));
     }
 
     std::string existing;
@@ -82,10 +81,9 @@ auto rewrite_with_entry(std::string_view path,
     rewritten.append(new_line);
 
     if (!file_utils::create_file_for_overwrite(path, rewritten)) {
-        spdlog::error("luks_swap: failed to write {}", std::string{path});
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("luks_swap: failed to write {}", std::string{path}));
     }
-    return true;
+    return {};
 }
 
 }  // namespace
@@ -107,24 +105,20 @@ auto make_fstab_line(std::string_view mapper_name) noexcept -> std::string {
 }
 
 auto add_crypttab_entry(const RandomKeyConfig& cfg,
-    std::string_view root_mountpoint) noexcept -> bool {
+    std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto path = (fs::path{root_mountpoint} / "etc" / "crypttab").string();
-    return rewrite_with_entry(path,
-        [name = cfg.mapper_name](std::string_view line) { return line_owns_name(line, name); },
-        make_crypttab_line(cfg));
+    return rewrite_with_entry(path, [name = cfg.mapper_name](std::string_view line) { return line_owns_name(line, name); }, make_crypttab_line(cfg));
 }
 
 auto add_fstab_entry(std::string_view mapper_name,
-    std::string_view root_mountpoint) noexcept -> bool {
+    std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto path  = (fs::path{root_mountpoint} / "etc" / "fstab").string();
     const auto first = fmt::format(FMT_COMPILE("/dev/mapper/{}"), mapper_name);
-    return rewrite_with_entry(path,
-        [&first](std::string_view line) { return line_owns_name(line, first); },
-        make_fstab_line(mapper_name));
+    return rewrite_with_entry(path, [&first](std::string_view line) { return line_owns_name(line, first); }, make_fstab_line(mapper_name));
 }
 
 auto replace_swap_in_fstab(std::string_view mapper_name,
-    std::string_view root_mountpoint) noexcept -> bool {
+    std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto path = (fs::path{root_mountpoint} / "etc" / "fstab").string();
     return rewrite_with_entry(path, is_swap_type_line, make_fstab_line(mapper_name));
 }
