@@ -1,6 +1,7 @@
 #ifndef INITCPIO_HPP
 #define INITCPIO_HPP
 
+#include "gucc/error.hpp"
 #include "gucc/partition_config.hpp"
 
 #include <string_view>  // for string_view
@@ -19,7 +20,7 @@ struct InitcpioConfig {
 
 // Configure mkinitcpio.conf for the given filesystem/encryption setup.
 // Builds hooks list from scratch matching calamares initcpiocfg logic.
-[[nodiscard]] auto setup_initcpio_config(std::string_view initcpio_path, const InitcpioConfig& config) noexcept -> bool;
+[[nodiscard]] auto setup_initcpio_config(std::string_view initcpio_path, const InitcpioConfig& config) noexcept -> Result<void>;
 
 }  // namespace gucc::initcpio
 

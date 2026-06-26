@@ -1,6 +1,7 @@
 #ifndef PARTITIONING_HPP
 #define PARTITIONING_HPP
 
+#include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
 
@@ -11,13 +12,13 @@
 namespace gucc::disk {
 
 // Erases disk
-auto erase_disk(std::string_view device) noexcept -> bool;
+auto erase_disk(std::string_view device) noexcept -> Result<void>;
 
 // Generates sfdisk commands from Partition scheme
 auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> std::string;
 
 // Runs disk partitioning using sfdisk command on device
-auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcept -> bool;
+auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcept -> Result<void>;
 
 // Generates a default partition schema for the device
 // For BIOS: Creates a single root partition
@@ -25,7 +26,7 @@ auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcep
 auto generate_default_partition_schema(std::string_view device, std::string_view boot_mountpoint, bool is_efi) noexcept -> std::vector<fs::Partition>;
 
 // Runs disk partitioning using Partition scheme and erasing device
-auto make_clean_partschema(std::string_view device, const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> bool;
+auto make_clean_partschema(std::string_view device, const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> Result<void>;
 
 /// @brief Generates a partition schema from configuration
 /// @param device The target device (e.g., "/dev/sda")

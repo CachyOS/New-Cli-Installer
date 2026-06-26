@@ -101,12 +101,12 @@ bool Initcpio::parse_file() noexcept {
 namespace gucc::initcpio {
 
 auto setup_initcpio_config(std::string_view initcpio_path,
-    const InitcpioConfig& config) noexcept -> bool {
+    const InitcpioConfig& config) noexcept -> Result<void> {
     using gucc::fs::FilesystemType;
 
     auto initcpio = detail::Initcpio{initcpio_path};
     if (!initcpio.parse_file()) {
-        return false;
+        return make_error(ErrorCode::ParseError, fmt::format("initcpio: failed to parse config '{}'", initcpio_path));
     }
 
     // don't read previous/existing hooks, and instead overwrite with the ones we expect
@@ -182,7 +182,10 @@ auto setup_initcpio_config(std::string_view initcpio_path,
 
     // write/flush to disk
     initcpio.hooks = std::move(hooks);
-    return initcpio.write();
+    if (!initcpio.write()) {
+        return make_error(ErrorCode::FileIo, fmt::format("initcpio: failed to write config '{}'", initcpio_path));
+    }
+    return {};
 }
 
 }  // namespace gucc::initcpio
