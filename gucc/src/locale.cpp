@@ -16,7 +16,7 @@ using namespace std::string_view_literals;
 
 namespace gucc::locale {
 
-auto prepare_locale_set(std::string_view locale, std::string_view mountpoint) noexcept -> bool {
+auto prepare_locale_set(std::string_view locale, std::string_view mountpoint) noexcept -> Result<void> {
     const auto& locale_config_path = fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint);
     const auto& locale_gen_path    = fmt::format(FMT_COMPILE("{}/etc/locale.gen"), mountpoint);
 
@@ -36,8 +36,7 @@ LC_MESSAGES="{0}"
     {
         const auto& locale_config_text = fmt::format(LOCALE_CONFIG_PART, locale);
         if (!file_utils::create_file_for_overwrite(locale_config_path, locale_config_text)) {
-            spdlog::error("Failed to open locale config for writing {}", locale_config_path);
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("Failed to open locale config for writing {}", locale_config_path));
         }
     }
 
@@ -45,23 +44,21 @@ LC_MESSAGES="{0}"
     utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
 
     // NOTE: maybe we should also write into /etc/default/locale if /etc/default exists and is a dir?
-    return true;
+    return {};
 }
 
-auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -> bool {
+auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -> Result<void> {
     // Prepare locale
-    if (!locale::prepare_locale_set(locale, mountpoint)) {
-        spdlog::error("Failed to prepare locale files for '{}'", locale);
-        return false;
+    if (auto res = locale::prepare_locale_set(locale, mountpoint); !res) {
+        return res;
     }
 
     // Generate locales
     if (!utils::arch_chroot_checked("locale-gen", mountpoint)) {
-        spdlog::error("Failed to run locale-gen with locale '{}'", locale);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run locale-gen with locale '{}'", locale));
     }
 
-    return true;
+    return {};
 }
 
 auto parse_locale_gen(std::string_view content) noexcept -> std::vector<std::string> {
@@ -97,7 +94,7 @@ auto get_possible_locales() noexcept -> std::vector<std::string> {
     return parse_locale_gen(locales);
 }
 
-auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> bool {
+auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> Result<void> {
     // TODO(vnepogodin): should use localectl instead of doing manually
     static constexpr auto XKBMAP_CONFIG = R"(Section "InputClass"
     Identifier "system-keyboard"
@@ -113,18 +110,16 @@ EndSection
     std::error_code ec{};
     std::filesystem::create_directories(xorg_conf_dir, ec);
     if (ec) {
-        spdlog::error("Failed to create xorg.conf.d directory: {}", ec.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to create xorg.conf.d directory: {}", ec.message()));
     }
 
     const auto& config_content = fmt::format(XKBMAP_CONFIG, xkbmap);
     if (!file_utils::create_file_for_overwrite(keyboard_conf_path, config_content)) {
-        spdlog::error("Failed to write keyboard config to {}", keyboard_conf_path);
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to write keyboard config to {}", keyboard_conf_path));
     }
 
     spdlog::info("X11 keyboard layout set to '{}'", xkbmap);
-    return true;
+    return {};
 }
 
 auto get_x11_keymap_layouts() noexcept -> std::vector<std::string> {
@@ -136,16 +131,15 @@ auto get_x11_keymap_layouts() noexcept -> std::vector<std::string> {
     return utils::make_multiline(layouts);
 }
 
-auto set_keymap(std::string_view keymap, std::string_view mountpoint) noexcept -> bool {
+auto set_keymap(std::string_view keymap, std::string_view mountpoint) noexcept -> Result<void> {
     const auto& vconsole_path = fmt::format(FMT_COMPILE("{}/etc/vconsole.conf"), mountpoint);
     const auto& vconsole_conf = fmt::format(FMT_COMPILE("KEYMAP={}\n"), keymap);
     if (!file_utils::create_file_for_overwrite(vconsole_path, vconsole_conf)) {
-        spdlog::error("Failed to write vconsole.conf to {}", vconsole_path);
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to write vconsole.conf to {}", vconsole_path));
     }
 
     spdlog::info("Console keymap set to '{}' in {}", keymap, vconsole_path);
-    return true;
+    return {};
 }
 
 auto get_vconsole_keymap_list() noexcept -> std::vector<std::string> {

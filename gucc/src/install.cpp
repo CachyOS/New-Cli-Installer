@@ -95,8 +95,8 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
 
     // 2. Set console keymap (needed for mkinitcpio hook)
     spdlog::info("Setting up vconsole");
-    if (!gucc::locale::set_keymap(config.keymap, mountpoint)) {
-        spdlog::error("Failed to set keymap '{}'", config.keymap);
+    if (auto res = gucc::locale::set_keymap(config.keymap, mountpoint); !res) {
+        spdlog::error("Failed to set keymap '{}': {}", config.keymap, res.error().context);
         return false;
     }
 

@@ -60,16 +60,16 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     // Locale
     if (!settings.locale.empty()) {
         spdlog::info("Setting locale: {}", settings.locale);
-        if (!gucc::locale::set_locale(settings.locale, mountpoint)) {
-            return std::unexpected("failed to set locale");
+        if (auto res = gucc::locale::set_locale(settings.locale, mountpoint); !res) {
+            return std::unexpected(fmt::format("failed to set locale: {}", res.error().context));
         }
     }
 
     // Xkbmap
     if (!settings.xkbmap.empty()) {
         spdlog::info("Setting xkbmap: {}", settings.xkbmap);
-        if (!gucc::locale::set_xkbmap(settings.xkbmap, mountpoint)) {
-            return std::unexpected(fmt::format("failed to set xkbmap: {}", settings.xkbmap));
+        if (auto res = gucc::locale::set_xkbmap(settings.xkbmap, mountpoint); !res) {
+            return std::unexpected(fmt::format("failed to set xkbmap: {}: {}", settings.xkbmap, res.error().context));
         }
     }
 
@@ -85,8 +85,8 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     // Timezone
     if (!settings.timezone.empty()) {
         spdlog::info("Setting timezone: {}", settings.timezone);
-        if (!gucc::timezone::set_timezone(settings.timezone, mountpoint)) {
-            return std::unexpected(fmt::format("failed to set timezone: {}", settings.timezone));
+        if (auto res = gucc::timezone::set_timezone(settings.timezone, mountpoint); !res) {
+            return std::unexpected(fmt::format("failed to set timezone: {}: {}", settings.timezone, res.error().context));
         }
     }
 
@@ -144,8 +144,8 @@ auto set_root_password(std::string_view password, std::string_view mountpoint) n
 
 auto enable_autologin(std::string_view dm, std::string_view username, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    if (!gucc::user::enable_autologin(dm, username, mountpoint)) {
-        return std::unexpected("failed to enable autologin");
+    if (auto res = gucc::user::enable_autologin(dm, username, mountpoint); !res) {
+        return std::unexpected(fmt::format("failed to enable autologin: {}", res.error().context));
     }
     return {};
 }

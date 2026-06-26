@@ -1,6 +1,8 @@
 #ifndef LOCALE_HPP
 #define LOCALE_HPP
 
+#include "gucc/error.hpp"
+
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -8,17 +10,17 @@
 namespace gucc::locale {
 
 // Set system language
-auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -> bool;
+auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -> Result<void>;
 
 // Prepare system language.
 // Sets without updating system locale
-auto prepare_locale_set(std::string_view locale, std::string_view mountpoint) noexcept -> bool;
+auto prepare_locale_set(std::string_view locale, std::string_view mountpoint) noexcept -> Result<void>;
 
 // List possible locales
 auto get_possible_locales() noexcept -> std::vector<std::string>;
 
 // Set X11 keyboard layout
-auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> bool;
+auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> Result<void>;
 
 // Get available X11 keymap layouts from localectl
 auto get_x11_keymap_layouts() noexcept -> std::vector<std::string>;
@@ -29,7 +31,7 @@ auto get_x11_keymap_layouts() noexcept -> std::vector<std::string>;
 auto parse_locale_gen(std::string_view content) noexcept -> std::vector<std::string>;
 
 // Set console keymap
-auto set_keymap(std::string_view keymap, std::string_view mountpoint) noexcept -> bool;
+auto set_keymap(std::string_view keymap, std::string_view mountpoint) noexcept -> Result<void>;
 
 // Get available console keymaps from localectl
 auto get_vconsole_keymap_list() noexcept -> std::vector<std::string>;

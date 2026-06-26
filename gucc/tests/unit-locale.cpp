@@ -73,7 +73,7 @@ TEST_CASE("locale test")
     }
     SECTION("set locale at invalid file path")
     {
-        REQUIRE(!gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
+        REQUIRE_FALSE(gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
     }
     SECTION("set xkbmap layout")
     {
@@ -216,6 +216,6 @@ TEST_CASE("set vconsole keymap test")
     }
     SECTION("fail on invalid path")
     {
-        REQUIRE(!gucc::locale::set_keymap("us"sv, "/nonexistent/path/test-keymap"sv));
+        REQUIRE_FALSE(gucc::locale::set_keymap("us"sv, "/nonexistent/path/test-keymap"sv));
     }
 }
