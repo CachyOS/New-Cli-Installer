@@ -83,65 +83,57 @@ auto generate_homectl_args(const HomedUserConfig& config) noexcept -> std::vecto
     return args;
 }
 
-auto create_homed_user(const HomedUserConfig& config) noexcept -> bool {
+auto create_homed_user(const HomedUserConfig& config) noexcept -> Result<void> {
     if (config.username.empty() || config.password.empty()) {
-        spdlog::error("Cannot create homed user: username or password empty");
-        return false;
+        return make_error(ErrorCode::InvalidArgument, "Cannot create homed user: username or password empty");
     }
 
     spdlog::info("Creating homed user: {}", config.username);
     const auto& args = utils::join(generate_homectl_args(config), ' ');
     const auto& cmd  = fmt::format(FMT_COMPILE("NEWPASSWORD='{}' homectl create {} --password-change-now=true {}"), config.password, config.username, args);
     if (!utils::exec_checked(cmd)) {
-        spdlog::error("Failed to create homed user: {}", config.username);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create homed user: {}", config.username));
     }
-    return true;
+    return {};
 }
 
-auto activate_home(std::string_view username) noexcept -> bool {
+auto activate_home(std::string_view username) noexcept -> Result<void> {
     if (username.empty()) {
-        spdlog::error("Cannot activate home: username is empty");
-        return false;
+        return make_error(ErrorCode::InvalidArgument, "Cannot activate home: username is empty");
     }
 
     spdlog::info("Activating home for user: {}", username);
     const auto& cmd = fmt::format(FMT_COMPILE("homectl activate {}"), username);
     if (!utils::exec_checked(cmd)) {
-        spdlog::error("Failed to activate home for user: {}", username);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to activate home for user: {}", username));
     }
-    return true;
+    return {};
 }
 
-auto deactivate_home(std::string_view username) noexcept -> bool {
+auto deactivate_home(std::string_view username) noexcept -> Result<void> {
     if (username.empty()) {
-        spdlog::error("Cannot deactivate home: username is empty");
-        return false;
+        return make_error(ErrorCode::InvalidArgument, "Cannot deactivate home: username is empty");
     }
 
     spdlog::info("Deactivating home for user: {}", username);
     const auto& cmd = fmt::format(FMT_COMPILE("homectl deactivate {}"), username);
     if (!utils::exec_checked(cmd)) {
-        spdlog::error("Failed to deactivate home for user: {}", username);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to deactivate home for user: {}", username));
     }
-    return true;
+    return {};
 }
 
-auto remove_homed_user(std::string_view username) noexcept -> bool {
+auto remove_homed_user(std::string_view username) noexcept -> Result<void> {
     if (username.empty()) {
-        spdlog::error("Cannot remove homed user: username is empty");
-        return false;
+        return make_error(ErrorCode::InvalidArgument, "Cannot remove homed user: username is empty");
     }
 
     spdlog::info("Removing homed user: {}", username);
     const auto& cmd = fmt::format(FMT_COMPILE("homectl remove {}"), username);
     if (!utils::exec_checked(cmd)) {
-        spdlog::error("Failed to remove homed user: {}", username);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to remove homed user: {}", username));
     }
-    return true;
+    return {};
 }
 
 }  // namespace gucc::homed

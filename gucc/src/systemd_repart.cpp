@@ -149,43 +149,41 @@ auto generate_repart_config_content(const RepartPartitionConfig& config) noexcep
     return content;
 }
 
-auto write_repart_config(std::string_view dir_path, std::string_view filename, const RepartPartitionConfig& config) noexcept -> bool {
+auto write_repart_config(std::string_view dir_path, std::string_view filename, const RepartPartitionConfig& config) noexcept -> Result<void> {
     const auto dir = ::fs::path{dir_path};
     if (!::fs::exists(dir)) {
         std::error_code ec;
         if (!::fs::create_directories(dir, ec)) {
-            spdlog::error("Failed to create directory '{}': {}", dir_path, ec.message());
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("Failed to create directory '{}': {}", dir_path, ec.message()));
         }
     }
 
     const auto file_path = dir / filename;
     const auto content   = generate_repart_config_content(config);
     if (!file_utils::create_file_for_overwrite(file_path.string(), content)) {
-        spdlog::error("Failed to write repart config to '{}'", file_path.string());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to write repart config to '{}'", file_path.string()));
     }
 
     spdlog::debug("Wrote repart config to '{}'", file_path.string());
-    return true;
+    return {};
 }
 
-auto write_repart_configs(std::string_view dir_path, const std::vector<RepartPartitionConfig>& partitions) noexcept -> bool {
+auto write_repart_configs(std::string_view dir_path, const std::vector<RepartPartitionConfig>& partitions) noexcept -> Result<void> {
     std::size_t index = 0;
     for (const auto& partition : partitions) {
         const auto filename = fmt::format(FMT_COMPILE("{:02d}-{}.conf"), index * 10, partition.type);
-        if (!write_repart_config(dir_path, filename, partition)) {
-            return false;
+        if (auto res = write_repart_config(dir_path, filename, partition); !res) {
+            return res;
         }
 
         ++index;
     }
 
     spdlog::info("Wrote {} repart config files to '{}'", partitions.size(), dir_path);
-    return true;
+    return {};
 }
 
-auto run_systemd_repart(const RepartConfig& config) noexcept -> bool {
+auto run_systemd_repart(const RepartConfig& config) noexcept -> Result<void> {
     // Build the command
     std::string cmd = "systemd-repart";
 
@@ -226,11 +224,10 @@ auto run_systemd_repart(const RepartConfig& config) noexcept -> bool {
     // Execute the command
     spdlog::info("Executing: {}", cmd);
     if (!utils::exec_checked(cmd)) {
-        spdlog::error("systemd-repart command failed: {}", cmd);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("systemd-repart command failed: {}", cmd));
     }
 
-    return true;
+    return {};
 }
 
 auto preview_systemd_repart(const RepartConfig& config) noexcept -> std::string {

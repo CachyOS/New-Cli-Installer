@@ -1,6 +1,7 @@
 #ifndef SYSTEMD_REPART_HPP
 #define SYSTEMD_REPART_HPP
 
+#include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
 
@@ -130,21 +131,21 @@ struct RepartConfig final {
 /// @param dir_path The directory to write the config file to
 /// @param filename The config filename
 /// @param config The partition configuration
-/// @return true on success, false overwise
+/// @return empty Result on success, an Error otherwise
 [[nodiscard]] auto write_repart_config(std::string_view dir_path, std::string_view filename,
-    const RepartPartitionConfig& config) noexcept -> bool;
+    const RepartPartitionConfig& config) noexcept -> Result<void>;
 
 /// @brief Write all repart.d config files for a partition scheme
 /// @param dir_path The directory to write the config files to
 /// @param partitions The partition configurations
-/// @return true on success, false overwise
+/// @return empty Result on success, an Error otherwise
 [[nodiscard]] auto write_repart_configs(std::string_view dir_path,
-    const std::vector<RepartPartitionConfig>& partitions) noexcept -> bool;
+    const std::vector<RepartPartitionConfig>& partitions) noexcept -> Result<void>;
 
 /// @brief Execute systemd-repart with the given configuration
 /// @param config The repart configuration
-/// @return true on success, false overwise
-[[nodiscard]] auto run_systemd_repart(const RepartConfig& config) noexcept -> bool;
+/// @return empty Result on success, an Error otherwise
+[[nodiscard]] auto run_systemd_repart(const RepartConfig& config) noexcept -> Result<void>;
 
 /// @brief Preview systemd-repart changes
 /// @param config The repart configuration

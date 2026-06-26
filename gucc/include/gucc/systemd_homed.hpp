@@ -1,6 +1,8 @@
 #ifndef SYSTEMD_HOMED_HPP
 #define SYSTEMD_HOMED_HPP
 
+#include "gucc/error.hpp"
+
 #include <cstdint>      // for uint8_t, uint32_t
 #include <optional>     // for optional
 #include <string>       // for string
@@ -91,23 +93,23 @@ struct HomedUserConfig final {
 
 /// @brief Create a new user with homectl
 /// @param config The user configuration
-/// @return true on success, false otherwise
-[[nodiscard]] auto create_homed_user(const HomedUserConfig& config) noexcept -> bool;
+/// @return empty Result on success, an Error otherwise
+[[nodiscard]] auto create_homed_user(const HomedUserConfig& config) noexcept -> Result<void>;
 
 /// @brief Activate (unlock and mount) a user's home directory
 /// @param username The username to activate
-/// @return true on success, false otherwise
-[[nodiscard]] auto activate_home(std::string_view username) noexcept -> bool;
+/// @return empty Result on success, an Error otherwise
+[[nodiscard]] auto activate_home(std::string_view username) noexcept -> Result<void>;
 
 /// @brief Deactivate (unmount and lock) a user's home directory
 /// @param username The username to deactivate
-/// @return true on success, false otherwise
-[[nodiscard]] auto deactivate_home(std::string_view username) noexcept -> bool;
+/// @return empty Result on success, an Error otherwise
+[[nodiscard]] auto deactivate_home(std::string_view username) noexcept -> Result<void>;
 
 /// @brief Remove a homed-managed user and their home directory
 /// @param username The username to remove
-/// @return true on success, false otherwise
-[[nodiscard]] auto remove_homed_user(std::string_view username) noexcept -> bool;
+/// @return empty Result on success, an Error otherwise
+[[nodiscard]] auto remove_homed_user(std::string_view username) noexcept -> Result<void>;
 
 }  // namespace gucc::homed
 
