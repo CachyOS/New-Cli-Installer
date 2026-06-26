@@ -115,24 +115,22 @@ auto generate_fstab_content(const std::vector<Partition>& partitions) noexcept -
     return fstab_content;
 }
 
-auto generate_fstab(const std::vector<Partition>& partitions, std::string_view root_mountpoint) noexcept -> bool {
+auto generate_fstab(const std::vector<Partition>& partitions, std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto& fstab_filepath = fmt::format(FMT_COMPILE("{}/etc/fstab"), root_mountpoint);
     const auto& fstab_content  = fs::generate_fstab_content(partitions);
     if (!file_utils::create_file_for_overwrite(fstab_filepath, fstab_content)) {
-        spdlog::error("Failed to open fstab for writing {}", fstab_filepath);
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to open fstab for writing {}", fstab_filepath));
     }
-    return true;
+    return {};
 }
 
-auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> bool {
+auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto& fstab_filepath = fmt::format(FMT_COMPILE("{}/etc/fstab"), root_mountpoint);
 
     // run command to generate fstab
     const auto& fstab_cmd = fmt::format(FMT_COMPILE("genfstab -U -p {} > {}"), root_mountpoint, fstab_filepath);
     if (!utils::exec_checked(fstab_cmd)) {
-        spdlog::error("Failed to run genfstab: {}", fstab_cmd);
-        return false;
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run genfstab: {}", fstab_cmd));
     }
 
     // dump generated fstab file into the log
@@ -157,7 +155,7 @@ auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> bool {
             utils::exec(fmt::format(FMT_COMPILE("sed -e '\\|^{}[[:space:]]| s/^#*/#/' -i {}"), msource, fstab_filepath));
         }
     }
-    return true;
+    return {};
 }
 
 }  // namespace gucc::fs

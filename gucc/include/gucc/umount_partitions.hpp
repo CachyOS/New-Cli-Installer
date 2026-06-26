@@ -1,6 +1,8 @@
 #ifndef UMOUNT_PARTITIONS_HPP
 #define UMOUNT_PARTITIONS_HPP
 
+#include "gucc/error.hpp"
+
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -8,7 +10,7 @@
 namespace gucc::umount {
 
 // Umount partitions
-auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::string>& zfs_poolnames) noexcept -> bool;
+auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::string>& zfs_poolnames) noexcept -> Result<void>;
 
 }  // namespace gucc::umount
 

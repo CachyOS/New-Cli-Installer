@@ -1,6 +1,7 @@
 #ifndef BTRFS_HPP
 #define BTRFS_HPP
 
+#include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 
 #include <string>       // for string
@@ -15,17 +16,17 @@ struct BtrfsSubvolume final {
 };
 
 // Creates btrfs subvolume
-auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mountpoint) noexcept -> bool;
+auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 // Creates btrfs subvolumes and mounts them
-auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> bool;
+auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> Result<void>;
 
 // Mounts btrfs subvolumes
-auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> bool;
+auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> Result<void>;
 
 // Appends btrfs subvolumes into Partition scheme
 // with sorting scheme by device field
-auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vector<BtrfsSubvolume>& subvols) noexcept -> bool;
+auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vector<BtrfsSubvolume>& subvols) noexcept -> Result<void>;
 
 }  // namespace gucc::fs
 

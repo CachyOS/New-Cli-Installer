@@ -1,6 +1,7 @@
 #ifndef ZFS_HPP
 #define ZFS_HPP
 
+#include "gucc/error.hpp"
 #include "gucc/zfs_types.hpp"
 
 #include <optional>     // for optional
@@ -13,24 +14,24 @@ namespace gucc::fs {
 /// @brief Creates a ZFS volume (zvol).
 /// @param zsize The size of the volume (e.g., "10G").
 /// @param zpath The ZFS path for the volume (e.g., "pool/volume").
-/// @return True on success, false otherwise.
-auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept -> bool;
+/// @return Empty result on success, an error otherwise.
+auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept -> Result<void>;
 
 /// @brief Creates a ZFS filesystem dataset.
 /// @param zpath The ZFS path for the dataset (e.g., "pool/home").
 /// @param zmount The mount point for the dataset (e.g., "/mnt/home").
-/// @return True on success, false otherwise.
-auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> bool;
+/// @return Empty result on success, an error otherwise.
+auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> Result<void>;
 
 /// @brief Creates multiple ZFS datasets based on a list.
 /// @param zdatasets A vector of ZfsDataset definitions.
-/// @return True if all datasets were created successfully, false otherwise.
-auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> bool;
+/// @return Empty result if all datasets were created successfully, an error otherwise.
+auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> Result<void>;
 
 /// @brief Destroys a ZFS dataset or volume.
 /// @param zdataset The ZFS path of the dataset/volume to destroy.
-/// @return True on success, false otherwise.
-auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> bool;
+/// @return Empty result on success, an error otherwise.
+auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> Result<void>;
 
 /// @brief Lists imported ZFS pools.
 /// @return A string containing the names of imported pools, typically one per line.
@@ -48,28 +49,28 @@ auto zfs_list_datasets(std::string_view type = "none") noexcept -> std::string;
 /// @brief Sets a property on a ZFS dataset or volume.
 /// @param property The property setting (e.g., "compression=lz4").
 /// @param dataset The ZFS path of the target dataset/volume.
-/// @return True on success, false otherwise.
-auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> bool;
+/// @return Empty result on success, an error otherwise.
+auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> Result<void>;
 
 /// @brief Sets a property on a ZFS pool.
 /// @param property The property setting (e.g., "ashift=12").
 /// @param pool_name The name of the target pool.
-/// @return True on success, false otherwise.
-auto zpool_set_property(std::string_view property, std::string_view pool_name) noexcept -> bool;
+/// @return Empty result on success, an error otherwise.
+auto zpool_set_property(std::string_view property, std::string_view pool_name) noexcept -> Result<void>;
 
 /// @brief Creates a zpool with the specified arguments.
 /// @param device_path The full path to the device to create on.
 /// @param pool_name The name of the pool.
 /// @param pool_options The options of the pool.
 /// @param passphrase The optional password for the pool, in case the password specified zpool is created with encryption.
-/// @return True if the creation was successful, false otherwise.
-auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase = std::nullopt) noexcept -> bool;
+/// @return Empty result if the creation was successful, an error otherwise.
+auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase = std::nullopt) noexcept -> Result<void>;
 
 /// @brief Creates a ZFS pool and specified datasets from a configuration struct.
 /// @param device_path The full path to the device to create on.
 /// @param zfs_config Configuration containing pool details and datasets to create.
-/// @return True if the pool and all datasets are created successfully, false otherwise.
-auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConfig& zfs_config) noexcept -> bool;
+/// @return Empty result if the pool and all datasets are created successfully, an error otherwise.
+auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConfig& zfs_config) noexcept -> Result<void>;
 
 }  // namespace gucc::fs
 

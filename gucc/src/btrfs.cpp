@@ -47,41 +47,41 @@ constexpr auto find_root_btrfs_part(auto&& parts) noexcept {
 
 namespace gucc::fs {
 
-auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mountpoint) noexcept -> bool {
+auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto& subvol_dirs_path = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, get_dirname(subvolume));
     std::error_code err{};
     ::fs::create_directories(subvol_dirs_path, err);
     if (err) {
-        spdlog::error("Failed to create directories for btrfs subvolume {}: {}", subvol_dirs_path, err.message());
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to create directories for btrfs subvolume {}: {}", subvol_dirs_path, err.message()));
     }
     auto cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}{} &>>/tmp/cachyos-install.log"), root_mountpoint, subvolume);
-    return utils::exec_checked(cmd);
+    if (!utils::exec_checked(cmd)) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create btrfs subvolume {}{}", root_mountpoint, subvolume));
+    }
+    return {};
 }
 
-auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> bool {
+auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> Result<void> {
     // Create subvolumes
     for (const auto& subvol : subvols) {
         if (subvol.subvolume.empty()) {
             continue;
         }
-        if (!fs::btrfs_create_subvol(subvol.subvolume, root_mountpoint)) {
-            spdlog::error("Failed to create btrfs subvolume {} on root mountpoint {}", subvol.subvolume, root_mountpoint);
-            return false;
+        if (auto res = fs::btrfs_create_subvol(subvol.subvolume, root_mountpoint); !res) {
+            return res;
         }
     }
     // TODO(vnepogodin): handle exit code
     utils::exec(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint), true);
 
     // Mount subvolumes
-    if (!fs::btrfs_mount_subvols(subvols, device, root_mountpoint, mount_opts)) {
-        spdlog::error("Failed to mount btrfs subvolumes");
-        return false;
+    if (auto res = fs::btrfs_mount_subvols(subvols, device, root_mountpoint, mount_opts); !res) {
+        return res;
     }
-    return true;
+    return {};
 }
 
-auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> bool {
+auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> Result<void> {
     for (const auto& subvol : subvols) {
         auto mount_option = fmt::format(FMT_COMPILE("subvol={},{}"), subvol.subvolume, mount_opts);
         if (subvol.subvolume.empty()) {
@@ -95,8 +95,7 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
         std::error_code err{};
         ::fs::create_directories(subvolume_mountpoint, err);
         if (err) {
-            spdlog::error("Failed to create directories for btrfs subvols mountpoint {}: {}", subvolume_mountpoint, err.message());
-            return false;
+            return make_error(ErrorCode::FileIo, fmt::format("Failed to create directories for btrfs subvols mountpoint {}: {}", subvolume_mountpoint, err.message()));
         }
 
         // now mount subvolume
@@ -104,23 +103,21 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
 
         spdlog::debug("mounting..: {}", mount_cmd);
         if (!utils::exec_checked(mount_cmd)) {
-            spdlog::error("Failed to mount subvolume {} mountpoint {} with: {}", subvol.subvolume, subvolume_mountpoint, mount_cmd);
-            return false;
+            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to mount subvolume {} mountpoint {} with: {}", subvol.subvolume, subvolume_mountpoint, mount_cmd));
         }
     }
-    return true;
+    return {};
 }
 
-auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vector<BtrfsSubvolume>& subvols) noexcept -> bool {
+auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vector<BtrfsSubvolume>& subvols) noexcept -> Result<void> {
     // if the list of subvolumes is empty, just return success at the beginning of the function
     if (subvols.empty()) {
-        return true;
+        return {};
     }
 
     auto root_part_it = find_root_btrfs_part(partitions);
     if (root_part_it == std::ranges::end(partitions)) {
-        spdlog::error("Unable to find root btrfs partition!");
-        return false;
+        return make_error(ErrorCode::NotFound, fmt::format("Unable to find root btrfs partition!"));
     }
 
     for (auto&& subvol : subvols) {
@@ -155,7 +152,7 @@ auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vect
 
     // sort by device
     std::ranges::sort(partitions, {}, &Partition::device);
-    return true;
+    return {};
 }
 
 }  // namespace gucc::fs

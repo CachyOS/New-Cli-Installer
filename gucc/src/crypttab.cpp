@@ -8,8 +8,6 @@
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
-#include <spdlog/spdlog.h>
-
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
@@ -82,14 +80,13 @@ auto generate_crypttab_content(const std::vector<Partition>& partitions, std::st
     return crypttab_content;
 }
 
-auto generate_crypttab(const std::vector<Partition>& partitions, std::string_view root_mountpoint, std::string_view crypttab_opts) noexcept -> bool {
+auto generate_crypttab(const std::vector<Partition>& partitions, std::string_view root_mountpoint, std::string_view crypttab_opts) noexcept -> Result<void> {
     const auto& crypttab_filepath = fmt::format(FMT_COMPILE("{}/etc/crypttab"), root_mountpoint);
     const auto& crypttab_content  = fs::generate_crypttab_content(partitions, crypttab_opts);
     if (!file_utils::create_file_for_overwrite(crypttab_filepath, crypttab_content)) {
-        spdlog::error("Failed to open crypttab for writing {}", crypttab_filepath);
-        return false;
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to open crypttab for writing {}", crypttab_filepath));
     }
-    return true;
+    return {};
 }
 
 }  // namespace gucc::fs

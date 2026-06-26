@@ -17,11 +17,10 @@ using namespace std::string_view_literals;
 
 namespace gucc::umount {
 
-auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::string>& zfs_poolnames) noexcept -> bool {
+auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::string>& zfs_poolnames) noexcept -> Result<void> {
     auto mtab_entries = mtab::parse_mtab(root_mountpoint);
     if (!mtab_entries) {
-        spdlog::error("Failed to umount partitions: failed to parse /etc/mtab");
-        return false;
+        return make_error(ErrorCode::ParseError, fmt::format("Failed to umount partitions: failed to parse /etc/mtab"));
     }
 
     // Sort in reverse (descending) order so deepest mountpoints are unmounted first.
@@ -37,8 +36,7 @@ auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::
             spdlog::warn("Direct umount failed for {} {}, trying lazy umount", mtab_entry.device, mtab_entry.mountpoint);
             const auto& lazy_cmd = fmt::format(FMT_COMPILE("umount -lv {} &>>/tmp/cachyos-install.log"), mtab_entry.mountpoint);
             if (!utils::exec_checked(lazy_cmd)) {
-                spdlog::error("Failed to umount partition: {} {}", mtab_entry.device, mtab_entry.mountpoint);
-                return false;
+                return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to umount partition: {} {}", mtab_entry.device, mtab_entry.mountpoint));
             }
         }
     }
@@ -46,12 +44,11 @@ auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::
     for (auto&& zfs_poolname : zfs_poolnames) {
         const auto& zpool_export_cmd = fmt::format(FMT_COMPILE("zpool export {} &>>/tmp/cachyos-install.log"), zfs_poolname);
         if (!utils::exec_checked(zpool_export_cmd)) {
-            spdlog::error("Failed to export zpool: {}", zfs_poolname);
-            return false;
+            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to export zpool: {}", zfs_poolname));
         }
     }
 
-    return true;
+    return {};
 }
 
 }  // namespace gucc::umount

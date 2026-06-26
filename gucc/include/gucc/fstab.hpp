@@ -1,6 +1,7 @@
 #ifndef FSTAB_HPP
 #define FSTAB_HPP
 
+#include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 
 #include <string>       // for string
@@ -10,14 +11,14 @@
 namespace gucc::fs {
 
 // Generate fstab
-auto generate_fstab(const std::vector<Partition>& partitions, std::string_view root_mountpoint) noexcept -> bool;
+auto generate_fstab(const std::vector<Partition>& partitions, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 // Generate fstab into string
 auto generate_fstab_content(const std::vector<Partition>& partitions) noexcept -> std::string;
 
 // Generates fstab using genfstab -U -p
 // NOTE: this func should only be used in cases where we don't know about whole partition schema
-auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> bool;
+auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::fs
 
