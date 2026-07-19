@@ -25,8 +25,8 @@ type=L
 )"sv;
 
 static constexpr auto PART_SWAP_TEST = R"(label: gpt
-type=U,size=2G,bootable
 type=S,size=16G
+type=U,size=2G,bootable
 type=L
 )"sv;
 
@@ -40,8 +40,18 @@ type=L
 )"sv;
 
 static constexpr auto PART_CONFIG_SWAP_TEST = R"(label: gpt
-type=S,size=8GiB
 type=U,size=1GiB,bootable
+type=S,size=8GiB
+type=L
+)"sv;
+
+static constexpr auto PART_EMM_SIZED_TEST = R"(label: gpt
+type=U,size=512M,bootable
+type=L,size=900G
+)"sv;
+
+static constexpr auto PART_EMM_UNSIZED_TEST = R"(label: gpt
+type=U,size=512M,bootable
 type=L
 )"sv;
 
@@ -120,6 +130,24 @@ TEST_CASE("partitioning gen test")
         const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1", "/boot", false);
         const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, false);
         REQUIRE_EQ(sfdisk_content, PART_DEFAULT_BIOS_TEST);
+    }
+    SECTION("emission order follows declaration, not size collation")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/nvme0n1p1"s, .size = "512M"s, .mount_opts = "defaults"s},
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p2"s, .size = "900G"s, .mount_opts = "defaults"s},
+        };
+        const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
+        REQUIRE_EQ(sfdisk_content, PART_EMM_SIZED_TEST);
+    }
+    SECTION("unsized partitions are emitted last regardless of position")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults"s},
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/nvme0n1p2"s, .size = "512M"s, .mount_opts = "defaults"s},
+        };
+        const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
+        REQUIRE_EQ(sfdisk_content, PART_EMM_UNSIZED_TEST);
     }
     // TODO(vnepogodin): add tests for raid and lvm
 }

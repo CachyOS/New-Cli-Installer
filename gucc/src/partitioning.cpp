@@ -1,11 +1,16 @@
 #include "gucc/partitioning.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition_config.hpp"
+#include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
 
-#include <algorithm>    // for sort, unique_copy, any_of, count_if
+#include <algorithm>    // for stable_partition, any_of, count_if, contains, find
+#include <array>        // for array
+#include <functional>   // for not_fn
+#include <optional>     // for optional
 #include <ranges>       // for ranges::*
 #include <string_view>  // for string_view
+#include <utility>      // for pair
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -74,30 +79,35 @@ constexpr auto to_sfdisk_line(const gucc::fs::Partition& part) noexcept -> std::
 namespace gucc::disk {
 
 auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> std::string {
+    // NOTE: sfdisk allocates partitions in the order it reads them, so emission
+    // order decides the resulting partition numbers. Callers assign the device
+    // paths in declaration order (see generate_partition_schema_from_config),
+    // so declaration order must be preserved here, otherwise the schema's
+    // device paths stop matching the partitions actually created.
+
+    // filter duplicates by device, keeping the first occurrence
+    // NOTE: the predicate must be pure
+    const auto is_first_occurrence = [&partitions](const auto& indexed) {
+        const auto& [index, part] = indexed;
+        return std::ranges::find(partitions, part.device, &fs::Partition::device) == utils::index_viewable_range(partitions, index);
+    };
+
+    auto partitions_filtered = partitions
+        | std::ranges::views::enumerate
+        | std::ranges::views::filter(is_first_occurrence)
+        | std::ranges::views::values
+        | std::ranges::to<std::vector<fs::Partition>>();
+
+    // empty sized parts must be at the end, they take whatever space is left.
+    // stable, to leave declaration order otherwise untouched
+    std::ranges::stable_partition(partitions_filtered, std::not_fn(&std::string::empty), &fs::Partition::size);
+
     // sfdisk does not create partition table without partitions by default. The lines with partitions are expected in the script by default.
-    std::string sfdisk_commands{"label: gpt\n"s};
-    if (!is_efi) {
-        sfdisk_commands = "label: dos\n"s;
-    }
-
-    // sort by mountpoint & device
-    auto partitions_sorted{partitions};
-    std::ranges::sort(partitions_sorted, {}, &fs::Partition::mountpoint);
-    std::ranges::sort(partitions_sorted, {}, &fs::Partition::device);
-
-    // sort by size(empty sized parts must be at the end)
-    std::ranges::sort(partitions_sorted, std::ranges::greater(), &fs::Partition::size);
-
-    // filter duplicates
-    std::vector<fs::Partition> partitions_filtered{};
-    std::ranges::unique_copy(
-        partitions_sorted, std::back_inserter(partitions_filtered),
-        {},
-        &fs::Partition::device);
-
-    for (const auto& part : partitions_filtered) {
-        sfdisk_commands += to_sfdisk_line(part);
-    }
+    auto sfdisk_commands = fmt::format(FMT_COMPILE("label: {}\n"), is_efi ? "gpt"sv : "dos"sv);
+    sfdisk_commands += partitions_filtered
+        | std::ranges::views::transform(to_sfdisk_line)
+        | std::ranges::views::join
+        | std::ranges::to<std::string>();
     return sfdisk_commands;
 }
 
