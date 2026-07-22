@@ -5,8 +5,9 @@
 #include "gucc/crypto_detection.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/luks.hpp"
+#include "gucc/string_utils.hpp"
 
-#include <charconv>     // for from_chars
+#include <cstdint>      // for uint32_t
 #include <string>       // for string
 #include <string_view>  // for string_view
 
@@ -15,16 +16,6 @@
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
-
-namespace {
-template <typename T = std::int32_t>
-    requires std::numeric_limits<T>::is_integer
-inline T to_int(const std::string_view& str) {
-    T result = 0;
-    std::from_chars(str.data(), str.data() + str.size(), result);
-    return result;
-}
-}  // namespace
 
 namespace cachyos::installer {
 
@@ -138,7 +129,7 @@ auto setup_luks_keyfile(std::string_view mountpoint) noexcept
     const auto& partition    = part_dev->name;
     const auto& lukskeys_str = gucc::utils::exec(
         fmt::format(FMT_COMPILE("cryptsetup luksDump '{}' | grep 'ENABLED' | wc -l"), partition));
-    if (to_int(lukskeys_str) < 4) {
+    if (gucc::utils::parse_uint<std::uint32_t>(lukskeys_str).value_or(0) < 4) {
         const auto keyfile_path = fmt::format(FMT_COMPILE("{}/crypto_keyfile.bin"), mountpoint);
         if (auto res = gucc::crypto::luks1_setup_keyfile(keyfile_path, mountpoint, partition, "--pbkdf-force-iterations 200000"); !res) {
             return std::unexpected(gucc::to_string(res.error()));

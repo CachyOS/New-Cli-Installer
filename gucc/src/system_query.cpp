@@ -5,7 +5,6 @@
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for find_if, transform
-#include <charconv>   // for from_chars
 #include <fstream>    // for ifstream
 #include <ranges>     // for ranges::*
 
@@ -145,10 +144,7 @@ auto parse_partition_number(std::string_view device) noexcept -> std::uint32_t {
     // nvme case with partition number always after 'p'
     if (device.starts_with("nvme"sv)) {
         if (auto pos = device.find_first_of('p'); pos != std::string_view::npos) {
-            auto num_str = device.substr(pos + 1);
-            std::uint32_t result{0};
-            std::from_chars(num_str.data(), num_str.data() + num_str.size(), result);
-            return result;
+            return utils::parse_uint<std::uint32_t>(device.substr(pos + 1)).value_or(0);
         }
         return 0;
     }
@@ -158,10 +154,7 @@ auto parse_partition_number(std::string_view device) noexcept -> std::uint32_t {
     if (pos == std::string_view::npos || pos == device.size() - 1) {
         return 0;
     }
-    auto num_str = device.substr(pos + 1);
-    std::uint32_t result{0};
-    std::from_chars(num_str.data(), num_str.data() + num_str.size(), result);
-    return result;
+    return utils::parse_uint<std::uint32_t>(device.substr(pos + 1)).value_or(0);
 }
 
 auto insert_partition_number(std::string_view device, std::uint32_t part_number) noexcept -> std::string {

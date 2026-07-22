@@ -4,9 +4,10 @@
 #include "gucc/bootloader.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <array>        // for array
-#include <charconv>     // for from_chars
+#include <cstdint>      // for uint32_t
 #include <filesystem>   // for exists
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -19,14 +20,6 @@ namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
 namespace {
-template <typename T = std::int32_t>
-    requires std::numeric_limits<T>::is_integer
-inline T to_int(const std::string_view& str) {
-    T result = 0;
-    std::from_chars(str.data(), str.data() + str.size(), result);
-    return result;
-}
-
 [[nodiscard]] auto bootloader_installed(const cachyos::installer::InstallContext& ctx) noexcept -> bool {
     using gucc::bootloader::BootloaderType;
     switch (ctx.bootloader) {
@@ -101,7 +94,7 @@ auto final_check(const InstallContext& ctx) noexcept -> ValidationResult {
 
     // Check if locales have been generated
     const auto& locale_count_str = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} locale -a | wc -l"), ctx.mountpoint), false);
-    if (to_int(locale_count_str) < 3) {
+    if (gucc::utils::parse_uint<std::uint32_t>(locale_count_str).value_or(0) < 3) {
         result.success = false;
         result.errors.emplace_back("Locales have not been generated");
     }
