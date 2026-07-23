@@ -11,6 +11,7 @@
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <variant>      // for variant
 #include <vector>       // for vector
 
 namespace cachyos::installer {
@@ -65,6 +66,40 @@ struct MountSelections {
     std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
 };
 
+/// How the target disk gets prepared.
+namespace partition_strategy {
+
+    /// Partitions are already formatted and mounted by the caller.
+    struct UseExisting final { };
+
+    /// Partitions already exist. Formats and mounts
+    /// without touching partition table.
+    struct ApplyLayout final {
+        MountSelections selections;
+    };
+
+    /// Create @p partitions on @p device, then format and mount them.
+    /// @warning erases the partition table on @p device.
+    struct CreateLayout final {
+        std::string device;
+        std::vector<gucc::fs::Partition> partitions;
+        std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
+    };
+
+    /// Let the installer pick a default layout for @p device.
+    /// @warning erases everything on @p device.
+    struct EraseAndAuto final {
+        std::string device;
+    };
+
+}  // namespace partition_strategy
+
+using PartitionStrategy = std::variant<
+    partition_strategy::UseExisting,
+    partition_strategy::ApplyLayout,
+    partition_strategy::CreateLayout,
+    partition_strategy::EraseAndAuto>;
+
 /// Crypto/LUKS/LVM state detected from the system.
 struct CryptoState {
     bool is_luks{};
@@ -101,13 +136,8 @@ struct InstallContext {
     std::string uefi_mount;
     std::vector<std::string> zfs_zpool_names;
 
-    /// When set, the orchestrator's Partition step uses these selections as-is
-    /// and skips `auto_partition`.
-    std::optional<MountSelections> mount_selections;
-
-    /// When true, partitions are already formatted *and mounted* at
-    /// `mountpoint` by the caller.
-    bool prepartitioned{false};
+    /// How the Partition step prepares the target disk.
+    PartitionStrategy strategy{partition_strategy::UseExisting{}};
 
     bool encrypt_swap{false};
 

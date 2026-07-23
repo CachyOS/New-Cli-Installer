@@ -8,11 +8,9 @@
 
 #include <cstdint>  // for uint8_t, uint32_t
 
-#include <algorithm>    // for move
 #include <array>        // for array
-#include <iterator>     // for back_inserter
+#include <expected>     // for expected, unexpected
 #include <optional>     // for optional
-#include <ranges>       // for ranges::*
 #include <stop_token>   // for stop_token
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -128,31 +126,6 @@ auto cancel_result(const ExecutionCallbacks& cb,
     };
 }
 
-auto mount_selections_from_auto(const std::vector<gucc::fs::Partition>& partitions) noexcept -> MountSelections {
-    MountSelections mounts{};
-    for (const auto& part : partitions) {
-        if (part.mountpoint == "/"sv) {
-            mounts.root = {
-                .device           = part.device,
-                .fstype           = part.fstype,
-                .mkfs_command     = "",
-                .mount_opts       = part.mount_opts,
-                .format_requested = true,
-            };
-        } else if (part.mountpoint.starts_with("/boot"sv)) {
-            mounts.esp = {
-                .device           = part.device,
-                .mountpoint       = part.mountpoint,
-                .format_requested = true,
-            };
-        }
-    }
-    if (mounts.root.fstype == "btrfs"sv) {
-        mounts.btrfs_subvolumes = default_btrfs_subvolumes();
-    }
-    return mounts;
-}
-
 /// Builds a log-line callback for a step that forwards lines to the user's
 /// sink and, when a pacman progress line is recognised, emits an intra-step
 /// Running event scaled into this step's slice of the overall progress bar.
@@ -221,54 +194,36 @@ auto run(InstallContext& ctx,
     const ExecutionCallbacks& callbacks,
     std::stop_token stop_token) noexcept -> ValidationResult {
     using enum ProgressEventType;
-    const auto mountpoint = ctx.mountpoint;
     std::vector<std::string> warnings;
 
     spdlog::info("Install orchestrator starting...");
     emit_progress(callbacks, Started, 0, "Starting installation..."sv);
 
-    // Step 1: Unmount any existing partitions on the target.
+    // Unmount any existing partitions on the target.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Umount, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Umount);
-    if (!ctx.prepartitioned) {
+
+    // TODO(vnepogodin): generally we don't want to support that,
+    // so let it be for the sake of feature parity for now
+    if (steps::needs_umount(ctx)) {
         if (auto res = steps::umount(ctx); !res) {
-            spdlog::warn("umount_partitions (pre-install): {}", res.error());
+            spdlog::warn("umount_partitions: {}", res.error());
             warnings.emplace_back(fmt::format("Pre-install unmount: {}", res.error()));
         }
     }
 
-    // Step 2: Uses caller-supplied partition schema when present,
-    // otherwise falls back to auto_partition.
+    // Prepare the target disk using partition schema.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Partition, std::move(warnings));
     }
     emit_step_running(callbacks, Step::Partition);
-    if (!ctx.prepartitioned) {
-        MountSelections mounts;
-        if (ctx.mount_selections) {
-            mounts = std::move(*ctx.mount_selections);
-            ctx.mount_selections.reset();
-        } else {
-            const auto& bios_mode = ctx.system_mode == InstallContext::SystemMode::UEFI ? "UEFI"sv : "BIOS"sv;
-            auto partitions       = auto_partition(ctx.device, bios_mode, ctx.bootloader, callbacks);
-            if (!partitions) {
-                return fail_step(callbacks, Step::Partition, "Auto-partition failed"sv, partitions.error(), std::move(warnings));
-            }
-            mounts = mount_selections_from_auto(*partitions);
-        }
-
-        auto mount_res = apply_mount_selections(mounts, mountpoint);
-        if (!mount_res) {
-            return fail_step(callbacks, Step::Partition, "Mount failed"sv, mount_res.error(), std::move(warnings));
-        }
-
-        ctx.partition_schema = std::move(mount_res->partitions);
-        ctx.swap_device      = std::move(mount_res->swap_device);
+    if (auto res = steps::partition(ctx, callbacks); !res) {
+        return fail_step(callbacks, Step::Partition, "Partitioning failed"sv, res.error(), std::move(warnings));
     }
 
-    // Step 3: Generate fstab.
+    // Generate fstab.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Fstab, std::move(warnings));
     }
@@ -277,14 +232,16 @@ auto run(InstallContext& ctx,
         return fail_step(callbacks, Step::Fstab, "fstab generation failed"sv, res.error(), std::move(warnings));
     }
 
-    // Step 4: Optional LUKS swap.
+    // Optional LUKS swap.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::EncryptSwap, std::move(warnings));
     }
     emit_step_running(callbacks, Step::EncryptSwap);
     std::ranges::move(steps::encrypt_swap(ctx), std::back_inserter(warnings));
 
-    // Step 5: Apply system settings (hostname, locale, keymap, timezone, hw_clock).
+    // NOTE(vnepogodin): generally OEM setup should be after all installs, partitions etc
+
+    // Apply system settings (hostname, locale, keymap, timezone, hw_clock).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::SystemSettings, std::move(warnings));
     }
@@ -293,7 +250,7 @@ auto run(InstallContext& ctx,
         return fail_step(callbacks, Step::SystemSettings, "System settings failed"sv, res.error(), std::move(warnings));
     }
 
-    // Step 6: Root password + user account.
+    // Root password + user account.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Users, std::move(warnings));
     }
@@ -302,7 +259,7 @@ auto run(InstallContext& ctx,
         steps::users(user, root_password, ctx, step_log_callback(callbacks, Step::Users), stop_token),
         std::back_inserter(warnings));
 
-    // Step 7: Base system.
+    // Base system.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Base, std::move(warnings));
     }
@@ -314,7 +271,7 @@ auto run(InstallContext& ctx,
         return fail_step(callbacks, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
     }
 
-    // Step 8: Replace the live-ISO machine-id with a fresh one for the target.
+    // Replace the live-ISO machine-id with a fresh one for the target.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::MachineId, std::move(warnings));
     }
@@ -323,7 +280,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 9: Desktop pacstrap (skipped in server mode).
+    // Desktop pacstrap (skipped in server mode).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Desktop, std::move(warnings));
     }
@@ -332,7 +289,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 10: Desktop post-install config (plymouth + service enable).
+    // Desktop post-install config (plymouth + service enable).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::DesktopConfigure, std::move(warnings));
     }
@@ -341,7 +298,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 11: Autologin.
+    // Autologin.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Autologin, std::move(warnings));
     }
@@ -350,7 +307,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 12: chwd hardware-driver profiles (opt-in).
+    // chwd hardware-driver profiles (opt-in).
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Chwd, std::move(warnings));
     }
@@ -359,7 +316,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 11: Carry the live ISO's NetworkManager connection profiles into the target.
+    // Carry the live ISO's NetworkManager connection profiles into the target.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::NetworkCarryover, std::move(warnings));
     }
@@ -368,7 +325,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back("network connection carryover failed");
     }
 
-    // Step 11: Bootloader.
+    // Bootloader.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Bootloader, std::move(warnings));
     }
@@ -377,7 +334,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 12: Detect post-install crypto state and stash it on the context for kernel-params use.
+    // Detect post-install crypto state and stash it on the context for kernel-params use.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::DetectCrypto, std::move(warnings));
     }
@@ -385,7 +342,7 @@ auto run(InstallContext& ctx,
 
     [[maybe_unused]] const auto crypto_res = steps::detect_crypto(ctx);
 
-    // Step 13: Enable systemd services.
+    // Enable systemd services.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::EnableServices, std::move(warnings));
     }
@@ -394,7 +351,7 @@ auto run(InstallContext& ctx,
         warnings.emplace_back(res.error());
     }
 
-    // Step 14: Final validation.
+    // Final validation.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::FinalValidation, std::move(warnings));
     }

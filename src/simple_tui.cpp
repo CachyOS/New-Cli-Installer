@@ -270,8 +270,11 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     ctx.keymap                = selections.xkbmap;
     ctx.server_mode           = selections.server_mode;
     ctx.install_chwd_profiles = !selections.server_mode;
-    ctx.prepartitioned        = true;
-    ctx.partition_schema      = std::move(*partitions);
+
+    // TODO(vnepogodin): that should be part of regular lib code rather than specific to simple tui,
+    // which should just have the partition schema that it supplies to the lib
+    ctx.strategy         = cachyos::installer::partition_strategy::UseExisting{};
+    ctx.partition_schema = std::move(*partitions);
 
     cachyos::installer::SystemSettings sys{};
     sys.hostname = selections.hostname;

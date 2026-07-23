@@ -165,9 +165,6 @@ struct LuksOpenRequest {
 
 /// @brief All the layout choices a frontend wizard has collected.
 ///
-/// Hand it to finalize_plan to get the MountSelections that the orchestrator's
-/// Partition step reads through InstallContext::mount_selections.
-///
 /// @note For an encrypted root, set root.device to the opened mapper path
 /// (/dev/mapper/cryptroot or similar), not the raw partition.
 struct PartitionPlan {

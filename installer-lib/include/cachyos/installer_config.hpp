@@ -58,6 +58,17 @@ struct InstallerConfig {
     bool use_default_subvolumes{true};
     std::optional<std::string> mount_opts{};
 
+    /// Lets the installer erase `device` and pick a layout on its own.
+    /// Only consulted when `partitions` is empty. Defaults to false, so a config
+    /// that forgot its layout fails instead of wiping the named disk.
+    bool allow_auto_partition{false};
+
+    /// Encrypt the swap partition on the installed system.
+    bool encrypt_swap{false};
+
+    /// Reuse the live environment's package cache for the target.
+    bool hostcache{true};
+
     // System settings
     std::optional<std::string> hostname{};
     std::optional<std::string> locale{};

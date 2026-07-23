@@ -14,17 +14,22 @@
 #include <vector>       // for vector
 
 /// @file steps.hpp
-/// @brief Per-step install entry points shared by the orchestrator and
-/// frontends that want to drive individual install steps directly.
-/// The orchestrator is a thin sequencer over these calls; any
-/// caller can use them in isolation as long as preconditions are met.
+/// @brief Contains individual steps used by the orchestrator, and executed
+/// in order with progress. Any callers can use them individually as long
+/// as preconditions are met.
 namespace cachyos::installer::steps {
 
 /// Per-line subprocess output callback.
 using LogCallback = gucc::utils::SubProcess::LogLineCallback;
 
+[[nodiscard]] auto needs_umount(const InstallContext& ctx) noexcept -> bool;
+
 /// Unmount any existing partitions on the install target.
 [[nodiscard]] auto umount(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
+/// Prepare the target according to part mode.
+[[nodiscard]] auto partition(InstallContext& ctx, const ExecutionCallbacks& callbacks) noexcept
     -> std::expected<void, std::string>;
 
 /// Generate fstab inside the target.

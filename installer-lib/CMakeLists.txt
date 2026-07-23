@@ -23,6 +23,7 @@ add_library(${PROJECT_NAME}
    src/partition_planner.cpp include/cachyos/partition_planner.hpp
    include/cachyos/steps.hpp
    src/steps/umount.cpp
+   src/steps/partition.cpp
    src/steps/fstab.cpp
    src/steps/encrypt_swap.cpp
    src/steps/system_settings.cpp
