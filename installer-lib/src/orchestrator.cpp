@@ -29,11 +29,11 @@ using namespace cachyos::installer;
 enum class Step : std::uint8_t {
     Umount,
     Partition,
+    Base,
     Fstab,
     EncryptSwap,
     SystemSettings,
     Users,
-    Base,
     MachineId,
     Desktop,
     DesktopConfigure,
@@ -53,11 +53,11 @@ constexpr auto kTotalSteps = static_cast<std::int32_t>(Step::Count);
 constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Unmounting existing partitions..."sv,
     "Partitioning and mounting..."sv,
+    "Installing base system (this may take a while)..."sv,
     "Generating fstab..."sv,
     "Configuring encrypted swap..."sv,
     "Configuring system settings..."sv,
     "Creating user accounts..."sv,
-    "Installing base system (this may take a while)..."sv,
     "Generating machine ID..."sv,
     "Installing desktop environment..."sv,
     "Configuring desktop environment..."sv,
@@ -223,6 +223,18 @@ auto run(InstallContext& ctx,
         return fail_step(callbacks, Step::Partition, "Partitioning failed"sv, res.error(), std::move(warnings));
     }
 
+    // Base system.
+    if (stop_token.stop_requested()) {
+        return cancel_result(callbacks, Step::Base, std::move(warnings));
+    }
+    emit_step_running(callbacks, Step::Base);
+    if (auto res = steps::base(ctx, step_log_callback(callbacks, Step::Base), stop_token); !res) {
+        if (stop_token.stop_requested()) {
+            return cancel_result(callbacks, Step::Base, std::move(warnings));
+        }
+        return fail_step(callbacks, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
+    }
+
     // Generate fstab.
     if (stop_token.stop_requested()) {
         return cancel_result(callbacks, Step::Fstab, std::move(warnings));
@@ -258,18 +270,6 @@ auto run(InstallContext& ctx,
     std::ranges::move(
         steps::users(user, root_password, ctx, step_log_callback(callbacks, Step::Users), stop_token),
         std::back_inserter(warnings));
-
-    // Base system.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Base, std::move(warnings));
-    }
-    emit_step_running(callbacks, Step::Base);
-    if (auto res = steps::base(ctx, step_log_callback(callbacks, Step::Base), stop_token); !res) {
-        if (stop_token.stop_requested()) {
-            return cancel_result(callbacks, Step::Base, std::move(warnings));
-        }
-        return fail_step(callbacks, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
-    }
 
     // Replace the live-ISO machine-id with a fresh one for the target.
     if (stop_token.stop_requested()) {
@@ -366,7 +366,7 @@ auto run(InstallContext& ctx,
         }
     }
 
-    // Step 15: Copy install log into target and unmount.
+    // Copy install log into target and unmount.
     emit_step_running(callbacks, Step::Cleanup);
     std::ranges::move(steps::cleanup(ctx), std::back_inserter(warnings));
 
