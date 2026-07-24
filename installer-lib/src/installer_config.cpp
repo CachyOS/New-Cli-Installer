@@ -1,14 +1,17 @@
 #include "cachyos/installer_config.hpp"
 
+#include "cachyos/headless_plan.hpp"
 #include "cachyos/system.hpp"
 
 // import gucc
 #include "gucc/bootloader.hpp"
 
-#include <algorithm>    // for
-#include <expected>     // for expected, unexpected
-#include <ranges>       // for ranges::*
-#include <string_view>  // for string_view
+#include <expected>          // for expected, unexpected
+#include <initializer_list>  // for initializer_list
+#include <optional>          // for optional
+#include <ranges>            // for ranges::*
+#include <string_view>       // for string_view
+#include <utility>           // for pair, move
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -30,6 +33,7 @@
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 using namespace std::string_view_literals;
 
@@ -42,6 +46,28 @@ namespace {
     }
     const auto parsed = gucc::bootloader::bootloader_from_string(*name);
     return parsed.value_or(gucc::bootloader::BootloaderType::Grub);
+}
+
+auto parse_optional_bool(auto&& doc, const char* key, bool& out) noexcept -> std::optional<std::string> {
+    if (!doc.HasMember(key)) {
+        return std::nullopt;
+    }
+    if (!doc[key].IsBool()) {
+        return fmt::format(FMT_COMPILE("'{}' must be a boolean"), key);
+    }
+    out = doc[key].GetBool();
+    return std::nullopt;
+}
+
+auto parse_optional_string(auto&& doc, const char* key, std::optional<std::string>& out) noexcept -> std::optional<std::string> {
+    if (!doc.HasMember(key)) {
+        return std::nullopt;
+    }
+    if (!doc[key].IsString()) {
+        return fmt::format(FMT_COMPILE("'{}' must be a string"), key);
+    }
+    out = doc[key].GetString();
+    return std::nullopt;
 }
 
 }  // namespace
@@ -105,36 +131,38 @@ auto parse_installer_config(std::string_view json_content) noexcept
     }
     config.menus = doc["menus"].GetInt();
 
-    // Parse headless_mode (optional, default false)
-    if (doc.HasMember("headless_mode")) {
-        if (!doc["headless_mode"].IsBool()) {
-            return std::unexpected("'headless_mode' must be a boolean");
+    for (const auto& [key, out] : std::initializer_list<std::pair<const char*, bool*>>{
+             {"headless_mode", &config.headless_mode},
+             {"server_mode", &config.server_mode},
+             {"allow_auto_partition", &config.allow_auto_partition},
+             {"encrypt_swap", &config.encrypt_swap},
+             {"hostcache", &config.hostcache},
+         }) {
+        if (auto err = parse_optional_bool(doc, key, *out)) {
+            return std::unexpected(std::move(*err));
         }
-        config.headless_mode = doc["headless_mode"].GetBool();
     }
 
-    // Parse server_mode (optional, default false)
-    if (doc.HasMember("server_mode")) {
-        if (!doc["server_mode"].IsBool()) {
-            return std::unexpected("'server_mode' must be a boolean");
+    for (const auto& [key, out] : std::initializer_list<std::pair<const char*, std::optional<std::string>*>>{
+             {"device", &config.device},
+             {"fs_name", &config.fs_name},
+             {"mount_opts", &config.mount_opts},
+             {"hostname", &config.hostname},
+             {"locale", &config.locale},
+             {"xkbmap", &config.xkbmap},
+             {"timezone", &config.timezone},
+             {"user_name", &config.user_name},
+             {"user_pass", &config.user_pass},
+             {"user_shell", &config.user_shell},
+             {"root_pass", &config.root_pass},
+             {"kernel", &config.kernel},
+             {"desktop", &config.desktop},
+             {"bootloader", &config.bootloader},
+             {"post_install", &config.post_install},
+         }) {
+        if (auto err = parse_optional_string(doc, key, *out)) {
+            return std::unexpected(std::move(*err));
         }
-        config.server_mode = doc["server_mode"].GetBool();
-    }
-
-    // Parse device (optional, but required in headless mode)
-    if (doc.HasMember("device")) {
-        if (!doc["device"].IsString()) {
-            return std::unexpected("'device' must be a string");
-        }
-        config.device = doc["device"].GetString();
-    }
-
-    // Parse fs_name (optional, but required in headless mode)
-    if (doc.HasMember("fs_name")) {
-        if (!doc["fs_name"].IsString()) {
-            return std::unexpected("'fs_name' must be a string");
-        }
-        config.fs_name = doc["fs_name"].GetString();
     }
 
     // Parse partitions (optional, but required in headless mode)
@@ -230,107 +258,6 @@ auto parse_installer_config(std::string_view json_content) noexcept
         }
     }
 
-    // Parse mount_opts (optional)
-    if (doc.HasMember("mount_opts")) {
-        if (!doc["mount_opts"].IsString()) {
-            return std::unexpected("'mount_opts' must be a string");
-        }
-        config.mount_opts = doc["mount_opts"].GetString();
-    }
-
-    // Parse hostname (optional, but required in headless mode)
-    if (doc.HasMember("hostname")) {
-        if (!doc["hostname"].IsString()) {
-            return std::unexpected("'hostname' must be a string");
-        }
-        config.hostname = doc["hostname"].GetString();
-    }
-
-    // Parse locale (optional, but required in headless mode)
-    if (doc.HasMember("locale")) {
-        if (!doc["locale"].IsString()) {
-            return std::unexpected("'locale' must be a string");
-        }
-        config.locale = doc["locale"].GetString();
-    }
-
-    // Parse xkbmap (optional, but required in headless mode)
-    if (doc.HasMember("xkbmap")) {
-        if (!doc["xkbmap"].IsString()) {
-            return std::unexpected("'xkbmap' must be a string");
-        }
-        config.xkbmap = doc["xkbmap"].GetString();
-    }
-
-    // Parse timezone (optional, but required in headless mode)
-    if (doc.HasMember("timezone")) {
-        if (!doc["timezone"].IsString()) {
-            return std::unexpected("'timezone' must be a string");
-        }
-        config.timezone = doc["timezone"].GetString();
-    }
-
-    // Parse user settings
-    if (doc.HasMember("user_name")) {
-        if (!doc["user_name"].IsString()) {
-            return std::unexpected("'user_name' must be a string");
-        }
-        config.user_name = doc["user_name"].GetString();
-    }
-
-    if (doc.HasMember("user_pass")) {
-        if (!doc["user_pass"].IsString()) {
-            return std::unexpected("'user_pass' must be a string");
-        }
-        config.user_pass = doc["user_pass"].GetString();
-    }
-
-    if (doc.HasMember("user_shell")) {
-        if (!doc["user_shell"].IsString()) {
-            return std::unexpected("'user_shell' must be a string");
-        }
-        config.user_shell = doc["user_shell"].GetString();
-    }
-
-    if (doc.HasMember("root_pass")) {
-        if (!doc["root_pass"].IsString()) {
-            return std::unexpected("'root_pass' must be a string");
-        }
-        config.root_pass = doc["root_pass"].GetString();
-    }
-
-    // Parse kernel (optional, but required in headless mode)
-    if (doc.HasMember("kernel")) {
-        if (!doc["kernel"].IsString()) {
-            return std::unexpected("'kernel' must be a string");
-        }
-        config.kernel = doc["kernel"].GetString();
-    }
-
-    // Parse desktop (optional, but required in headless mode)
-    if (doc.HasMember("desktop")) {
-        if (!doc["desktop"].IsString()) {
-            return std::unexpected("'desktop' must be a string");
-        }
-        config.desktop = doc["desktop"].GetString();
-    }
-
-    // Parse bootloader (optional, but required in headless mode)
-    if (doc.HasMember("bootloader")) {
-        if (!doc["bootloader"].IsString()) {
-            return std::unexpected("'bootloader' must be a string");
-        }
-        config.bootloader = doc["bootloader"].GetString();
-    }
-
-    // Parse post_install (optional)
-    if (doc.HasMember("post_install")) {
-        if (!doc["post_install"].IsString()) {
-            return std::unexpected("'post_install' must be a string");
-        }
-        config.post_install = doc["post_install"].GetString();
-    }
-
     return config;
 }
 
@@ -340,47 +267,31 @@ auto validate_headless_config(const InstallerConfig& config) noexcept
         return {};
     }
 
-    std::string missing_fields;
-    if (!config.device) {
-        missing_fields += "'device', ";
-    }
-    if (!config.fs_name) {
-        missing_fields += "'fs_name', ";
-    }
-    if (config.partitions.empty()) {
-        missing_fields += "'partitions', ";
-    }
-    if (!config.hostname) {
-        missing_fields += "'hostname', ";
-    }
-    if (!config.locale) {
-        missing_fields += "'locale', ";
-    }
-    if (!config.xkbmap) {
-        missing_fields += "'xkbmap', ";
-    }
-    if (!config.timezone) {
-        missing_fields += "'timezone', ";
-    }
-    if (!config.user_name || !config.user_pass || !config.user_shell) {
-        missing_fields += "'user_name', 'user_pass', 'user_shell', ";
-    }
-    if (!config.root_pass) {
-        missing_fields += "'root_pass', ";
-    }
-    if (!config.kernel) {
-        missing_fields += "'kernel', ";
-    }
-    if (!config.desktop) {
-        missing_fields += "'desktop', ";
-    }
-    if (!config.bootloader) {
-        missing_fields += "'bootloader', ";
-    }
+    const bool needs_layout = !config.allow_auto_partition;
+
+    const auto is_present = std::initializer_list<std::pair<std::string_view, bool>>{
+        {"'device'"sv, config.device.has_value()},
+        {"'fs_name'"sv, config.fs_name.has_value()},
+        {"'partitions'"sv, !needs_layout || !config.partitions.empty()},
+        {"'hostname'"sv, config.hostname.has_value()},
+        {"'locale'"sv, config.locale.has_value()},
+        {"'xkbmap'"sv, config.xkbmap.has_value()},
+        {"'timezone'"sv, config.timezone.has_value()},
+        {"'user_name', 'user_pass', 'user_shell'"sv,
+            config.user_name.has_value() && config.user_pass.has_value() && config.user_shell.has_value()},
+        {"'root_pass'"sv, config.root_pass.has_value()},
+        {"'kernel'"sv, config.kernel.has_value()},
+        {"'desktop'"sv, config.desktop.has_value()},
+        {"'bootloader'"sv, config.bootloader.has_value()},
+    };
+
+    const auto missing_fields = is_present
+        | std::ranges::views::filter([](const auto& entry) { return !entry.second; })
+        | std::ranges::views::keys
+        | std::ranges::to<std::vector<std::string_view>>();
 
     if (!missing_fields.empty()) {
-        missing_fields.resize(missing_fields.size() - 2);
-        return std::unexpected(fmt::format(FMT_COMPILE("HEADLESS mode requires: {}"), missing_fields));
+        return std::unexpected(fmt::format(FMT_COMPILE("HEADLESS mode requires: {}"), fmt::join(missing_fields, ", ")));
     }
 
     return {};
@@ -396,12 +307,22 @@ auto installer_config_to_inputs(const InstallerConfig& cfg) noexcept
     }
     inputs.ctx.system_mode = sysinfo->system_mode;
 
+    const auto is_efi = sysinfo->system_mode == InstallContext::SystemMode::UEFI;
+    auto strategy     = headless_strategy_from_config(cfg, is_efi);
+    if (!strategy) {
+        return std::unexpected(fmt::format(FMT_COMPILE("invalid partition configuration:\n  - {}"),
+            fmt::join(strategy.error(), "\n  - ")));
+    }
+    inputs.ctx.strategy = std::move(*strategy);
+
     inputs.ctx.device          = cfg.device.value_or("");
     inputs.ctx.filesystem_name = cfg.fs_name.value_or("");
     inputs.ctx.server_mode     = cfg.server_mode;
     inputs.ctx.kernel          = cfg.kernel.value_or("");
     inputs.ctx.desktop         = cfg.desktop.value_or("");
     inputs.ctx.bootloader      = bootloader_from_name(cfg.bootloader);
+    inputs.ctx.encrypt_swap    = cfg.encrypt_swap;
+    inputs.ctx.hostcache       = cfg.hostcache;
 
     if (cfg.xkbmap) {
         inputs.ctx.keymap = *cfg.xkbmap;

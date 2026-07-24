@@ -37,7 +37,7 @@ constexpr auto to_preview_row(const fs::Partition& part) noexcept -> PreviewRow 
         .mountpoint = part.mountpoint.empty() ? "-"sv : std::string_view{part.mountpoint},
         .mount_opts = (opts_str.size() > 30) ? fmt::format(FMT_COMPILE("{}..."), opts_str.substr(0, 27)) : std::string{opts_str},
     };
-};
+}
 
 constexpr auto convert_fsname(std::string_view fsname) noexcept -> std::string_view {
     if (fsname == "fat16"sv || fsname == "fat32"sv) {
