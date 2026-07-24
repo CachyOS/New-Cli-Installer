@@ -12,6 +12,7 @@ add_library(${PROJECT_NAME}
    src/system.cpp include/cachyos/system.hpp
    src/requirements.cpp include/cachyos/requirements.hpp
    src/installer_config.cpp include/cachyos/installer_config.hpp
+   src/headless_plan.cpp include/cachyos/headless_plan.hpp
    src/config.cpp include/cachyos/config.hpp
    src/disk.cpp include/cachyos/disk.hpp
    src/packages.cpp include/cachyos/packages.hpp
