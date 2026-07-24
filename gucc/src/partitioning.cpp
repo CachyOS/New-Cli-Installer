@@ -20,6 +20,25 @@ using namespace std::string_literals;
 
 namespace {
 
+struct PreviewRow final {
+    std::string_view device;
+    std::string_view size;
+    std::string_view fstype;
+    std::string_view mountpoint;
+    std::string mount_opts;
+};
+
+constexpr auto to_preview_row(const fs::Partition& part) noexcept -> PreviewRow {
+    const auto opts_str = part.mount_opts.empty() ? "defaults"sv : std::string_view{part.mount_opts};
+    return PreviewRow{
+        .device     = part.device,
+        .size       = part.size.empty() ? "<remaining>"sv : std::string_view{part.size},
+        .fstype     = part.fstype,
+        .mountpoint = part.mountpoint.empty() ? "-"sv : std::string_view{part.mountpoint},
+        .mount_opts = (opts_str.size() > 30) ? fmt::format(FMT_COMPILE("{}..."), opts_str.substr(0, 27)) : std::string{opts_str},
+    };
+};
+
 constexpr auto convert_fsname(std::string_view fsname) noexcept -> std::string_view {
     if (fsname == "fat16"sv || fsname == "fat32"sv) {
         return "vfat"sv;
@@ -37,6 +56,9 @@ constexpr auto get_part_type_alias(std::string_view fsname) noexcept -> std::str
     }
     return "L"sv;
 }
+
+// fs names that mean an EFI System Partition
+constexpr auto FAT_FS_NAMES = std::array{"vfat"sv, "fat32"sv, "fat16"sv};
 
 // single sfdisk command line
 constexpr auto to_sfdisk_line(const gucc::fs::Partition& part) noexcept -> std::string {
@@ -239,21 +261,24 @@ auto validate_partition_schema(const std::vector<fs::Partition>& partitions, std
     }
 
     // Check for root partition
-    bool has_root = std::ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/"sv; });
+    const bool has_root = std::ranges::any_of(
+        partitions, [](std::string_view mountpoint) { return mountpoint == "/"sv; }, &fs::Partition::mountpoint);
     if (!has_root) {
         result.is_valid = false;
         result.errors.emplace_back("No root (/) partition defined");
     }
 
     // Check for EFI partition on UEFI systems
-    bool has_efi = std::ranges::any_of(partitions, [](auto&& part) { return part.fstype == "vfat"sv || part.fstype == "fat32"sv || part.fstype == "fat16"sv; });
+    const bool has_efi = std::ranges::any_of(
+        partitions, [](std::string_view fstype) { return std::ranges::contains(FAT_FS_NAMES, fstype); }, &fs::Partition::fstype);
     if (is_efi && !has_efi) {
         result.is_valid = false;
         result.errors.emplace_back("UEFI system requires an EFI partition (vfat/fat32)");
     }
 
-    // Invalid partition sizes
-    auto empty_size_count = std::ranges::count_if(partitions, [](auto&& part) { return part.size.empty() && !part.subvolume; });
+    // Invalid partition sizes. subvols never carry a size
+    const auto empty_size_count = std::ranges::count_if(partitions,
+        [](const fs::Partition& part) { return part.size.empty() && !part.subvolume; });
     if (empty_size_count > 1) {
         result.warnings.emplace_back("Multiple partitions without specified size - only the last will use remaining space");
     }
@@ -273,36 +298,30 @@ auto preview_partition_schema(const std::vector<fs::Partition>& partitions, std:
         "Device", "Size", "Filesystem", "Mount Point", "Options");
     preview += std::string(80, '-') + "\n";
 
-    for (const auto& part : partitions) {
-        // skip subvolumes
-        if (part.subvolume) {
-            continue;
-        }
-        const auto& size_str  = part.size.empty() ? "<remaining>" : part.size;
-        const auto& mount_str = part.mountpoint.empty() ? "-" : part.mountpoint;
-        const auto& opts_str  = part.mount_opts.empty() ? "defaults" : part.mount_opts;
+    // subvols get their own table
+    constexpr auto is_subvolume_entry = [](const fs::Partition& part) { return part.subvolume.has_value(); };
+    constexpr auto is_partition_entry = std::not_fn(is_subvolume_entry);
 
-        // lets truncate long options..
-        const auto& display_opts = (opts_str.size() > 30) ? opts_str.substr(0, 27) + "..." : opts_str;
-
+    auto preview_rows = partitions | std::ranges::views::filter(is_partition_entry) | std::ranges::views::transform(to_preview_row);
+    for (const auto& row : preview_rows) {
         preview += fmt::format(FMT_COMPILE("{:<20} {:<12} {:<12} {:<15} {}\n"),
-            part.device, size_str, part.fstype, mount_str, display_opts);
+            row.device, row.size, row.fstype, row.mountpoint, row.mount_opts);
     }
 
     // pretty-print the subvols
-    bool has_subvols = false;
-    for (const auto& part : partitions) {
-        if (!part.subvolume) {
-            continue;
+    const bool has_subvols = std::ranges::any_of(partitions, &std::optional<std::string>::has_value, &fs::Partition::subvolume);
+    if (has_subvols) {
+        preview += "\nBtrfs Subvolumes:\n";
+        preview += fmt::format(FMT_COMPILE("{:<20} {:<15}\n"), "Subvolume", "Mount Point");
+        preview += std::string(40, '-') + "\n";
+
+        auto subvols = partitions | std::ranges::views::filter(is_subvolume_entry)
+            | std::ranges::views::transform([](const fs::Partition& part) {
+                  return std::pair<std::string_view, std::string_view>{*part.subvolume, part.mountpoint};
+              });
+        for (const auto& [subvolume, mountpoint] : subvols) {
+            preview += fmt::format(FMT_COMPILE("{:<20} {:<15}\n"), subvolume, mountpoint);
         }
-        if (!has_subvols) {
-            preview += "\nBtrfs Subvolumes:\n";
-            preview += fmt::format(FMT_COMPILE("{:<20} {:<15}\n"), "Subvolume", "Mount Point");
-            preview += std::string(40, '-') + "\n";
-            has_subvols = true;
-        }
-        preview += fmt::format(FMT_COMPILE("{:<20} {:<15}\n"),
-            *part.subvolume, part.mountpoint);
     }
 
     // insert informative stuff that we might want at hand
