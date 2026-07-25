@@ -28,7 +28,7 @@ struct PreviewRow final {
     std::string mount_opts;
 };
 
-constexpr auto to_preview_row(const fs::Partition& part) noexcept -> PreviewRow {
+constexpr auto to_preview_row(const gucc::fs::Partition& part) noexcept -> PreviewRow {
     const auto opts_str = part.mount_opts.empty() ? "defaults"sv : std::string_view{part.mount_opts};
     return PreviewRow{
         .device     = part.device,
