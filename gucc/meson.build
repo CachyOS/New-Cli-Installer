@@ -1,6 +1,7 @@
 gucc_lib = library('gucc',
     sources : [
         'src/error.cpp',
+        'src/log_redact.cpp',
         'src/io_utils.cpp',
         'src/file_utils.cpp',
         'src/string_utils.cpp',
