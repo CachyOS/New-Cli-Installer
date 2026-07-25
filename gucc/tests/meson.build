@@ -29,6 +29,7 @@ gucc_test_names = [
     'systemd_homed',
     'systemd_repart',
     'timezone',
+    'process',
 ]
 
 foreach t : gucc_test_names

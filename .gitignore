@@ -52,3 +52,9 @@ subprojects/packagecache
 .vagrant
 storage.vdi
 compile_commands.json
+cppcheck-addon-ctu-file-list
+*.profraw
+*.profdata
+*.asm
+*.orig
+heaptrack.*.zst
