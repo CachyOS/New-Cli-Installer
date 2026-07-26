@@ -10,7 +10,6 @@
 #include "gucc/package_profiles.hpp"
 #include "gucc/plymouth.hpp"
 #include "gucc/string_utils.hpp"
-#include "gucc/subprocess.hpp"
 #include "gucc/systemd_services.hpp"
 
 #include <expected>     // for unexpected
@@ -80,7 +79,7 @@ auto make_net_profs_info(const InstallContext& ctx) noexcept -> gucc::package::N
 
 namespace cachyos::installer {
 
-auto install_base(const InstallContext& ctx, gucc::utils::SubProcess& child) noexcept
+auto install_base(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     const auto& mountpoint = ctx.mountpoint;
 
@@ -116,7 +115,7 @@ auto install_base(const InstallContext& ctx, gucc::utils::SubProcess& child) noe
     };
 
     // Run install_base
-    if (!gucc::install::install_base(install_config, child)) {
+    if (!gucc::install::install_base(install_config)) {
         return std::unexpected("failed to install base");
     }
 
@@ -133,8 +132,7 @@ auto install_base(const InstallContext& ctx, gucc::utils::SubProcess& child) noe
     return {};
 }
 
-auto install_desktop_packages(std::string_view desktop, const InstallContext& ctx,
-    gucc::utils::SubProcess& child) noexcept
+auto install_desktop_packages(std::string_view desktop, const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     const auto net_profs_info = make_net_profs_info(ctx);
     auto pkg_list             = gucc::package::get_pkglist_desktop(desktop, net_profs_info);
@@ -144,15 +142,14 @@ auto install_desktop_packages(std::string_view desktop, const InstallContext& ct
 
     spdlog::info("Preparing for desktop envs to install: '{}'", gucc::utils::join(*pkg_list, ' '));
 
-    auto pkg_result = install_packages(*pkg_list, ctx.mountpoint, ctx.hostcache, child);
+    auto pkg_result = install_packages(*pkg_list, ctx.mountpoint, ctx.hostcache);
     if (!pkg_result) {
         return std::unexpected(pkg_result.error());
     }
     return {};
 }
 
-auto configure_desktop_extras(const InstallContext& ctx,
-    gucc::utils::SubProcess& child) noexcept
+auto configure_desktop_extras(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     const auto& mountpoint = ctx.mountpoint;
 
@@ -175,7 +172,7 @@ auto configure_desktop_extras(const InstallContext& ctx,
         };
         const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
         if (gucc::initcpio::setup_initcpio_config(initcpio_path, initcpio_config)) {
-            if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint, child)) {
+            if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint)) {
                 return std::unexpected("failed to rebuild initramfs with plymouth hook");
             }
         } else {
@@ -190,18 +187,16 @@ auto configure_desktop_extras(const InstallContext& ctx,
     return {};
 }
 
-auto install_desktop(std::string_view desktop, const InstallContext& ctx,
-    gucc::utils::SubProcess& child) noexcept
+auto install_desktop(std::string_view desktop, const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
-    if (auto res = install_desktop_packages(desktop, ctx, child); !res) {
+    if (auto res = install_desktop_packages(desktop, ctx); !res) {
         return res;
     }
-    return configure_desktop_extras(ctx, child);
+    return configure_desktop_extras(ctx);
 }
 
 auto install_packages(const std::vector<std::string>& packages,
-    std::string_view mountpoint, bool hostcache,
-    gucc::utils::SubProcess& child) noexcept
+    std::string_view mountpoint, bool hostcache) noexcept
     -> std::expected<void, std::string> {
     /* clang-format off */
     if (packages.empty()) { return {}; }
@@ -209,16 +204,16 @@ auto install_packages(const std::vector<std::string>& packages,
 
     const auto& pkgs_str      = gucc::utils::join(packages, ' ');
     const auto& cmd           = hostcache ? "pacstrap" : "pacstrap -c";
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, pkgs_str);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} 2>&1 | tee -a /tmp/pacstrap.log"), cmd, mountpoint, pkgs_str);
 
-    if (!gucc::utils::exec_follow({"/bin/sh", "-c", cmd_formatted}, child)) {
+    if (!gucc::utils::exec_checked(cmd_formatted)) {
         return std::unexpected(fmt::format("failed to install packages: {}", pkgs_str));
     }
     return {};
 }
 
 auto remove_packages(const std::vector<std::string>& packages,
-    std::string_view mountpoint, gucc::utils::SubProcess& child) noexcept
+    std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
     /* clang-format off */
     if (packages.empty()) { return {}; }
@@ -226,7 +221,7 @@ auto remove_packages(const std::vector<std::string>& packages,
 
     const auto& pkgs_str       = gucc::utils::join(packages, ' ');
     const auto& chroot_command = fmt::format(FMT_COMPILE("pacman -Rsn {}"), pkgs_str);
-    if (!gucc::utils::arch_chroot_follow(chroot_command, mountpoint, child)) {
+    if (!gucc::utils::arch_chroot_follow(chroot_command, mountpoint)) {
         return std::unexpected(fmt::format("failed to remove packages: {}", pkgs_str));
     }
     return {};
@@ -269,7 +264,7 @@ auto enable_services(const InstallContext& ctx) noexcept
     return {};
 }
 
-auto install_needed(std::string_view pkg, gucc::utils::SubProcess& child) noexcept
+auto install_needed(std::string_view pkg) noexcept
     -> std::expected<void, std::string> {
     // Check if already installed
     if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg))) {
@@ -278,7 +273,7 @@ auto install_needed(std::string_view pkg, gucc::utils::SubProcess& child) noexce
 
     // Install it
     const auto& cmd = fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg);
-    if (!gucc::utils::exec_follow({"/bin/sh", "-c", cmd}, child)) {
+    if (!gucc::utils::exec_checked(cmd)) {
         return std::unexpected(fmt::format("failed to install needed package: {}", pkg));
     }
     return {};

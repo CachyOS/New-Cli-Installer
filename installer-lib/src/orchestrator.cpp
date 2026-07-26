@@ -4,7 +4,6 @@
 
 // import gucc
 #include "gucc/string_utils.hpp"
-#include "gucc/subprocess.hpp"
 
 #include <cstdint>  // for uint8_t, uint32_t
 
@@ -130,7 +129,7 @@ auto cancel_result(const ExecutionCallbacks& cb,
 /// sink and, when a pacman progress line is recognised, emits an intra-step
 /// Running event scaled into this step's slice of the overall progress bar.
 auto step_log_callback(const ExecutionCallbacks& cb, Step s) noexcept
-    -> gucc::utils::SubProcess::LogLineCallback {
+    -> steps::LogCallback {
     if (!cb.on_log_line && !cb.on_progress) {
         return {};
     }

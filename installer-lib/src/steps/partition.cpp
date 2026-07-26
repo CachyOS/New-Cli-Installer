@@ -4,6 +4,7 @@
 
 // import gucc
 #include "gucc/partition.hpp"
+#include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 
 #include <string>       // for string
@@ -31,13 +32,18 @@ struct overloads : Ts... {
 
 auto mount_selections_from_schema(const std::vector<gucc::fs::Partition>& partitions,
     const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvolumes) noexcept -> MountSelections {
+    // derive mkfs command for all available FS, except ZFS which expected to have empty mkfs cmd
+    const auto mkfs_for = [](std::string_view fstype) {
+        return std::string{gucc::fs::get_mkfs_command(gucc::fs::string_to_filesystem_type(fstype))};
+    };
+
     MountSelections mounts{};
     for (const auto& part : partitions) {
         if (part.mountpoint == "/"sv) {
             mounts.root = {
                 .device           = part.device,
                 .fstype           = part.fstype,
-                .mkfs_command     = "",
+                .mkfs_command     = mkfs_for(part.fstype),
                 .mount_opts       = part.mount_opts,
                 .format_requested = true,
             };
@@ -52,7 +58,7 @@ auto mount_selections_from_schema(const std::vector<gucc::fs::Partition>& partit
                 .device           = part.device,
                 .mountpoint       = part.mountpoint,
                 .fstype           = part.fstype,
-                .mkfs_command     = "",
+                .mkfs_command     = mkfs_for(part.fstype),
                 .mount_opts       = part.mount_opts,
                 .format_requested = true,
             });

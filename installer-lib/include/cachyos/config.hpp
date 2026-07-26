@@ -7,11 +7,6 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 
-// forward-declare
-namespace gucc::utils {
-class SubProcess;
-}
-
 namespace cachyos::installer {
 
 struct InstallerInputs {
@@ -28,7 +23,7 @@ struct InstallerInputs {
 /// Creates a new user account on the installed system.
 /// Installs shell config packages before creating the user.
 [[nodiscard]] auto create_user(const UserSettings& settings, std::string_view mountpoint,
-    bool hostcache, gucc::utils::SubProcess& child) noexcept
+    bool hostcache) noexcept
     -> std::expected<void, std::string>;
 
 /// Sets the root password on the installed system.

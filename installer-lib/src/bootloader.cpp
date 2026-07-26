@@ -9,7 +9,6 @@
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/kernel_params.hpp"
-#include "gucc/subprocess.hpp"
 
 #include <sys/mount.h>  // for mount, umount
 
@@ -70,7 +69,7 @@ void configure_grub_common(gucc::bootloader::GrubConfig& grub_config,
 
     // grub config changes for zfs root
     if (root_part_fs == "zfs"sv) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
+        gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo 'ZPOOL_VDEV_NAME_PATH=YES' >> {}/etc/environment"), mountpoint));
 
         grub_install_config.is_root_on_zfs = true;
         grub_config.savedefault            = std::nullopt;
@@ -106,7 +105,7 @@ void configure_grub_common(gucc::bootloader::GrubConfig& grub_config,
 
     // If root is on btrfs subvolume, keep grub-btrfs; otherwise strip it
     if (!is_root_on_btrfs_subvol(mountpoint)) {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
+        gucc::utils::exec_checked(fmt::format(FMT_COMPILE("sed -e 's/ grub-btrfs//g' -i {}"), grub_installer_path));
     }
 
     // If encryption used amend grub
@@ -128,7 +127,7 @@ void configure_grub_common(gucc::bootloader::GrubConfig& grub_config,
 }
 
 /// Internal UEFI bootloader dispatcher.
-auto uefi_bootloader(const InstallContext& ctx, gucc::utils::SubProcess& child) noexcept
+auto uefi_bootloader(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     // Ensure efivarfs is mounted
     static constexpr auto efi_path     = "/sys/firmware/efi/";
@@ -144,19 +143,19 @@ auto uefi_bootloader(const InstallContext& ctx, gucc::utils::SubProcess& child) 
     using gucc::bootloader::BootloaderType;
     switch (ctx.bootloader) {
     case BootloaderType::Grub:
-        return install_grub_uefi(ctx, "cachyos"sv, true, child);
+        return install_grub_uefi(ctx, "cachyos"sv, true);
     case BootloaderType::Refind:
-        return install_refind(ctx, child);
+        return install_refind(ctx);
     case BootloaderType::SystemdBoot:
-        return install_systemd_boot(ctx, child);
+        return install_systemd_boot(ctx);
     case BootloaderType::Limine:
-        return install_limine(ctx, child);
+        return install_limine(ctx);
     }
     return std::unexpected("unknown UEFI bootloader");
 }
 
 /// Internal BIOS bootloader dispatcher.
-auto bios_bootloader(const InstallContext& ctx, gucc::utils::SubProcess& child) noexcept
+auto bios_bootloader(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     using gucc::bootloader::BootloaderType;
 
@@ -164,28 +163,28 @@ auto bios_bootloader(const InstallContext& ctx, gucc::utils::SubProcess& child) 
     spdlog::info("Installing bios bootloader '{}'...", bootloader_str);
 
     if (ctx.bootloader == BootloaderType::Limine) {
-        return install_limine(ctx, child);
+        return install_limine(ctx);
     }
     if (ctx.bootloader != BootloaderType::Grub) {
         return std::unexpected(fmt::format("unsupported BIOS bootloader: {}", bootloader_str));
     }
-    return install_grub_bios(ctx, child);
+    return install_grub_bios(ctx);
 }
 
 }  // namespace
 
 namespace cachyos::installer {
 
-auto install_bootloader(const InstallContext& ctx, gucc::utils::SubProcess& child) noexcept
+auto install_bootloader(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     if (ctx.system_mode == InstallContext::SystemMode::BIOS) {
-        return bios_bootloader(ctx, child);
+        return bios_bootloader(ctx);
     }
-    return uefi_bootloader(ctx, child);
+    return uefi_bootloader(ctx);
 }
 
 auto install_grub_uefi(const InstallContext& ctx, std::string_view bootid,
-    bool as_default, gucc::utils::SubProcess& child) noexcept
+    bool as_default) noexcept
     -> std::expected<void, std::string> {
     const auto& mountpoint = ctx.mountpoint;
     const auto& uefi_mount = ctx.uefi_mount;
@@ -193,7 +192,7 @@ auto install_grub_uefi(const InstallContext& ctx, std::string_view bootid,
 
     std::error_code err{};
     fs::create_directory("/mnt/hostlvm", err);
-    gucc::utils::exec("mount --bind /run/lvm /mnt/hostlvm");
+    gucc::utils::exec_checked("mount --bind /run/lvm /mnt/hostlvm");
 
     spdlog::info("Boot ID: {}", bootid);
     spdlog::info("Set as default: {}", as_default);
@@ -221,7 +220,7 @@ auto install_grub_uefi(const InstallContext& ctx, std::string_view bootid,
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
 
     // install grub
-    auto chroot_result = arch_chroot("grub_installer.sh", mountpoint, child);
+    auto chroot_result = arch_chroot("grub_installer.sh", mountpoint);
     if (!chroot_result) {
         spdlog::warn("grub_installer.sh: {}", chroot_result.error());
     }
@@ -257,7 +256,7 @@ auto install_grub_uefi(const InstallContext& ctx, std::string_view bootid,
     return {};
 }
 
-auto install_grub_bios(const InstallContext& ctx, gucc::utils::SubProcess& child) noexcept
+auto install_grub_bios(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     const auto& mountpoint = ctx.mountpoint;
     const auto& luks_dev   = ctx.crypto.luks_dev;
@@ -296,12 +295,12 @@ auto install_grub_bios(const InstallContext& ctx, gucc::utils::SubProcess& child
     const auto& grub_installer_path = fmt::format(FMT_COMPILE("{}/usr/bin/grub_installer.sh"), mountpoint);
     std::error_code err{};
 
-    gucc::utils::exec(fmt::format(FMT_COMPILE("dd if=/dev/zero of={} seek=1 count=2047"), device));
+    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("dd if=/dev/zero of={} seek=1 count=2047"), device));
     fs::create_directory("/mnt/hostlvm", err);
-    gucc::utils::exec("mount --bind /run/lvm /mnt/hostlvm");
+    gucc::utils::exec_checked("mount --bind /run/lvm /mnt/hostlvm");
 
     // install grub
-    auto chroot_result = arch_chroot("grub_installer.sh", mountpoint, child);
+    auto chroot_result = arch_chroot("grub_installer.sh", mountpoint);
     if (!chroot_result) {
         spdlog::warn("grub_installer.sh: {}", chroot_result.error());
     }
@@ -318,14 +317,14 @@ auto install_grub_bios(const InstallContext& ctx, gucc::utils::SubProcess& child
     return {};
 }
 
-auto install_refind(const InstallContext& ctx, gucc::utils::SubProcess& child) noexcept
+auto install_refind(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     spdlog::info("Installing refind...");
     const auto& mountpoint      = ctx.mountpoint;
     const auto& uefi_mount      = ctx.uefi_mount;
     const auto& boot_mountpoint = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
 
-    auto needed_result = install_needed("refind", child);
+    auto needed_result = install_needed("refind");
     if (!needed_result) {
         return std::unexpected(needed_result.error());
     }
@@ -355,7 +354,7 @@ auto install_refind(const InstallContext& ctx, gucc::utils::SubProcess& child) n
     const auto& refind_conf_content = gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), mountpoint));
     spdlog::info("[DUMP_TO_LOG] :=\n{}", refind_conf_content);
 
-    auto pkg_result = install_packages({"refind-theme-nord"}, mountpoint, ctx.hostcache, child);
+    auto pkg_result = install_packages({"refind-theme-nord"}, mountpoint, ctx.hostcache);
     if (!pkg_result) {
         spdlog::warn("Failed to install refind-theme-nord: {}", pkg_result.error());
     }
@@ -364,14 +363,14 @@ auto install_refind(const InstallContext& ctx, gucc::utils::SubProcess& child) n
     return {};
 }
 
-auto install_systemd_boot(const InstallContext& ctx, gucc::utils::SubProcess& child) noexcept
+auto install_systemd_boot(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     spdlog::info("Installing systemd-boot...");
     const auto& mountpoint = ctx.mountpoint;
     const auto& uefi_mount = ctx.uefi_mount;
 
     // preinstall systemd-boot-manager
-    auto pkg_result = install_packages({"systemd-boot-manager"}, mountpoint, ctx.hostcache, child);
+    auto pkg_result = install_packages({"systemd-boot-manager"}, mountpoint, ctx.hostcache);
     if (!pkg_result) {
         return std::unexpected(fmt::format("failed to install systemd-boot-manager: {}", pkg_result.error()));
     }
@@ -389,7 +388,7 @@ auto install_systemd_boot(const InstallContext& ctx, gucc::utils::SubProcess& ch
     return {};
 }
 
-auto install_limine(const InstallContext& ctx, gucc::utils::SubProcess& child) noexcept
+auto install_limine(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     spdlog::info("Installing Limine...");
     const auto& mountpoint = ctx.mountpoint;
@@ -419,13 +418,13 @@ auto install_limine(const InstallContext& ctx, gucc::utils::SubProcess& child) n
     }
 
     // Preinstall limine-mkinitcpio-hook
-    auto pkg_result = install_packages({"limine-mkinitcpio-hook"}, mountpoint, ctx.hostcache, child);
+    auto pkg_result = install_packages({"limine-mkinitcpio-hook"}, mountpoint, ctx.hostcache);
     if (!pkg_result) {
         return std::unexpected(fmt::format("failed to install limine-mkinitcpio-hook: {}", pkg_result.error()));
     }
 
     // Install splash screen
-    auto splash_result = install_needed("cachyos-wallpapers", child);
+    auto splash_result = install_needed("cachyos-wallpapers");
     if (!splash_result) {
         spdlog::warn("Failed to install cachyos-wallpapers: {}", splash_result.error());
     }
@@ -446,7 +445,7 @@ auto install_limine(const InstallContext& ctx, gucc::utils::SubProcess& child) n
     // Integrate Snapper support for btrfs
     const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
     if (filesystem_type == "btrfs"sv) {
-        auto snapper_result = install_packages({"cachyos-snapper-support", "limine-snapper-sync"}, mountpoint, ctx.hostcache, child);
+        auto snapper_result = install_packages({"cachyos-snapper-support", "limine-snapper-sync"}, mountpoint, ctx.hostcache);
         if (!snapper_result) {
             spdlog::warn("Failed to install snapper support: {}", snapper_result.error());
         }
@@ -516,15 +515,14 @@ auto get_kernel_params(const InstallContext& ctx) noexcept
     return *std::move(result);
 }
 
-auto grub_mkconfig(std::string_view mountpoint, gucc::utils::SubProcess& child) noexcept
+auto grub_mkconfig(std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    return arch_chroot("grub-mkconfig -o /boot/grub/grub.cfg", mountpoint, child);
+    return arch_chroot("grub-mkconfig -o /boot/grub/grub.cfg", mountpoint);
 }
 
-auto arch_chroot(std::string_view command, std::string_view mountpoint,
-    gucc::utils::SubProcess& child) noexcept
+auto arch_chroot(std::string_view command, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    if (!gucc::utils::arch_chroot_follow(command, mountpoint, child)) {
+    if (!gucc::utils::arch_chroot_follow(command, mountpoint)) {
         return std::unexpected(fmt::format("failed to run in arch-chroot: {}", command));
     }
     return {};

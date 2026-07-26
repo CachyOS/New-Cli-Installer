@@ -2,7 +2,7 @@
 #include "cachyos/steps.hpp"
 
 // import gucc
-#include "gucc/subprocess.hpp"
+#include "gucc/process.hpp"
 
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
@@ -17,10 +17,9 @@ auto desktop(const InstallContext& ctx,
     if (ctx.server_mode || ctx.desktop.empty()) {
         return {};
     }
-    gucc::utils::SubProcess child;
-    child.set_log_line_callback(std::move(log_cb));
-    const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
-    if (auto res = install_desktop_packages(ctx.desktop, ctx, child); !res) {
+    gucc::utils::default_runner().set_line_sink(std::move(log_cb));
+    const std::stop_callback on_cancel(stop_token, [] { gucc::utils::default_runner().cancel(); });
+    if (auto res = install_desktop_packages(ctx.desktop, ctx); !res) {
         spdlog::error("install_desktop_packages: {}", res.error());
         return std::unexpected(fmt::format("install_desktop_packages: {}", res.error()));
     }

@@ -2,7 +2,7 @@
 
 // import gucc
 #include "gucc/chwd.hpp"
-#include "gucc/subprocess.hpp"
+#include "gucc/process.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -16,10 +16,9 @@ auto chwd(const InstallContext& ctx,
     if (!ctx.install_chwd_profiles) {
         return {};
     }
-    gucc::utils::SubProcess child;
-    child.set_log_line_callback(std::move(log_cb));
-    const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
-    if (!gucc::chwd::install_available_profiles(ctx.mountpoint, child)) {
+    gucc::utils::default_runner().set_line_sink(std::move(log_cb));
+    const std::stop_callback on_cancel(stop_token, [] { gucc::utils::default_runner().cancel(); });
+    if (!gucc::chwd::install_available_profiles(ctx.mountpoint)) {
         spdlog::error("chwd: install_available_profiles failed");
         return std::unexpected(std::string{"chwd: install_available_profiles failed"});
     }

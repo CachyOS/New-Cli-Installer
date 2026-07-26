@@ -101,7 +101,7 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
 }
 
 auto create_user(const UserSettings& settings, std::string_view mountpoint,
-    bool hostcache, gucc::utils::SubProcess& child) noexcept
+    bool hostcache) noexcept
     -> std::expected<void, std::string> {
     spdlog::info("Creating user: {}", settings.username);
 
@@ -111,7 +111,7 @@ auto create_user(const UserSettings& settings, std::string_view mountpoint,
     if (is_zsh || is_fish) {
         const auto shell_name = is_zsh ? "zsh"sv : "fish"sv;
         auto pkg              = fmt::format(FMT_COMPILE("cachyos-{}-config"), shell_name);
-        auto pkg_result       = install_packages({std::move(pkg)}, mountpoint, hostcache, child);
+        auto pkg_result       = install_packages({std::move(pkg)}, mountpoint, hostcache);
         if (!pkg_result) {
             spdlog::error("Failed to install shell config: {}", pkg_result.error());
         }

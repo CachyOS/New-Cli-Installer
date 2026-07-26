@@ -2,12 +2,10 @@
 
 #include "cachyos/types.hpp"
 
-// import gucc
-#include "gucc/subprocess.hpp"
-
 #include <cstdint>  // for int32_t
 
 #include <expected>     // for expected
+#include <functional>   // for function
 #include <stop_token>   // for stop_token
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -20,7 +18,7 @@
 namespace cachyos::installer::steps {
 
 /// Per-line subprocess output callback.
-using LogCallback = gucc::utils::SubProcess::LogLineCallback;
+using LogCallback = std::function<void(std::string_view)>;
 
 [[nodiscard]] auto needs_umount(const InstallContext& ctx) noexcept -> bool;
 

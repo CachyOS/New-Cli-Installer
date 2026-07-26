@@ -12,7 +12,6 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
-#include "gucc/subprocess.hpp"
 #include "gucc/swap.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/umount_partitions.hpp"
@@ -139,16 +138,16 @@ auto auto_partition(std::string_view device, std::string_view system_mode,
     return partitions;
 }
 
-auto secure_wipe(std::string_view device, gucc::utils::SubProcess& child) noexcept
+auto secure_wipe(std::string_view device) noexcept
     -> std::expected<void, std::string> {
     // Ensure wipe tool is installed
-    auto needed_result = install_needed("wipe", child);
+    auto needed_result = install_needed("wipe");
     if (!needed_result) {
         return std::unexpected(needed_result.error());
     }
 
     const auto& cmd = fmt::format(FMT_COMPILE("wipe -Ifre {}"), device);
-    if (!gucc::utils::exec_follow({"/bin/sh", "-c", cmd}, child)) {
+    if (!gucc::utils::exec_checked(cmd)) {
         return std::unexpected(fmt::format("failed to wipe device: {}", device));
     }
     return {};
@@ -204,8 +203,8 @@ auto zfs_create_zpool(std::string_view partition,
     }
 
     // Since zfs manages mountpoints, export and re-import with root at mountpoint
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), pool_name), true);
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, pool_name), true);
+    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), pool_name));
+    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, pool_name));
 
     return {};
 }
@@ -216,7 +215,7 @@ auto apply_additional_partitions(const std::vector<AdditionalPartSelection>& add
     std::int32_t lvm_sep_boot{};
 
     for (const auto& part_select : additional) {
-        if (part_select.format_requested) {
+        if (part_select.format_requested && !part_select.mkfs_command.empty()) {
             const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), part_select.mkfs_command, part_select.device);
             if (!gucc::utils::exec_checked(mkfs_cmd)) {
                 return std::unexpected(fmt::format("failed to format {} with {}", part_select.device, part_select.mkfs_command));
@@ -435,7 +434,7 @@ auto apply_root_partition(const RootPartitionSelection& selection,
     std::string_view mountpoint) noexcept
     -> std::expected<RootPartitionResult, std::string> {
     // 1. Format if requested
-    if (selection.format_requested) {
+    if (selection.format_requested && !selection.mkfs_command.empty()) {
         const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
         if (!gucc::utils::exec_checked(mkfs_cmd)) {
             return std::unexpected(fmt::format("failed to format root partition {} with {}", selection.device, selection.mkfs_command));

@@ -2,7 +2,7 @@
 #include "cachyos/steps.hpp"
 
 // import gucc
-#include "gucc/subprocess.hpp"
+#include "gucc/process.hpp"
 
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
@@ -23,10 +23,9 @@ auto users(const UserSettings& user,
         warnings.emplace_back(fmt::format("set_root_password: {}", res.error()));
     }
 
-    gucc::utils::SubProcess child;
-    child.set_log_line_callback(std::move(log_cb));
-    const std::stop_callback on_cancel(stop_token, [&child] { child.terminate(); });
-    if (auto res = create_user(user, ctx.mountpoint, ctx.hostcache, child); !res) {
+    gucc::utils::default_runner().set_line_sink(std::move(log_cb));
+    const std::stop_callback on_cancel(stop_token, [] { gucc::utils::default_runner().cancel(); });
+    if (auto res = create_user(user, ctx.mountpoint, ctx.hostcache); !res) {
         spdlog::error("create_user: {}", res.error());
         warnings.emplace_back(fmt::format("create_user: {}", res.error()));
     }

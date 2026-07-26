@@ -14,11 +14,6 @@
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
-// forward-declare
-namespace gucc::utils {
-class SubProcess;
-}
-
 namespace cachyos::installer {
 
 /// Result of mounting a single partition with LUKS/LVM detection.
@@ -70,7 +65,7 @@ struct MountApplicationResult {
     -> std::expected<std::vector<gucc::fs::Partition>, std::string>;
 
 /// Securely wipes a device.
-[[nodiscard]] auto secure_wipe(std::string_view device, gucc::utils::SubProcess& child) noexcept
+[[nodiscard]] auto secure_wipe(std::string_view device) noexcept
     -> std::expected<void, std::string>;
 
 /// Automated ZFS setup: creates a new zpool with default datasets.
