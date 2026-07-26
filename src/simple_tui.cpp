@@ -6,7 +6,9 @@
 #include "widgets.hpp"
 
 // instlib
+#include "cachyos/logging.hpp"
 #include "cachyos/orchestrator.hpp"
+#include "cachyos/session.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/types.hpp"
 
@@ -20,6 +22,7 @@
 #include "gucc/mount_partitions.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
+#include "gucc/process.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/timezone.hpp"
@@ -290,16 +293,18 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     user.password = selections.user_pass;
     user.shell    = selections.user_shell;
 
-    const cachyos::installer::ExecutionCallbacks callbacks{
-        .on_progress = [last_msg = std::string{}](const cachyos::installer::ProgressEvent& ev) mutable {
-            if (ev.type == cachyos::installer::ProgressEventType::Running && ev.message != last_msg) {
+    std::string last_progress_msg;
+    const cachyos::installer::InstallSession session{
+        .runner      = gucc::utils::default_runner(),
+        .on_progress = [&last_progress_msg](const cachyos::installer::ProgressEvent& ev) {
+            if (ev.type == cachyos::installer::ProgressEventType::Running && ev.message != last_progress_msg) {
                 spdlog::info("[install] {}", ev.message);
-                last_msg = ev.message;
-            } },
-        .on_log_line = [](std::string_view line) { fmt::print("{}\n", line); },
+                last_progress_msg = ev.message;
+            }
+        },
     };
 
-    const auto result = cachyos::installer::run(ctx, sys, user, selections.root_pass, callbacks);
+    const auto result = cachyos::installer::run(ctx, sys, user, selections.root_pass, session);
     if (!result.success) {
         for (const auto& err : result.errors) {
             spdlog::error("install: {}", err);
@@ -904,7 +909,8 @@ void menu_simple() noexcept {
     config_data["SIMPLE_MODE"] = 1;
 
     if (headless) {
-        // All values pre-filled from settings.json, skip wizard
+        // in headless we don't ask for wizzard input
+        cachyos::installer::logging::attach_stdout_sink();
         auto selections = load_selections_from_config();
         prepare_disk_state(selections);
         apply_user_selections(selections);
@@ -918,6 +924,7 @@ void menu_simple() noexcept {
     }
 
     // Apply selections
+    cachyos::installer::logging::attach_stdout_sink();
     prepare_disk_state(*selections);
     apply_user_selections(*selections);
 }

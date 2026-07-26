@@ -58,6 +58,7 @@
 #ifdef NDEVENV
 #include "follow_process_log.hpp"
 
+#include "gucc/process.hpp"
 #include "gucc/subprocess.hpp"
 
 #include <cpr/api.h>
@@ -252,8 +253,8 @@ void inst_needed(const std::string_view& pkg) noexcept {
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
-    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::install_needed(pkg, child);
+    const auto task = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::install_needed(pkg);
         if (!result) {
             spdlog::error("{}", result.error());
             return false;
@@ -335,8 +336,8 @@ void secure_wipe() noexcept {
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
-    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::secure_wipe(device_info, child);
+    const auto task = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::secure_wipe(device_info);
         if (!result) {
             spdlog::error("{}", result.error());
             return false;
@@ -373,10 +374,9 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
     // Direct create_user (not steps::users — that one couples to
     // set_root_password, which is its own menu action in the advanced TUI).
     const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
-        gucc::utils::SubProcess child;
-        child.set_log_line_callback(std::move(log_cb));
-        const std::stop_callback on_cancel(tok, [&child] { child.terminate(); });
-        if (auto res = cachyos::installer::create_user(settings, mountpoint, hostcache, child); !res) {
+        gucc::utils::default_runner().set_line_sink(std::move(log_cb));
+        const std::stop_callback on_cancel(tok, [] { gucc::utils::default_runner().cancel(); });
+        if (auto res = cachyos::installer::create_user(settings, mountpoint, hostcache); !res) {
             spdlog::error("{}", res.error());
             return false;
         }
@@ -475,8 +475,8 @@ auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
 #ifdef NDEVENV
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
-    const auto task           = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::install_packages(pkg_vec, mountpoint, hostcache, child);
+    const auto task           = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::install_packages(pkg_vec, mountpoint, hostcache);
         if (!result) {
             spdlog::error("{}", result.error());
             return false;
@@ -591,8 +591,8 @@ void remove_pkgs(const std::string_view& packages) noexcept {
 
     auto pkg_vec = gucc::utils::make_multiline(packages, false, ' ');
 
-    const auto task = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::remove_packages(pkg_vec, mountpoint, child);
+    const auto task = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+        auto result = cachyos::installer::remove_packages(pkg_vec, mountpoint);
         if (!result) {
             spdlog::error("{}", result.error());
             return false;
