@@ -5,8 +5,6 @@
 #include <cstdint>  // for int32_t
 
 #include <expected>     // for expected
-#include <functional>   // for function
-#include <stop_token>   // for stop_token
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -17,9 +15,6 @@
 /// as preconditions are met.
 namespace cachyos::installer::steps {
 
-/// Per-line subprocess output callback.
-using LogCallback = std::function<void(std::string_view)>;
-
 [[nodiscard]] auto needs_umount(const InstallContext& ctx) noexcept -> bool;
 
 /// Unmount any existing partitions on the install target.
@@ -27,7 +22,7 @@ using LogCallback = std::function<void(std::string_view)>;
     -> std::expected<void, std::string>;
 
 /// Prepare the target according to part mode.
-[[nodiscard]] auto partition(InstallContext& ctx, const ExecutionCallbacks& callbacks) noexcept
+[[nodiscard]] auto partition(InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
 /// Generate fstab inside the target.
@@ -47,15 +42,11 @@ using LogCallback = std::function<void(std::string_view)>;
 /// Set the root password and create the primary user.
 [[nodiscard]] auto users(const UserSettings& user,
     std::string_view root_password,
-    const InstallContext& ctx,
-    LogCallback log_cb,
-    std::stop_token stop_token) noexcept
+    const InstallContext& ctx) noexcept
     -> std::vector<std::string>;
 
 /// Intalls the base system into the target.
-[[nodiscard]] auto base(const InstallContext& ctx,
-    LogCallback log_cb,
-    std::stop_token stop_token) noexcept
+[[nodiscard]] auto base(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
 /// Generate machine id on the target.
@@ -64,16 +55,12 @@ using LogCallback = std::function<void(std::string_view)>;
 
 /// Install the selected desktop environment packages.
 /// No-op in server mode or when no desktop is selected.
-[[nodiscard]] auto desktop(const InstallContext& ctx,
-    LogCallback log_cb,
-    std::stop_token stop_token) noexcept
+[[nodiscard]] auto desktop(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
 /// Post-pacstrap desktop configuration.
 /// No-op in server mode or when no desktop is selected.
-[[nodiscard]] auto desktop_configure(const InstallContext& ctx,
-    LogCallback log_cb,
-    std::stop_token stop_token) noexcept
+[[nodiscard]] auto desktop_configure(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
 /// Configure the installed display manager to autologin @p user.
@@ -83,9 +70,7 @@ using LogCallback = std::function<void(std::string_view)>;
 
 /// Install every chwd hardware-driver profile applicable to the target's
 /// detected hardware.
-[[nodiscard]] auto chwd(const InstallContext& ctx,
-    LogCallback log_cb,
-    std::stop_token stop_token) noexcept
+[[nodiscard]] auto chwd(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
 /// Carry the live ISO's NetworkManager profiles into the target.
@@ -93,9 +78,7 @@ using LogCallback = std::function<void(std::string_view)>;
 auto network_carryover(const InstallContext& ctx) noexcept -> std::int32_t;
 
 /// Install the configured bootloader.
-[[nodiscard]] auto bootloader(const InstallContext& ctx,
-    LogCallback log_cb,
-    std::stop_token stop_token) noexcept
+[[nodiscard]] auto bootloader(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
 /// Probe the post-install crypto layout and update @p ctx.crypto in place.

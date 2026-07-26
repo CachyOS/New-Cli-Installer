@@ -1,24 +1,15 @@
 #include "cachyos/packages.hpp"
 #include "cachyos/steps.hpp"
 
-// import gucc
-#include "gucc/process.hpp"
-
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
-#include <utility>
-
 namespace cachyos::installer::steps {
 
-auto desktop_configure(const InstallContext& ctx,
-    LogCallback log_cb,
-    std::stop_token stop_token) noexcept -> std::expected<void, std::string> {
+auto desktop_configure(const InstallContext& ctx) noexcept -> std::expected<void, std::string> {
     if (ctx.server_mode || ctx.desktop.empty()) {
         return {};
     }
-    gucc::utils::default_runner().set_line_sink(std::move(log_cb));
-    const std::stop_callback on_cancel(stop_token, [] { gucc::utils::default_runner().cancel(); });
     if (auto res = configure_desktop_extras(ctx); !res) {
         spdlog::error("configure_desktop_extras: {}", res.error());
         return std::unexpected(fmt::format("configure_desktop_extras: {}", res.error()));

@@ -119,7 +119,7 @@ auto is_volume_removable(std::string_view mountpoint) noexcept -> bool {
 }
 
 auto auto_partition(std::string_view device, std::string_view system_mode,
-    gucc::bootloader::BootloaderType bootloader, const ExecutionCallbacks& /*callbacks*/) noexcept
+    gucc::bootloader::BootloaderType bootloader) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string> {
     spdlog::info("Running automatic partitioning");
 

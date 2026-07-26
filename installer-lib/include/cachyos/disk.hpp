@@ -61,7 +61,7 @@ struct MountApplicationResult {
 
 /// Performs automatic partitioning of the device.
 [[nodiscard]] auto auto_partition(std::string_view device, std::string_view system_mode,
-    gucc::bootloader::BootloaderType bootloader, const ExecutionCallbacks& callbacks) noexcept
+    gucc::bootloader::BootloaderType bootloader) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string>;
 
 /// Securely wipes a device.

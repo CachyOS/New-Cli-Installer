@@ -1,10 +1,10 @@
 #ifndef ORCHESTRATOR_HPP
 #define ORCHESTRATOR_HPP
 
+#include "cachyos/session.hpp"
 #include "cachyos/types.hpp"
 
 #include <optional>     // for optional
-#include <stop_token>   // for stop_token
 #include <string_view>  // for string_view
 
 namespace cachyos::installer {
@@ -18,18 +18,16 @@ namespace cachyos::installer {
 /// are filled from the mount step, and crypto state is filled from the
 /// post-install detection step.
 ///
-/// Progress is reported through @p callbacks if set; log output from
-/// subprocesses is forwarded.
+/// Progress is reported through @p session.on_progress if set; subprocess log
+/// output flows through the logger's sinks.
 ///
-/// Pass a stop token from a `std::stop_source` to support cancellation:
-/// cancel checks run between every step, and any subprocess in flight at the
-/// time `request_stop()` is called receives SIGTERM.
+/// Cancel checks run between every step, and any subprocess in flight
+/// at that time receives SIGTERM.
 [[nodiscard]] auto run(InstallContext& ctx,
     const SystemSettings& sys,
     const UserSettings& user,
     std::string_view root_password,
-    const ExecutionCallbacks& callbacks,
-    std::stop_token stop_token = {}) noexcept -> ValidationResult;
+    const InstallSession& session) noexcept -> ValidationResult;
 
 }  // namespace cachyos::installer
 

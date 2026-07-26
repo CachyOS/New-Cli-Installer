@@ -84,7 +84,7 @@ auto needs_umount(const InstallContext& ctx) noexcept -> bool {
     return !std::holds_alternative<partition_strategy::UseExisting>(ctx.strategy);
 }
 
-auto partition(InstallContext& ctx, const ExecutionCallbacks& callbacks) noexcept
+auto partition(InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
     const auto is_efi = ctx.system_mode == InstallContext::SystemMode::UEFI;
 
@@ -120,7 +120,7 @@ auto partition(InstallContext& ctx, const ExecutionCallbacks& callbacks) noexcep
             spdlog::warn("erasing '{}' and applying the default layout", layout.device);
             // TODO(vnepogodin): refactor that later
             const auto& bios_mode = is_efi ? "UEFI"sv : "BIOS"sv;
-            auto partitions       = auto_partition(layout.device, bios_mode, ctx.bootloader, callbacks);
+            auto partitions       = auto_partition(layout.device, bios_mode, ctx.bootloader);
             if (!partitions) {
                 return std::unexpected(partitions.error());
             }

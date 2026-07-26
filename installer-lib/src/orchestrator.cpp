@@ -10,7 +10,6 @@
 #include <array>        // for array
 #include <expected>     // for expected, unexpected
 #include <optional>     // for optional
-#include <stop_token>   // for stop_token
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
@@ -24,6 +23,20 @@ namespace {
 
 // NOLINTNEXTLINE
 using namespace cachyos::installer;
+
+class SinkClearGuard {
+ public:
+    explicit SinkClearGuard(gucc::utils::ProcessRunner& runner) noexcept : m_runner(runner) { }
+    ~SinkClearGuard() { m_runner.set_line_sink(nullptr); }
+
+    SinkClearGuard(const SinkClearGuard&)                    = delete;
+    SinkClearGuard(SinkClearGuard&&)                         = delete;
+    auto operator=(const SinkClearGuard&) -> SinkClearGuard& = delete;
+    auto operator=(SinkClearGuard&&) -> SinkClearGuard&      = delete;
+
+ private:
+    gucc::utils::ProcessRunner& m_runner;
+};
 
 enum class Step : std::uint8_t {
     Umount,
@@ -78,32 +91,28 @@ constexpr auto step_message(Step s) noexcept -> std::string_view {
     return kStepMessages[static_cast<std::size_t>(s)];
 }
 
-auto emit_progress(const ExecutionCallbacks& cb,
+auto emit_progress(const InstallSession& session,
     ProgressEventType type,
     std::int32_t step,
     std::string_view message) noexcept -> void {
-    if (!cb.on_progress) {
+    if (!session.on_progress) {
         return;
     }
     const auto fraction = static_cast<double>(step) / static_cast<double>(kTotalSteps);
-    cb.on_progress(ProgressEvent{
+    session.on_progress(ProgressEvent{
         .type     = type,
         .message  = std::string{message},
         .fraction = fraction,
     });
 }
 
-void emit_step_running(const ExecutionCallbacks& cb, Step s) noexcept {
-    emit_progress(cb, ProgressEventType::Running, step_index(s), step_message(s));
-}
-
 /// Emit a Failed event and return a ValidationResult with the formatted error.
-auto fail_step(const ExecutionCallbacks& cb,
+auto fail_step(const InstallSession& session,
     Step s,
     std::string_view label,
     std::string_view error,
     std::vector<std::string> prior_warnings) noexcept -> ValidationResult {
-    emit_progress(cb, ProgressEventType::Failed, step_index(s), label);
+    emit_progress(session, ProgressEventType::Failed, step_index(s), label);
     return ValidationResult{
         .success  = false,
         .errors   = {fmt::format("{}: {}", label, error)},
@@ -113,47 +122,15 @@ auto fail_step(const ExecutionCallbacks& cb,
 
 /// Emit a Cancelled event for the step we were about to run and return a
 /// ValidationResult tagged as cancelled.
-auto cancel_result(const ExecutionCallbacks& cb,
+auto cancel_result(const InstallSession& session,
     Step s,
     std::vector<std::string> prior_warnings) noexcept -> ValidationResult {
     constexpr auto kCancelled = "Cancelled by user"sv;
-    emit_progress(cb, ProgressEventType::Cancelled, step_index(s), kCancelled);
+    emit_progress(session, ProgressEventType::Cancelled, step_index(s), kCancelled);
     return ValidationResult{
         .success  = false,
         .errors   = {std::string{kCancelled}},
         .warnings = std::move(prior_warnings),
-    };
-}
-
-/// Builds a log-line callback for a step that forwards lines to the user's
-/// sink and, when a pacman progress line is recognised, emits an intra-step
-/// Running event scaled into this step's slice of the overall progress bar.
-auto step_log_callback(const ExecutionCallbacks& cb, Step s) noexcept
-    -> steps::LogCallback {
-    if (!cb.on_log_line && !cb.on_progress) {
-        return {};
-    }
-    const auto idx = step_index(s);
-    auto msg       = std::string{step_message(s)};
-    return [&cb, idx, msg = std::move(msg)](std::string_view line) {
-        if (cb.on_log_line) {
-            cb.on_log_line(line);
-        }
-        if (!cb.on_progress) {
-            return;
-        }
-        const auto frac = parse_pacman_progress(line);
-        if (!frac) {
-            return;
-        }
-        constexpr auto total    = static_cast<double>(kTotalSteps);
-        const double base       = static_cast<double>(idx) / total;
-        const double step_width = 1.0 / total;
-        cb.on_progress(ProgressEvent{
-            .type     = ProgressEventType::Running,
-            .message  = msg,
-            .fraction = base + (*frac * step_width),
-        });
     };
 }
 
@@ -190,19 +167,48 @@ auto run(InstallContext& ctx,
     const SystemSettings& sys,
     const UserSettings& user,
     std::string_view root_password,
-    const ExecutionCallbacks& callbacks,
-    std::stop_token stop_token) noexcept -> ValidationResult {
+    const InstallSession& session) noexcept -> ValidationResult {
     using enum ProgressEventType;
     std::vector<std::string> warnings;
 
+    // reset run state
+    session.runner.reset_cancel();
+
+    // parse pacman progress into session context
+    Step current_step{Step::Umount};
+    std::string current_msg;
+    session.runner.set_line_sink([&session, &current_step, &current_msg](std::string_view line) {
+        if (!session.on_progress) {
+            return;
+        }
+        const auto frac = parse_pacman_progress(line);
+        if (!frac) {
+            return;
+        }
+        constexpr auto total = static_cast<double>(kTotalSteps);
+        const double base    = static_cast<double>(step_index(current_step)) / total;
+        session.on_progress(ProgressEvent{
+            .type     = ProgressEventType::Running,
+            .message  = current_msg,
+            .fraction = base + (*frac / total),
+        });
+    });
+    const SinkClearGuard sink_guard{session.runner};
+
+    const auto begin_step = [&session, &current_step, &current_msg](Step step_obj) {
+        current_step = step_obj;
+        current_msg  = std::string{step_message(step_obj)};
+        emit_progress(session, ProgressEventType::Running, step_index(step_obj), step_message(step_obj));
+    };
+
     spdlog::info("Install orchestrator starting...");
-    emit_progress(callbacks, Started, 0, "Starting installation..."sv);
+    emit_progress(session, Started, 0, "Starting installation..."sv);
 
     // Unmount any existing partitions on the target.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Umount, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Umount, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Umount);
+    begin_step(Step::Umount);
 
     // TODO(vnepogodin): generally we don't want to support that,
     // so let it be for the sake of feature parity for now
@@ -214,147 +220,147 @@ auto run(InstallContext& ctx,
     }
 
     // Prepare the target disk using partition schema.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Partition, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Partition, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Partition);
-    if (auto res = steps::partition(ctx, callbacks); !res) {
-        return fail_step(callbacks, Step::Partition, "Partitioning failed"sv, res.error(), std::move(warnings));
+    begin_step(Step::Partition);
+    if (auto res = steps::partition(ctx); !res) {
+        return fail_step(session, Step::Partition, "Partitioning failed"sv, res.error(), std::move(warnings));
     }
 
     // Base system.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Base, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Base, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Base);
-    if (auto res = steps::base(ctx, step_log_callback(callbacks, Step::Base), stop_token); !res) {
-        if (stop_token.stop_requested()) {
-            return cancel_result(callbacks, Step::Base, std::move(warnings));
+    begin_step(Step::Base);
+    if (auto res = steps::base(ctx); !res) {
+        if (session.runner.cancelled()) {
+            return cancel_result(session, Step::Base, std::move(warnings));
         }
-        return fail_step(callbacks, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
+        return fail_step(session, Step::Base, "Base install failed"sv, res.error(), std::move(warnings));
     }
 
     // Generate fstab.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Fstab, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Fstab, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Fstab);
+    begin_step(Step::Fstab);
     if (auto res = steps::fstab(ctx); !res) {
-        return fail_step(callbacks, Step::Fstab, "fstab generation failed"sv, res.error(), std::move(warnings));
+        return fail_step(session, Step::Fstab, "fstab generation failed"sv, res.error(), std::move(warnings));
     }
 
     // Optional LUKS swap.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::EncryptSwap, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::EncryptSwap, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::EncryptSwap);
+    begin_step(Step::EncryptSwap);
     std::ranges::move(steps::encrypt_swap(ctx), std::back_inserter(warnings));
 
     // NOTE(vnepogodin): generally OEM setup should be after all installs, partitions etc
 
     // Apply system settings (hostname, locale, keymap, timezone, hw_clock).
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::SystemSettings, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::SystemSettings, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::SystemSettings);
+    begin_step(Step::SystemSettings);
     if (auto res = steps::system_settings(sys, ctx); !res) {
-        return fail_step(callbacks, Step::SystemSettings, "System settings failed"sv, res.error(), std::move(warnings));
+        return fail_step(session, Step::SystemSettings, "System settings failed"sv, res.error(), std::move(warnings));
     }
 
     // Root password + user account.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Users, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Users, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Users);
+    begin_step(Step::Users);
     std::ranges::move(
-        steps::users(user, root_password, ctx, step_log_callback(callbacks, Step::Users), stop_token),
+        steps::users(user, root_password, ctx),
         std::back_inserter(warnings));
 
     // Replace the live-ISO machine-id with a fresh one for the target.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::MachineId, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::MachineId, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::MachineId);
+    begin_step(Step::MachineId);
     if (auto res = steps::machine_id(ctx); !res) {
         warnings.emplace_back(res.error());
     }
 
     // Desktop pacstrap (skipped in server mode).
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Desktop, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Desktop, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Desktop);
-    if (auto res = steps::desktop(ctx, step_log_callback(callbacks, Step::Desktop), stop_token); !res) {
+    begin_step(Step::Desktop);
+    if (auto res = steps::desktop(ctx); !res) {
         warnings.emplace_back(res.error());
     }
 
     // Desktop post-install config (plymouth + service enable).
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::DesktopConfigure, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::DesktopConfigure, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::DesktopConfigure);
-    if (auto res = steps::desktop_configure(ctx, step_log_callback(callbacks, Step::DesktopConfigure), stop_token); !res) {
+    begin_step(Step::DesktopConfigure);
+    if (auto res = steps::desktop_configure(ctx); !res) {
         warnings.emplace_back(res.error());
     }
 
     // Autologin.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Autologin, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Autologin, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Autologin);
+    begin_step(Step::Autologin);
     if (auto res = steps::autologin(user, ctx); !res) {
         warnings.emplace_back(res.error());
     }
 
     // chwd hardware-driver profiles (opt-in).
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Chwd, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Chwd, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Chwd);
-    if (auto res = steps::chwd(ctx, step_log_callback(callbacks, Step::Chwd), stop_token); !res) {
+    begin_step(Step::Chwd);
+    if (auto res = steps::chwd(ctx); !res) {
         warnings.emplace_back(res.error());
     }
 
     // Carry the live ISO's NetworkManager connection profiles into the target.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::NetworkCarryover, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::NetworkCarryover, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::NetworkCarryover);
+    begin_step(Step::NetworkCarryover);
     if (ctx.carry_live_network && steps::network_carryover(ctx) < 0) {
         warnings.emplace_back("network connection carryover failed");
     }
 
     // Bootloader.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::Bootloader, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::Bootloader, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::Bootloader);
-    if (auto res = steps::bootloader(ctx, step_log_callback(callbacks, Step::Bootloader), stop_token); !res) {
+    begin_step(Step::Bootloader);
+    if (auto res = steps::bootloader(ctx); !res) {
         warnings.emplace_back(res.error());
     }
 
     // Detect post-install crypto state and stash it on the context for kernel-params use.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::DetectCrypto, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::DetectCrypto, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::DetectCrypto);
+    begin_step(Step::DetectCrypto);
 
     [[maybe_unused]] const auto crypto_res = steps::detect_crypto(ctx);
 
     // Enable systemd services.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::EnableServices, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::EnableServices, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::EnableServices);
+    begin_step(Step::EnableServices);
     if (auto res = steps::enable_services(ctx); !res) {
         warnings.emplace_back(res.error());
     }
 
     // Final validation.
-    if (stop_token.stop_requested()) {
-        return cancel_result(callbacks, Step::FinalValidation, std::move(warnings));
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::FinalValidation, std::move(warnings));
     }
-    emit_step_running(callbacks, Step::FinalValidation);
+    begin_step(Step::FinalValidation);
     {
         auto check = steps::final_validation(ctx);
         for (auto& err : check.errors) {
@@ -366,10 +372,10 @@ auto run(InstallContext& ctx,
     }
 
     // Copy install log into target and unmount.
-    emit_step_running(callbacks, Step::Cleanup);
+    begin_step(Step::Cleanup);
     std::ranges::move(steps::cleanup(ctx), std::back_inserter(warnings));
 
-    emit_progress(callbacks, Completed, kTotalSteps, "Installation complete!"sv);
+    emit_progress(session, Completed, kTotalSteps, "Installation complete!"sv);
     spdlog::info("Install orchestrator finished.");
 
     return ValidationResult{

@@ -184,14 +184,7 @@ struct ProgressEvent {
     double fraction{-1.0};
 };
 
-/// Callbacks for frontend integration.
 using ProgressCallback = std::function<void(const ProgressEvent&)>;
-using LogLineCallback  = std::function<void(std::string_view line)>;
-
-struct ExecutionCallbacks {
-    ProgressCallback on_progress;
-    LogLineCallback on_log_line;
-};
 
 /// Validation result from final_check and similar operations.
 struct ValidationResult {
