@@ -203,8 +203,8 @@ auto zfs_create_zpool(std::string_view partition,
     }
 
     // Since zfs manages mountpoints, export and re-import with root at mountpoint
-    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), pool_name));
-    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, pool_name));
+    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool export {}"), pool_name));
+    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool import -R {} {}"), mountpoint, pool_name));
 
     return {};
 }

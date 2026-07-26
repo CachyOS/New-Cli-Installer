@@ -204,7 +204,7 @@ auto install_packages(const std::vector<std::string>& packages,
 
     const auto& pkgs_str      = gucc::utils::join(packages, ' ');
     const auto& cmd           = hostcache ? "pacstrap" : "pacstrap -c";
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} 2>&1 | tee -a /tmp/pacstrap.log"), cmd, mountpoint, pkgs_str);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {}"), cmd, mountpoint, pkgs_str);
 
     if (!gucc::utils::exec_checked(cmd_formatted)) {
         return std::unexpected(fmt::format("failed to install packages: {}", pkgs_str));
