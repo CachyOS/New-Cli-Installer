@@ -8,6 +8,7 @@
 #include "gucc/locale.hpp"
 #include "gucc/process.hpp"
 #include "gucc/systemd_services.hpp"
+#include "gucc/zfs.hpp"
 
 #include <filesystem>  // for copy_file, copy_options, create_directories
 #include <string>      // for string
@@ -117,6 +118,13 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
         ::fs::copy_file(src, dst, ::fs::copy_options::overwrite_existing, ec);
         if (ec) {
             return make_error(ErrorCode::FileIo, fmt::format("Failed to copy '{}' -> '{}': {}", src, dst, ec.message()));
+        }
+    }
+
+    // For a ZFS root, copy host id to bundle with initramfs
+    if (config.is_zfs) {
+        if (auto res = gucc::fs::copy_hostid_to_target(mountpoint); !res) {
+            return res;
         }
     }
 

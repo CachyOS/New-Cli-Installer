@@ -1,4 +1,5 @@
 #include "doctest_compatibility.h"
+#include "test_temp_root.hpp"
 
 #include "gucc/display_manager.hpp"
 #include "gucc/file_utils.hpp"
@@ -7,12 +8,10 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
-#include <random>
 #include <string>
 #include <string_view>
 #include <system_error>
 
-#include <fmt/format.h>
 #include <spdlog/sinks/callback_sink.h>
 #include <spdlog/spdlog.h>
 
@@ -22,26 +21,7 @@ using gucc::display_manager::Kind;
 
 namespace {
 
-class TempRoot final {
- public:
-    TempRoot()
-      : m_path(fs::temp_directory_path() / fs::path{fmt::format("gucc-dm-{}", std::random_device{}())}) {
-        fs::create_directories(m_path);
-    }
-    ~TempRoot() {
-        std::error_code ec;
-        fs::remove_all(m_path, ec);
-    }
-    TempRoot(const TempRoot&)                    = delete;
-    auto operator=(const TempRoot&) -> TempRoot& = delete;
-    TempRoot(TempRoot&&)                         = delete;
-    auto operator=(TempRoot&&) -> TempRoot&      = delete;
-
-    [[nodiscard]] auto path() const noexcept -> const fs::path& { return m_path; }
-
- private:
-    fs::path m_path;
-};
+using gucc::tests::TempRoot;
 
 void touch_unit(const fs::path& root, std::string_view service_name) {
     const auto units_dir = root / "usr" / "lib" / "systemd" / "system";

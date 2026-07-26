@@ -2,8 +2,9 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>  // for find
-#include <ranges>     // for ranges::*
+#include <algorithm>   // for find
+#include <filesystem>  // for exists, copy_file, create_directories
+#include <ranges>      // for ranges::*
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -11,6 +12,7 @@
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
+namespace fs = std::filesystem;
 
 namespace gucc::fs {
 
@@ -94,6 +96,14 @@ auto zpool_set_property(std::string_view property, std::string_view pool_name) n
 }
 
 auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase) noexcept -> Result<void> {
+    // ensure hostid exists before pool creation
+    {
+        std::error_code ec;
+        if (!::fs::exists("/etc/hostid"sv, ec) && !utils::exec_checked("zgenhostid"sv)) {
+            spdlog::warn("cannot generate hostid with zgenhostid");
+        }
+    }
+
     const auto& zfs_zpool_cmd = [&]() {
         auto cmd = fmt::format(FMT_COMPILE("zpool create {}"), pool_options);
         if (passphrase.has_value()) {
@@ -140,6 +150,29 @@ auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConf
     if (!utils::exec_checked(zfs_export_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to export zfs zpool with: {}", zfs_export_cmd));
     }
+    return {};
+}
+
+auto copy_hostid_to_target(std::string_view target_root, std::string_view host_hostid) noexcept -> Result<void> {
+    std::error_code ec;
+    if (!::fs::exists(host_hostid, ec)) {
+        spdlog::warn("hostid: source '{}' does not exist; skipping copy into target", host_hostid);
+        return {};
+    }
+
+    const auto etc_dir = fmt::format(FMT_COMPILE("{}/etc"), target_root);
+    ::fs::create_directories(etc_dir, ec);
+    if (ec) {
+        return make_error(ErrorCode::FileIo, fmt::format("hostid: failed to create '{}': {}", etc_dir, ec.message()));
+    }
+
+    const auto dest = fmt::format(FMT_COMPILE("{}/hostid"), etc_dir);
+    ::fs::copy_file(host_hostid, dest, ::fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        return make_error(ErrorCode::FileIo, fmt::format("hostid: failed to copy '{}' -> '{}': {}", host_hostid, dest, ec.message()));
+    }
+
+    spdlog::info("hostid: copied '{}' -> '{}'", host_hostid, dest);
     return {};
 }
 

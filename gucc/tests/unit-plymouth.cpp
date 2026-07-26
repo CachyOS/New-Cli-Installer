@@ -1,12 +1,11 @@
 #include "doctest_compatibility.h"
+#include "test_temp_root.hpp"
 
 #include "gucc/plymouth.hpp"
 
 #include <filesystem>
 #include <fstream>
-#include <random>
 #include <string>
-#include <system_error>
 
 #include <fmt/format.h>
 
@@ -14,26 +13,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-class TempRoot final {
- public:
-    TempRoot()
-      : m_path(fs::temp_directory_path() / fs::path{fmt::format("gucc-plymouth-{}", std::random_device{}())}) {
-        fs::create_directories(m_path);
-    }
-    ~TempRoot() {
-        std::error_code ec;
-        fs::remove_all(m_path, ec);
-    }
-    TempRoot(const TempRoot&)                    = delete;
-    auto operator=(const TempRoot&) -> TempRoot& = delete;
-    TempRoot(TempRoot&&)                         = delete;
-    auto operator=(TempRoot&&) -> TempRoot&      = delete;
-
-    [[nodiscard]] auto path() const noexcept -> const fs::path& { return m_path; }
-
- private:
-    fs::path m_path;
-};
+using gucc::tests::TempRoot;
 
 void install_plymouth_binary(const fs::path& root) {
     const auto bin_dir = root / "usr" / "bin";

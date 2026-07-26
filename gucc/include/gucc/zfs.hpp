@@ -72,6 +72,14 @@ auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, 
 /// @return Empty result if the pool and all datasets are created successfully, an error otherwise.
 auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConfig& zfs_config) noexcept -> Result<void>;
 
+/// @brief Copies the host's ZFS hostid into the target so the installed system
+///        presents the same hostid the pool recorded at creation (a mismatch
+///        makes the pool refuse to import at boot).
+/// @param target_root The target root mountpoint (e.g. "/mnt").
+/// @param host_hostid Path to the host hostid file.
+/// @return Empty result on success an error only on a real copy failure.
+auto copy_hostid_to_target(std::string_view target_root, std::string_view host_hostid = "/etc/hostid") noexcept -> Result<void>;
+
 }  // namespace gucc::fs
 
 #endif  // ZFS_HPP

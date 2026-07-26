@@ -30,6 +30,7 @@ gucc_test_names = [
     'systemd_repart',
     'timezone',
     'process',
+    'zfs_hostid',
 ]
 
 foreach t : gucc_test_names
