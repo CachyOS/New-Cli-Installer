@@ -141,18 +141,18 @@ auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> Result<
     const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), root_mountpoint);
     if (::fs::exists(swap_file) && ::fs::is_regular_file(swap_file)) {
         spdlog::info("Appending swapfile to the fstab..");
-        utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {1}"), root_mountpoint, fstab_filepath));
+        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {1}"), root_mountpoint, fstab_filepath));
     }
 
     // Edit fstab in case of btrfs subvolumes
-    utils::exec(fmt::format(FMT_COMPILE("sed -i 's/subvolid=.*,subvol=\\/.*,//g' {}"), fstab_filepath));
+    utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/subvolid=.*,subvol=\\/.*,//g' {}"), fstab_filepath));
 
     // remove any zfs datasets that are mounted by zfs
     const auto& query_zfs_cmd = fmt::format(FMT_COMPILE("cat {} | grep '^[a-z,A-Z]' | {}"), fstab_filepath, "awk '{print $1}'");
     const auto& msource_list  = utils::make_multiline(utils::exec(query_zfs_cmd));
     for (const auto& msource : msource_list) {
         if (utils::exec_checked(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep '^/' | {} | grep -q '^{}$'"), "awk '{print $2}'", msource))) {
-            utils::exec(fmt::format(FMT_COMPILE("sed -e '\\|^{}[[:space:]]| s/^#*/#/' -i {}"), msource, fstab_filepath));
+            utils::exec_checked(fmt::format(FMT_COMPILE("sed -e '\\|^{}[[:space:]]| s/^#*/#/' -i {}"), msource, fstab_filepath));
         }
     }
     return {};

@@ -34,7 +34,8 @@ auto exec(std::string_view command, bool interactive) noexcept -> std::string {
         return std::to_string(ret_code);
     }
 
-    return std::move(default_runner().run_shell(command, RunOptions{.quiet = true, .kind = ProcessKind::Mutate}).output);
+    // readonly only to capture output
+    return std::move(default_runner().run_shell(command, RunOptions{.quiet = true, .kind = ProcessKind::Query}).output);
 }
 
 auto exec_checked(std::string_view command) noexcept -> bool {
@@ -42,29 +43,15 @@ auto exec_checked(std::string_view command) noexcept -> bool {
 }
 
 void arch_chroot(std::string_view command, std::string_view mountpoint, [[maybe_unused]] bool interactive) noexcept {
-#ifdef NDEVENV
     default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint});
-#else
-    spdlog::info("Running with arch-chroot(interactive='{}') on '{}': '{}'", interactive, mountpoint, command);
-#endif
 }
 
 auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool {
-#ifdef NDEVENV
     return default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint}).ok();
-#else
-    spdlog::info("Running with checked arch-chroot on '{}': '{}'", mountpoint, command);
-    return true;
-#endif
 }
 
 auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) noexcept -> bool {
-#ifdef NDEVENV
     return default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint}).ok();
-#else
-    spdlog::info("Running with arch-chroot-follow on '{}': '{}'", mountpoint, command);
-    return true;
-#endif
 }
 
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache) noexcept -> bool {
@@ -73,12 +60,7 @@ auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool h
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} 2>&1 | tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
 
     spdlog::info("Running pacstrap with packages: '{}'", packages);
-#ifdef NDEVENV
     return default_runner().run_shell(cmd_formatted, RunOptions{.kind = ProcessKind::Mutate}).ok();
-#else
-    spdlog::info("Running command: '{}'", cmd_formatted);
-    return true;
-#endif
 }
 
 }  // namespace gucc::utils

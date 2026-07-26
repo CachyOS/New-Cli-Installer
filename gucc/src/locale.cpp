@@ -41,7 +41,7 @@ LC_MESSAGES="{0}"
     }
 
     // TODO(vnepogodin): refactor and make backups of locale config and locale gen
-    utils::exec(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
+    utils::exec_checked(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
 
     // NOTE: maybe we should also write into /etc/default/locale if /etc/default exists and is a dir?
     return {};

@@ -38,7 +38,7 @@ auto setup_keyfile_impl(std::string_view dest_file, std::string_view mountpoint,
     }
 
     // 2. Set permissions to 600, so regular users are not able to read the keyfile
-    utils::exec(fmt::format(FMT_COMPILE("chmod 600 {}"), dest_file));
+    utils::exec_checked(fmt::format(FMT_COMPILE("chmod 600 {}"), dest_file));
 
     // 3. Add keyfile to luks
     spdlog::info("Adding the keyfile to the LUKS configuration");

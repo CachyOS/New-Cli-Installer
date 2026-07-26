@@ -16,28 +16,18 @@ namespace gucc::fs {
 
 // Creates a zfs volume
 auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept -> Result<void> {
-#ifdef NDEVENV
     if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -V {}M {} 2>>/tmp/cachyos-install.log"), zsize, zpath))) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs zvol {} of size {}M", zpath, zsize));
     }
     return {};
-#else
-    spdlog::debug("zfs create -V {}M {}", zsize, zpath);
-    return {};
-#endif
 }
 
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
 auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> Result<void> {
-#ifdef NDEVENV
     if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log"), zmount, zpath))) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs dataset {} at mountpoint {}", zpath, zmount));
     }
     return {};
-#else
-    spdlog::debug("zfs create -o mountpoint={} {}", zmount, zpath);
-    return {};
-#endif
 }
 
 auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> Result<void> {
@@ -51,24 +41,15 @@ auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> R
 }
 
 auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> Result<void> {
-#ifdef NDEVENV
     if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs destroy -r {} 2>>/tmp/cachyos-install.log"), zdataset))) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to destroy zfs dataset {}", zdataset));
     }
     return {};
-#else
-    spdlog::debug("zfs destroy -r {}", zdataset);
-    return {};
-#endif
 }
 
 // returns a list of imported zpools
 auto zfs_list_pools() noexcept -> std::string {
-#ifdef NDEVENV
     return utils::exec(R"(zfs list -H -o name 2>/dev/null | grep "/")"sv);
-#else
-    return {"vol0\nvol1\n"};
-#endif
 }
 
 // returns a list of devices containing zfs members
@@ -86,7 +67,6 @@ auto zfs_list_devs() noexcept -> std::string {
 }
 
 auto zfs_list_datasets(std::string_view type) noexcept -> std::string {
-#ifdef NDEVENV
     if (type == "zvol"sv) {
         return utils::exec("zfs list -Ht volume -o name,volsize 2>/dev/null"sv);
     } else if (type == "legacy"sv) {
@@ -94,22 +74,13 @@ auto zfs_list_datasets(std::string_view type) noexcept -> std::string {
     }
 
     return utils::exec(R"(zfs list -H -o name 2>/dev/null | grep "/")"sv);
-#else
-    spdlog::debug("type := {}", type);
-    return {"zpcachyos"};
-#endif
 }
 
 auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> Result<void> {
-#ifdef NDEVENV
     if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs set {} {} 2>>/tmp/cachyos-install.log"), property, dataset))) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to set zfs property {} on {}", property, dataset));
     }
     return {};
-#else
-    spdlog::debug("zfs set {} {}", property, dataset);
-    return {};
-#endif
 }
 
 auto zpool_set_property(std::string_view property, std::string_view pool_name) noexcept -> Result<void> {

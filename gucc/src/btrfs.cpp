@@ -72,7 +72,7 @@ auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::strin
         }
     }
     // TODO(vnepogodin): handle exit code
-    utils::exec(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint), true);
+    utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint));
 
     // Mount subvolumes
     if (auto res = fs::btrfs_mount_subvols(subvols, device, root_mountpoint, mount_opts); !res) {
