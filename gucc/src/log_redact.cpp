@@ -52,7 +52,7 @@ auto redact(std::string_view line) noexcept -> std::string {
     const std::lock_guard<std::mutex> lock(g_secrets_mutex);
     std::string result{line};
     for (const auto& secret : g_secrets) {
-        std::string::size_type pos{};
+        std::size_t pos{};
         while ((pos = result.find(secret, pos)) != std::string::npos) {
             result.replace(pos, secret.size(), kRedactionMask);
             pos += kRedactionMask.size();

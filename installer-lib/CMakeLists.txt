@@ -9,6 +9,7 @@ project(cachyos-installer-lib
         LANGUAGES CXX)
 
 add_library(${PROJECT_NAME}
+   src/logging.cpp include/cachyos/logging.hpp
    src/system.cpp include/cachyos/system.hpp
    src/requirements.cpp include/cachyos/requirements.hpp
    src/installer_config.cpp include/cachyos/installer_config.hpp
