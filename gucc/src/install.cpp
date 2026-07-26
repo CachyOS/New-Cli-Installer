@@ -6,7 +6,7 @@
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
-#include "gucc/subprocess.hpp"
+#include "gucc/process.hpp"
 #include "gucc/systemd_services.hpp"
 
 #include <filesystem>  // for copy_file, copy_options, create_directories
@@ -55,13 +55,16 @@ auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> bool {
     return true;
 }
 
-auto run_rate_mirrors(gucc::utils::SubProcess& child) noexcept -> bool {
+auto run_rate_mirrors() noexcept -> bool {
+    using gucc::utils::default_runner;
+    using gucc::utils::ProcessKind;
+    using gucc::utils::RunOptions;
     spdlog::info("Running rate-mirrors...");
-    if (!gucc::utils::exec_follow({"/bin/bash", "-c", "pacman -Sy --noconfirm --needed cachyos-rate-mirrors rate-mirrors 2>>/tmp/cachyos-install.log"}, child)) {
+    if (!default_runner().run({"/usr/bin/pacman", "-Sy", "--noconfirm", "--needed", "cachyos-rate-mirrors", "rate-mirrors"}, RunOptions{.kind = ProcessKind::Mutate}).ok()) {
         spdlog::error("Failed to install cachyos-rate-mirrors");
         return false;
     }
-    if (!gucc::utils::exec_follow({"/bin/bash", "-c", "cachyos-rate-mirrors 2>>/tmp/cachyos-install.log"}, child)) {
+    if (!default_runner().run({"/usr/bin/cachyos-rate-mirrors"}, RunOptions{.kind = ProcessKind::Mutate}).ok()) {
         spdlog::error("Failed to run cachyos-rate-mirrors");
         return false;
     }
@@ -71,7 +74,7 @@ auto run_rate_mirrors(gucc::utils::SubProcess& child) noexcept -> bool {
 
 namespace gucc::install {
 
-auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcept -> Result<void> {
+auto install_base(const InstallConfig& config) noexcept -> Result<void> {
     const auto& mountpoint = config.mountpoint;
 
     // Validate required fields
@@ -98,12 +101,12 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
     }
 
     // 3. Rate mirrors before install
-    if (!run_rate_mirrors(child)) {
+    if (!run_rate_mirrors()) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to update rate-mirrors"));
     }
 
     // 4. Run pacstrap
-    if (!gucc::utils::run_pacstrap(mountpoint, config.packages, config.hostcache, child)) {
+    if (!gucc::utils::run_pacstrap(mountpoint, config.packages, config.hostcache)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("pacstrap failed"));
     }
 
@@ -125,7 +128,7 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
 
     // 7. Regenerate initramfs with the new mkinitcpio config
     spdlog::info("Regenerating initramfs...");
-    if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint, child)) {
+    if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to regenerate initramfs"));
     }
 
@@ -135,7 +138,7 @@ auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcep
     }
 
     // 9. Install hardware drivers
-    if (auto res = gucc::chwd::install_available_profiles(mountpoint, child); !res) {
+    if (auto res = gucc::chwd::install_available_profiles(mountpoint); !res) {
         return res;
     }
 

@@ -1,19 +1,13 @@
 #include "gucc/io_utils.hpp"
-#include "gucc/subprocess.hpp"
+#include "gucc/process.hpp"
 
-#include <sys/wait.h>  // for waitpid
-#include <unistd.h>    // for execvp, fork
+#include <cstdlib>  // for getenv, system
 
-#include <cstdint>  // for int32_t
-#include <cstdio>   // for feof, fgets, pclose, popen
-#include <cstdlib>  // for WIFEXITED, WIFSIGNALED
-
-#include <algorithm>  // for transform
-#include <string>     // for string
-#include <vector>     // for vector
+#include <string>   // for string, to_string
+#include <utility>  // for move
+#include <vector>   // for vector
 
 #include <fmt/compile.h>
-#include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
@@ -26,31 +20,7 @@ auto safe_getenv(const char* env_name) noexcept -> std::string_view {
 }
 
 void exec(const std::vector<std::string>& vec) noexcept {
-    const bool log_exec_cmds = utils::safe_getenv("LOG_EXEC_CMDS") == "1"sv;
-    const bool dirty_cmd_run = utils::safe_getenv("DIRTY_CMD_RUN") == "1"sv;
-
-    if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
-        spdlog::debug("[exec] cmd := {}", vec);
-    }
-    if (dirty_cmd_run) {
-        return;
-    }
-
-    std::int32_t status{};
-    auto pid = fork();
-    if (pid == 0) {
-        std::vector<char*> args;
-        std::transform(vec.cbegin(), vec.cend(), std::back_inserter(args),
-            [=](const std::string& arg) -> char* { return const_cast<char*>(arg.data()); });
-        args.push_back(nullptr);
-
-        char** command = args.data();
-        execvp(command[0], command);
-    } else {
-        do {
-            waitpid(pid, &status, 0);
-        } while ((!WIFEXITED(status)) && (!WIFSIGNALED(status)));
-    }
+    default_runner().run(vec, RunOptions{.kind = ProcessKind::Mutate});
 }
 
 // https://github.com/sheredom/subprocess.h
@@ -59,84 +29,52 @@ void exec(const std::vector<std::string>& vec) noexcept {
 // https://stackoverflow.com/questions/11342868/c-interface-for-interactive-bash
 // https://github.com/hniksic/rust-subprocess
 auto exec(std::string_view command, bool interactive) noexcept -> std::string {
-    const bool log_exec_cmds = utils::safe_getenv("LOG_EXEC_CMDS") == "1"sv;
-
-    if (log_exec_cmds && spdlog::default_logger_raw() != nullptr) {
-        spdlog::debug("[exec] cmd := '{}'", command);
-    }
-
     if (interactive) {
-        const auto& ret_code = system(command.data());
+        const auto ret_code = std::system(command.data());
         return std::to_string(ret_code);
     }
 
-    const std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.data(), "r"), pclose);
-    if (!pipe) {
-        spdlog::error("popen failed! '{}'", command);
-        return "-1";
-    }
-
-    std::string result{};
-    std::array<char, 128> buffer{};
-    while (!feof(pipe.get())) {
-        if (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-            result += buffer.data();
-        }
-    }
-
-    if (result.ends_with('\n')) {
-        result.pop_back();
-    }
-
-    return result;
+    return std::move(default_runner().run_shell(command, RunOptions{.quiet = true, .kind = ProcessKind::Mutate}).output);
 }
 
 auto exec_checked(std::string_view command) noexcept -> bool {
-    return utils::exec(command, true) == "0"sv;
+    return default_runner().run_shell(command, RunOptions{.kind = ProcessKind::Mutate}).ok();
 }
 
-void arch_chroot(std::string_view command, std::string_view mountpoint, bool interactive) noexcept {
-    // TODO(vnepogodin): refactor to move output into variable and print into log
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 2>&1"), mountpoint, command);
-
+void arch_chroot(std::string_view command, std::string_view mountpoint, [[maybe_unused]] bool interactive) noexcept {
 #ifdef NDEVENV
-    utils::exec(cmd_formatted, interactive);
+    default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint});
 #else
-    spdlog::info("Running with arch-chroot(interactive='{}'): '{}'", interactive, cmd_formatted);
+    spdlog::info("Running with arch-chroot(interactive='{}') on '{}': '{}'", interactive, mountpoint, command);
 #endif
 }
 
 auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool {
-    // TODO(vnepogodin): refactor to move output into variable and print into log
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log 1>/dev/null"), mountpoint, command);
-
 #ifdef NDEVENV
-    return utils::exec_checked(cmd_formatted);
+    return default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint}).ok();
 #else
-    spdlog::info("Running with checked arch-chroot: '{}'", cmd_formatted);
+    spdlog::info("Running with checked arch-chroot on '{}': '{}'", mountpoint, command);
     return true;
 #endif
 }
 
-auto arch_chroot_follow(std::string_view command, std::string_view mountpoint, SubProcess& child) noexcept -> bool {
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} {} 2>>/tmp/cachyos-install.log"), mountpoint, command);
-
+auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) noexcept -> bool {
 #ifdef NDEVENV
-    return utils::exec_follow({"/bin/sh", "-c", cmd_formatted}, child);
+    return default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint}).ok();
 #else
-    spdlog::info("Running with arch-chroot-follow: '{}'", cmd_formatted);
+    spdlog::info("Running with arch-chroot-follow on '{}': '{}'", mountpoint, command);
     return true;
 #endif
 }
 
-auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache, SubProcess& child) noexcept -> bool {
+auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache) noexcept -> bool {
     const auto& cmd = hostcache ? "pacstrap"sv : "pacstrap -c"sv;
     // TODO(vnepogodin): pacstrap should be more customizable and be in it's own "module"
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} 2>&1 | tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
 
     spdlog::info("Running pacstrap with packages: '{}'", packages);
 #ifdef NDEVENV
-    return utils::exec_follow({"/bin/bash", "-c", cmd_formatted}, child);
+    return default_runner().run_shell(cmd_formatted, RunOptions{.kind = ProcessKind::Mutate}).ok();
 #else
     spdlog::info("Running command: '{}'", cmd_formatted);
     return true;

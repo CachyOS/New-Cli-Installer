@@ -10,7 +10,8 @@
 #include <string>
 #include <system_error>
 
-#include <fmt/format.h>
+#include <spdlog/sinks/callback_sink.h>
+#include <spdlog/spdlog.h>
 
 namespace fs = std::filesystem;
 
@@ -68,6 +69,12 @@ class TempRoot final {
 
 TEST_CASE("machine_id::detail::clear_existing")
 {
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+
     SECTION("removes /etc/machine-id and dbus path if present")
     {
         TempRoot root;

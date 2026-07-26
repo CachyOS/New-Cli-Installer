@@ -284,4 +284,9 @@ auto ProcessRunner::run_shell(std::string_view cmdline, const RunOptions& opts) 
     return m_impl->launch({"/bin/sh"s, "-c"s, std::string{cmdline}}, opts);
 }
 
+auto default_runner() noexcept -> ProcessRunner& {
+    static ProcessRunner runner;
+    return runner;
+}
+
 }  // namespace gucc::utils

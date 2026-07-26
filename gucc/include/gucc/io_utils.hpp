@@ -6,10 +6,6 @@
 #include <vector>       // for vector
 
 namespace gucc::utils {
-class SubProcess;
-}  // namespace gucc::utils
-
-namespace gucc::utils {
 
 auto safe_getenv(const char* env_name) noexcept -> std::string_view;
 void exec(const std::vector<std::string>& vec) noexcept;
@@ -17,8 +13,8 @@ auto exec(std::string_view command, bool interactive = false) noexcept -> std::s
 auto exec_checked(std::string_view command) noexcept -> bool;
 void arch_chroot(std::string_view command, std::string_view mountpoint, bool interactive = false) noexcept;
 auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool;
-auto arch_chroot_follow(std::string_view command, std::string_view mountpoint, SubProcess& child) noexcept -> bool;
-auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache, SubProcess& child) noexcept -> bool;
+auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) noexcept -> bool;
+auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache) noexcept -> bool;
 
 }  // namespace gucc::utils
 

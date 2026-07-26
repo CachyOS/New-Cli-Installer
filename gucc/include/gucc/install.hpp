@@ -4,7 +4,6 @@
 #include "gucc/error.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/partition_config.hpp"
-#include "gucc/subprocess.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -31,7 +30,7 @@ struct InstallConfig {
     std::vector<std::string> services_to_enable{};
 };
 
-[[nodiscard]] auto install_base(const InstallConfig& config, utils::SubProcess& child) noexcept -> Result<void>;
+[[nodiscard]] auto install_base(const InstallConfig& config) noexcept -> Result<void>;
 
 }  // namespace gucc::install
 

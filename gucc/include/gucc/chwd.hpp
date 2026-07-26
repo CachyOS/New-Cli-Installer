@@ -7,10 +7,6 @@
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
-namespace gucc::utils {
-class SubProcess;
-}  // namespace gucc::utils
-
 namespace gucc::chwd {
 
 // Retrieves all profiles from chwd(e.g. chwd --list-all)
@@ -20,7 +16,7 @@ auto get_all_profile_names() noexcept -> std::vector<std::string>;
 auto get_available_profile_names() noexcept -> std::vector<std::string>;
 
 // Installs possible profiles for the hardware using chwd -a
-auto install_available_profiles(std::string_view root_mountpoint, utils::SubProcess& child) noexcept -> Result<void>;
+auto install_available_profiles(std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::chwd
 

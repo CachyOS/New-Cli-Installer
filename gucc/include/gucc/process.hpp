@@ -97,4 +97,7 @@ class ProcessRunner final {
     std::unique_ptr<Impl> m_impl;
 };
 
+/// The process-global runner.
+[[nodiscard]] auto default_runner() noexcept -> ProcessRunner&;
+
 }  // namespace gucc::utils
