@@ -54,7 +54,7 @@ auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mount
     if (err) {
         return make_error(ErrorCode::FileIo, fmt::format("Failed to create directories for btrfs subvolume {}: {}", subvol_dirs_path, err.message()));
     }
-    auto cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}{} &>>/tmp/cachyos-install.log"), root_mountpoint, subvolume);
+    auto cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}{}"), root_mountpoint, subvolume);
     if (!utils::exec_checked(cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create btrfs subvolume {}{}", root_mountpoint, subvolume));
     }
@@ -72,7 +72,7 @@ auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::strin
         }
     }
     // TODO(vnepogodin): handle exit code
-    utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), root_mountpoint));
+    utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {}"), root_mountpoint));
 
     // Mount subvolumes
     if (auto res = fs::btrfs_mount_subvols(subvols, device, root_mountpoint, mount_opts); !res) {

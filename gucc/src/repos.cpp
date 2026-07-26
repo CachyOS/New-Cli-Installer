@@ -100,10 +100,10 @@ namespace gucc::repos {
 
 auto install_cachyos_repos() noexcept -> Result<void> {
     // fetch cachyos keyring, in some cases required on the ISO
-    if (!utils::exec_checked("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com 2>>/tmp/cachyos-install.log &>/dev/null"sv)) {
+    if (!utils::exec_checked("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com"sv)) {
         return make_error(ErrorCode::SubprocessFailed, "Failed to receive repo keys with pacman-key");
     }
-    if (!utils::exec_checked("pacman-key --lsign-key F3B607488DB35A47 2>>/tmp/cachyos-install.log &>/dev/null"sv)) {
+    if (!utils::exec_checked("pacman-key --lsign-key F3B607488DB35A47"sv)) {
         return make_error(ErrorCode::SubprocessFailed, "Failed to locally sign repo keys with pacman-key");
     }
 

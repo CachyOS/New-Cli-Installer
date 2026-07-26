@@ -16,7 +16,7 @@ namespace gucc::fs {
 
 // Creates a zfs volume
 auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept -> Result<void> {
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -V {}M {} 2>>/tmp/cachyos-install.log"), zsize, zpath))) {
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -V {}M {}"), zsize, zpath))) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs zvol {} of size {}M", zpath, zsize));
     }
     return {};
@@ -24,7 +24,7 @@ auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept ->
 
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
 auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> Result<void> {
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {} 2>>/tmp/cachyos-install.log"), zmount, zpath))) {
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {}"), zmount, zpath))) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs dataset {} at mountpoint {}", zpath, zmount));
     }
     return {};
@@ -41,7 +41,7 @@ auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> R
 }
 
 auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> Result<void> {
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs destroy -r {} 2>>/tmp/cachyos-install.log"), zdataset))) {
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs destroy -r {}"), zdataset))) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to destroy zfs dataset {}", zdataset));
     }
     return {};
@@ -77,14 +77,14 @@ auto zfs_list_datasets(std::string_view type) noexcept -> std::string {
 }
 
 auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> Result<void> {
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs set {} {} 2>>/tmp/cachyos-install.log"), property, dataset))) {
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs set {} {}"), property, dataset))) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to set zfs property {} on {}", property, dataset));
     }
     return {};
 }
 
 auto zpool_set_property(std::string_view property, std::string_view pool_name) noexcept -> Result<void> {
-    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool set {} {} 2>>/tmp/cachyos-install.log"), property, pool_name);
+    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool set {} {}"), property, pool_name);
 
     spdlog::debug("setting zfs zpool property with: {}", zfs_zpool_cmd);
     if (!utils::exec_checked(zfs_zpool_cmd)) {
@@ -99,7 +99,7 @@ auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, 
         if (passphrase.has_value()) {
             cmd += " -O encryption=aes-256-gcm -O keyformat=passphrase"sv;
         }
-        cmd += fmt::format(FMT_COMPILE(" '{}' '{}' 2>>/tmp/cachyos-install.log"), pool_name, device_path);
+        cmd += fmt::format(FMT_COMPILE(" '{}' '{}'"), pool_name, device_path);
 
         if (passphrase.has_value()) {
             return fmt::format(FMT_COMPILE("echo '{}' | {}"), *passphrase, cmd);
@@ -136,7 +136,7 @@ auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConf
     }
 
     // export zpool to import it later
-    const auto& zfs_export_cmd = fmt::format(FMT_COMPILE("zpool export {} 2>>/tmp/cachyos-install.log"), zfs_config.zpool_name);
+    const auto& zfs_export_cmd = fmt::format(FMT_COMPILE("zpool export {}"), zfs_config.zpool_name);
     if (!utils::exec_checked(zfs_export_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to export zfs zpool with: {}", zfs_export_cmd));
     }

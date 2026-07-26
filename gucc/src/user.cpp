@@ -34,8 +34,8 @@ auto create_group(std::string_view group, std::string_view mountpoint, bool is_s
 
 auto set_user_password(std::string_view username, std::string_view password, std::string_view mountpoint) noexcept -> Result<void> {
     // TODO(vnepogodin): should encrypt user password properly here
-    const auto& encrypted_passwd = utils::exec(fmt::format(FMT_COMPILE("openssl passwd {}"), password));
-    const auto& password_set_cmd = fmt::format(FMT_COMPILE("usermod -p '{}' {}"), encrypted_passwd, username);
+    const auto& encrypted_passwd = utils::exec(fmt::format(FMT_COMPILE("openssl passwd '{}'"), password));
+    const auto& password_set_cmd = fmt::format(FMT_COMPILE("usermod -p '{}' '{}'"), encrypted_passwd, username);
     if (!utils::arch_chroot_checked(password_set_cmd, mountpoint)) {
         spdlog::error("Failed to set password for user {}", username);
         return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to set password for user {}", username));
@@ -63,9 +63,9 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
         using namespace std::string_view_literals;
         static constexpr auto USER_BASE_CMD = "useradd -m -U"sv;
         if (!user_shell.empty()) {
-            return fmt::format(FMT_COMPILE("{} -s {} {}"), USER_BASE_CMD, user_shell, username);
+            return fmt::format(FMT_COMPILE("{} -s '{}' '{}'"), USER_BASE_CMD, user_shell, username);
         }
-        return fmt::format(FMT_COMPILE("{} {}"), USER_BASE_CMD, username);
+        return fmt::format(FMT_COMPILE("{} '{}'"), USER_BASE_CMD, username);
     }(user_info.username, user_info.shell);
 
     if (!utils::arch_chroot_checked(usercmd, mountpoint)) {
@@ -85,7 +85,7 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
     spdlog::info("Setting user permissions for {}", user_info.username);
     const auto& user_group   = fmt::format(FMT_COMPILE("{0}:{0}"), user_info.username);
     const auto& user_homedir = fmt::format(FMT_COMPILE("/home/{}"), user_info.username);
-    const auto& setup_cmd    = fmt::format(FMT_COMPILE("chown -R {} {}"), user_group, user_homedir);
+    const auto& setup_cmd    = fmt::format(FMT_COMPILE("chown -R {} '{}'"), user_group, user_homedir);
     if (!utils::arch_chroot_checked(setup_cmd, mountpoint)) {
         spdlog::error("Failed to setup user permissions on {} as {}", user_homedir, user_group);
         return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to setup permissions on {}", user_homedir));

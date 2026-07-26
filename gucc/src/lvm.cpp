@@ -79,17 +79,17 @@ auto detect_lvm() noexcept -> LvmInfo {
 
 auto activate_lvm() noexcept -> Result<void> {
     // Load dm-mod kernel module
-    if (!utils::exec_checked("modprobe -v dm-mod &>>/tmp/cachyos-install.log")) {
+    if (!utils::exec_checked("modprobe -v dm-mod")) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to load dm-mod kernel module"));
     }
 
     // Scan for volume groups
-    if (!utils::exec_checked("vgscan -v 1>/dev/null 2>>/tmp/cachyos-install.log")) {
+    if (!utils::exec_checked("vgscan -v")) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to scan for volume groups"));
     }
 
     // Activate all volume groups
-    if (!utils::exec_checked("vgchange -ay -v 1>/dev/null 2>>/tmp/cachyos-install.log")) {
+    if (!utils::exec_checked("vgchange -ay -v")) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to activate logical volumes"));
     }
 

@@ -31,10 +31,10 @@ auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::
 
     spdlog::debug("Got {} entries from mountpoint {}", mtab_entries->size(), root_mountpoint);
     for (auto&& mtab_entry : std::move(*mtab_entries)) {
-        const auto& umount_cmd = fmt::format(FMT_COMPILE("umount -v {} &>>/tmp/cachyos-install.log"), mtab_entry.mountpoint);
+        const auto& umount_cmd = fmt::format(FMT_COMPILE("umount -v {}"), mtab_entry.mountpoint);
         if (!utils::exec_checked(umount_cmd)) {
             spdlog::warn("Direct umount failed for {} {}, trying lazy umount", mtab_entry.device, mtab_entry.mountpoint);
-            const auto& lazy_cmd = fmt::format(FMT_COMPILE("umount -lv {} &>>/tmp/cachyos-install.log"), mtab_entry.mountpoint);
+            const auto& lazy_cmd = fmt::format(FMT_COMPILE("umount -lv {}"), mtab_entry.mountpoint);
             if (!utils::exec_checked(lazy_cmd)) {
                 return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to umount partition: {} {}", mtab_entry.device, mtab_entry.mountpoint));
             }
@@ -42,7 +42,7 @@ auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::
     }
 
     for (auto&& zfs_poolname : zfs_poolnames) {
-        const auto& zpool_export_cmd = fmt::format(FMT_COMPILE("zpool export {} &>>/tmp/cachyos-install.log"), zfs_poolname);
+        const auto& zpool_export_cmd = fmt::format(FMT_COMPILE("zpool export {}"), zfs_poolname);
         if (!utils::exec_checked(zpool_export_cmd)) {
             return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to export zpool: {}", zfs_poolname));
         }

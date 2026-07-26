@@ -11,19 +11,19 @@ auto make_swapfile(std::string_view root_mountpoint, std::string_view swap_size)
     const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), root_mountpoint);
 
     // allocate size for the file
-    const auto& alloc_cmd = fmt::format(FMT_COMPILE("fallocate -l {} {} &>>/tmp/cachyos-install.log"), swap_size, swapfile_path);
+    const auto& alloc_cmd = fmt::format(FMT_COMPILE("fallocate -l {} {}"), swap_size, swapfile_path);
     if (!utils::exec_checked(alloc_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to allocate swapfile: {}", alloc_cmd));
     }
 
     // create swap
-    const auto& mkswap_cmd = fmt::format(FMT_COMPILE("chmod 600 {0} && mkswap {0} &>/dev/null"), swapfile_path);
+    const auto& mkswap_cmd = fmt::format(FMT_COMPILE("chmod 600 {0} && mkswap {0}"), swapfile_path);
     if (!utils::exec_checked(mkswap_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run mkswap: {}", mkswap_cmd));
     }
 
     // enable swap on file
-    const auto& swapon_cmd = fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), swapfile_path);
+    const auto& swapon_cmd = fmt::format(FMT_COMPILE("swapon {}"), swapfile_path);
     if (!utils::exec_checked(swapon_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run swapon on {}", swapfile_path));
     }
@@ -32,13 +32,13 @@ auto make_swapfile(std::string_view root_mountpoint, std::string_view swap_size)
 
 auto make_swap_partition(const fs::Partition& swap_partition) noexcept -> Result<void> {
     // create swap
-    const auto& mkswap_cmd = fmt::format(FMT_COMPILE("mkswap {} &>/dev/null"), swap_partition.device);
+    const auto& mkswap_cmd = fmt::format(FMT_COMPILE("mkswap {}"), swap_partition.device);
     if (!utils::exec_checked(mkswap_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to make swap partition: {}", swap_partition.device));
     }
 
     // whether existing to newly created, activate swap
-    const auto& swapon_cmd = fmt::format(FMT_COMPILE("swapon {} &>/dev/null"), swap_partition.device);
+    const auto& swapon_cmd = fmt::format(FMT_COMPILE("swapon {}"), swap_partition.device);
     if (!utils::exec_checked(swapon_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to swapon partition: {}", swap_partition.device));
     }

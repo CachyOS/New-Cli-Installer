@@ -350,7 +350,6 @@ auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -
         if (is_removable_drive) {
             result += " --alldrivers --yes";
         }
-        result += " &>>/tmp/cachyos-install.log";
         return result;
     }(refind_install_config.root_mountpoint, refind_install_config.is_removable);
 

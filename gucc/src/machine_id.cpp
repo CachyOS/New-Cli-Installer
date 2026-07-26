@@ -58,7 +58,7 @@ auto reset(std::string_view root_mountpoint) noexcept -> Result<void> {
     // TODO(vnepogodin): expose a wrapper around systemd-firstboot
     // to seed several first-boot settings in single call.
 
-    const auto cmd = fmt::format("systemd-machine-id-setup --root={} &>/dev/null", root_mountpoint);
+    const auto cmd = fmt::format("systemd-machine-id-setup --root={}", root_mountpoint);
     if (!utils::exec_checked(cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("machine_id: systemd-machine-id-setup failed for root '{}'", root_mountpoint));
     }

@@ -58,7 +58,7 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
     // Format esp part if requested
     if (format) {
         const auto& mkfs_cmd = fs::get_mkfs_command(fs::FilesystemType::Vfat);
-        if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} {} &>/dev/null"), mkfs_cmd, device))) {
+        if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} {}"), mkfs_cmd, device))) {
             spdlog::error("Failed to format ESP partition {} with {}", device, mkfs_cmd);
             return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to format ESP partition {}", device));
         }

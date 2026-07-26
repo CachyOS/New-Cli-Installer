@@ -134,7 +134,7 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
 }
 
 auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcept -> Result<void> {
-    const auto& sfdisk_cmd = fmt::format(FMT_COMPILE("echo -e '{}' | sfdisk -w always '{}' &>>/tmp/cachyos-install.log &>/dev/null"), commands, device);
+    const auto& sfdisk_cmd = fmt::format(FMT_COMPILE("echo -e '{}' | sfdisk -w always '{}'"), commands, device);
     if (!utils::exec_checked(sfdisk_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run partitioning with sfdisk: {}", sfdisk_cmd));
     }
@@ -143,17 +143,17 @@ auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcep
 
 auto erase_disk(std::string_view device) noexcept -> Result<void> {
     // 1. write zeros
-    const auto& dd_cmd = fmt::format(FMT_COMPILE("dd if=/dev/zero of='{}' bs=512 count=1 2>>/tmp/cachyos-install.log &>/dev/null"), device);
+    const auto& dd_cmd = fmt::format(FMT_COMPILE("dd if=/dev/zero of='{}' bs=512 count=1"), device);
     if (!utils::exec_checked(dd_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run dd on disk: {}", dd_cmd));
     }
     // 2. run wipefs on disk
-    const auto& wipe_cmd = fmt::format(FMT_COMPILE("wipefs -af '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device);
+    const auto& wipe_cmd = fmt::format(FMT_COMPILE("wipefs -af '{}'"), device);
     if (!utils::exec_checked(wipe_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run wipefs on disk: {}", wipe_cmd));
     }
     // 3. clear all data and destroy GPT data structures
-    const auto& sgdisk_cmd = fmt::format(FMT_COMPILE("sgdisk -Zo '{}' 2>>/tmp/cachyos-install.log &>/dev/null"), device);
+    const auto& sgdisk_cmd = fmt::format(FMT_COMPILE("sgdisk -Zo '{}'"), device);
     if (!utils::exec_checked(sgdisk_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run sgdisk on disk: {}", sgdisk_cmd));
     }

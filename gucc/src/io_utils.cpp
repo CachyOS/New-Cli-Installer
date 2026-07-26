@@ -57,7 +57,7 @@ auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) n
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache) noexcept -> bool {
     const auto& cmd = hostcache ? "pacstrap"sv : "pacstrap -c"sv;
     // TODO(vnepogodin): pacstrap should be more customizable and be in it's own "module"
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {} 2>&1 | tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {}"), cmd, mountpoint, packages);
 
     spdlog::info("Running pacstrap with packages: '{}'", packages);
     return default_runner().run_shell(cmd_formatted, RunOptions{.kind = ProcessKind::Mutate}).ok();
