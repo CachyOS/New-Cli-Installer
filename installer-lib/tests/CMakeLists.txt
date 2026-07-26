@@ -3,7 +3,7 @@
 #############################################################################
 
 add_library(installer_lib_doctest_main OBJECT unit.cpp)
-target_compile_features(installer_lib_doctest_main PUBLIC cxx_std_23)
+target_compile_features(installer_lib_doctest_main PUBLIC cxx_std_26)
 target_include_directories(installer_lib_doctest_main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(installer_lib_doctest_main PRIVATE doctest::doctest)
 

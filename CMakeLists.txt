@@ -96,7 +96,7 @@ endif()
 
 # Link this 'library' to set the c++ standard / compile-time options requested
 add_library(project_options INTERFACE)
-target_compile_features(project_options INTERFACE cxx_std_23)
+target_compile_features(project_options INTERFACE cxx_std_26)
 
 ##
 ## Target
