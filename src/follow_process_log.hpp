@@ -29,7 +29,7 @@ auto follow_process_log_task_stdout(ProcessTask task) noexcept -> bool;
 /// runner is handed a per-line log sink and a stop token; it returns true
 /// on success. Frontends drive the runner inside a follow widget so a
 /// single steps::* call appears live to the user without exposing the
-/// internal SubProcess.
+/// internal ProcessRunner.
 using StepLogCallback = std::function<void(std::string_view)>;
 using StepRunner      = std::function<bool(StepLogCallback log_cb, std::stop_token stop_token)>;
 
