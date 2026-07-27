@@ -2,15 +2,14 @@
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/process.hpp"
 #include "gucc/string_utils.hpp"
-#include "gucc/subprocess.hpp"
 
 #include <atomic>      // for atomic_bool
-#include <chrono>      // for chrono_literals
 #include <mutex>       // for mutex, lock_guard
-#include <stop_token>  // for stop_source, stop_token
+#include <stop_token>  // for stop_source, stop_token, stop_callback
 #include <string>      // for string
-#include <thread>      // for this_thread, thread
+#include <thread>      // for thread
 #include <utility>     // for move
 
 #include <ftxui/component/component.hpp>          // for Renderer, Button
@@ -24,119 +23,46 @@
 
 using namespace ftxui;  // NOLINT
 
+namespace {
+
+using tui::detail::ProcessTask;
+using tui::detail::StepLogCallback;
+using tui::detail::StepRunner;
+
+constexpr std::string_view kDoneMarker{"----------DONE----------"};
+
+auto as_step_runner(ProcessTask task) -> StepRunner {
+    return [task = std::move(task)](StepLogCallback log_cb, std::stop_token stop_token) -> bool {
+        auto& runner = gucc::utils::default_runner();
+        runner.set_line_sink(std::move(log_cb));
+        const std::stop_callback on_cancel(stop_token, [&runner] { runner.cancel(); });
+        const bool ok = task();
+        runner.set_line_sink(nullptr);
+        return ok;
+    };
+}
+
+}  // namespace
+
 namespace tui::detail {
 
 auto follow_process_log_widget(const std::vector<std::string>& vec, Decorator box_size) noexcept -> bool {
-    // Wrap the single command as a ProcessTask and delegate.
-    return follow_process_log_task([&](gucc::utils::SubProcess& child) -> bool {
-        return gucc::utils::exec_follow(vec, child);
+    return follow_process_log_task([&vec] {
+        return gucc::utils::default_runner().run(vec).ok();
     },
         box_size);
 }
 
 auto follow_process_log_task(ProcessTask task, Decorator box_size) noexcept -> bool {
-    using namespace std::chrono_literals;
-
-    std::atomic_bool task_status{true};
-    gucc::utils::SubProcess child{};
-
-    auto screen = ScreenInteractive::Fullscreen();
-
-    auto execute_thread = [&]() {
-        if (!task(child)) {
-            spdlog::error("[follow_process_log] Task failed");
-            task_status = false;
-        }
-        child.running = false;
-        screen.PostEvent(Event::Custom);
-    };
-    std::thread t(execute_thread);
-
-    std::thread refresh_ui([&] {
-        while (child.running) {
-            std::this_thread::sleep_for(0.05s);
-            screen.PostEvent(Event::Custom);
-        }
-    });
-
-    auto handle_exit = [&]() {
-        if (child.running) {
-            // block exit while process is in-flight
-            return;
-        }
-        if (child.has_child()) {
-            child.terminate();
-            child.destroy();
-        }
-        if (child.running) {
-            child.running = false;
-            if (refresh_ui.joinable()) {
-                refresh_ui.join();
-            }
-            if (t.joinable()) {
-                t.join();
-            }
-        }
-        screen.ExitLoopClosure()();
-    };
-
-    auto button_back = Button("Back", handle_exit, ButtonOption::WithoutBorder());
-    auto container   = Container::Horizontal({button_back});
-
-    auto renderer = Renderer(container, [&] {
-        return tui::detail::centered_widget(container, "New CLI Installer", tui::detail::multiline_text(gucc::utils::make_multiline(child.get_log(), true)) | box_size | vscroll_indicator | yframe | flex);
-    });
-
-    screen.Loop(renderer);
-    child.running = false;
-    if (refresh_ui.joinable()) {
-        refresh_ui.join();
-    }
-    if (t.joinable()) {
-        t.join();
-    }
-    return task_status;
+    return follow_step_widget(as_step_runner(std::move(task)), box_size);
 }
 
 auto follow_process_log_task_stdout(ProcessTask task) noexcept -> bool {
-    using namespace std::chrono_literals;
-
-    std::atomic_bool task_status{true};
-    gucc::utils::SubProcess child{};
-
-    std::thread t([&]() {
-        if (!task(child)) {
-            spdlog::error("[follow_process_log_stdout] Task failed");
-            task_status = false;
-        }
-        child.running = false;
-    });
-
-    std::string::size_type last_printed{};
-    while (child.running) {
-        std::this_thread::sleep_for(0.05s);
-        const auto& log = child.get_log();
-
-        // NOTE: hackish
-        if (log.size() > last_printed) {
-            fmt::print("{}", std::string_view{log}.substr(last_printed));
-            last_printed = log.size();
-        }
-    }
-
-    const auto& log = child.get_log();
-    if (log.size() > last_printed) {
-        fmt::print("{}", std::string_view{log}.substr(last_printed));
-    }
-
-    if (t.joinable()) {
-        t.join();
-    }
-    return task_status;
+    return follow_step_stdout(as_step_runner(std::move(task)));
 }
 
 auto follow_step_widget(StepRunner runner, Decorator box_size) noexcept -> bool {
-    using namespace std::chrono_literals;
+    gucc::utils::default_runner().reset_cancel();
 
     std::atomic_bool task_status{true};
     std::atomic_bool task_done{false};
@@ -161,6 +87,7 @@ auto follow_step_widget(StepRunner runner, Decorator box_size) noexcept -> bool 
             spdlog::error("[follow_step] Task failed");
             task_status = false;
         }
+        log_cb(kDoneMarker);
         task_done = true;
         screen.PostEvent(Event::Custom);
     });
@@ -199,15 +126,18 @@ auto follow_step_widget(StepRunner runner, Decorator box_size) noexcept -> bool 
 }
 
 auto follow_step_stdout(StepRunner runner) noexcept -> bool {
+    gucc::utils::default_runner().reset_cancel();
+
     std::stop_source stop_src;
     auto log_cb = [](std::string_view line) {
         fmt::println("{}", line);
     };
-    if (!runner(std::move(log_cb), stop_src.get_token())) {
+    const bool ok = runner(log_cb, stop_src.get_token());
+    if (!ok) {
         spdlog::error("[follow_step_stdout] Task failed");
-        return false;
     }
-    return true;
+    log_cb(kDoneMarker);
+    return ok;
 }
 
 }  // namespace tui::detail

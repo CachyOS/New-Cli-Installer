@@ -59,7 +59,6 @@
 #include "follow_process_log.hpp"
 
 #include "gucc/process.hpp"
-#include "gucc/subprocess.hpp"
 
 #include <cpr/api.h>
 #include <cpr/response.h>
@@ -172,8 +171,8 @@ void arch_chroot(const std::string_view& command, bool follow) noexcept {
     }
 
     const auto& simple_mode = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
-    const auto task         = [&](gucc::utils::SubProcess& child) -> bool {
-        auto result = cachyos::installer::arch_chroot(command, mountpoint, child);
+    const auto task         = [&]() -> bool {
+        auto result = cachyos::installer::arch_chroot(command, mountpoint);
         if (!result) {
             spdlog::error("{}", result.error());
             return false;
@@ -253,7 +252,7 @@ void inst_needed(const std::string_view& pkg) noexcept {
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
-    const auto task = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+    const auto task = [&]() -> bool {
         auto result = cachyos::installer::install_needed(pkg);
         if (!result) {
             spdlog::error("{}", result.error());
@@ -305,7 +304,7 @@ auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
     }
 
 #ifdef NDEVENV
-    auto result = cachyos::installer::auto_partition(device_info, system_info, *bootloader_opt, {});
+    auto result = cachyos::installer::auto_partition(device_info, system_info, *bootloader_opt);
     if (!result) {
         spdlog::error("{}", result.error());
         return {};
@@ -336,7 +335,7 @@ void secure_wipe() noexcept {
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
-    const auto task = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+    const auto task = [&]() -> bool {
         auto result = cachyos::installer::secure_wipe(device_info);
         if (!result) {
             spdlog::error("{}", result.error());
@@ -475,7 +474,7 @@ auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
 #ifdef NDEVENV
     const auto& headless_mode = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
-    const auto task           = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+    const auto task           = [&]() -> bool {
         auto result = cachyos::installer::install_packages(pkg_vec, mountpoint, hostcache);
         if (!result) {
             spdlog::error("{}", result.error());
@@ -512,7 +511,9 @@ void install_base(const std::string_view& packages) noexcept {
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
     const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
-        if (auto res = cachyos::installer::steps::base(ctx, std::move(log_cb), tok); !res) {
+        gucc::utils::default_runner().set_line_sink(std::move(log_cb));
+        const std::stop_callback on_cancel(tok, [] { gucc::utils::default_runner().cancel(); });
+        if (auto res = cachyos::installer::steps::base(ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
         }
@@ -553,11 +554,13 @@ void install_desktop(const std::string_view& desktop) noexcept {
     auto desktop_ctx    = ctx;
     desktop_ctx.desktop = std::string{desktop};
     const auto runner   = [&](auto log_cb, std::stop_token tok) -> bool {
-        if (auto res = cachyos::installer::steps::desktop(desktop_ctx, log_cb, tok); !res) {
+        gucc::utils::default_runner().set_line_sink(std::move(log_cb));
+        const std::stop_callback on_cancel(tok, [] { gucc::utils::default_runner().cancel(); });
+        if (auto res = cachyos::installer::steps::desktop(desktop_ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
         }
-        if (auto res = cachyos::installer::steps::desktop_configure(desktop_ctx, log_cb, tok); !res) {
+        if (auto res = cachyos::installer::steps::desktop_configure(desktop_ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
         }
@@ -591,7 +594,7 @@ void remove_pkgs(const std::string_view& packages) noexcept {
 
     auto pkg_vec = gucc::utils::make_multiline(packages, false, ' ');
 
-    const auto task = [&]([[maybe_unused]] gucc::utils::SubProcess& child) -> bool {
+    const auto task = [&]() -> bool {
         auto result = cachyos::installer::remove_packages(pkg_vec, mountpoint);
         if (!result) {
             spdlog::error("{}", result.error());
@@ -652,7 +655,9 @@ void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
     const auto& simple_mode   = std::get<std::int32_t>(config_data["SIMPLE_MODE"]);
 
     const auto runner = [&](auto log_cb, std::stop_token tok) -> bool {
-        if (auto res = cachyos::installer::steps::bootloader(ctx, std::move(log_cb), tok); !res) {
+        gucc::utils::default_runner().set_line_sink(std::move(log_cb));
+        const std::stop_callback on_cancel(tok, [] { gucc::utils::default_runner().cancel(); });
+        if (auto res = cachyos::installer::steps::bootloader(ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
         }

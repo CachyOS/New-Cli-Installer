@@ -9,11 +9,6 @@
 
 #include <ftxui/dom/elements.hpp>  // for size, GREATER_THAN
 
-// forward-declare
-namespace gucc::utils {
-class SubProcess;
-}
-
 namespace tui::detail {
 
 // Run a single command and display its output in a TUI widget.
@@ -21,11 +16,10 @@ auto follow_process_log_widget(const std::vector<std::string>& vec, ftxui::Decor
 
 // functor for task spawn handle
 // anything run within that process task will use same log/display context
-using ProcessTask = std::function<bool(gucc::utils::SubProcess& child)>;
+using ProcessTask = std::function<bool()>;
 
-// Run an arbitrary multi-step task that internally uses exec_follow,
-// while displaying the accumulated log in a TUI widget.
-// Returns the bool produced by the task.
+// Run an arbitrary multi-step task while displaying the accumulated log in a
+// TUI widget. Returns the bool produced by the task.
 auto follow_process_log_task(ProcessTask task, ftxui::Decorator box_size = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept -> bool;
 
 // Non-TUI variant: runs the task while printing output to stdout.
