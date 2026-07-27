@@ -53,7 +53,12 @@ void setup_graphics_card() noexcept {
     auto* config_instance  = Config::instance();
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& cachepath  = std::get<std::string>(config_data["cachepath"]);
+
+    // setup hostcache path
+    const bool hostcache = std::get<std::int32_t>(config_data["hostcache"]) != 0;
+    const auto cachepath = hostcache
+        ? std::string{"/var/cache/pacman/pkg/"}
+        : fmt::format(FMT_COMPILE("{}/var/cache/pacman/pkg/"), mountpoint);
 
 #ifdef NDEVENV
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("chwd --pmcachedir '{}' --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);

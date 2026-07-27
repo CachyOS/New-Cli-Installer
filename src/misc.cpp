@@ -116,14 +116,7 @@ void set_cache() noexcept {
     auto& config_data     = config_instance->data();
 
     static constexpr auto content = "\nDo you want to use the pacman cache of the running system instead\nof the installation target?\nThis can reduce the size of the required downloads in the installation.\n"sv;
-    if (!detail::yesno_widget(content, size(HEIGHT, GREATER_THAN, 3))) {
-        config_data["hostcache"] = 0;
-        config_data["cachepath"] = "/mnt/var/cache/pacman/pkg/";
-        return;
-    }
-
-    config_data["hostcache"] = 1;
-    config_data["cachepath"] = "/var/cache/pacman/pkg/";
+    config_data["hostcache"]      = detail::yesno_widget(content, size(HEIGHT, GREATER_THAN, 3)) ? 1 : 0;
 }
 
 void edit_configs() noexcept {

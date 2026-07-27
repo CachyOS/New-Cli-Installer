@@ -55,7 +55,7 @@ auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) n
 }
 
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache) noexcept -> bool {
-    const auto& cmd = hostcache ? "pacstrap"sv : "pacstrap -c"sv;
+    const auto& cmd = hostcache ? "pacstrap -c"sv : "pacstrap"sv;
     // TODO(vnepogodin): pacstrap should be more customizable and be in it's own "module"
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {}"), cmd, mountpoint, packages);
 

@@ -1,12 +1,9 @@
 #include "global_storage.hpp"
 #include "definitions.hpp"  // for error_inter
 
-#include <filesystem>  // for exists
-#include <memory>      // for unique_ptr, make_unique, operator==
+#include <memory>  // for unique_ptr, make_unique, operator==
 
 static std::unique_ptr<Config> s_config = nullptr;
-
-namespace fs = std::filesystem;
 
 bool Config::initialize() noexcept {
     if (s_config != nullptr) {
@@ -15,8 +12,7 @@ bool Config::initialize() noexcept {
     }
     s_config = std::make_unique<Config>();
     if (s_config) {
-        s_config->m_data["cachepath"]    = "/var/cache/pacman/pkg/";
-        s_config->m_data["hostcache"]    = static_cast<std::int32_t>(!fs::exists("/run/miso/bootmnt"));
+        s_config->m_data["hostcache"]    = 1;
         s_config->m_data["menus"]        = -1;
         s_config->m_data["POST_INSTALL"] = "";
 
