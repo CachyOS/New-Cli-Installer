@@ -6,6 +6,7 @@
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for find, search
+#include <array>      // for array
 #include <ranges>     // for ranges::*
 #include <string>     // for string
 #include <vector>     // for erase_if
@@ -18,6 +19,31 @@
 using namespace std::string_view_literals;
 
 namespace {
+
+struct DesktopMatch {
+    // recognized [desktop.'keyword'] from net profiles
+    std::string_view keyword;
+    bool needs_xorg;
+};
+
+static constexpr std::array kDesktopMatches{
+    DesktopMatch{.keyword = "i3wm"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "sway"sv, .needs_xorg = false},
+    DesktopMatch{.keyword = "kde"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "xfce"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "gnome"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "wayfire"sv, .needs_xorg = false},
+    DesktopMatch{.keyword = "openbox"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "lxqt"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "bspwm"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "cinnamon"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "ukui"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "qtile"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "mate"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "lxde"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "hyprland"sv, .needs_xorg = false},
+    DesktopMatch{.keyword = "budgie"sv, .needs_xorg = true},
+};
 
 constinit std::optional<std::string> cached_content;  // NOLINT
 constinit std::string cached_url;                     // NOLINT
@@ -156,121 +182,26 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
 
     std::vector<std::string> pkg_list{};
 
-    constexpr std::string_view kde{"kde"};
-    constexpr std::string_view xfce{"xfce"};
-    constexpr std::string_view sway{"sway"};
-    constexpr std::string_view wayfire{"wayfire"};
-    constexpr std::string_view i3wm{"i3wm"};
-    constexpr std::string_view gnome{"gnome"};
-    constexpr std::string_view openbox{"openbox"};
-    constexpr std::string_view bspwm{"bspwm"};
-    constexpr std::string_view lxqt{"lxqt"};
-    constexpr std::string_view cinnamon{"cinnamon"};
-    constexpr std::string_view ukui{"ukui"};
-    constexpr std::string_view qtile{"qtile"};
-    constexpr std::string_view mate{"mate"};
-    constexpr std::string_view lxde{"lxde"};
-    constexpr std::string_view hyprland{"hyprland"};
-    constexpr std::string_view budgie{"budgie"};
+    const auto append_profile_packages = [&](std::string_view name) noexcept {
+        auto profile = std::ranges::find(*desktop_net_profs, name, &profile::DesktopProfile::profile_name);
+        if (profile == desktop_net_profs->end()) {
+            spdlog::warn("net profiles: desktop.{} profile not found. skipping..", name);
+            return;
+        }
+        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
+    };
 
     bool needed_xorg{};
-    auto found = std::ranges::search(desktop_env, i3wm);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, i3wm, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, sway);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, sway, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-    }
-    found = std::ranges::search(desktop_env, kde);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, kde, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, xfce);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, xfce, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, gnome);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, gnome, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, wayfire);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, wayfire, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-    }
-    found = std::ranges::search(desktop_env, openbox);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, openbox, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, lxqt);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, lxqt, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, bspwm);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, bspwm, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, cinnamon);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, cinnamon, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, ukui);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, ukui, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, qtile);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, qtile, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, mate);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, mate, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, lxde);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, lxde, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
-    }
-    found = std::ranges::search(desktop_env, hyprland);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, hyprland, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-    }
-    found = std::ranges::search(desktop_env, budgie);
-    if (!found.empty()) {
-        auto profile = std::ranges::find(*desktop_net_profs, budgie, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
-        needed_xorg = true;
+    for (const auto& [keyword, needs_xorg] : kDesktopMatches) {
+        if (std::ranges::search(desktop_env, keyword).empty()) {
+            continue;
+        }
+        append_profile_packages(keyword);
+        needed_xorg = needed_xorg || needs_xorg;
     }
 
     if (needed_xorg) {
-        auto profile = std::ranges::find(*desktop_net_profs, "xorg"sv, &profile::DesktopProfile::profile_name);
-        pkg_list.insert(pkg_list.cend(), profile->packages.begin(), profile->packages.end());
+        append_profile_packages("xorg"sv);
     }
 
     return std::make_optional<std::vector<std::string>>(pkg_list);
