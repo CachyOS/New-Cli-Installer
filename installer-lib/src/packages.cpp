@@ -204,11 +204,9 @@ auto install_packages(const std::vector<std::string>& packages,
     if (packages.empty()) { return {}; }
     /* clang-format on */
 
-    const auto& pkgs_str      = gucc::utils::join(packages, ' ');
-    const auto& cmd           = hostcache ? "pacstrap" : "pacstrap -c";
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {}"), cmd, mountpoint, pkgs_str);
-
-    if (!gucc::utils::exec_checked(cmd_formatted)) {
+    const auto& pkgs_str     = gucc::utils::join(packages, ' ');
+    const auto target_config = fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint);
+    if (!gucc::utils::run_pacstrap(mountpoint, pkgs_str, target_config, hostcache)) {
         return std::unexpected(fmt::format("failed to install packages: {}", pkgs_str));
     }
     return {};
