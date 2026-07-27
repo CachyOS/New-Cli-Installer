@@ -2,6 +2,7 @@
 
 // import gucc
 #include "gucc/display_manager.hpp"
+#include "gucc/firewall.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/install.hpp"
@@ -13,6 +14,7 @@
 #include "gucc/systemd_services.hpp"
 
 #include <expected>     // for unexpected
+#include <filesystem>   // for exists
 #include <fstream>      // for ofstream
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -258,6 +260,14 @@ auto enable_services(const InstallContext& ctx) noexcept
             if (auto res = gucc::display_manager::configure_lightdm_greeter(mountpoint); !res) {
                 spdlog::error("Failed to configure lightdm greeter: {}", res.error().context);
             }
+        }
+    }
+
+    // Enable the ufw firewall when installed
+    if (gucc::services::systemd_unit_exists("ufw", mountpoint)) {
+        const bool has_kdeconnect = std::filesystem::exists(fmt::format(FMT_COMPILE("{}/usr/bin/kdeconnect-cli"), mountpoint));
+        if (auto res = gucc::firewall::enable_ufw(mountpoint, has_kdeconnect); !res) {
+            spdlog::warn("Failed to enable ufw firewall: {}", res.error().context);
         }
     }
 
