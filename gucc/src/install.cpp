@@ -7,6 +7,7 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/mirrors.hpp"
+#include "gucc/repos.hpp"
 #include "gucc/systemd_services.hpp"
 #include "gucc/zfs.hpp"
 
@@ -20,6 +21,10 @@ using namespace std::string_view_literals;
 namespace fs = std::filesystem;
 
 namespace {
+
+static constexpr auto kHostPacmanConf   = "/etc/pacman.conf"sv;
+static constexpr auto kTargetPacmanConf = "/tmp/cachyos-installer-pacman.conf"sv;
+
 auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> bool {
     const auto& zfs_source = gucc::fs::utils::get_mountpoint_source(mountpoint);
     if (zfs_source.empty()) {
@@ -91,8 +96,11 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
         return res;
     }
 
-    // 4. Run pacstrap
-    if (!gucc::utils::run_pacstrap(mountpoint, config.packages, config.hostcache)) {
+    // 4. Create pacman.conf for target pacstrap
+    if (auto res = gucc::repos::create_target_pacman_config(kHostPacmanConf, kTargetPacmanConf); !res) {
+        return res;
+    }
+    if (!gucc::utils::run_pacstrap(mountpoint, config.packages, kTargetPacmanConf, config.hostcache)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("pacstrap failed"));
     }
 

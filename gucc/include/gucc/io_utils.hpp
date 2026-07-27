@@ -14,7 +14,7 @@ auto exec_checked(std::string_view command) noexcept -> bool;
 void arch_chroot(std::string_view command, std::string_view mountpoint, bool interactive = false) noexcept;
 auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool;
 auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) noexcept -> bool;
-auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache) noexcept -> bool;
+auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::string_view pacman_config, bool hostcache) noexcept -> bool;
 
 }  // namespace gucc::utils
 

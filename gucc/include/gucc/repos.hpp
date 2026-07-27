@@ -3,10 +3,15 @@
 
 #include "gucc/error.hpp"
 
+#include <string_view>  // for string_view
+
 namespace gucc::repos {
 
-// Modifies host pacman.conf and installs keyring on the host
-auto install_cachyos_repos() noexcept -> Result<void>;
+// Installs keyring on the host.
+auto install_cachyos_keyring() noexcept -> Result<void>;
+
+// Creates pacman.conf for target.
+auto create_target_pacman_config(std::string_view base_config, std::string_view output_config) noexcept -> Result<void>;
 
 }  // namespace gucc::repos
 

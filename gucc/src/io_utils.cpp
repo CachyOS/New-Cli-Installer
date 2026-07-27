@@ -54,10 +54,13 @@ auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) n
     return default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint}).ok();
 }
 
-auto run_pacstrap(std::string_view mountpoint, std::string_view packages, bool hostcache) noexcept -> bool {
-    const auto& cmd = hostcache ? "pacstrap -c"sv : "pacstrap"sv;
+auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::string_view pacman_config, bool hostcache) noexcept -> bool {
+    const auto cache_flag  = hostcache ? "-c"sv : ""sv;
+    const auto config_flag = pacman_config.empty()
+        ? std::string{}
+        : fmt::format(FMT_COMPILE("-C {}"), pacman_config);
     // TODO(vnepogodin): pacstrap should be more customizable and be in it's own "module"
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("{} {} {}"), cmd, mountpoint, packages);
+    const auto& cmd_formatted = fmt::format(FMT_COMPILE("pacstrap {} {} {} {}"), cache_flag, config_flag, mountpoint, packages);
 
     spdlog::info("Running pacstrap with packages: '{}'", packages);
     return default_runner().run_shell(cmd_formatted, RunOptions{.kind = ProcessKind::Mutate}).ok();

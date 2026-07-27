@@ -524,8 +524,8 @@ void install_cust_pkgs() noexcept {
     auto& config_data      = config_instance->data();
     const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
     const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
-    const auto& cmd        = (hostcache) ? "pacstrap -c"sv : "pacstrap"sv;
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("{} {} {} |& tee -a /tmp/pacstrap.log"), cmd, mountpoint, packages)});
+    const auto& cache_flag = (hostcache) ? "-c"sv : ""sv;
+    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} -C {}/etc/pacman.conf {} {} |& tee -a /tmp/pacstrap.log"), cache_flag, mountpoint, mountpoint, packages)});
 #endif
 }
 
