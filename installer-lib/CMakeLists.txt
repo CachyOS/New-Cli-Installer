@@ -40,6 +40,7 @@ add_library(${PROJECT_NAME}
    src/steps/bootloader.cpp
    src/steps/detect_crypto.cpp
    src/steps/enable_services.cpp
+   src/steps/btrfs_snapshot.cpp
    src/steps/final_validation.cpp
    src/steps/cleanup.cpp
    include/cachyos/types.hpp
