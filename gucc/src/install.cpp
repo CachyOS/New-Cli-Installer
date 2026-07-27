@@ -6,7 +6,7 @@
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
-#include "gucc/process.hpp"
+#include "gucc/mirrors.hpp"
 #include "gucc/systemd_services.hpp"
 #include "gucc/zfs.hpp"
 
@@ -56,21 +56,6 @@ auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> bool {
     return true;
 }
 
-auto run_rate_mirrors() noexcept -> bool {
-    using gucc::utils::default_runner;
-    using gucc::utils::ProcessKind;
-    using gucc::utils::RunOptions;
-    spdlog::info("Running rate-mirrors...");
-    if (!default_runner().run({"/usr/bin/pacman", "-Sy", "--noconfirm", "--needed", "cachyos-rate-mirrors", "rate-mirrors"}, RunOptions{.kind = ProcessKind::Mutate}).ok()) {
-        spdlog::error("Failed to install cachyos-rate-mirrors");
-        return false;
-    }
-    if (!default_runner().run({"/usr/bin/cachyos-rate-mirrors"}, RunOptions{.kind = ProcessKind::Mutate}).ok()) {
-        spdlog::error("Failed to run cachyos-rate-mirrors");
-        return false;
-    }
-    return true;
-}
 }  // namespace
 
 namespace gucc::install {
@@ -102,8 +87,8 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
     }
 
     // 3. Rate mirrors before install
-    if (!run_rate_mirrors()) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to update rate-mirrors"));
+    if (auto res = gucc::mirrors::rank_mirrors(); !res) {
+        return res;
     }
 
     // 4. Run pacstrap
