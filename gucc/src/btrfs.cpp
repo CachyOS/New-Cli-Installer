@@ -1,9 +1,12 @@
 #include "gucc/btrfs.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/process.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <algorithm>   // for find_if
 #include <filesystem>  // for create_directories
+#include <fstream>     // for ofstream
 #include <optional>    // for optional
 #include <ranges>      // for ranges::*
 #include <utility>     // for make_optional
@@ -152,6 +155,38 @@ auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vect
 
     // sort by device
     std::ranges::sort(partitions, {}, &Partition::device);
+    return {};
+}
+
+auto create_btrfs_installation_snapshot(std::string_view root_mountpoint) noexcept -> Result<void> {
+    if (!utils::arch_chroot_checked("pacman -Qs cachyos-snapper-support"sv, root_mountpoint)) {
+        spdlog::info("cachyos-snapper-support not installed, skipping");
+        return {};
+    }
+
+    // ensure the dir exists
+    std::error_code err{};
+    const auto& cachyos_dir = fmt::format(FMT_COMPILE("{}/etc/cachyos"), root_mountpoint);
+    ::fs::create_directories(cachyos_dir, err);
+    if (err) {
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to create {}: {}", cachyos_dir, err.message()));
+    }
+
+    // create a permanent snapper snapshot of the finished install
+    const auto& snapshot_result = utils::default_runner().run_shell(
+        R"(snapper --no-dbus -c root create --print-number --description 'Fresh CachyOS Installation' --userdata 'important=yes')"sv,
+        utils::RunOptions{.location = utils::ProcessLocation::Target, .mountpoint = root_mountpoint});
+    if (!snapshot_result.ok()) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create btrfs installation snapshot on {}", root_mountpoint));
+    }
+
+    // save the record id for easy restore
+    const auto& snap_file = fmt::format(FMT_COMPILE("{}/etc/cachyos/installation-snapshot"), root_mountpoint);
+    std::ofstream snap_ofs{snap_file};
+    if (!snap_ofs.is_open()) {
+        return make_error(ErrorCode::FileIo, fmt::format("Failed to write {}", snap_file));
+    }
+    snap_ofs << utils::trim(snapshot_result.output) << '\n';
     return {};
 }
 

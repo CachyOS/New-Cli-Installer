@@ -89,6 +89,10 @@ auto detect_crypto(InstallContext& ctx) noexcept
 [[nodiscard]] auto enable_services(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
+/// Create a permanent btrfs installation snapshot.
+[[nodiscard]] auto btrfs_snapshot(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Run final consistency checks on the installed system. Both `errors` and
 /// `warnings` of the returned `ValidationResult` are non-fatal per orchestrator
 /// policy.

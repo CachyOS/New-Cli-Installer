@@ -56,6 +56,7 @@ enum class Step : std::uint8_t {
     DetectCrypto,
     EnableServices,
     FinalValidation,
+    BtrfsSnapshot,
     Cleanup,
     Count,
 };
@@ -80,6 +81,7 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Detecting encryption state..."sv,
     "Enabling system services..."sv,
     "Running final validation..."sv,
+    "Creating installation snapshot..."sv,
     "Cleaning up..."sv,
 };
 
@@ -369,6 +371,15 @@ auto run(InstallContext& ctx,
         for (auto& warn : check.warnings) {
             warnings.emplace_back(fmt::format("final_check: {}", std::move(warn)));
         }
+    }
+
+    // Create a permanent btrfs installation snapshot
+    if (session.runner.cancelled()) {
+        return cancel_result(session, Step::BtrfsSnapshot, std::move(warnings));
+    }
+    begin_step(Step::BtrfsSnapshot);
+    if (auto res = steps::btrfs_snapshot(ctx); !res) {
+        warnings.emplace_back(res.error());
     }
 
     // Copy install log into target and unmount.

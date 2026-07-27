@@ -28,6 +28,9 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
 // with sorting scheme by device field
 auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vector<BtrfsSubvolume>& subvols) noexcept -> Result<void>;
 
+// Creates a permanent btrfs installation snapshot via snapper.
+auto create_btrfs_installation_snapshot(std::string_view root_mountpoint) noexcept -> Result<void>;
+
 }  // namespace gucc::fs
 
 #endif  // BTRFS_HPP
