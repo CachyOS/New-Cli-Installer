@@ -56,6 +56,7 @@ jobs:
           ./gucc/tests/test-crypto_detection
           ./gucc/tests/test-process
           ./gucc/tests/test-zfs_hostid
+          ./gucc/tests/test-net_profiles_merge
         shell: bash
   build-cmake_withoutdev:
     name: Build with CMake (DEVENV OFF)
@@ -118,6 +119,7 @@ jobs:
           ./gucc/tests/test-crypto_detection
           ./gucc/tests/test-process
           ./gucc/tests/test-zfs_hostid
+          ./gucc/tests/test-net_profiles_merge
         shell: bash
   build-meson_withoutdev:
     name: Build with Meson (DEVENV OFF)

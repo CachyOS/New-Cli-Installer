@@ -276,6 +276,14 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
     return std::make_optional<std::vector<std::string>>(pkg_list);
 }
 
+auto get_netinstall_groups(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::NetinstallGroup>> {
+    auto net_profs_content = load_net_profs_content(net_profile_info);
+    if (!net_profs_content) {
+        return std::nullopt;
+    }
+    return profile::parse_netinstall_groups(*net_profs_content);
+}
+
 auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>> {
     auto net_profs_content = load_net_profs_content(net_profile_info);
     if (!net_profs_content) {

@@ -1,6 +1,8 @@
 #include "gucc/package_profiles.hpp"
 
-#include <sstream>  // for ostringstream
+#include <algorithm>  // for contains
+#include <ranges>     // for ranges::*
+#include <sstream>    // for ostringstream
 
 #include <spdlog/spdlog.h>
 
@@ -10,6 +12,55 @@
 using namespace std::string_view_literals;
 
 namespace {
+
+// The identifying key used to match array-of-tables entries for groups.
+inline constexpr auto GROUP_ID_KEY = "name"sv;
+
+toml::array merge_array_of_tables(const toml::array& lower, const toml::array& higher) noexcept {
+    const auto id_of = [](const toml::table& tbl) noexcept -> std::string_view {
+        return tbl[GROUP_ID_KEY].value_or(""sv);
+    };
+
+    toml::array merged;
+    std::vector<std::string_view> seen_ids{};
+
+    for (const auto& node_el : lower) {
+        const auto* lower_tbl = node_el.as_table();
+        if (lower_tbl == nullptr) {
+            merged.push_back(node_el);
+            continue;
+        }
+        const auto id = id_of(*lower_tbl);
+        // search for the same id in the hi
+        const toml::table* replacement = nullptr;
+        for (const auto& higher_el : higher) {
+            const auto* higher_tbl = higher_el.as_table();
+            if (higher_tbl != nullptr && !id.empty() && id_of(*higher_tbl) == id) {
+                replacement = higher_tbl;
+                break;
+            }
+        }
+        merged.push_back(replacement != nullptr ? *replacement : *lower_tbl);
+        if (!id.empty()) {
+            seen_ids.push_back(id);
+        }
+    }
+
+    // append from hi if id wasn't already present in lo
+    for (const auto& higher_el : higher) {
+        const auto* higher_tbl = higher_el.as_table();
+        if (higher_tbl == nullptr) {
+            merged.push_back(higher_el);
+            continue;
+        }
+        const auto id = id_of(*higher_tbl);
+        if (id.empty() || !std::ranges::contains(seen_ids, id)) {
+            merged.push_back(*higher_tbl);
+        }
+    }
+
+    return merged;
+}
 
 void merge_table(toml::table& lower, const toml::table& higher) noexcept {
     for (const auto& [key, higher_value] : higher) {
@@ -22,6 +73,11 @@ void merge_table(toml::table& lower, const toml::table& higher) noexcept {
         // both have key-key
         if (lower_value->is_table() && higher_value.is_table()) {
             merge_table(*lower_value->as_table(), *higher_value.as_table());
+            continue;
+        }
+        if (lower_value->is_array_of_tables() && higher_value.is_array_of_tables()) {
+            auto merged = merge_array_of_tables(*lower_value->as_array(), *higher_value.as_array());
+            lower.insert_or_assign(key, std::move(merged));
             continue;
         }
         // leaf replaces
@@ -54,6 +110,29 @@ void parse_desktop_table(const toml::table* desktop_table, std::vector<gucc::pro
         parse_toml_array((*value_table)["packages"].as_array(), packages);
         out.emplace_back(gucc::profile::DesktopProfile{.profile_name = std::string{std::string_view{key}}, .packages = std::move(packages)});
     }
+}
+
+gucc::profile::NetinstallGroup parse_netinstall_group(const toml::table& tbl) noexcept {
+    gucc::profile::NetinstallGroup group{};
+    group.name        = std::string{tbl["name"].value_or(""sv)};
+    group.description = std::string{tbl["description"].value_or(""sv)};
+    group.icon        = std::string{tbl["icon"].value_or(""sv)};
+    group.selected    = tbl["selected"].value_or(false);
+    group.hidden      = tbl["hidden"].value_or(false);
+    group.critical    = tbl["critical"].value_or(false);
+    group.is_bundle   = tbl["bundle"].value_or(false);
+
+    if (const auto* pkgs = tbl["packages"].as_array(); pkgs != nullptr) {
+        parse_toml_array(pkgs, group.packages);
+    }
+    if (const auto* subs = tbl["subgroup"].as_array(); subs != nullptr) {
+        for (const auto& node_el : *subs) {
+            if (const auto* sub_tbl = node_el.as_table(); sub_tbl != nullptr) {
+                group.subgroups.emplace_back(parse_netinstall_group(*sub_tbl));
+            }
+        }
+    }
+    return group;
 }
 
 inline void parse_toml_service_array(const toml::array* arr, std::vector<gucc::profile::ServiceEntry>& vec) noexcept {
@@ -136,6 +215,29 @@ auto parse_net_profiles(std::string_view config_content) noexcept -> std::option
     // parse desktop
     parse_desktop_table(netprof_table["desktop"].as_table(), net_profiles.desktop_profiles);
     return std::make_optional<NetProfiles>(std::move(net_profiles));
+}
+
+auto parse_netinstall_groups(std::string_view config_content) noexcept -> std::optional<std::vector<NetinstallGroup>> {
+    toml::parse_result netprof = toml::parse(config_content);
+    if (netprof.failed()) {
+        spdlog::error("Failed to parse profiles: {}", netprof.error().description());
+        return std::nullopt;
+    }
+    const auto& netprof_table = std::move(netprof).table();
+
+    std::vector<NetinstallGroup> groups{};
+
+    // simply no optional groups offered.
+    const auto* group_arr = netprof_table["netinstall"]["group"].as_array();
+    if (group_arr == nullptr) {
+        return std::make_optional<std::vector<NetinstallGroup>>(std::move(groups));
+    }
+    for (const auto& node_el : *group_arr) {
+        if (const auto* tbl = node_el.as_table(); tbl != nullptr) {
+            groups.emplace_back(parse_netinstall_group(*tbl));
+        }
+    }
+    return std::make_optional<std::vector<NetinstallGroup>>(std::move(groups));
 }
 
 auto merge_net_profiles(std::string_view lower, std::string_view higher) noexcept -> std::optional<std::string> {

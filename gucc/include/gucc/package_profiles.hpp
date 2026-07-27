@@ -37,6 +37,22 @@ struct NetProfiles {
     std::vector<DesktopProfile> desktop_profiles{};
 };
 
+/// Groups may nest via `subgroups`.
+struct NetinstallGroup {
+    std::string name{};
+    std::string description{};
+    // symbol name for the GUI
+    std::string icon{};
+    bool selected{false};
+    // never shown, installed when the parent is selected
+    bool hidden{false};
+    // locked-checked, cannot be unchecked
+    bool critical{false};
+    bool is_bundle{false};
+    std::vector<std::string> packages{};
+    std::vector<NetinstallGroup> subgroups{};
+};
+
 // Parse base profiles
 auto parse_base_profiles(std::string_view config_content) noexcept -> std::optional<BaseProfiles>;
 
@@ -45,6 +61,9 @@ auto parse_desktop_profiles(std::string_view config_content) noexcept -> std::op
 
 // Parse net profiles
 auto parse_net_profiles(std::string_view config_content) noexcept -> std::optional<NetProfiles>;
+
+// Parse optional netinstall groups.
+auto parse_netinstall_groups(std::string_view config_content) noexcept -> std::optional<std::vector<NetinstallGroup>>;
 
 /// Recursively merge two net-profiles TOML documents.
 auto merge_net_profiles(std::string_view lower, std::string_view higher) noexcept -> std::optional<std::string>;
