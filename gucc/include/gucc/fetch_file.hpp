@@ -7,6 +7,9 @@
 
 namespace gucc::fetch {
 
+// Fetch a single file from url into memory
+auto fetch_file(std::string_view url) noexcept -> std::optional<std::string>;
+
 // Fetch file from url into memory
 auto fetch_file_from_url(std::string_view url, std::string_view fallback_url) noexcept -> std::optional<std::string>;
 

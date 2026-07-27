@@ -56,6 +56,10 @@ pacages = ["ca,"da","fa"
 [desktop.someprofile-2]
 packaes = ["cb","db",fb"]
 )"sv;
+static constexpr auto SPARSE_TEST = R"(
+[desktop.kde]
+packages = ["plasma-desktop"]
+)"sv;
 
 TEST_CASE("package profiles test")
 {
@@ -144,5 +148,37 @@ TEST_CASE("package profiles test")
 
         auto net_profs = gucc::profile::parse_net_profiles(INVALID_PROFILE_TEST);
         REQUIRE(!net_profs);
+    }
+    SECTION("missing sections")
+    {
+        auto base_profs = gucc::profile::parse_base_profiles(SPARSE_TEST);
+        REQUIRE(base_profs);
+        REQUIRE(base_profs->base_packages.empty());
+        REQUIRE(base_profs->base_desktop_packages.empty());
+        REQUIRE(base_profs->base_services.empty());
+
+        auto desktop_profs = gucc::profile::parse_desktop_profiles(SPARSE_TEST);
+        REQUIRE(desktop_profs);
+        REQUIRE_EQ(desktop_profs->size(), 1);
+        REQUIRE_EQ((*desktop_profs)[0].profile_name, "kde");
+
+        auto net_profs = gucc::profile::parse_net_profiles(SPARSE_TEST);
+        REQUIRE(net_profs);
+        REQUIRE(net_profs->base_profiles.base_packages.empty());
+        REQUIRE_EQ(net_profs->desktop_profiles.size(), 1);
+    }
+    SECTION("empty doc")
+    {
+        auto base_profs = gucc::profile::parse_base_profiles(""sv);
+        REQUIRE(base_profs);
+        REQUIRE(base_profs->base_packages.empty());
+
+        auto desktop_profs = gucc::profile::parse_desktop_profiles(""sv);
+        REQUIRE(desktop_profs);
+        REQUIRE(desktop_profs->empty());
+
+        auto groups = gucc::profile::parse_netinstall_groups(""sv);
+        REQUIRE(groups);
+        REQUIRE(groups->empty());
     }
 }

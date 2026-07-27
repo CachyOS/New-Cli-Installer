@@ -9,7 +9,7 @@
 
 using namespace std::string_view_literals;
 
-namespace {
+namespace gucc::fetch {
 
 auto fetch_file(std::string_view url) noexcept -> std::optional<std::string> {
     using namespace std::chrono_literals;
@@ -24,10 +24,6 @@ auto fetch_file(std::string_view url) noexcept -> std::optional<std::string> {
     }
     return std::nullopt;
 }
-
-}  // namespace
-
-namespace gucc::fetch {
 
 auto fetch_file_from_url(std::string_view url, std::string_view fallback_url) noexcept -> std::optional<std::string> {
     auto fetch_content = fetch_file(url);

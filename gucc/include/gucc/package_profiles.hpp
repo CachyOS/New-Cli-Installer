@@ -1,5 +1,4 @@
-#ifndef PACKAGE_PROFILES_HPP
-#define PACKAGE_PROFILES_HPP
+#pragma once
 
 #include <cstdint>      // for uint8_t
 #include <optional>     // for optional
@@ -47,6 +46,10 @@ auto parse_desktop_profiles(std::string_view config_content) noexcept -> std::op
 // Parse net profiles
 auto parse_net_profiles(std::string_view config_content) noexcept -> std::optional<NetProfiles>;
 
-}  // namespace gucc::profile
+/// Recursively merge two net-profiles TOML documents.
+auto merge_net_profiles(std::string_view lower, std::string_view higher) noexcept -> std::optional<std::string>;
 
-#endif  // PACKAGE_PROFILES_HPP
+/// Fold an ordered list of net-profiles TOML sources into a single doc.
+auto load_layered_net_profiles(const std::vector<std::string_view>& layers) noexcept -> std::optional<std::string>;
+
+}  // namespace gucc::profile

@@ -1,5 +1,7 @@
 #include "gucc/package_profiles.hpp"
 
+#include <sstream>  // for ostringstream
+
 #include <spdlog/spdlog.h>
 
 #define TOML_EXCEPTIONS 0  // disable exceptions
@@ -9,10 +11,48 @@ using namespace std::string_view_literals;
 
 namespace {
 
+void merge_table(toml::table& lower, const toml::table& higher) noexcept {
+    for (const auto& [key, higher_value] : higher) {
+        auto* lower_value = lower.get(key);
+        if (lower_value == nullptr) {
+            lower.insert_or_assign(key, higher_value);
+            continue;
+        }
+
+        // both have key-key
+        if (lower_value->is_table() && higher_value.is_table()) {
+            merge_table(*lower_value->as_table(), *higher_value.as_table());
+            continue;
+        }
+        // leaf replaces
+        lower.insert_or_assign(key, higher_value);
+    }
+}
+
 inline void parse_toml_array(const toml::array* arr, std::vector<std::string>& vec) noexcept {
+    if (arr == nullptr) {
+        return;
+    }
     for (const auto& node_el : *arr) {
-        auto elem = node_el.value<std::string_view>().value();
-        vec.emplace_back(elem);
+        auto elem = node_el.value<std::string_view>().value_or(""sv);
+        if (!elem.empty()) {
+            vec.emplace_back(elem);
+        }
+    }
+}
+
+void parse_desktop_table(const toml::table* desktop_table, std::vector<gucc::profile::DesktopProfile>& out) noexcept {
+    if (desktop_table == nullptr) {
+        return;
+    }
+    for (auto&& [key, value] : *desktop_table) {
+        const auto* value_table = value.as_table();
+        if (value_table == nullptr) {
+            continue;
+        }
+        std::vector<std::string> packages{};
+        parse_toml_array((*value_table)["packages"].as_array(), packages);
+        out.emplace_back(gucc::profile::DesktopProfile{.profile_name = std::string{std::string_view{key}}, .packages = std::move(packages)});
     }
 }
 
@@ -69,15 +109,9 @@ auto parse_desktop_profiles(std::string_view config_content) noexcept -> std::op
     }
     const auto& netprof_table = std::move(netprof).table();
 
+    // simply no desktop profiles offered
     std::vector<DesktopProfile> desktop_profiles{};
-
-    const auto* desktop_table = netprof_table["desktop"].as_table();
-    for (auto&& [key, value] : *desktop_table) {
-        auto value_table = *value.as_table();
-        std::vector<std::string> desktop_profile_packages{};
-        parse_toml_array(value_table["packages"].as_array(), desktop_profile_packages);
-        desktop_profiles.emplace_back(DesktopProfile{.profile_name = std::string{std::string_view{key}}, .packages = std::move(desktop_profile_packages)});
-    }
+    parse_desktop_table(netprof_table["desktop"].as_table(), desktop_profiles);
     return std::make_optional<std::vector<DesktopProfile>>(std::move(desktop_profiles));
 }
 
@@ -100,14 +134,59 @@ auto parse_net_profiles(std::string_view config_content) noexcept -> std::option
     parse_toml_service_array(netprof_table["services"]["desktop"]["units"].as_array(), net_profiles.base_profiles.base_desktop_services);
 
     // parse desktop
-    const auto* desktop_table = netprof_table["desktop"].as_table();
-    for (auto&& [key, value] : *desktop_table) {
-        auto value_table = *value.as_table();
-        std::vector<std::string> desktop_profile_packages{};
-        parse_toml_array(value_table["packages"].as_array(), desktop_profile_packages);
-        net_profiles.desktop_profiles.emplace_back(DesktopProfile{.profile_name = std::string{std::string_view{key}}, .packages = std::move(desktop_profile_packages)});
-    }
+    parse_desktop_table(netprof_table["desktop"].as_table(), net_profiles.desktop_profiles);
     return std::make_optional<NetProfiles>(std::move(net_profiles));
+}
+
+auto merge_net_profiles(std::string_view lower, std::string_view higher) noexcept -> std::optional<std::string> {
+    if (higher.empty()) {
+        // nothing to merge
+        return std::make_optional<std::string>(lower);
+    }
+    if (lower.empty()) {
+        // lo doesn't exist
+        toml::parse_result higher_res = toml::parse(higher);
+        if (higher_res.failed()) {
+            spdlog::error("Failed to parse net profiles (hi): {}", higher_res.error().description());
+            return std::nullopt;
+        }
+        return std::make_optional<std::string>(higher);
+    }
+
+    toml::parse_result lower_res = toml::parse(lower);
+    if (lower_res.failed()) {
+        spdlog::error("Failed to parse net profiles (lo): {}", lower_res.error().description());
+        return std::nullopt;
+    }
+    toml::parse_result higher_res = toml::parse(higher);
+    if (higher_res.failed()) {
+        spdlog::error("Failed to parse net profiles (hi): {}", higher_res.error().description());
+        return std::nullopt;
+    }
+
+    auto lower_table        = std::move(lower_res).table();
+    const auto higher_table = std::move(higher_res).table();
+    merge_table(lower_table, higher_table);
+
+    std::ostringstream oss;
+    oss << lower_table;
+    return std::make_optional<std::string>(oss.str());
+}
+
+auto load_layered_net_profiles(const std::vector<std::string_view>& layers) noexcept -> std::optional<std::string> {
+    std::optional<std::string> merged{};
+    for (const auto& layer : layers) {
+        if (layer.empty()) {
+            continue;
+        }
+        auto next = merge_net_profiles(merged.value_or(std::string{}), layer);
+        if (!next.has_value()) {
+            spdlog::warn("Skipping unparsable/unmergeable net profiles layer");
+            continue;
+        }
+        merged = std::move(next);
+    }
+    return merged;
 }
 
 }  // namespace gucc::profile

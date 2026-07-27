@@ -130,6 +130,7 @@ auto build_install_context() noexcept -> cachyos::installer::InstallContext {
 
     ctx.net_profiles_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
     ctx.net_profiles_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
+    ctx.net_profiles_user_path    = std::get<std::string>(config_data["NET_PROFILES_USER_PATH"]);
 
     return ctx;
 }

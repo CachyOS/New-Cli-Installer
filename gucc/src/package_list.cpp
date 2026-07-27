@@ -19,26 +19,68 @@ using namespace std::string_view_literals;
 
 namespace {
 
-std::optional<std::string> cached_content;  // NOLINT
-std::string cached_url;                     // NOLINT
-std::string cached_fallback_url;            // NOLINT
+constinit std::optional<std::string> cached_content;  // NOLINT
+constinit std::string cached_url;                     // NOLINT
+constinit std::string cached_fallback_url;            // NOLINT
+constinit std::string cached_user_path;               // NOLINT
 
+// Builds the merged net-profiles document from two layers:
+//  - base: regular installer net-profiles.toml
+//  - user: an optional user-supplied one
 auto fetch_net_profiles_cached(const gucc::package::NetProfileInfo& info) noexcept -> std::optional<std::string> {
     if (cached_content
         && cached_url == info.net_profs_url
-        && cached_fallback_url == info.net_profs_fallback_url) {
+        && cached_fallback_url == info.net_profs_fallback_url
+        && cached_user_path == info.net_profs_user_path) {
         spdlog::debug("net profiles: using cached content");
         return cached_content;
     }
 
-    auto content = gucc::fetch::fetch_file_from_url(info.net_profs_url, info.net_profs_fallback_url);
-    if (content) {
-        cached_url          = info.net_profs_url;
-        cached_fallback_url = info.net_profs_fallback_url;
-        cached_content      = std::move(content);
-        return cached_content;
+    auto base_content = gucc::fetch::fetch_file_from_url(info.net_profs_url, info.net_profs_fallback_url);
+    if (!base_content) {
+        spdlog::error("net profiles: failed to load base layer (url '{}', fallback '{}')", info.net_profs_url, info.net_profs_fallback_url);
+        return std::nullopt;
     }
-    return std::nullopt;
+
+    // user profile
+    std::optional<std::string> user_content;
+    if (!info.net_profs_user_path.empty()) {
+        user_content = gucc::fetch::fetch_file(info.net_profs_user_path);
+        if (!user_content) {
+            spdlog::warn("net profiles: could not load user layer from '{}', ignoring it", info.net_profs_user_path);
+        }
+    }
+
+    std::vector<std::string_view> layers{*base_content};
+    if (user_content) {
+        layers.emplace_back(*user_content);
+    }
+
+    auto merged = gucc::profile::load_layered_net_profiles(layers);
+    if (!merged) {
+        spdlog::error("net profiles: failed to merge layered net profiles");
+        return std::nullopt;
+    }
+
+    cached_url          = info.net_profs_url;
+    cached_fallback_url = info.net_profs_fallback_url;
+    cached_user_path    = info.net_profs_user_path;
+    cached_content      = std::move(merged);
+    return cached_content;
+}
+
+auto load_net_profs_content(const gucc::package::NetProfileInfo& info) noexcept -> std::optional<std::string> {
+    // must have at least single valid net profile url
+    if (info.net_profs_url.empty() && info.net_profs_fallback_url.empty()) {
+        spdlog::error("Invalid netprofiles info: cannot be empty");
+        return std::nullopt;
+    }
+    auto content = fetch_net_profiles_cached(info);
+    if (!content) {
+        spdlog::error("Failed to get net profiles content");
+        return std::nullopt;
+    }
+    return content;
 }
 
 }  // namespace
@@ -46,12 +88,6 @@ auto fetch_net_profiles_cached(const gucc::package::NetProfileInfo& info) noexce
 namespace gucc::package {
 
 auto get_pkglist_base(std::string_view packages, std::string_view root_filesystem, bool server_mode, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<std::string>> {
-    // must have at least single valid net profile url
-    if (net_profile_info.net_profs_url.empty() && net_profile_info.net_profs_fallback_url.empty()) {
-        spdlog::error("Invalid netprofiles info: cannot be empty");
-        return std::nullopt;
-    }
-
     const auto& is_root_on_zfs      = (root_filesystem == "zfs"sv);
     const auto& is_root_on_btrfs    = (root_filesystem == "btrfs"sv);
     const auto& is_root_on_bcachefs = (root_filesystem == "bcachefs"sv);
@@ -74,9 +110,8 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
         pkg_list.insert(pkg_list.cend(), {"bcachefs-tools"});
     }
 
-    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
+    auto net_profs_content = load_net_profs_content(net_profile_info);
     if (!net_profs_content) {
-        spdlog::error("Failed to get net profiles content");
         return std::nullopt;
     }
     auto base_net_profs = profile::parse_base_profiles(*net_profs_content);
@@ -109,15 +144,8 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
 }
 
 auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<std::string>> {
-    // must have at least single valid net profile url
-    if (net_profile_info.net_profs_url.empty() && net_profile_info.net_profs_fallback_url.empty()) {
-        spdlog::error("Invalid netprofiles info: cannot be empty");
-        return std::nullopt;
-    }
-
-    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
+    auto net_profs_content = load_net_profs_content(net_profile_info);
     if (!net_profs_content) {
-        spdlog::error("Failed to get net profiles content");
         return std::nullopt;
     }
     auto desktop_net_profs = profile::parse_desktop_profiles(*net_profs_content);
@@ -249,14 +277,8 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
 }
 
 auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>> {
-    if (net_profile_info.net_profs_url.empty() && net_profile_info.net_profs_fallback_url.empty()) {
-        spdlog::error("Invalid netprofiles info: cannot be empty");
-        return std::nullopt;
-    }
-
-    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
+    auto net_profs_content = load_net_profs_content(net_profile_info);
     if (!net_profs_content) {
-        spdlog::error("Failed to get net profiles content");
         return std::nullopt;
     }
     auto base_profs = profile::parse_base_profiles(*net_profs_content);
@@ -276,14 +298,8 @@ auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noe
 }
 
 auto get_servicelist_desktop(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>> {
-    if (net_profile_info.net_profs_url.empty() && net_profile_info.net_profs_fallback_url.empty()) {
-        spdlog::error("Invalid netprofiles info: cannot be empty");
-        return std::nullopt;
-    }
-
-    auto net_profs_content = fetch_net_profiles_cached(net_profile_info);
+    auto net_profs_content = load_net_profs_content(net_profile_info);
     if (!net_profs_content) {
-        spdlog::error("Failed to get net profiles content");
         return std::nullopt;
     }
     auto base_profs = profile::parse_base_profiles(*net_profs_content);

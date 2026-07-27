@@ -1,7 +1,10 @@
 #include "global_storage.hpp"
 #include "definitions.hpp"  // for error_inter
 
+#include "cachyos/types.hpp"
+
 #include <memory>  // for unique_ptr, make_unique, operator==
+#include <string>  // for string
 
 static std::unique_ptr<Config> s_config = nullptr;
 
@@ -62,8 +65,9 @@ bool Config::initialize() noexcept {
         s_config->m_data["SWAP_DEVICE"] = "";
 
         // URLs to fetch net profiles
-        s_config->m_data["NET_PROFILES_URL"]          = "https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/net-profiles.toml";
-        s_config->m_data["NET_PROFILES_FALLBACK_URL"] = "file:///var/lib/cachyos-installer/net-profiles.toml";
+        s_config->m_data["NET_PROFILES_URL"]          = std::string{cachyos::installer::kDefaultNetProfilesUrl};
+        s_config->m_data["NET_PROFILES_FALLBACK_URL"] = std::string{cachyos::installer::kDefaultNetProfilesFallbackUrl};
+        s_config->m_data["NET_PROFILES_USER_PATH"]    = std::string{};
 
         // Mounting
         s_config->m_data["MOUNTPOINT"] = "/mnt";

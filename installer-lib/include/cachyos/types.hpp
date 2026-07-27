@@ -16,6 +16,10 @@
 
 namespace cachyos::installer {
 
+// Default net-profile source URLs.
+inline constexpr std::string_view kDefaultNetProfilesUrl{"https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/net-profiles.toml"};
+inline constexpr std::string_view kDefaultNetProfilesFallbackUrl{"file:///var/lib/cachyos-installer/net-profiles.toml"};
+
 /// User-supplied root-partition choice consumed by the mount step.
 struct RootPartitionSelection {
     std::string device;
@@ -160,8 +164,9 @@ struct InstallContext {
     bool install_chwd_profiles{false};
 
     // Network profiles
-    std::string net_profiles_url{"https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/net-profiles.toml"};
-    std::string net_profiles_fallback_url{"file:///var/lib/cachyos-installer/net-profiles.toml"};
+    std::string net_profiles_url{kDefaultNetProfilesUrl};
+    std::string net_profiles_fallback_url{kDefaultNetProfilesFallbackUrl};
+    std::string net_profiles_user_path;
 
     /// Carry the live ISO's NetworkManager system-connections into the target.
     bool carry_live_network{true};

@@ -74,6 +74,7 @@ auto make_net_profs_info(const InstallContext& ctx) noexcept -> gucc::package::N
     return {
         .net_profs_url          = ctx.net_profiles_url,
         .net_profs_fallback_url = ctx.net_profiles_fallback_url,
+        .net_profs_user_path    = ctx.net_profiles_user_path,
     };
 }
 

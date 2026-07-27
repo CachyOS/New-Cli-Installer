@@ -1,5 +1,4 @@
-#ifndef PACKAGE_LIST_HPP
-#define PACKAGE_LIST_HPP
+#pragma once
 
 #include "gucc/package_profiles.hpp"
 
@@ -11,10 +10,15 @@
 namespace gucc::package {
 
 struct NetProfileInfo {
-    // Url used to fetch netprofiles, e.g. 'file:///tmp/network-profile.toml'
+    // Url for the online copy of netprofiles (e.g. a web URL for the latest
+    // upstream profiles).
     std::string net_profs_url;
-    // Fallback url used to fetch netprofiles, e.g. 'file:///network-profile.toml'
+    // Url for the vendored copy of netprofiles,
+    // e.g. 'file:///var/lib/cachyos-installer/net-profiles.toml'.
     std::string net_profs_fallback_url;
+    // Optional url to a user-provided netprofiles overlay merged on top of
+    // the base document.
+    std::string net_profs_user_path;
 };
 
 // Get base profile packages
@@ -30,5 +34,3 @@ auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noe
 auto get_servicelist_desktop(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>>;
 
 }  // namespace gucc::package
-
-#endif  // PACKAGE_LIST_HPP
