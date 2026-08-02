@@ -40,6 +40,14 @@ namespace cachyos::installer {
 [[nodiscard]] auto enable_services(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
+/// Resolve @ref InstallContext::netinstall_groups
+[[nodiscard]] auto resolve_netinstall_packages(const InstallContext& ctx) noexcept
+    -> std::vector<std::string>;
+
+/// Fetch and parse @p ctx.server_profile into context
+[[nodiscard]] auto init_server_profile(InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Ensures a package is installed on the live system (not the target).
 [[nodiscard]] auto install_needed(std::string_view pkg) noexcept
     -> std::expected<void, std::string>;

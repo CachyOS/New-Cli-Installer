@@ -5,6 +5,7 @@
 #include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/server_profiles.hpp"
 
 #include <cstdint>      // for int32_t
 #include <functional>   // for function
@@ -172,6 +173,9 @@ struct InstallContext {
     // Server net profiles
     std::string server_profiles_url{kDefaultServerProfilesUrl};
     std::string server_profiles_fallback_url{kDefaultServerProfilesFallbackUrl};
+
+    /// Server edition profile for the session
+    std::optional<gucc::profile::ResolvedServerProfile> resolved_server;
 
     /// When true, run `chwd -a` against the target after the desktop step
     /// to install every hardware-driver profile applicable to the detected

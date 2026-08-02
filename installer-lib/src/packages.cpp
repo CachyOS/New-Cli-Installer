@@ -2,6 +2,8 @@
 
 // import gucc
 #include "gucc/display_manager.hpp"
+#include "gucc/error.hpp"
+#include "gucc/fetch_file.hpp"
 #include "gucc/firewall.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/initcpio.hpp"
@@ -10,14 +12,17 @@
 #include "gucc/package_list.hpp"
 #include "gucc/package_profiles.hpp"
 #include "gucc/plymouth.hpp"
+#include "gucc/server_profiles.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
 
+#include <algorithm>    // for ranges::find
 #include <expected>     // for unexpected
 #include <filesystem>   // for exists
 #include <fstream>      // for ofstream
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -78,9 +83,37 @@ auto make_net_profs_info(const InstallContext& ctx) noexcept -> gucc::package::N
     };
 }
 
+void collect_group_packages(const gucc::profile::NetinstallGroup& group, std::vector<std::string>& out) noexcept {
+    out.insert(out.cend(), group.packages.cbegin(), group.packages.cend());
+    for (const auto& sub : group.subgroups) {
+        collect_group_packages(sub, out);
+    }
+}
+
 }  // namespace
 
 namespace cachyos::installer {
+
+auto resolve_netinstall_packages(const InstallContext& ctx) noexcept -> std::vector<std::string> {
+    std::vector<std::string> packages{};
+    if (ctx.netinstall_groups.empty()) {
+        return packages;
+    }
+    auto groups = gucc::package::get_netinstall_groups(make_net_profs_info(ctx));
+    if (!groups) {
+        spdlog::warn("could not load netinstall groups");
+        return packages;
+    }
+    for (const auto& name : ctx.netinstall_groups) {
+        const auto found = std::ranges::find(*groups, name, &gucc::profile::NetinstallGroup::name);
+        if (found == groups->end()) {
+            spdlog::warn("netinstall group '{}' not found. skipping", name);
+            continue;
+        }
+        collect_group_packages(*found, packages);
+    }
+    return packages;
+}
 
 auto install_base(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
@@ -126,12 +159,6 @@ auto install_base(const InstallContext& ctx) noexcept
     const auto base_installed_path = fmt::format(FMT_COMPILE("{}/.base_installed"), mountpoint);
     std::ofstream{base_installed_path};  // NOLINT
 
-    // Enable base services after base install
-    auto svc_result = enable_services(ctx);
-    if (!svc_result) {
-        spdlog::warn("Failed to enable services: {}", svc_result.error());
-    }
-
     return {};
 }
 
@@ -142,6 +169,10 @@ auto install_desktop_packages(std::string_view desktop, const InstallContext& ct
     if (!pkg_list.has_value()) {
         return std::unexpected("failed to get desktop package list");
     }
+
+    // append netinstall groups
+    const auto extra = resolve_netinstall_packages(ctx);
+    pkg_list->insert(pkg_list->cend(), extra.cbegin(), extra.cend());
 
     spdlog::info("Preparing for desktop envs to install: '{}'", gucc::utils::join(*pkg_list, ' '));
 
@@ -183,10 +214,6 @@ auto configure_desktop_extras(const InstallContext& ctx) noexcept
         }
     }
 
-    auto svc_result = enable_services(ctx);
-    if (!svc_result) {
-        spdlog::warn("Failed to enable services: {}", svc_result.error());
-    }
     return {};
 }
 
@@ -245,6 +272,9 @@ auto enable_services(const InstallContext& ctx) noexcept
             return std::unexpected("failed to get desktop service list");
         }
         apply_services(*desktop_services, mountpoint);
+    } else if (ctx.resolved_server) {
+        // enable server profile services
+        apply_services(ctx.resolved_server->services, mountpoint);
     }
 
     // Display manager detection (desktop mode only)
@@ -270,6 +300,41 @@ auto enable_services(const InstallContext& ctx) noexcept
         }
     }
 
+    return {};
+}
+
+// TODO(vnepogodin): should be moved to own file at all
+auto init_server_profile(InstallContext& ctx) noexcept
+    -> std::expected<void, std::string> {
+    if (ctx.server_profile.empty()) {
+        return {};
+    }
+
+    const auto content = gucc::fetch::fetch_file_from_url(ctx.server_profiles_url, ctx.server_profiles_fallback_url);
+    if (!content) {
+        return std::unexpected(fmt::format(FMT_COMPILE("could not fetch server profiles from '{}' (fallback '{}')"),
+            ctx.server_profiles_url, ctx.server_profiles_fallback_url));
+    }
+
+    auto profiles = gucc::profile::parse_server_profiles(*content);
+    if (!profiles) {
+        return std::unexpected(fmt::format(FMT_COMPILE("invalid server profiles doc: {}"), gucc::to_string(profiles.error())));
+    }
+
+    const gucc::profile::ServerUserExtras extras{
+        .packages            = ctx.server_extra_packages,
+        .firewall_tcp_ports  = ctx.server_extra_tcp_ports,
+        .firewall_udp_ports  = ctx.server_extra_udp_ports,
+        .ssh_authorized_keys = ctx.ssh_authorized_keys,
+    };
+
+    auto resolved = gucc::profile::resolve_server_profile(*profiles, ctx.server_profile, extras);
+    if (!resolved) {
+        return std::unexpected(fmt::format(FMT_COMPILE("cannot resolve server profile '{}': {}"),
+            ctx.server_profile, gucc::to_string(resolved.error())));
+    }
+
+    ctx.resolved_server = std::move(*resolved);
     return {};
 }
 
