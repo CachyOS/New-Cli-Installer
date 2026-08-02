@@ -63,7 +63,7 @@ void id_system() noexcept;
 void show_iwctl() noexcept;
 
 void enable_autologin(const std::string_view& dm, const std::string_view& username) noexcept;
-auto parse_config() noexcept -> bool;
+auto parse_config(std::string_view config_path = "settings.json") noexcept -> bool;
 auto setup_luks_keyfile() noexcept -> bool;
 void grub_mkconfig() noexcept;
 

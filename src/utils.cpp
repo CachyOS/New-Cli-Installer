@@ -894,7 +894,7 @@ void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unuse
 #endif
 }
 
-bool parse_config() noexcept {
+bool parse_config(std::string_view config_path) noexcept {
     auto* config_instance = Config::instance();
     auto& config_data     = config_instance->data();
 
@@ -903,8 +903,7 @@ bool parse_config() noexcept {
     spdlog::info("SYSTEM: '{}'", system_info);
 
     // 1. Open file for reading.
-    static constexpr auto file_path = "settings.json";
-    const auto file_content         = gucc::file_utils::read_whole_file(file_path);
+    const auto file_content = gucc::file_utils::read_whole_file(config_path);
 
     // 2. Parse JSON using installer_config library.
     auto parse_result = cachyos::installer::parse_installer_config(file_content);
