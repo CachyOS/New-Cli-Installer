@@ -20,6 +20,10 @@ namespace cachyos::installer {
 inline constexpr std::string_view kDefaultNetProfilesUrl{"https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/net-profiles.toml"};
 inline constexpr std::string_view kDefaultNetProfilesFallbackUrl{"file:///var/lib/cachyos-installer/net-profiles.toml"};
 
+// Server Edition profile source URLs.
+inline constexpr std::string_view kDefaultServerProfilesUrl{"https://raw.githubusercontent.com/CachyOS/New-Cli-Installer/master/server-profiles.toml"};
+inline constexpr std::string_view kDefaultServerProfilesFallbackUrl{"file:///var/lib/cachyos-installer/server-profiles.toml"};
+
 /// User-supplied root-partition choice consumed by the mount step.
 struct RootPartitionSelection {
     std::string device;
@@ -158,10 +162,27 @@ struct InstallContext {
     std::string keymap{"us"};
     bool server_mode{};
 
+    // Server Edition
+    std::string server_profile;
+    std::vector<std::string> ssh_authorized_keys;
+    std::vector<std::string> server_extra_packages;
+    std::vector<std::uint16_t> server_extra_tcp_ports;
+    std::vector<std::uint16_t> server_extra_udp_ports;
+
+    // Server net profiles
+    std::string server_profiles_url{kDefaultServerProfilesUrl};
+    std::string server_profiles_fallback_url{kDefaultServerProfilesFallbackUrl};
+
     /// When true, run `chwd -a` against the target after the desktop step
     /// to install every hardware-driver profile applicable to the detected
     /// hardware.
     bool install_chwd_profiles{false};
+
+    /// When true, GRUB's os-prober is disabled (no other-OS detection).
+    bool disable_os_prober{false};
+
+    /// Optional netinstall group names.
+    std::vector<std::string> netinstall_groups;
 
     // Network profiles
     std::string net_profiles_url{kDefaultNetProfilesUrl};

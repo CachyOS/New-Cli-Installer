@@ -86,6 +86,23 @@ struct InstallerConfig {
     std::optional<std::string> desktop{};
     std::optional<std::string> bootloader{};
 
+    // Server Edition
+    std::optional<std::string> server_profile{};
+    std::vector<std::string> ssh_authorized_keys{};
+    std::vector<std::string> server_extra_packages{};
+    std::vector<std::uint16_t> server_extra_tcp_ports{};
+    std::vector<std::uint16_t> server_extra_udp_ports{};
+    std::optional<std::string> net_profiles_path{};
+
+    // Optionals
+    bool autologin{false};
+    std::vector<std::string> user_groups{};
+    std::optional<std::string> hw_clock{};
+    bool chwd{true};
+    bool carry_network{true};
+    bool os_prober{true};
+    std::vector<std::string> netinstall_groups{};
+
     // Post-install
     std::optional<std::string> post_install{};
 };

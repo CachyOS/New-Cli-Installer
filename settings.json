@@ -1,11 +1,11 @@
 {
-    "menus": 2,
-    "headless_mode": false,
+    "menus": 1,
+    "headless_mode": true,
     "device": "/dev/nvme0n1",
-    "fs_name": "btrfs",
+    "fs_name": "ext4",
     "partitions": [
         {
-            "name": "/dev/nvme0n1p3",
+            "name": "/dev/nvme0n1p2",
             "mountpoint": "/",
             "size": "450G",
             "type": "root"

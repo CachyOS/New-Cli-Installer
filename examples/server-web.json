@@ -1,0 +1,21 @@
+{
+    "install_type": "simple",
+    "headless_mode": true,
+    "device": "/dev/vda",
+    "fs_name": "ext4",
+    "subvolumes": "default",
+    "partitions": [
+        {"name": "/dev/vda1", "mountpoint": "/boot", "size": "1G", "fs_name": "vfat", "type": "boot"},
+        {"name": "/dev/vda2", "mountpoint": "/", "size": "100%", "type": "root"}
+    ],
+    "hostname": "web-01",
+    "timezone": "Europe/London",
+    "user_name": "admin",
+    "user_pass": "1234",
+    "root_pass": "1234",
+    "kernel": "linux-cachyos-server",
+    "bootloader": "systemd-boot",
+    "server_profile": "web",
+    "ssh_authorized_keys": [],
+    "server_extra_tcp_ports": [8080]
+}

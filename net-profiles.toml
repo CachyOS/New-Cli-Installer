@@ -625,3 +625,51 @@ packages = [
   "xorg-xkill",
   "xorg-xrandr"
 ]
+
+[[netinstall.group]]
+name = "Gaming Support"
+description = "Steam, Lutris, Wine and the CachyOS gaming meta-packages."
+icon = "gamepad"
+bundle = true
+selected = false
+packages = [
+  "cachyos-gaming-meta",
+  "cachyos-gaming-applications",
+]
+
+[[netinstall.group]]
+name = "Multimedia & Codecs"
+description = "Media players and audio/video codecs for everyday playback."
+icon = "movie"
+bundle = true
+selected = false
+packages = [
+  "vlc",
+  "mpv",
+  "vlc-plugins-all",
+]
+
+[[netinstall.group]]
+name = "Office Suite"
+description = "LibreOffice productivity suite with spell-checking."
+icon = "description"
+bundle = true
+selected = false
+packages = [
+  "libreoffice-fresh",
+  "hunspell",
+  "hunspell-en_us",
+]
+
+[[netinstall.group]]
+name = "Accessibility Tools"
+description = "Screen reader and pointer aids for impaired vision."
+icon = "accessibility"
+bundle = true
+selected = false
+packages = [
+  "espeak-ng",
+  "orca",
+  "mousetweaks",
+]
+
