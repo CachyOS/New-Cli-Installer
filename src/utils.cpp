@@ -518,6 +518,10 @@ void install_base(const std::string_view& packages) noexcept {
             spdlog::error("{}", res.error());
             return false;
         }
+        // NOTE: advanced TUI is now different from common install path, soo needed
+        if (auto res = cachyos::installer::steps::enable_services(ctx); !res) {
+            spdlog::warn("enable_services: {}", res.error());
+        }
         return true;
     };
     if (simple_mode || headless_mode) {
@@ -529,7 +533,6 @@ void install_base(const std::string_view& packages) noexcept {
             spdlog::error("Failed to install base");
         }
     }
-    // NOTE: enable_services() is called internally by the library
 #else
     spdlog::info("[install_base] packages: {}", packages);
 #endif
@@ -564,6 +567,10 @@ void install_desktop(const std::string_view& desktop) noexcept {
         if (auto res = cachyos::installer::steps::desktop_configure(desktop_ctx); !res) {
             spdlog::error("{}", res.error());
             return false;
+        }
+        // NOTE: advanced TUI is now different from common install path, soo needed
+        if (auto res = cachyos::installer::steps::enable_services(desktop_ctx); !res) {
+            spdlog::warn("enable_services: {}", res.error());
         }
         return true;
     };
