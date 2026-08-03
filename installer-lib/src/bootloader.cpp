@@ -283,8 +283,8 @@ auto install_grub_bios(const InstallContext& ctx) noexcept
         grub_config_struct.savedefault = std::nullopt;
     }
 
-    // enable os-prober
-    grub_config_struct.disable_os_prober = false;
+    // pass customizable os-prober from conf context
+    grub_config_struct.disable_os_prober = ctx.disable_os_prober;
 
     // Configure shared GRUB settings (ZFS, btrfs, LUKS, FDE, grub_installer.sh)
     configure_grub_common(grub_config_struct, grub_install_config_struct,
