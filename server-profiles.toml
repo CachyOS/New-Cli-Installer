@@ -1,0 +1,120 @@
+# CachyOS Server Edition profiles.
+
+[server]
+schema_version = 1
+default_profile = "minimal"
+default_kernel = "linux-cachyos-server"
+profile_order = [
+  "minimal",
+  "web",
+  "container-host",
+  "cockpit",
+]
+
+[server.base]
+packages = [
+  "openssh",
+  "ufw",
+  "haveged",
+]
+
+units = [
+  { name = "sshd", action = "enable", urgent = true },
+  { name = "ufw", action = "enable", urgent = true },
+
+  { name = "systemd-timesyncd", action = "enable" },
+  { name = "fstrim.timer", action = "enable" },
+
+  { name = "haveged", action = "enable" },
+]
+
+# permits ssh only
+firewall_tcp_ports = [22]
+firewall_udp_ports = []
+
+features = [
+  "sshd-key-only",
+  "ufw-default-deny",
+  "server-sysctl",
+]
+
+[server.profiles.minimal]
+name = "Minimal Server"
+description = "Minimal headless CachyOS installation."
+packages = []
+units = []
+firewall_tcp_ports = []
+firewall_udp_ports = []
+warnings = []
+
+[server.profiles.web]
+name = "Web Server"
+description = "Nginx web server."
+packages = [
+  "nginx",
+  "certbot-nginx",
+]
+units = [
+  { name = "nginx", action = "enable", urgent = true },
+]
+firewall_tcp_ports = [80, 443]
+firewall_udp_ports = []
+warnings = [
+  "TLS certificates require a valid domain name and explicit Certbot enrollment.",
+]
+
+[server.profiles.container-host]
+name = "Container Host"
+description = "Docker compose container host."
+packages = [
+  "docker",
+  "docker-buildx",
+  "docker-compose",
+]
+units = [
+  { name = "docker", action = "enable", urgent = true },
+]
+firewall_tcp_ports = []
+firewall_udp_ports = []
+warnings = [
+  "Users are not automatically added to the docker group.",
+]
+
+[server.profiles.cockpit]
+name = "Cockpit Managed Server"
+description = "Web-managed server with the Cockpit plugins."
+packages = [
+  "cockpit",
+  "cockpit-files",
+  "cockpit-storaged",
+  "pcp",
+  "podman",
+  "cockpit-podman",
+  "qemu-base",
+  "libvirt",
+  "libvirt-dbus",
+  "virt-install",
+  "dnsmasq",
+  "swtpm",
+  "edk2-ovmf",
+  "cockpit-machines",
+  "polkit",
+  "sudo",
+  "sscg",
+]
+units = [
+  { name = "cockpit.socket", action = "enable", urgent = true },
+
+  { name = "pmcd.service", action = "enable" },
+  { name = "pmlogger.service", action = "enable" },
+
+  { name = "libvirtd.socket", action = "enable" },
+]
+firewall_tcp_ports = [9090]
+firewall_udp_ports = []
+warnings = [
+  "Cockpit uses a self-signed TLS certificate initially; replace it before exposing the interface beyond a trusted network.",
+  "Cockpit is available at https://SERVER_ADDRESS:9090/.",
+  "The Cockpit firewall page is unavailable because Server Edition uses ufw instead of firewalld.",
+  "Access to port 9090 should be restricted to local network or/and VPN.",
+]
