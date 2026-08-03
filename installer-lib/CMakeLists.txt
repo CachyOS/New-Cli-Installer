@@ -35,6 +35,7 @@ add_library(${PROJECT_NAME}
    src/steps/desktop.cpp
    src/steps/desktop_configure.cpp
    src/steps/ssh_keys.cpp
+   src/steps/server_firewall.cpp
    src/steps/autologin.cpp
    src/steps/chwd.cpp
    src/steps/network_carryover.cpp
