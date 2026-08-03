@@ -9,10 +9,8 @@
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
-/// @file steps.hpp
-/// @brief Contains individual steps used by the orchestrator, and executed
-/// in order with progress. Any callers can use them individually as long
-/// as preconditions are met.
+// the individual install steps. the orchestrator runs them in order with progress, but you can
+// call any of them on their own as long as its preconditions hold.
 namespace cachyos::installer::steps {
 
 [[nodiscard]] auto needs_umount(const InstallContext& ctx) noexcept -> bool;
@@ -63,6 +61,19 @@ namespace cachyos::installer::steps {
 [[nodiscard]] auto desktop_configure(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
+/// Install server packages.
+[[nodiscard]] auto server_packages(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
+/// Setup ssh access.
+[[nodiscard]] auto ssh_keys(const UserSettings& user,
+    const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
+/// Setup firewall ports.
+[[nodiscard]] auto server_firewall(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Configure the installed display manager to autologin @p user.
 [[nodiscard]] auto autologin(const UserSettings& user,
     const InstallContext& ctx) noexcept
@@ -93,9 +104,8 @@ auto detect_crypto(InstallContext& ctx) noexcept
 [[nodiscard]] auto btrfs_snapshot(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
-/// Run final consistency checks on the installed system. Both `errors` and
-/// `warnings` of the returned `ValidationResult` are non-fatal per orchestrator
-/// policy.
+// final sanity checks on the installed system. both errors and warnings on the returned
+// ValidationResult are non-fatal as far as the orchestrator cares.
 [[nodiscard]] auto final_validation(const InstallContext& ctx) noexcept
     -> ValidationResult;
 

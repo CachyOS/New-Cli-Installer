@@ -49,6 +49,9 @@ enum class Step : std::uint8_t {
     MachineId,
     Desktop,
     DesktopConfigure,
+    ServerPackages,
+    SshKeys,
+    ServerFirewall,
     Autologin,
     Chwd,
     NetworkCarryover,
@@ -74,6 +77,9 @@ constexpr std::array<std::string_view, kTotalSteps> kStepMessages = {
     "Generating machine ID..."sv,
     "Installing desktop environment..."sv,
     "Configuring desktop environment..."sv,
+    "Installing server profile packages..."sv,
+    "Installing SSH keys..."sv,
+    "Configuring server firewall..."sv,
     "Configuring autologin..."sv,
     "Installing hardware-driver profiles..."sv,
     "Carrying network connections forward..."sv,
@@ -108,7 +114,7 @@ auto emit_progress(const InstallSession& session,
     });
 }
 
-/// Emit a Failed event and return a ValidationResult with the formatted error.
+// fire a Failed event and hand back a ValidationResult with the formatted error
 auto fail_step(const InstallSession& session,
     Step s,
     std::string_view label,
@@ -122,8 +128,7 @@ auto fail_step(const InstallSession& session,
     };
 }
 
-/// Emit a Cancelled event for the step we were about to run and return a
-/// ValidationResult tagged as cancelled.
+// fire a Cancelled event for the step we were about to run, hand back a result tagged cancelled
 auto cancel_result(const InstallSession& session,
     Step s,
     std::vector<std::string> prior_warnings) noexcept -> ValidationResult {
@@ -303,6 +308,33 @@ auto run(InstallContext& ctx,
     begin_step(Step::DesktopConfigure);
     if (auto res = steps::desktop_configure(ctx); !res) {
         warnings.emplace_back(res.error());
+    }
+
+    // server edition related
+    if (ctx.resolved_server) {
+        if (session.runner.cancelled()) {
+            return cancel_result(session, Step::ServerPackages, std::move(warnings));
+        }
+        begin_step(Step::ServerPackages);
+        if (auto res = steps::server_packages(ctx); !res) {
+            warnings.emplace_back(res.error());
+        }
+
+        if (session.runner.cancelled()) {
+            return cancel_result(session, Step::SshKeys, std::move(warnings));
+        }
+        begin_step(Step::SshKeys);
+        if (auto res = steps::ssh_keys(user, ctx); !res) {
+            warnings.emplace_back(res.error());
+        }
+
+        if (session.runner.cancelled()) {
+            return cancel_result(session, Step::ServerFirewall, std::move(warnings));
+        }
+        begin_step(Step::ServerFirewall);
+        if (auto res = steps::server_firewall(ctx); !res) {
+            warnings.emplace_back(res.error());
+        }
     }
 
     // Autologin.
