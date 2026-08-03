@@ -33,6 +33,7 @@ gucc_test_names = [
     'zfs_hostid',
     'net_profiles_merge',
     'server_profiles',
+    'firewall',
 ]
 
 foreach t : gucc_test_names
