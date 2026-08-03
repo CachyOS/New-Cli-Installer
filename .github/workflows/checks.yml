@@ -18,26 +18,25 @@ concurrency:
 jobs:
   cpp-linter:
     runs-on: ubuntu-latest
+    container: archlinux:base-devel
     steps:
       - uses: actions/checkout@v4
 
       - name: install deps
         run: |
-          sudo apt-get update
-          sudo apt-get upgrade -y
-          sudo apt-get install -y libcurl4-openssl-dev
+          pacman -Syu --noconfirm cmake pkg-config ninja clang mold llvm git python-pip
         shell: bash
 
       - name: Configure CMake
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug
 
-      - uses: cpp-linter/cpp-linter-action@v2.12.0
+      - uses: cpp-linter/cpp-linter-action@v2.20.0
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           style: file
-          version: '18'
+          version: '22'
           database: ${{github.workspace}}/build
 
       - name: Fail fast?!
@@ -53,9 +52,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Run clang-format style check for C/C++/Protobuf programs.
-      uses: jidicula/clang-format-action@v4.13.0
+      uses: jidicula/clang-format-action@v4.18.0
       with:
-        clang-format-version: '18'
+        clang-format-version: '22'
         check-path: 'src'
         exclude-regex: 'src/subprocess.h'
-
