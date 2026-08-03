@@ -665,8 +665,8 @@ void make_esp_headless(std::vector<gucc::fs::Partition>& partitions,
     partition       = std::string{part_name};
 
     const auto& uefi_mount    = boot_part_mountpoint.empty()
-           ? utils::bootloader_default_mount(bootloader_type, sys_info)
-           : boot_part_mountpoint;
+        ? utils::bootloader_default_mount(bootloader_type, sys_info)
+        : boot_part_mountpoint;
     config_data["UEFI_MOUNT"] = std::string{uefi_mount};
     config_data["UEFI_PART"]  = partition;
 
