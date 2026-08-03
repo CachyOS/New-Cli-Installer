@@ -16,5 +16,5 @@
     "kernel": "linux-cachyos-server",
     "bootloader": "systemd-boot",
     "server_profile": "db",
-    "ssh_authorized_keys": []
+    "ssh_authorized_keys": ["ssh-ed25519 AAAA... admin@example.com"]
 }

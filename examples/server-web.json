@@ -16,6 +16,6 @@
     "kernel": "linux-cachyos-server",
     "bootloader": "systemd-boot",
     "server_profile": "web",
-    "ssh_authorized_keys": [],
+    "ssh_authorized_keys": ["ssh-ed25519 AAAA... admin@example.com"],
     "server_extra_tcp_ports": [8080]
 }
