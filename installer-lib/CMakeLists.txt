@@ -34,6 +34,7 @@ add_library(${PROJECT_NAME}
    src/steps/machine_id.cpp
    src/steps/desktop.cpp
    src/steps/desktop_configure.cpp
+   src/steps/server_packages.cpp
    src/steps/ssh_keys.cpp
    src/steps/server_firewall.cpp
    src/steps/autologin.cpp
