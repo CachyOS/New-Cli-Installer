@@ -41,7 +41,7 @@ inline auto filtered_res(std::string_view content) noexcept -> std::string {
     return result + '\n';
 }
 
-TEST_CASE("locale test")
+TEST_CASE("locale")
 {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
@@ -50,120 +50,119 @@ TEST_CASE("locale test")
     spdlog::set_default_logger(logger);
     gucc::logger::set_logger(logger);
 
-    // prepare test data
-    static constexpr std::string_view folder_testpath{"/tmp/test-locale-unittest"};
-    static constexpr std::string_view folder_path{"/tmp/test-locale-unittest/etc"};
-    static constexpr std::string_view dest_locale_gen{"/tmp/test-locale-unittest/etc/locale.gen"};
-    static constexpr std::string_view dest_locale_conf{"/tmp/test-locale-unittest/etc/locale.conf"};
-
-    SECTION("set test locale")
+    SECTION("locale test")
     {
-        fs::create_directories(folder_path);
-        fs::copy_file(GUCC_TEST_DIR "/files/locale.gen", dest_locale_gen, fs::copy_options::overwrite_existing);
+        static constexpr std::string_view folder_testpath{"/tmp/test-locale-unittest"};
+        static constexpr std::string_view folder_path{"/tmp/test-locale-unittest/etc"};
+        static constexpr std::string_view dest_locale_gen{"/tmp/test-locale-unittest/etc/locale.gen"};
+        static constexpr std::string_view dest_locale_conf{"/tmp/test-locale-unittest/etc/locale.conf"};
 
-        REQUIRE(gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
-        auto locale_conf_content = gucc::file_utils::read_whole_file(dest_locale_conf);
-        REQUIRE_EQ(locale_conf_content, LOCALE_CONF_TEST);
+        SECTION("set test locale")
+        {
+            fs::create_directories(folder_path);
+            fs::copy_file(GUCC_TEST_DIR "/files/locale.gen", dest_locale_gen, fs::copy_options::overwrite_existing);
 
-        auto locale_gen_content = filtered_res(gucc::file_utils::read_whole_file(dest_locale_gen));
-        REQUIRE_EQ(locale_gen_content, LOCALE_GEN_TEST);
+            REQUIRE(gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
+            auto locale_conf_content = gucc::file_utils::read_whole_file(dest_locale_conf);
+            REQUIRE_EQ(locale_conf_content, LOCALE_CONF_TEST);
 
-        // Cleanup.
-        fs::remove_all(folder_testpath);
+            auto locale_gen_content = filtered_res(gucc::file_utils::read_whole_file(dest_locale_gen));
+            REQUIRE_EQ(locale_gen_content, LOCALE_GEN_TEST);
+
+            fs::remove_all(folder_testpath);
+        }
+        SECTION("set locale at invalid file path")
+        {
+            REQUIRE_FALSE(gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
+        }
+        SECTION("set xkbmap layout")
+        {
+            fs::create_directories(folder_path);
+
+            REQUIRE(gucc::locale::set_xkbmap("us"sv, folder_testpath));
+
+            const auto& keyboard_conf_path = std::string{folder_testpath} + "/etc/X11/xorg.conf.d/00-keyboard.conf";
+            REQUIRE(fs::exists(keyboard_conf_path));
+
+            auto content = gucc::file_utils::read_whole_file(keyboard_conf_path);
+            REQUIRE(content.contains("XkbLayout"));
+            REQUIRE(content.contains("us"));
+            REQUIRE(content.contains("InputClass"));
+
+            // Cleanup
+            fs::remove_all(folder_testpath);
+        }
+        SECTION("set xkbmap with variant")
+        {
+            fs::create_directories(folder_path);
+
+            REQUIRE(gucc::locale::set_xkbmap("de"sv, folder_testpath));
+
+            const auto& keyboard_conf_path = std::string{folder_testpath} + "/etc/X11/xorg.conf.d/00-keyboard.conf";
+            REQUIRE(fs::exists(keyboard_conf_path));
+
+            auto content = gucc::file_utils::read_whole_file(keyboard_conf_path);
+            REQUIRE(content.contains("de"));
+
+            // Cleanup
+            fs::remove_all(folder_testpath);
+        }
     }
-    SECTION("set locale at invalid file path")
+    SECTION("parse_locale_gen test")
     {
-        REQUIRE_FALSE(gucc::locale::prepare_locale_set("ru_RU.UTF-8"sv, folder_testpath));
-    }
-    SECTION("set xkbmap layout")
-    {
-        fs::create_directories(folder_path);
+        using gucc::locale::parse_locale_gen;
 
-        REQUIRE(gucc::locale::set_xkbmap("us"sv, folder_testpath));
-
-        const auto& keyboard_conf_path = std::string{folder_testpath} + "/etc/X11/xorg.conf.d/00-keyboard.conf";
-        REQUIRE(fs::exists(keyboard_conf_path));
-
-        auto content = gucc::file_utils::read_whole_file(keyboard_conf_path);
-        REQUIRE(content.contains("XkbLayout"));
-        REQUIRE(content.contains("us"));
-        REQUIRE(content.contains("InputClass"));
-
-        // Cleanup
-        fs::remove_all(folder_testpath);
-    }
-    SECTION("set xkbmap with variant")
-    {
-        fs::create_directories(folder_path);
-
-        REQUIRE(gucc::locale::set_xkbmap("de"sv, folder_testpath));
-
-        const auto& keyboard_conf_path = std::string{folder_testpath} + "/etc/X11/xorg.conf.d/00-keyboard.conf";
-        REQUIRE(fs::exists(keyboard_conf_path));
-
-        auto content = gucc::file_utils::read_whole_file(keyboard_conf_path);
-        REQUIRE(content.contains("de"));
-
-        // Cleanup
-        fs::remove_all(folder_testpath);
-    }
-}
-
-TEST_CASE("parse_locale_gen test")
-{
-    using gucc::locale::parse_locale_gen;
-
-    SECTION("empty input")
-    {
-        auto result = parse_locale_gen(""sv);
-        CHECK(result.empty());
-    }
-    SECTION("commented UTF-8 locales")
-    {
-        constexpr auto content = R"(#en_US.UTF-8 UTF-8
+        SECTION("empty input")
+        {
+            auto result = parse_locale_gen(""sv);
+            CHECK(result.empty());
+        }
+        SECTION("commented UTF-8 locales")
+        {
+            constexpr auto content = R"(#en_US.UTF-8 UTF-8
 #de_DE.UTF-8 UTF-8
 #ru_RU.UTF-8 UTF-8
 )"sv;
-        auto result = parse_locale_gen(content);
-        REQUIRE(result.size() == 3);
-        CHECK(result[0] == "en_US.UTF-8");
-        CHECK(result[1] == "de_DE.UTF-8");
-        CHECK(result[2] == "ru_RU.UTF-8");
-    }
-    SECTION("uncommented locale")
-    {
-        constexpr auto content = R"(en_US.UTF-8 UTF-8
+            auto result = parse_locale_gen(content);
+            REQUIRE(result.size() == 3);
+            CHECK(result[0] == "en_US.UTF-8");
+            CHECK(result[1] == "de_DE.UTF-8");
+            CHECK(result[2] == "ru_RU.UTF-8");
+        }
+        SECTION("uncommented locale")
+        {
+            constexpr auto content = R"(en_US.UTF-8 UTF-8
 )"sv;
-        auto result = parse_locale_gen(content);
-        REQUIRE(result.size() == 1);
-        CHECK(result[0] == "en_US.UTF-8");
-    }
-    SECTION("filters out non UTF-8 locales")
-    {
-        constexpr auto content = R"(#en_US ISO-8859-1
+            auto result = parse_locale_gen(content);
+            REQUIRE(result.size() == 1);
+            CHECK(result[0] == "en_US.UTF-8");
+        }
+        SECTION("filters out non UTF-8 locales")
+        {
+            constexpr auto content = R"(#en_US ISO-8859-1
 #en_US.UTF-8 UTF-8
 #de_DE ISO-8859-1
 #ru_RU UTF-8
 )"sv;
-        auto result = parse_locale_gen(content);
-        REQUIRE(result.size() == 2);
-        CHECK(result[0] == "en_US.UTF-8");
-        CHECK(result[1] == "ru_RU");
-    }
-    SECTION("skips header comments")
-    {
-        constexpr auto content = R"(# Configuration file for locale-gen
+            auto result = parse_locale_gen(content);
+            REQUIRE(result.size() == 2);
+            CHECK(result[0] == "en_US.UTF-8");
+            CHECK(result[1] == "ru_RU");
+        }
+        SECTION("skips header comments")
+        {
+            constexpr auto content = R"(# Configuration file for locale-gen
 # This is a comment line that should be skip
 #  Another comment with leading space
 #en_US.UTF-8 UTF-8
 )"sv;
-        auto result = parse_locale_gen(content);
-        REQUIRE(result.size() == 1);
-        CHECK(result[0] == "en_US.UTF-8");
-    }
-    SECTION("mixed content")
-    {
-        constexpr auto content = R"(# locale.gen header
+            auto result = parse_locale_gen(content);
+            REQUIRE(result.size() == 1);
+            CHECK(result[0] == "en_US.UTF-8");
+        }
+        SECTION("mixed content")
+        {
+            constexpr auto content = R"(# locale.gen header
 #  Comment line
 #aa_DJ.UTF-8 UTF-8
 #aa_DJ ISO-8859-1
@@ -171,51 +170,44 @@ en_US.UTF-8 UTF-8
 #ru_RU.UTF-8 UTF-8
 #ru_RU ISO-8859-5
 )"sv;
-        auto result = parse_locale_gen(content);
-        REQUIRE(result.size() == 3);
-        CHECK(result[0] == "aa_DJ.UTF-8");
-        CHECK(result[1] == "en_US.UTF-8");
-        CHECK(result[2] == "ru_RU.UTF-8");
+            auto result = parse_locale_gen(content);
+            REQUIRE(result.size() == 3);
+            CHECK(result[0] == "aa_DJ.UTF-8");
+            CHECK(result[1] == "en_US.UTF-8");
+            CHECK(result[2] == "ru_RU.UTF-8");
+        }
     }
-}
-
-TEST_CASE("set vconsole keymap test")
-{
-    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
-        // noop
-    });
-    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
-    spdlog::set_default_logger(logger);
-    gucc::logger::set_logger(logger);
-
-    static constexpr std::string_view folder_testpath{"/tmp/test-keymap-unittest"};
-    static constexpr std::string_view folder_path{"/tmp/test-keymap-unittest/etc"};
-    static constexpr std::string_view dest_vconsole{"/tmp/test-keymap-unittest/etc/vconsole.conf"};
-
-    SECTION("set us keymap")
+    SECTION("set vconsole keymap test")
     {
-        fs::create_directories(folder_path);
+        static constexpr std::string_view folder_testpath{"/tmp/test-keymap-unittest"};
+        static constexpr std::string_view folder_path{"/tmp/test-keymap-unittest/etc"};
+        static constexpr std::string_view dest_vconsole{"/tmp/test-keymap-unittest/etc/vconsole.conf"};
 
-        REQUIRE(gucc::locale::set_keymap("us"sv, folder_testpath));
-        auto content = gucc::file_utils::read_whole_file(dest_vconsole);
-        REQUIRE_EQ(content, "KEYMAP=us\n");
+        SECTION("set us keymap")
+        {
+            fs::create_directories(folder_path);
 
-        // Cleanup
-        fs::remove_all(folder_testpath);
-    }
-    SECTION("set de-latin1 keymap")
-    {
-        fs::create_directories(folder_path);
+            REQUIRE(gucc::locale::set_keymap("us"sv, folder_testpath));
+            auto content = gucc::file_utils::read_whole_file(dest_vconsole);
+            REQUIRE_EQ(content, "KEYMAP=us\n");
 
-        REQUIRE(gucc::locale::set_keymap("de-latin1"sv, folder_testpath));
-        auto content = gucc::file_utils::read_whole_file(dest_vconsole);
-        REQUIRE_EQ(content, "KEYMAP=de-latin1\n");
+            // Cleanup
+            fs::remove_all(folder_testpath);
+        }
+        SECTION("set de-latin1 keymap")
+        {
+            fs::create_directories(folder_path);
 
-        // Cleanup
-        fs::remove_all(folder_testpath);
-    }
-    SECTION("fail on invalid path")
-    {
-        REQUIRE_FALSE(gucc::locale::set_keymap("us"sv, "/nonexistent/path/test-keymap"sv));
+            REQUIRE(gucc::locale::set_keymap("de-latin1"sv, folder_testpath));
+            auto content = gucc::file_utils::read_whole_file(dest_vconsole);
+            REQUIRE_EQ(content, "KEYMAP=de-latin1\n");
+
+            // Cleanup
+            fs::remove_all(folder_testpath);
+        }
+        SECTION("fail on invalid path")
+        {
+            REQUIRE_FALSE(gucc::locale::set_keymap("us"sv, "/nonexistent/path/test-keymap"sv));
+        }
     }
 }

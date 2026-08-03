@@ -17,189 +17,177 @@
 namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
-namespace {
-
 using gucc::tests::TempRoot;
 
-void install_silent_logger() {
+TEST_CASE("luks_swap")
+{
     auto sink   = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {});
     auto logger = std::make_shared<spdlog::logger>("default", sink);
     spdlog::set_default_logger(logger);
     gucc::logger::set_logger(logger);
-}
 
-}  // namespace
-
-TEST_CASE("luks_swap::make_crypttab_line")
-{
-    SECTION("defaults match wiki-canonical aes-xts-plain64 + sector-size=4096")
+    SECTION("make_crypttab_line")
+    {
+        SECTION("defaults match wiki-canonical aes-xts-plain64 + sector-size=4096")
+        {
+            const gucc::luks_swap::RandomKeyConfig cfg{.source_device = "/dev/sda3"};
+            REQUIRE_EQ(gucc::luks_swap::make_crypttab_line(cfg),
+                "swap /dev/sda3 /dev/urandom swap,cipher=aes-xts-plain64,size=512,sector-size=4096\n");
+        }
+        SECTION("custom mapper name, cipher, key_size")
+        {
+            const gucc::luks_swap::RandomKeyConfig cfg{
+                .mapper_name   = "cryptswap",
+                .source_device = "PARTUUID=abcd-1234",
+                .cipher        = "aes-cbc-essiv:sha256",
+                .key_size      = 256,
+            };
+            REQUIRE_EQ(gucc::luks_swap::make_crypttab_line(cfg),
+                "cryptswap PARTUUID=abcd-1234 /dev/urandom swap,cipher=aes-cbc-essiv:sha256,size=256,sector-size=4096\n");
+        }
+        SECTION("sector_size=0 omits the sector-size clause entirely")
+        {
+            const gucc::luks_swap::RandomKeyConfig cfg{
+                .source_device = "/dev/sda3",
+                .sector_size   = 0,
+            };
+            REQUIRE_EQ(gucc::luks_swap::make_crypttab_line(cfg),
+                "swap /dev/sda3 /dev/urandom swap,cipher=aes-xts-plain64,size=512\n");
+        }
+    }
+    SECTION("make_fstab_line")
+    {
+        REQUIRE_EQ(gucc::luks_swap::make_fstab_line("swap"sv),
+            "/dev/mapper/swap none swap defaults 0 0\n");
+        REQUIRE_EQ(gucc::luks_swap::make_fstab_line("cryptswap"sv),
+            "/dev/mapper/cryptswap none swap defaults 0 0\n");
+    }
+    SECTION("add_crypttab_entry")
     {
         const gucc::luks_swap::RandomKeyConfig cfg{.source_device = "/dev/sda3"};
-        REQUIRE_EQ(gucc::luks_swap::make_crypttab_line(cfg),
-            "swap /dev/sda3 /dev/urandom swap,cipher=aes-xts-plain64,size=512,sector-size=4096\n");
+
+        SECTION("creates /etc/crypttab when missing")
+        {
+            TempRoot root;
+            REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
+            REQUIRE(body.contains("swap /dev/sda3 /dev/urandom"sv));
+        }
+        SECTION("preserves unrelated entries and comments")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "etc");
+            constexpr auto kPre = "# header comment\nroot /dev/sda2 none luks\n"sv;
+            gucc::file_utils::create_file_for_overwrite(
+                (root.path() / "etc" / "crypttab").string(), kPre);
+
+            REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
+
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
+            REQUIRE(body.contains("# header comment\n"sv));
+            REQUIRE(body.contains("root /dev/sda2 none luks\n"sv));
+            REQUIRE(body.contains("swap /dev/sda3"sv));
+        }
+        SECTION("replaces an existing swap entry instead of duplicating")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "etc");
+            gucc::file_utils::create_file_for_overwrite(
+                (root.path() / "etc" / "crypttab").string(),
+                "swap /dev/old /dev/urandom swap,cipher=aes-cbc,size=256\n"sv);
+
+            REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
+
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
+            REQUIRE_FALSE(body.contains("/dev/old"sv));
+            REQUIRE(body.contains("swap /dev/sda3"sv));
+        }
+        SECTION("exist")
+        {
+            TempRoot root;
+            REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
+            REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
+            REQUIRE_EQ(body, "swap /dev/sda3 /dev/urandom swap,cipher=aes-xts-plain64,size=512,sector-size=4096\n");
+        }
+        SECTION("does not match a commented-out line with the same name")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "etc");
+            gucc::file_utils::create_file_for_overwrite(
+                (root.path() / "etc" / "crypttab").string(),
+                "# swap /dev/old /dev/urandom swap\n"sv);
+
+            REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
+
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
+            REQUIRE(body.contains("# swap /dev/old"sv));
+            REQUIRE(body.contains("swap /dev/sda3"sv));
+        }
     }
-    SECTION("custom mapper name, cipher, key_size")
+    SECTION("add_fstab_entry")
     {
-        const gucc::luks_swap::RandomKeyConfig cfg{
-            .mapper_name   = "cryptswap",
-            .source_device = "PARTUUID=abcd-1234",
-            .cipher        = "aes-cbc-essiv:sha256",
-            .key_size      = 256,
-        };
-        REQUIRE_EQ(gucc::luks_swap::make_crypttab_line(cfg),
-            "cryptswap PARTUUID=abcd-1234 /dev/urandom swap,cipher=aes-cbc-essiv:sha256,size=256,sector-size=4096\n");
+        SECTION("creates /etc/fstab when missing")
+        {
+            TempRoot root;
+            REQUIRE(gucc::luks_swap::add_fstab_entry("swap"sv, root.path().string()));
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
+            REQUIRE(body.contains("/dev/mapper/swap none swap"sv));
+        }
+        SECTION("replaces existing /dev/mapper/<name> line")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "etc");
+            gucc::file_utils::create_file_for_overwrite(
+                (root.path() / "etc" / "fstab").string(),
+                "UUID=foo / btrfs defaults 0 0\n/dev/mapper/swap none swap pri=10 0 0\n"sv);
+
+            REQUIRE(gucc::luks_swap::add_fstab_entry("swap"sv, root.path().string()));
+
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
+            REQUIRE(body.contains("UUID=foo / btrfs defaults 0 0\n"sv));
+            REQUIRE_FALSE(body.contains("pri=10"sv));
+            REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
+        }
     }
-    SECTION("sector_size=0 omits the sector-size clause entirely")
+    SECTION("replace_swap_in_fstab")
     {
-        const gucc::luks_swap::RandomKeyConfig cfg{
-            .source_device = "/dev/sda3",
-            .sector_size   = 0,
-        };
-        REQUIRE_EQ(gucc::luks_swap::make_crypttab_line(cfg),
-            "swap /dev/sda3 /dev/urandom swap,cipher=aes-xts-plain64,size=512\n");
-    }
-}
+        SECTION("drops a raw-device swap line and appends the mapper entry")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "etc");
+            gucc::file_utils::create_file_for_overwrite(
+                (root.path() / "etc" / "fstab").string(),
+                "UUID=root / btrfs defaults 0 0\nUUID=swapuuid none swap defaults 0 0\n"sv);
 
-TEST_CASE("luks_swap::make_fstab_line")
-{
-    REQUIRE_EQ(gucc::luks_swap::make_fstab_line("swap"sv),
-        "/dev/mapper/swap none swap defaults 0 0\n");
-    REQUIRE_EQ(gucc::luks_swap::make_fstab_line("cryptswap"sv),
-        "/dev/mapper/cryptswap none swap defaults 0 0\n");
-}
+            REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
 
-TEST_CASE("luks_swap::add_crypttab_entry")
-{
-    install_silent_logger();
-    const gucc::luks_swap::RandomKeyConfig cfg{.source_device = "/dev/sda3"};
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
+            REQUIRE(body.contains("UUID=root / btrfs defaults 0 0\n"sv));
+            REQUIRE_FALSE(body.contains("UUID=swapuuid"sv));
+            REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
+        }
+        SECTION("leaves comments and non-swap lines intact")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "etc");
+            gucc::file_utils::create_file_for_overwrite(
+                (root.path() / "etc" / "fstab").string(),
+                "# managed by genfstab\nUUID=root / btrfs defaults 0 0\n# UUID=old none swap defaults 0 0\n"sv);
 
-    SECTION("creates /etc/crypttab when missing")
-    {
-        TempRoot root;
-        REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
-        REQUIRE(body.contains("swap /dev/sda3 /dev/urandom"sv));
-    }
-    SECTION("preserves unrelated entries and comments")
-    {
-        TempRoot root;
-        fs::create_directories(root.path() / "etc");
-        constexpr auto kPre = "# header comment\nroot /dev/sda2 none luks\n"sv;
-        gucc::file_utils::create_file_for_overwrite(
-            (root.path() / "etc" / "crypttab").string(), kPre);
+            REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
 
-        REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
-
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
-        REQUIRE(body.contains("# header comment\n"sv));
-        REQUIRE(body.contains("root /dev/sda2 none luks\n"sv));
-        REQUIRE(body.contains("swap /dev/sda3"sv));
-    }
-    SECTION("replaces an existing swap entry instead of duplicating")
-    {
-        TempRoot root;
-        fs::create_directories(root.path() / "etc");
-        gucc::file_utils::create_file_for_overwrite(
-            (root.path() / "etc" / "crypttab").string(),
-            "swap /dev/old /dev/urandom swap,cipher=aes-cbc,size=256\n"sv);
-
-        REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
-
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
-        REQUIRE_FALSE(body.contains("/dev/old"sv));
-        REQUIRE(body.contains("swap /dev/sda3"sv));
-    }
-    SECTION("exist")
-    {
-        TempRoot root;
-        REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
-        REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
-        REQUIRE_EQ(body, "swap /dev/sda3 /dev/urandom swap,cipher=aes-xts-plain64,size=512,sector-size=4096\n");
-    }
-    SECTION("does not match a commented-out line with the same name")
-    {
-        TempRoot root;
-        fs::create_directories(root.path() / "etc");
-        gucc::file_utils::create_file_for_overwrite(
-            (root.path() / "etc" / "crypttab").string(),
-            "# swap /dev/old /dev/urandom swap\n"sv);
-
-        REQUIRE(gucc::luks_swap::add_crypttab_entry(cfg, root.path().string()));
-
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "crypttab").string());
-        REQUIRE(body.contains("# swap /dev/old"sv));
-        REQUIRE(body.contains("swap /dev/sda3"sv));
-    }
-}
-
-TEST_CASE("luks_swap::add_fstab_entry")
-{
-    install_silent_logger();
-
-    SECTION("creates /etc/fstab when missing")
-    {
-        TempRoot root;
-        REQUIRE(gucc::luks_swap::add_fstab_entry("swap"sv, root.path().string()));
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
-        REQUIRE(body.contains("/dev/mapper/swap none swap"sv));
-    }
-    SECTION("replaces existing /dev/mapper/<name> line")
-    {
-        TempRoot root;
-        fs::create_directories(root.path() / "etc");
-        gucc::file_utils::create_file_for_overwrite(
-            (root.path() / "etc" / "fstab").string(),
-            "UUID=foo / btrfs defaults 0 0\n/dev/mapper/swap none swap pri=10 0 0\n"sv);
-
-        REQUIRE(gucc::luks_swap::add_fstab_entry("swap"sv, root.path().string()));
-
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
-        REQUIRE(body.contains("UUID=foo / btrfs defaults 0 0\n"sv));
-        REQUIRE_FALSE(body.contains("pri=10"sv));
-        REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
-    }
-}
-
-TEST_CASE("luks_swap::replace_swap_in_fstab")
-{
-    install_silent_logger();
-
-    SECTION("drops a raw-device swap line and appends the mapper entry")
-    {
-        TempRoot root;
-        fs::create_directories(root.path() / "etc");
-        gucc::file_utils::create_file_for_overwrite(
-            (root.path() / "etc" / "fstab").string(),
-            "UUID=root / btrfs defaults 0 0\nUUID=swapuuid none swap defaults 0 0\n"sv);
-
-        REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
-
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
-        REQUIRE(body.contains("UUID=root / btrfs defaults 0 0\n"sv));
-        REQUIRE_FALSE(body.contains("UUID=swapuuid"sv));
-        REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
-    }
-    SECTION("leaves comments and non-swap lines intact")
-    {
-        TempRoot root;
-        fs::create_directories(root.path() / "etc");
-        gucc::file_utils::create_file_for_overwrite(
-            (root.path() / "etc" / "fstab").string(),
-            "# managed by genfstab\nUUID=root / btrfs defaults 0 0\n# UUID=old none swap defaults 0 0\n"sv);
-
-        REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
-
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
-        REQUIRE(body.contains("# managed by genfstab\n"sv));
-        REQUIRE(body.contains("# UUID=old none swap defaults 0 0\n"sv));
-        REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
-    }
-    SECTION("creates /etc/fstab from scratch when missing")
-    {
-        TempRoot root;
-        REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
-        const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
-        REQUIRE_EQ(body, "/dev/mapper/swap none swap defaults 0 0\n");
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
+            REQUIRE(body.contains("# managed by genfstab\n"sv));
+            REQUIRE(body.contains("# UUID=old none swap defaults 0 0\n"sv));
+            REQUIRE(body.contains("/dev/mapper/swap none swap defaults 0 0\n"sv));
+        }
+        SECTION("creates /etc/fstab from scratch when missing")
+        {
+            TempRoot root;
+            REQUIRE(gucc::luks_swap::replace_swap_in_fstab("swap"sv, root.path().string()));
+            const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
+            REQUIRE_EQ(body, "/dev/mapper/swap none swap defaults 0 0\n");
+        }
     }
 }

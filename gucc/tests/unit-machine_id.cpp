@@ -48,7 +48,7 @@ using gucc::tests::TempRoot;
 
 }  // namespace
 
-TEST_CASE("machine_id::detail::clear_existing")
+TEST_CASE("machine_id")
 {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
         // noop
@@ -56,84 +56,90 @@ TEST_CASE("machine_id::detail::clear_existing")
     auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
     spdlog::set_default_logger(logger);
 
-    SECTION("removes /etc/machine-id and dbus path if present")
+    SECTION("machine_id::detail::clear_existing")
     {
-        TempRoot root;
-        fs::create_directories(root.path() / "etc");
-        fs::create_directories(root.path() / "var" / "lib" / "dbus");
-        std::ofstream{root.path() / "etc" / "machine-id"} << "deadbeef\n";
-        std::ofstream{root.path() / "var" / "lib" / "dbus" / "machine-id"} << "stale\n";
+        SECTION("removes /etc/machine-id and dbus path if present")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "etc");
+            fs::create_directories(root.path() / "var" / "lib" / "dbus");
+            std::ofstream{root.path() / "etc" / "machine-id"} << "deadbeef\n";
+            std::ofstream{root.path() / "var" / "lib" / "dbus" / "machine-id"} << "stale\n";
 
-        REQUIRE(gucc::machine_id::detail::clear_existing(root.path().string()));
+            REQUIRE(gucc::machine_id::detail::clear_existing(root.path().string()));
 
-        CHECK_FALSE(fs::exists(root.path() / "etc" / "machine-id"));
-        CHECK_FALSE(fs::exists(root.path() / "var" / "lib" / "dbus" / "machine-id"));
+            CHECK_FALSE(fs::exists(root.path() / "etc" / "machine-id"));
+            CHECK_FALSE(fs::exists(root.path() / "var" / "lib" / "dbus" / "machine-id"));
+        }
+        SECTION("succeeds when nothing is there yet")
+        {
+            TempRoot root;
+            REQUIRE(gucc::machine_id::detail::clear_existing(root.path().string()));
+        }
     }
-    SECTION("succeeds when nothing is there yet")
+    SECTION("machine_id::detail::link_dbus_to_etc")
     {
-        TempRoot root;
-        REQUIRE(gucc::machine_id::detail::clear_existing(root.path().string()));
+        SECTION("creates the parent directory and the symlink")
+        {
+            TempRoot root;
+            REQUIRE(gucc::machine_id::detail::link_dbus_to_etc(root.path().string()));
+
+            const auto dbus = root.path() / "var" / "lib" / "dbus" / "machine-id";
+            REQUIRE(fs::is_symlink(dbus));
+            CHECK(fs::read_symlink(dbus) == fs::path{"/etc/machine-id"});
+        }
+        SECTION("replaces a stale regular file with the symlink")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "var" / "lib" / "dbus");
+            std::ofstream{root.path() / "var" / "lib" / "dbus" / "machine-id"} << "stale\n";
+
+            REQUIRE(gucc::machine_id::detail::link_dbus_to_etc(root.path().string()));
+
+            const auto dbus = root.path() / "var" / "lib" / "dbus" / "machine-id";
+            REQUIRE(fs::is_symlink(dbus));
+            CHECK(fs::read_symlink(dbus) == fs::path{"/etc/machine-id"});
+        }
+        SECTION("is idempotent")
+        {
+            TempRoot root;
+            REQUIRE(gucc::machine_id::detail::link_dbus_to_etc(root.path().string()));
+            REQUIRE(gucc::machine_id::detail::link_dbus_to_etc(root.path().string()));
+
+            const auto dbus = root.path() / "var" / "lib" / "dbus" / "machine-id";
+            REQUIRE(fs::is_symlink(dbus));
+        }
     }
-}
-
-TEST_CASE("machine_id::detail::link_dbus_to_etc")
-{
-    SECTION("creates the parent directory and the symlink")
+    SECTION("machine_id::reset")
     {
-        TempRoot root;
-        REQUIRE(gucc::machine_id::detail::link_dbus_to_etc(root.path().string()));
+        // skip
+        if (!systemd_machine_id_setup_available()) {
+            return;
+        }
 
-        const auto dbus = root.path() / "var" / "lib" / "dbus" / "machine-id";
-        REQUIRE(fs::is_symlink(dbus));
-        CHECK(fs::read_symlink(dbus) == fs::path{"/etc/machine-id"});
-    }
-    SECTION("replaces a stale regular file with the symlink")
-    {
-        TempRoot root;
-        fs::create_directories(root.path() / "var" / "lib" / "dbus");
-        std::ofstream{root.path() / "var" / "lib" / "dbus" / "machine-id"} << "stale\n";
+        SECTION("generates a 32-hex machine-id and links the dbus path")
+        {
+            TempRoot root;
+            REQUIRE(gucc::machine_id::reset(root.path().string()));
 
-        REQUIRE(gucc::machine_id::detail::link_dbus_to_etc(root.path().string()));
+            const auto etc  = root.path() / "etc" / "machine-id";
+            const auto dbus = root.path() / "var" / "lib" / "dbus" / "machine-id";
 
-        const auto dbus = root.path() / "var" / "lib" / "dbus" / "machine-id";
-        REQUIRE(fs::is_symlink(dbus));
-        CHECK(fs::read_symlink(dbus) == fs::path{"/etc/machine-id"});
-    }
-    SECTION("is idempotent")
-    {
-        TempRoot root;
-        REQUIRE(gucc::machine_id::detail::link_dbus_to_etc(root.path().string()));
-        REQUIRE(gucc::machine_id::detail::link_dbus_to_etc(root.path().string()));
+            REQUIRE(fs::is_regular_file(etc));
+            CHECK(looks_like_machine_id(etc));
+            REQUIRE(fs::is_symlink(dbus));
+            CHECK(fs::read_symlink(dbus) == fs::path{"/etc/machine-id"});
+        }
+        SECTION("replaces an inherited live-ISO machine-id")
+        {
+            TempRoot root;
+            fs::create_directories(root.path() / "etc");
+            const auto etc = root.path() / "etc" / "machine-id";
+            std::ofstream{etc} << "deadbeefdeadbeefdeadbeefdeadbeef\n";
 
-        const auto dbus = root.path() / "var" / "lib" / "dbus" / "machine-id";
-        REQUIRE(fs::is_symlink(dbus));
-    }
-}
-
-TEST_CASE("machine_id::reset" * doctest::skip(!systemd_machine_id_setup_available()))
-{
-    SECTION("generates a 32-hex machine-id and links the dbus path")
-    {
-        TempRoot root;
-        REQUIRE(gucc::machine_id::reset(root.path().string()));
-
-        const auto etc  = root.path() / "etc" / "machine-id";
-        const auto dbus = root.path() / "var" / "lib" / "dbus" / "machine-id";
-
-        REQUIRE(fs::is_regular_file(etc));
-        CHECK(looks_like_machine_id(etc));
-        REQUIRE(fs::is_symlink(dbus));
-        CHECK(fs::read_symlink(dbus) == fs::path{"/etc/machine-id"});
-    }
-    SECTION("replaces an inherited live-ISO machine-id")
-    {
-        TempRoot root;
-        fs::create_directories(root.path() / "etc");
-        const auto etc = root.path() / "etc" / "machine-id";
-        std::ofstream{etc} << "deadbeefdeadbeefdeadbeefdeadbeef\n";
-
-        REQUIRE(gucc::machine_id::reset(root.path().string()));
-        REQUIRE(fs::is_regular_file(etc));
-        CHECK(looks_like_machine_id(etc));
+            REQUIRE(gucc::machine_id::reset(root.path().string()));
+            REQUIRE(fs::is_regular_file(etc));
+            CHECK(looks_like_machine_id(etc));
+        }
     }
 }
