@@ -73,10 +73,10 @@ TEST_CASE("generate args from config")
         };
 
         const auto args = generate_homectl_args(config);
-        REQUIRE(std::ranges::contains(args, "--storage=luks"));
-        REQUIRE(std::ranges::contains(args, "--fs-type=ext4"));
-        REQUIRE(std::ranges::contains(args, "--luks-discard=false"));
-        REQUIRE(std::ranges::contains(args, "--luks-offline-discard=true"));
+        REQUIRE(std::ranges::contains(args, "--storage=luks"sv));
+        REQUIRE(std::ranges::contains(args, "--fs-type=ext4"sv));
+        REQUIRE(std::ranges::contains(args, "--luks-discard=false"sv));
+        REQUIRE(std::ranges::contains(args, "--luks-offline-discard=true"sv));
     }
     SECTION("with all options")
     {
@@ -97,17 +97,17 @@ TEST_CASE("generate args from config")
         };
 
         const auto args = generate_homectl_args(config);
-        REQUIRE(std::ranges::contains(args, "--storage=luks"));
-        REQUIRE(std::ranges::contains(args, "--real-name=Test User"));
-        REQUIRE(std::ranges::contains(args, "--shell=/usr/bin/zsh"));
-        REQUIRE(std::ranges::contains(args, "--uid=60100"));
-        REQUIRE(std::ranges::contains(args, "--member-of=wheel,audio,video"));
-        REQUIRE(std::ranges::contains(args, "--image-path=/custom/path/testuser.home"));
-        REQUIRE(std::ranges::contains(args, "--home-dir=/home/testuser"));
-        REQUIRE(std::ranges::contains(args, "--fs-type=btrfs"));
-        REQUIRE(std::ranges::contains(args, "--disk-size=10G"));
-        REQUIRE(std::ranges::contains(args, "--luks-discard=true"));
-        REQUIRE(std::ranges::contains(args, "--luks-offline-discard=true"));
+        REQUIRE(std::ranges::contains(args, "--storage=luks"sv));
+        REQUIRE(std::ranges::contains(args, "--real-name=Test User"sv));
+        REQUIRE(std::ranges::contains(args, "--shell=/usr/bin/zsh"sv));
+        REQUIRE(std::ranges::contains(args, "--uid=60100"sv));
+        REQUIRE(std::ranges::contains(args, "--member-of=wheel,audio,video"sv));
+        REQUIRE(std::ranges::contains(args, "--image-path=/custom/path/testuser.home"sv));
+        REQUIRE(std::ranges::contains(args, "--home-dir=/home/testuser"sv));
+        REQUIRE(std::ranges::contains(args, "--fs-type=btrfs"sv));
+        REQUIRE(std::ranges::contains(args, "--disk-size=10G"sv));
+        REQUIRE(std::ranges::contains(args, "--luks-discard=true"sv));
+        REQUIRE(std::ranges::contains(args, "--luks-offline-discard=true"sv));
     }
     SECTION("with directory storage")
     {
@@ -118,9 +118,9 @@ TEST_CASE("generate args from config")
         };
 
         const auto args = generate_homectl_args(config);
-        REQUIRE(std::ranges::contains(args, "--storage=directory"));
-        REQUIRE(!std::ranges::contains(args, "--fs-type=ext4"));
-        REQUIRE(!std::ranges::contains(args, "--luks-discard=false"));
+        REQUIRE(std::ranges::contains(args, "--storage=directory"sv));
+        REQUIRE(!std::ranges::contains(args, "--fs-type=ext4"sv));
+        REQUIRE(!std::ranges::contains(args, "--luks-discard=false"sv));
     }
     SECTION("with fscrypt storage")
     {
@@ -131,8 +131,8 @@ TEST_CASE("generate args from config")
         };
 
         const auto args = generate_homectl_args(config);
-        REQUIRE(std::ranges::contains(args, "--storage=fscrypt"));
-        REQUIRE(!std::ranges::contains(args, "--fs-type=ext4"));
+        REQUIRE(std::ranges::contains(args, "--storage=fscrypt"sv));
+        REQUIRE(!std::ranges::contains(args, "--fs-type=ext4"sv));
     }
     SECTION("with subvolume storage")
     {
@@ -143,7 +143,7 @@ TEST_CASE("generate args from config")
         };
 
         const auto args = generate_homectl_args(config);
-        REQUIRE(std::ranges::contains(args, "--storage=subvolume"));
+        REQUIRE(std::ranges::contains(args, "--storage=subvolume"sv));
     }
     SECTION("with cifs storage")
     {
@@ -154,7 +154,7 @@ TEST_CASE("generate args from config")
         };
 
         const auto args = generate_homectl_args(config);
-        REQUIRE(std::ranges::contains(args, "--storage=cifs"));
+        REQUIRE(std::ranges::contains(args, "--storage=cifs"sv));
     }
     SECTION("with single group")
     {
@@ -166,7 +166,7 @@ TEST_CASE("generate args from config")
         };
 
         const auto args = generate_homectl_args(config);
-        REQUIRE(std::ranges::contains(args, "--member-of=wheel"));
+        REQUIRE(std::ranges::contains(args, "--member-of=wheel"sv));
     }
     SECTION("with xfs filesystem")
     {
@@ -178,7 +178,7 @@ TEST_CASE("generate args from config")
         };
 
         const auto args = generate_homectl_args(config);
-        REQUIRE(std::ranges::contains(args, "--fs-type=xfs"));
+        REQUIRE(std::ranges::contains(args, "--fs-type=xfs"sv));
     }
     SECTION("default values")
     {

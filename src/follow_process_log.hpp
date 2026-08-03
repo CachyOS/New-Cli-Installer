@@ -1,11 +1,11 @@
 #ifndef FOLLOW_PROCESS_LOG_HPP
 #define FOLLOW_PROCESS_LOG_HPP
 
-#include <functional>  // for function
-#include <stop_token>  // for stop_token
-#include <string>      // for string
-#include <string_view> // for string_view
-#include <vector>      // for vector
+#include <functional>   // for function
+#include <stop_token>   // for stop_token
+#include <string>       // for string
+#include <string_view>  // for string_view
+#include <vector>       // for vector
 
 #include <ftxui/dom/elements.hpp>  // for size, GREATER_THAN
 

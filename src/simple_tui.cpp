@@ -150,7 +150,7 @@ auto make_partitions_prepared(std::string_view bootloader_str, std::string_view 
                 const auto& use_default    = std::get<std::int32_t>(config_data["USE_DEFAULT_SUBVOLS"]);
                 const auto& config_subvols = std::get<std::vector<gucc::fs::BtrfsSubvolume>>(config_data["BTRFS_SUBVOLUMES"]);
                 const auto& btrfs_subvols  = (!config_subvols.empty()) ? config_subvols
-                    : (use_default)                                    ? utils::default_btrfs_subvolumes()
+                     : (use_default)                                   ? utils::default_btrfs_subvolumes()
                                                                        : std::vector<gucc::fs::BtrfsSubvolume>{};
 
                 if (btrfs_subvols.empty()) {

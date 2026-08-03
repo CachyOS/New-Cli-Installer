@@ -136,7 +136,7 @@ auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConf
     }
 
     // find rootfs in zfs datasets
-    auto rootfs = std::ranges::find(zfs_config.datasets, "/", &fs::ZfsDataset::mountpoint);
+    auto rootfs = std::ranges::find(zfs_config.datasets, "/"sv, &fs::ZfsDataset::mountpoint);
     if (rootfs != std::ranges::end(zfs_config.datasets)) {
         // set bootfs flag used by zfsbootmenu
         const auto& zpool_property = fmt::format(FMT_COMPILE("bootfs={}"), rootfs->zpath);

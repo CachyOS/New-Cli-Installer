@@ -67,10 +67,10 @@ TEST_CASE("server profiles")
         CHECK_EQ(parsed->default_kernel, "linux-cachyos-server");
         CHECK_EQ(parsed->profile_order, std::vector<std::string>{"minimal", "web", "container-host", "cockpit"});
 
-        CHECK(std::ranges::contains(parsed->baseline.packages, "openssh"));
-        CHECK(std::ranges::contains(parsed->baseline.packages, "ufw"));
+        CHECK(std::ranges::contains(parsed->baseline.packages, "openssh"sv));
+        CHECK(std::ranges::contains(parsed->baseline.packages, "ufw"sv));
         CHECK_EQ(parsed->baseline.firewall_tcp_ports, std::vector<std::uint16_t>{22});
-        CHECK(std::ranges::contains(parsed->baseline.features, "ufw-default-deny"));
+        CHECK(std::ranges::contains(parsed->baseline.features, "ufw-default-deny"sv));
 
         CHECK_EQ(parsed->profiles.size(), 4);
         for (const auto id : {"minimal"sv, "web"sv, "container-host"sv, "cockpit"sv}) {
@@ -88,7 +88,7 @@ TEST_CASE("server profiles")
         {
             auto resolved = gucc::profile::resolve_server_profile(*parsed, "minimal"sv, {});
             REQUIRE(resolved.has_value());
-            CHECK(std::ranges::contains(resolved->packages, "openssh"));
+            CHECK(std::ranges::contains(resolved->packages, "openssh"sv));
             CHECK_EQ(resolved->firewall_tcp_ports, std::vector<std::uint16_t>{22});
             auto sshd = std::ranges::find(resolved->services, "sshd"sv, &gucc::profile::ServiceEntry::name);
             REQUIRE(sshd != resolved->services.end());
@@ -99,7 +99,7 @@ TEST_CASE("server profiles")
             auto resolved = gucc::profile::resolve_server_profile(*parsed, "web"sv, {});
             REQUIRE(resolved.has_value());
             CHECK_EQ(tcp_ports(*resolved), std::vector<std::uint16_t>{22, 80, 443});
-            CHECK(std::ranges::contains(resolved->packages, "nginx"));
+            CHECK(std::ranges::contains(resolved->packages, "nginx"sv));
         }
         SECTION("cockpit adds port 9090")
         {
@@ -119,8 +119,8 @@ TEST_CASE("server profiles")
             auto resolved = gucc::profile::resolve_server_profile(*parsed, "web"sv, extras);
             REQUIRE(resolved.has_value());
             CHECK_EQ(tcp_ports(*resolved), std::vector<std::uint16_t>{22, 80, 443, 8080});
-            CHECK(std::ranges::contains(resolved->packages, "htop"));
-            CHECK_EQ(std::ranges::count(resolved->packages, "nginx"), 1);
+            CHECK(std::ranges::contains(resolved->packages, "htop"sv));
+            CHECK_EQ(std::ranges::count(resolved->packages, "nginx"sv), 1);
             CHECK_EQ(resolved->ssh_authorized_keys, std::vector<std::string>{"ssh-ed25519 AAAA admin@host"});
         }
         SECTION("unknown profile id is NotFound")

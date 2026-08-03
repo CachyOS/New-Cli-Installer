@@ -289,10 +289,10 @@ TEST_CASE("merge net profiles")
 
         auto pkgs = gucc::package::get_pkglist_desktop("kde"sv, info);
         REQUIRE(pkgs);
-        REQUIRE(std::ranges::contains(*pkgs, "sddm"));
-        REQUIRE(std::ranges::contains(*pkgs, "kate"));
-        REQUIRE(std::ranges::contains(*pkgs, "plasma-desktop"));
-        REQUIRE(!std::ranges::contains(*pkgs, "konsole"));
+        REQUIRE(std::ranges::contains(*pkgs, "sddm"sv));
+        REQUIRE(std::ranges::contains(*pkgs, "kate"sv));
+        REQUIRE(std::ranges::contains(*pkgs, "plasma-desktop"sv));
+        REQUIRE(!std::ranges::contains(*pkgs, "konsole"sv));
 
         std::error_code ec;
         fs::remove(path, ec);

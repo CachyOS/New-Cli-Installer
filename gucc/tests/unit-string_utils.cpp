@@ -15,19 +15,19 @@ TEST_CASE("string_utils")
   {
     SECTION("empty string view")
     {
-      static constexpr auto input = ""sv;
+      const auto input = ""sv;
       const auto tokens = gucc::utils::make_multiline_view(input, false, ',');
       REQUIRE_EQ(tokens.size(), 0);
     }
     SECTION("single delim string view")
     {
-      static constexpr auto input = ","sv;
+      const auto input = ","sv;
       const auto tokens = gucc::utils::make_multiline_view(input, false, ',');
       REQUIRE_EQ(tokens.size(), 0);
     }
     SECTION("short string view")
     {
-      static constexpr auto input = "1,22,333"sv;
+      const auto input = "1,22,333"sv;
       const auto tokens = gucc::utils::make_multiline_view(input, false, ',');
       REQUIRE_EQ(input.data(), tokens[0].data());
       REQUIRE_EQ(tokens.size(), 3);
@@ -37,7 +37,7 @@ TEST_CASE("string_utils")
     }
     SECTION("short string")
     {
-      static constexpr std::string input = "1,22,333";
+      const std::string input = "1,22,333";
       const auto tokens = gucc::utils::make_multiline_view(input, false, ',');
       REQUIRE_EQ(input.data(), tokens[0].data());
       REQUIRE_EQ(tokens.size(), 3);
@@ -47,7 +47,7 @@ TEST_CASE("string_utils")
     }
     SECTION("long string view")
     {
-      static constexpr auto input = "this will not fit into small string optimization"sv;
+      const auto input = "this will not fit into small string optimization"sv;
       const auto tokens = gucc::utils::make_multiline_view(input, false, ' ');
       REQUIRE_EQ(input.data(), tokens[0].data());
       REQUIRE_EQ(tokens.size(), 8);
@@ -103,21 +103,21 @@ TEST_CASE("string_utils")
   {
     SECTION("empty string view")
     {
-      static constexpr auto input = ""sv;
+      const auto input = ""sv;
       const auto trimmed_str = gucc::utils::trim(input);
       REQUIRE_EQ(trimmed_str.size(), 0);
       REQUIRE_EQ(trimmed_str, input);
     }
     SECTION("only chars to trim")
     {
-      static constexpr auto input = "\n\t \t\v\f"sv;
+      const auto input = "\n\t \t\v\f"sv;
       const auto trimmed_str = gucc::utils::trim(input);
       REQUIRE_EQ(trimmed_str.size(), 0);
       REQUIRE_EQ(trimmed_str, ""sv);
     }
     SECTION("short string view")
     {
-      static constexpr auto input = "\n\t 2\t\v\f"sv;
+      const auto input = "\n\t 2\t\v\f"sv;
       const auto trimmed_str = gucc::utils::trim(input);
       REQUIRE_EQ(trimmed_str.size(), 1);
       REQUIRE_EQ(trimmed_str, "2"sv);
@@ -126,7 +126,7 @@ TEST_CASE("string_utils")
     }
     SECTION("without any trim chars")
     {
-      static constexpr auto input = "this will not fit into small string optimization"sv;
+      const auto input = "this will not fit into small string optimization"sv;
       const auto trimmed_str = gucc::utils::trim(input);
       REQUIRE_EQ(trimmed_str, input);
     }
@@ -135,19 +135,19 @@ TEST_CASE("string_utils")
   {
     SECTION("empty string")
     {
-      static constexpr auto input = ""sv;
+      const auto input = ""sv;
       const auto result = gucc::utils::extract_after(input, "prefix"sv);
       REQUIRE(!result.has_value());
     }
     SECTION("prefix not found")
     {
-      static constexpr auto input = "hello world"sv;
+      const auto input = "hello world"sv;
       const auto result = gucc::utils::extract_after(input, "missing"sv);
       REQUIRE(!result.has_value());
     }
     SECTION("basic extraction with space delimiter")
     {
-      static constexpr auto input = "ID 256 gen 100 path @home"sv;
+      const auto input = "ID 256 gen 100 path @home"sv;
       const auto id_val = gucc::utils::extract_after(input, "ID "sv);
       REQUIRE(id_val.has_value());
       REQUIRE_EQ(*id_val, "256"sv);
@@ -158,28 +158,28 @@ TEST_CASE("string_utils")
     }
     SECTION("extraction at end of string")
     {
-      static constexpr auto input = "path @home"sv;
+      const auto input = "path @home"sv;
       const auto result = gucc::utils::extract_after(input, "path "sv, '\0');
       REQUIRE(result.has_value());
       REQUIRE_EQ(*result, "@home"sv);
     }
     SECTION("extraction with custom delimiter")
     {
-      static constexpr auto input = "key:value:rest"sv;
+      const auto input = "key:value:rest"sv;
       const auto result = gucc::utils::extract_after(input, "key"sv, ':');
       REQUIRE(result.has_value());
       REQUIRE_EQ(*result, ""sv);
     }
     SECTION("extraction after colon")
     {
-      static constexpr auto input = "Device size: 12345678"sv;
+      const auto input = "Device size: 12345678"sv;
       const auto result = gucc::utils::extract_after(input, "Device size:"sv, '\n');
       REQUIRE(result.has_value());
       REQUIRE_EQ(*result, " 12345678"sv);
     }
     SECTION("btrfs subvolume list format")
     {
-      static constexpr auto input = "ID 257 gen 1234 parent 5 top level 5 parent_uuid - uuid abc-123 path @snapshots"sv;
+      const auto input = "ID 257 gen 1234 parent 5 top level 5 parent_uuid - uuid abc-123 path @snapshots"sv;
 
       const auto id = gucc::utils::extract_after(input, "ID "sv);
       REQUIRE(id.has_value());
@@ -214,34 +214,34 @@ TEST_CASE("string_utils")
   {
     SECTION("empty string")
     {
-      static constexpr auto input = ""sv;
+      const auto input = ""sv;
       const auto result = gucc::utils::parse_uint<std::uint32_t>(input);
       REQUIRE(!result.has_value());
     }
     SECTION("valid uint32")
     {
-      static constexpr auto input = "12345"sv;
+      const auto input = "12345"sv;
       const auto result = gucc::utils::parse_uint<std::uint32_t>(input);
       REQUIRE(result.has_value());
       REQUIRE_EQ(*result, 12345u);
     }
     SECTION("valid uint64")
     {
-      static constexpr auto input = "9999999999"sv;
+      const auto input = "9999999999"sv;
       const auto result = gucc::utils::parse_uint<std::uint64_t>(input);
       REQUIRE(result.has_value());
       REQUIRE_EQ(*result, 9999999999ULL);
     }
     SECTION("zero")
     {
-      static constexpr auto input = "0"sv;
+      const auto input = "0"sv;
       const auto result = gucc::utils::parse_uint<std::uint32_t>(input);
       REQUIRE(result.has_value());
       REQUIRE_EQ(*result, 0u);
     }
     SECTION("invalid - contains letters")
     {
-      static constexpr auto input = "123abc"sv;
+      const auto input = "123abc"sv;
       const auto result = gucc::utils::parse_uint<std::uint32_t>(input);
       if (result.has_value()) {
         REQUIRE_EQ(*result, 123u);
@@ -249,13 +249,13 @@ TEST_CASE("string_utils")
     }
     SECTION("invalid - negative number")
     {
-      static constexpr auto input = "-123"sv;
+      const auto input = "-123"sv;
       const auto result = gucc::utils::parse_uint<std::uint32_t>(input);
       REQUIRE(!result.has_value());
     }
     SECTION("combined with extract_after")
     {
-      static constexpr auto input = "ID 256 gen 100"sv;
+      const auto input = "ID 256 gen 100"sv;
       const auto id_str = gucc::utils::extract_after(input, "ID "sv);
       REQUIRE(id_str.has_value());
       const auto id = gucc::utils::parse_uint<std::uint64_t>(*id_str);

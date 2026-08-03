@@ -130,7 +130,7 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
     spdlog::debug("[exec] cmd := {}", joined);
 
     if (cancel_flag.load()) {
-        return ProcessResult{.exit_code = -1, .cancelled = true};
+        return ProcessResult{.cancelled = true, .exit_code = -1};
     }
 
     if (dry_run.load() && opts.kind == ProcessKind::Mutate) {
