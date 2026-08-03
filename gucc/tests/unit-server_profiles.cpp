@@ -65,26 +65,18 @@ TEST_CASE("server profiles")
         CHECK_EQ(parsed->schema_version, gucc::profile::kServerSchemaVersion);
         CHECK_EQ(parsed->default_profile, "minimal");
         CHECK_EQ(parsed->default_kernel, "linux-cachyos-server");
-        CHECK_EQ(parsed->profile_order, std::vector<std::string>{"minimal", "web", "container-host", "db", "cockpit"});
+        CHECK_EQ(parsed->profile_order, std::vector<std::string>{"minimal", "web", "container-host", "cockpit"});
 
-        CHECK(std::ranges::contains(parsed->baseline.packages, "cachyos-server-settings"));
+        CHECK(std::ranges::contains(parsed->baseline.packages, "openssh"));
         CHECK(std::ranges::contains(parsed->baseline.packages, "ufw"));
         CHECK_EQ(parsed->baseline.firewall_tcp_ports, std::vector<std::uint16_t>{22});
         CHECK(std::ranges::contains(parsed->baseline.features, "ufw-default-deny"));
 
-        CHECK_EQ(parsed->profiles.size(), 5);
-        for (const auto id : {"minimal"sv, "web"sv, "container-host"sv, "db"sv, "cockpit"sv}) {
+        CHECK_EQ(parsed->profiles.size(), 4);
+        for (const auto id : {"minimal"sv, "web"sv, "container-host"sv, "cockpit"sv}) {
             CAPTURE(id);
             CHECK(std::ranges::find(parsed->profiles, id, &gucc::profile::ServerProfile::id) != parsed->profiles.end());
         }
-
-        auto db = std::ranges::find(parsed->profiles, "db"sv, &gucc::profile::ServerProfile::id);
-        REQUIRE(db != parsed->profiles.end());
-        REQUIRE_EQ(db->initializers.size(), 1);
-        CHECK_EQ(db->initializers[0].kind, "postgresql");
-        CHECK_EQ(db->initializers[0].data_dir, "/var/lib/postgres/data");
-        CHECK_EQ(db->initializers[0].data_checksums, true);
-        CHECK_EQ(db->initializers[0].auth_host, "scram-sha-256");
     }
 
     SECTION("merge baseline + profile + user extras")
@@ -96,7 +88,7 @@ TEST_CASE("server profiles")
         {
             auto resolved = gucc::profile::resolve_server_profile(*parsed, "minimal"sv, {});
             REQUIRE(resolved.has_value());
-            CHECK(std::ranges::contains(resolved->packages, "cachyos-server-settings"));
+            CHECK(std::ranges::contains(resolved->packages, "openssh"));
             CHECK_EQ(resolved->firewall_tcp_ports, std::vector<std::uint16_t>{22});
             auto sshd = std::ranges::find(resolved->services, "sshd"sv, &gucc::profile::ServiceEntry::name);
             REQUIRE(sshd != resolved->services.end());
@@ -209,19 +201,6 @@ units = [ { name = "foo", action = "enable" }, { name = "foo", action = "disable
             REQUIRE(!parsed.has_value());
             CHECK_EQ(parsed.error().code, gucc::ErrorCode::InvalidArgument);
         }
-        SECTION("unknown initializer kind")
-        {
-            auto parsed = gucc::profile::parse_server_profiles(R"(
-[server]
-schema_version = 1
-[server.profiles.x]
-name = "X"
-[[server.profiles.x.initializers]]
-kind = "run-my-script"
-)"sv);
-            REQUIRE(!parsed.has_value());
-            CHECK_EQ(parsed.error().code, gucc::ErrorCode::InvalidArgument);
-        }
         SECTION("out-of-range firewall port")
         {
             auto parsed = gucc::profile::parse_server_profiles(R"(
@@ -236,33 +215,11 @@ firewall_tcp_ports = [70000]
     }
     SECTION("config generators")
     {
-        SECTION("networkd sshd")
+        SECTION("sshd hardening")
         {
-            CHECK(gucc::profile::make_networkd_dhcp_config().find("DHCP=yes") != std::string::npos);
             const auto sshd = gucc::profile::make_sshd_hardening_config();
             CHECK(sshd.find("PasswordAuthentication no") != std::string::npos);
             CHECK(sshd.find("PermitRootLogin no") != std::string::npos);
-        }
-        SECTION("psql args")
-        {
-            gucc::profile::ServerInitializer init{
-                .kind           = "postgresql",
-                .data_dir       = "/var/lib/postgres/data",
-                .data_checksums = true,
-                .auth_local     = "peer",
-                .auth_host      = "scram-sha-256",
-            };
-            auto args = gucc::profile::make_postgresql_initdb_args(init);
-            REQUIRE(args.has_value());
-            CHECK(std::ranges::contains(*args, "initdb"));
-            CHECK(std::ranges::contains(*args, "/var/lib/postgres/data"));
-            CHECK(std::ranges::contains(*args, "--data-checksums"));
-            CHECK(std::ranges::contains(*args, "--auth-host=scram-sha-256"));
-        }
-        SECTION("psql invalid")
-        {
-            CHECK(!gucc::profile::make_postgresql_initdb_args({.kind = "postgresql"}).has_value());
-            CHECK(!gucc::profile::make_postgresql_initdb_args({.kind = "mysql", .data_dir = "/x"}).has_value());
         }
     }
 }

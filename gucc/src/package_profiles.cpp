@@ -13,7 +13,7 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// The identifying key used to match array-of-tables entries for groups.
+// the key we match array-of-tables group entries on
 inline constexpr auto GROUP_ID_KEY = "name"sv;
 
 toml::array merge_array_of_tables(const toml::array& lower, const toml::array& higher) noexcept {

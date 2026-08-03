@@ -167,10 +167,9 @@ supply at least one `ssh_authorized_keys` entry.
 | `minimal` | base only |
 | `web` | Nginx |
 | `container-host` | Docker compose |
-| `db` | PostgreSQL |
 | `cockpit` | Cockpit |
 
-Profile packages, services, firewall ports and typed initializers come from
+Profile packages, services and firewall ports come from
 `server-profiles.toml` fetched fresh from upstream when reachable, otherwise
 the vendored copy.
 

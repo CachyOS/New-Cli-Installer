@@ -50,9 +50,9 @@ constinit std::string cached_url;                     // NOLINT
 constinit std::string cached_fallback_url;            // NOLINT
 constinit std::string cached_user_path;               // NOLINT
 
-// Builds the merged net-profiles document from two layers:
-//  - base: regular installer net-profiles.toml
-//  - user: an optional user-supplied one
+// build the merged net-profiles doc from two layers:
+//  - base: the regular installer net-profiles.toml
+//  - user: an optional user-supplied one on top
 auto fetch_net_profiles_cached(const gucc::package::NetProfileInfo& info) noexcept -> std::optional<std::string> {
     if (cached_content
         && cached_url == info.net_profs_url
