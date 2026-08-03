@@ -18,10 +18,14 @@ using namespace std::string_literals;
 
 namespace gucc::mount {
 
-auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts) noexcept -> Result<void> {
-    const auto& cmd = !mount_opts.empty()
-        ? fmt::format(FMT_COMPILE("mount -o {} {} {}"), mount_opts, partition, mount_dir)
-        : fmt::format(FMT_COMPILE("mount {} {}"), partition, mount_dir);
+auto build_mount_command(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype) noexcept -> std::string {
+    const auto& type_flag = fstype.empty() ? std::string{} : fmt::format(FMT_COMPILE("-t {} "), fstype);
+    const auto& opts_flag = mount_opts.empty() ? std::string{} : fmt::format(FMT_COMPILE("-o {} "), mount_opts);
+    return fmt::format(FMT_COMPILE("mount {}{}{} {}"), type_flag, opts_flag, partition, mount_dir);
+}
+
+auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype) noexcept -> Result<void> {
+    const auto& cmd = build_mount_command(partition, mount_dir, mount_opts, fstype);
     if (!utils::exec_checked(cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to mount {} at {}", partition, mount_dir));
     }
@@ -75,9 +79,9 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
         return make_error(ErrorCode::FileIo, fmt::format("failed to create ESP directory {}: {}", full_mountpoint, err.message()));
     }
 
-    // Mount the partition
+    // Mount the partition. boot is always vfat so hardcode as so
     const auto& boot_opts = fs::get_default_mount_opts(fs::FilesystemType::Vfat, is_ssd);
-    if (auto res = mount_partition(device, full_mountpoint, boot_opts); !res) {
+    if (auto res = mount_partition(device, full_mountpoint, boot_opts, "vfat"sv); !res) {
         spdlog::error("Failed to mount ESP {} at {}", device, full_mountpoint);
         return make_error(res.error().code, std::move(res.error().context));
     }

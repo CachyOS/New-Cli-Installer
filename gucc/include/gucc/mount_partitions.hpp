@@ -11,8 +11,11 @@
 
 namespace gucc::mount {
 
+/// Builds the `mount` command line for a partition.
+auto build_mount_command(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype = {}) noexcept -> std::string;
+
 // Mount partition
-auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts) noexcept -> Result<void>;
+auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype = {}) noexcept -> Result<void>;
 // Query partition
 auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int32_t& is_lvm, std::string& luks_name, std::string& luks_dev, std::string& luks_uuid) noexcept -> Result<void>;
 

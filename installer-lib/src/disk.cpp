@@ -362,7 +362,7 @@ auto generate_fstab(std::string_view mountpoint) noexcept
 }
 
 auto mount_partition(std::string_view partition, std::string_view mountpoint,
-    std::string_view mount_dev, std::string_view mount_opts) noexcept
+    std::string_view mount_dev, std::string_view mount_opts, std::string_view fstype) noexcept
     -> std::expected<MountPartitionResult, std::string> {
     const auto& mount_dir = fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev);
 
@@ -372,9 +372,14 @@ auto mount_partition(std::string_view partition, std::string_view mountpoint,
         return std::unexpected(fmt::format("failed to create directory {}: {}", mount_dir, ec.message()));
     }
 
+    // resolve the gucc fs-name to the kernel mount type
+    const auto& fs_kernel = fstype.empty()
+        ? std::string_view{}
+        : gucc::fs::get_fstab_fs_name(gucc::fs::string_to_filesystem_type(fstype));
+
     // TODO(vnepogodin): use libmount instead.
     // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
-    if (auto res = gucc::mount::mount_partition(partition, mount_dir, mount_opts); !res) {
+    if (auto res = gucc::mount::mount_partition(partition, mount_dir, mount_opts, fs_kernel); !res) {
         return std::unexpected(fmt::format("failed to mount partition {} at {} with opts '{}': {}", partition, mount_dir, mount_opts, gucc::to_string(res.error())));
     }
 
@@ -447,7 +452,7 @@ auto apply_root_partition(const RootPartitionSelection& selection,
     }
 
     // 2. Mount root partition
-    auto mount_res = mount_partition(selection.device, mountpoint, "/"sv, selection.mount_opts);
+    auto mount_res = mount_partition(selection.device, mountpoint, "/"sv, selection.mount_opts, selection.fstype);
     if (!mount_res) {
         return std::unexpected(fmt::format("failed to mount root partition {}: {}", selection.device, mount_res.error()));
     }

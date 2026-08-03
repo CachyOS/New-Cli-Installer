@@ -114,7 +114,7 @@ struct MountApplicationResult {
 
 /// Mounts a partition, creates directories, and queries LUKS/LVM state.
 [[nodiscard]] auto mount_partition(std::string_view partition, std::string_view mountpoint,
-    std::string_view mount_dev, std::string_view mount_opts) noexcept
+    std::string_view mount_dev, std::string_view mount_opts, std::string_view fstype = {}) noexcept
     -> std::expected<MountPartitionResult, std::string>;
 
 /// Creates swap (file or partition) and returns the device path and optional partition struct.
