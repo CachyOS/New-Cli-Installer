@@ -113,6 +113,11 @@ void validate_layout(const std::vector<NumberedPartition>& sorted, bool is_efi,
             errors.push_back(fmt::format(FMT_COMPILE("partition '{}': unknown filesystem '{}'"), part.name, part.fs_name));
         }
 
+        // reject percentages
+        if (const auto size = gucc::utils::trim(part.size); gucc::utils::contains(size, "%"sv) && size != "100%"sv) {
+            errors.push_back(fmt::format(FMT_COMPILE("partition '{}': size '{}' is not supported; use a byte size (e.g. '512M', '100G') or '100\%' for the rest of the disk"), part.name, part.size));
+        }
+
         // a duplicate mountpoint means one gets shadowed by the other at mount
         // time. only report the later of each pair
         if (part.mountpoint.empty()) {

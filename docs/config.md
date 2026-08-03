@@ -237,7 +237,7 @@ Partition layout array. Each partition requires:
 |-------|------|----------|-------------|
 | `name` | string | Yes | Device path (e.g., `/dev/sda1`) |
 | `mountpoint` | string | Yes | Mount point (e.g., `/`, `/boot`) |
-| `size` | string | Yes | Size (e.g., `512M`, `100G`, `100%`) |
+| `size` | string | Yes | Size (e.g., `512M`, `100G`). Use `100%` to fill the rest of the disk |
 | `type` | string | Yes | `root`, `boot`, or `additional` |
 | `fs_name` | string | Required for non-root | Filesystem type |
 

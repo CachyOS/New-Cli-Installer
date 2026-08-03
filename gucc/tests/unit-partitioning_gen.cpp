@@ -55,6 +55,11 @@ type=U,size=512M,bootable
 type=L
 )"sv;
 
+static constexpr auto PART_FILL_PERCENT_TEST = R"(label: gpt
+type=U,size=4G,bootable
+type=L
+)"sv;
+
 TEST_CASE("partitioning_gen")
 {
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
@@ -146,6 +151,24 @@ TEST_CASE("partitioning_gen")
         {
             const std::vector<gucc::fs::Partition> partitions{
                 gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = "defaults"s},
+                gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/nvme0n1p2"s, .size = "512M"s, .mount_opts = "defaults"s},
+            };
+            const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
+            REQUIRE_EQ(sfdisk_content, PART_EMM_UNSIZED_TEST);
+        }
+        SECTION("100\% size means fill remaining")
+        {
+            const std::vector<gucc::fs::Partition> partitions{
+                gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/sda1"s, .size = "4G"s, .mount_opts = "defaults"s},
+                gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/sda2"s, .size = "100%"s, .mount_opts = "defaults"s},
+            };
+            const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
+            REQUIRE_EQ(sfdisk_content, PART_FILL_PERCENT_TEST);
+        }
+        SECTION("100\% partition last regardless of order")
+        {
+            const std::vector<gucc::fs::Partition> partitions{
+                gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .size = "100%"s, .mount_opts = "defaults"s},
                 gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/nvme0n1p2"s, .size = "512M"s, .mount_opts = "defaults"s},
             };
             const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);

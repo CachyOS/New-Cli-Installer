@@ -152,6 +152,24 @@ TEST_CASE("headless partitioning")
         REQUIRE(contains(errors, "unknown filesystem 'reiserfs'"sv));
         REQUIRE(contains(errors, "both claim mountpoint '/'"sv));
     }
+    SECTION("a root 100\% accepted")
+    {
+        auto cfg                = valid_uefi_config();
+        cfg.partitions[1].size  = "100%"s;
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE(strategy.has_value());
+        REQUIRE(std::holds_alternative<strategy::CreateLayout>(*strategy));
+    }
+    SECTION("rejected percentage")
+    {
+        auto cfg                = valid_uefi_config();
+        cfg.partitions[1].size  = "50%"s;
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE_FALSE(strategy.has_value());
+        REQUIRE(contains(joined_errors(strategy.error()), "size '50%' is not supported"sv));
+    }
     SECTION("a UEFI install without an ESP is rejected")
     {
         auto cfg = valid_uefi_config();

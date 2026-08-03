@@ -60,6 +60,11 @@ constexpr auto get_part_type_alias(std::string_view fsname) noexcept -> std::str
 // fs names that mean an EFI System Partition
 constexpr auto FAT_FS_NAMES = std::array{"vfat"sv, "fat32"sv, "fat16"sv};
 
+constexpr auto is_fill_size(std::string_view size) noexcept -> bool {
+    const auto trimmed = gucc::utils::trim(size);
+    return trimmed.empty() || trimmed == "100%"sv;
+}
+
 // single sfdisk command line
 constexpr auto to_sfdisk_line(const gucc::fs::Partition& part) noexcept -> std::string {
     const auto& fsname   = convert_fsname(part.fstype);
@@ -119,6 +124,13 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
         | std::ranges::views::filter(is_first_occurrence)
         | std::ranges::views::values
         | std::ranges::to<std::vector<fs::Partition>>();
+
+    // drop full size percentage
+    for (auto& part : partitions_filtered) {
+        if (is_fill_size(part.size)) {
+            part.size.clear();
+        }
+    }
 
     // empty sized parts must be at the end, they take whatever space is left.
     // stable, to leave declaration order otherwise untouched
