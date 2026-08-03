@@ -63,6 +63,8 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
             return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to format ESP partition {}", device));
         }
         spdlog::info("Formatted ESP partition {} with {}", device, mkfs_cmd);
+        // let blkid see the fresh vfat before we mount it
+        utils::settle_devices();
     }
 
     // Create mount directory

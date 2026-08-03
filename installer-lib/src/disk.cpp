@@ -221,6 +221,8 @@ auto apply_additional_partitions(const std::vector<AdditionalPartSelection>& add
                 return std::unexpected(fmt::format("failed to format {} with {}", part_select.device, part_select.mkfs_command));
             }
             spdlog::info("Formatted {} with {}", part_select.device, part_select.mkfs_command);
+            // let blkid see the fresh filesystem before we mount it
+            gucc::utils::settle_devices();
         }
 
         auto mount_res = mount_partition(part_select.device, mountpoint, part_select.mountpoint, part_select.mount_opts);
@@ -440,6 +442,8 @@ auto apply_root_partition(const RootPartitionSelection& selection,
             return std::unexpected(fmt::format("failed to format root partition {} with {}", selection.device, selection.mkfs_command));
         }
         spdlog::info("Formatted {} with {}", selection.device, selection.mkfs_command);
+        // let blkid see the fresh filesystem before we mount it
+        gucc::utils::settle_devices();
     }
 
     // 2. Mount root partition

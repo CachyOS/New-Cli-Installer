@@ -16,6 +16,9 @@ auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) 
 auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) noexcept -> bool;
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::string_view pacman_config, bool hostcache) noexcept -> bool;
 
+/// wait for the kernel/udev to catch up with device changes
+void settle_devices() noexcept;
+
 }  // namespace gucc::utils
 
 #endif  // IO_UTILS_HPP

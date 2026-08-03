@@ -1,6 +1,8 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/process.hpp"
 
+#include <unistd.h>  // for sync
+
 #include <cstdlib>  // for getenv, system
 
 #include <string>   // for string, to_string
@@ -64,6 +66,14 @@ auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::s
 
     spdlog::info("Running pacstrap with packages: '{}'", packages);
     return default_runner().run_shell(cmd_formatted, RunOptions{.kind = ProcessKind::Mutate}).ok();
+}
+
+void settle_devices() noexcept {
+    // a failure here must never abort the install
+    if (!exec_checked("udevadm settle"sv)) {
+        spdlog::warn("Could not settle disks");
+    }
+    ::sync();
 }
 
 }  // namespace gucc::utils

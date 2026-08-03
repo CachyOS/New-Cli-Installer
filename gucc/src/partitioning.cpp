@@ -150,6 +150,8 @@ auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcep
     if (!utils::exec_checked(sfdisk_cmd)) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run partitioning with sfdisk: {}", sfdisk_cmd));
     }
+    // let the new partition nodes/links appear before anyone formats them
+    utils::settle_devices();
     return {};
 }
 
