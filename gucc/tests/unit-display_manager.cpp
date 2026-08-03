@@ -39,6 +39,13 @@ void touch_greeter(const fs::path& root, std::string_view greeter_name) {
 
 TEST_CASE("display_manager")
 {
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
     SECTION("display_manager::to_string and from_string round-trip")
     {
         for (const auto k : gucc::display_manager::known_kinds()) {

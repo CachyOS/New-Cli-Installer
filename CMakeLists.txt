@@ -132,6 +132,10 @@ set(RAPIDJSON_INCLUDE_DIR "${rapidjson_SOURCE_DIR}/include")
 
 include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/gucc/include ${RAPIDJSON_INCLUDE_DIR})
 
+if(COS_INSTALLER_BUILD_TESTS)
+   enable_testing()
+endif()
+
 add_subdirectory(gucc)
 add_subdirectory(installer-lib)
 

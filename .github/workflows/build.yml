@@ -28,37 +28,12 @@ jobs:
         shell: bash
 
       - name: Configure CMake
-        # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCOS_INSTALLER_BUILD_TESTS=ON
 
       - name: Build & Test
-        # Build your program with the given configuration
         run: |
           cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-          cd ${{github.workspace}}/build
-          ./gucc/tests/test-string_utils
-          ./gucc/tests/test-initcpio
-          ./gucc/tests/test-pacmanconf
-          ./gucc/tests/test-mtab
-          ./gucc/tests/test-fstab_gen
-          ./gucc/tests/test-crypttab_gen
-          ./gucc/tests/test-grub_config_gen
-          ./gucc/tests/test-kernel_params
-          ./gucc/tests/test-fetch_file
-          ./gucc/tests/test-locale
-          ./gucc/tests/test-package_profiles
-          ./gucc/tests/test-btrfs
-          ./gucc/tests/test-refind_config_gen
-          ./gucc/tests/test-refind_extra_kern_strings
-          ./gucc/tests/test-partitioning_gen
-          ./gucc/tests/test-limine_config_gen
-          ./gucc/tests/test-block_devices
-          ./gucc/tests/test-crypto_detection
-          ./gucc/tests/test-process
-          ./gucc/tests/test-zfs_hostid
-          ./gucc/tests/test-net_profiles_merge
-          ./gucc/tests/test-server_profiles
-          ./gucc/tests/test-firewall
+          ctest --output-on-failure --test-dir ${{github.workspace}}/build/gucc/tests
         shell: bash
   build-cmake_withoutdev:
     name: Build with CMake (DEVENV OFF)
@@ -73,75 +48,10 @@ jobs:
         shell: bash
 
       - name: Configure CMake
-        # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
-        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DENABLE_DEVENV=OFF
-
-      - name: Build
-        # Build your program with the given configuration
-        run: |
-          cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-        shell: bash
-  build-meson:
-    name: Build with Meson
-    runs-on: ubuntu-latest
-    container: archlinux:base-devel
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: install deps
-        run: |
-          pacman -Syu --noconfirm pkg-config ninja meson clang mold llvm git
-        shell: bash
-
-      - name: Configure Meson
-        run: meson setup --buildtype=${{env.BUILD_TYPE}} -Dbuild_tests=true ${{github.workspace}}/build
+        run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DENABLE_DEVENV=OFF -DCOS_INSTALLER_BUILD_TESTS=ON
 
       - name: Build & Test
-        # Build your program with the given configuration
         run: |
-          meson compile -C ${{github.workspace}}/build
-          cd ${{github.workspace}}/build
-          ./gucc/tests/test-string_utils
-          ./gucc/tests/test-initcpio
-          ./gucc/tests/test-pacmanconf
-          ./gucc/tests/test-mtab
-          ./gucc/tests/test-fstab_gen
-          ./gucc/tests/test-crypttab_gen
-          ./gucc/tests/test-grub_config_gen
-          ./gucc/tests/test-kernel_params
-          ./gucc/tests/test-fetch_file
-          ./gucc/tests/test-locale
-          ./gucc/tests/test-package_profiles
-          ./gucc/tests/test-btrfs
-          ./gucc/tests/test-refind_config_gen
-          ./gucc/tests/test-refind_extra_kern_strings
-          ./gucc/tests/test-partitioning_gen
-          ./gucc/tests/test-limine_config_gen
-          ./gucc/tests/test-block_devices
-          ./gucc/tests/test-crypto_detection
-          ./gucc/tests/test-process
-          ./gucc/tests/test-zfs_hostid
-          ./gucc/tests/test-net_profiles_merge
-          ./gucc/tests/test-server_profiles
-          ./gucc/tests/test-firewall
-        shell: bash
-  build-meson_withoutdev:
-    name: Build with Meson (DEVENV OFF)
-    runs-on: ubuntu-latest
-    container: archlinux:base-devel
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: install deps
-        run: |
-          pacman -Syu --noconfirm pkg-config ninja meson clang mold llvm git
-        shell: bash
-
-      - name: Configure CMake
-        run: meson setup --buildtype=${{env.BUILD_TYPE}} -Dbuild_tests=true -Ddevenv=false ${{github.workspace}}/build
-
-      - name: Build
-        # Build your program with the given configuration
-        run: |
-          meson compile -C ${{github.workspace}}/build
+          cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
+          ctest --output-on-failure --test-dir ${{github.workspace}}/build/gucc/tests
         shell: bash
