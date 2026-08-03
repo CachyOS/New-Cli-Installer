@@ -137,8 +137,10 @@ auto setup_initcpio_config(std::string_view initcpio_path,
         }
     }
 
-    // plymouth comes before encrypt hooks
-    if (config.has_plymouth) {
+    // drop plymouth zfs encryption or if not installed
+    const bool zfs_encrypted = (config.filesystem_type == FilesystemType::Zfs)
+        && (config.is_zfs_encrypted || config.is_luks);
+    if (config.has_plymouth && !zfs_encrypted) {
         hooks.emplace_back("plymouth");
     }
 

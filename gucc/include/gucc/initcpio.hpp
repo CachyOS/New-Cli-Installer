@@ -16,6 +16,8 @@ struct InitcpioConfig {
     bool has_plymouth{false};
     bool use_systemd_hook{false};
     bool is_btrfs_multi_device{false};
+    // native zfs encryption on the root pool
+    bool is_zfs_encrypted{false};
 };
 
 // Configure mkinitcpio.conf for the given filesystem/encryption setup.

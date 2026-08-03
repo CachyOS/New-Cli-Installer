@@ -316,6 +316,47 @@ TEST_CASE("setup initcpiocfg from config test")
 
         ::fs::remove(filename);
     }
+    SECTION("zfs + plymouth w/o encryption")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Zfs,
+            .has_plymouth = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "plymouth", "zfs", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
+    SECTION("zfs + native encryption w/o plymouth")
+    {
+        REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));
+
+        const auto config = initcpio::InitcpioConfig{
+            .filesystem_type = gucc::fs::FilesystemType::Zfs,
+            .has_plymouth = true,
+            .is_zfs_encrypted = true,
+        };
+        REQUIRE(initcpio::setup_initcpio_config(filename, config));
+
+        auto result = detail::Initcpio{filename};
+        REQUIRE(result.parse_file());
+
+        const std::vector<std::string> expected_hooks{
+            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "keyboard", "keymap", "consolefont", "zfs", "filesystems"};
+        REQUIRE_EQ(result.hooks, expected_hooks);
+
+        ::fs::remove(filename);
+    }
     SECTION("lvm only config")
     {
         REQUIRE(file_utils::create_file_for_overwrite(filename, MKINITCPIO_STR));

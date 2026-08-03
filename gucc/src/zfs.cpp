@@ -117,9 +117,8 @@ auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, 
         return cmd;
     }();
 
-    spdlog::debug("creating zfs zpool with: {}", zfs_zpool_cmd);
     if (!utils::exec_checked(zfs_zpool_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs zpool with: {}", zfs_zpool_cmd));
+        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs zpool '{}' on '{}'", pool_name, device_path));
     }
     return {};
 }
