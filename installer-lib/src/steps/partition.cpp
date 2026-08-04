@@ -3,11 +3,14 @@
 #include "cachyos/types.hpp"
 
 // import gucc
+#include "gucc/fs_utils.hpp"
+#include "gucc/mtab.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 
 #include <algorithm>    // for find
+#include <filesystem>   // for path, lexically_relative
 #include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -79,6 +82,26 @@ auto mount_selections_from_auto(const std::vector<gucc::fs::Partition>& partitio
     return mounts;
 }
 
+auto detect_esp_mountpoint(std::string_view root_mountpoint) noexcept -> std::string {
+    const auto entries = gucc::mtab::parse_mtab(root_mountpoint);
+    if (!entries) {
+        return {};
+    }
+    for (const auto& entry : *entries) {
+        // in-target path
+        const auto rel = std::filesystem::path{entry.mountpoint}.lexically_relative(root_mountpoint);
+        // reject root
+        if (rel.empty() || *rel.begin() != "boot") {
+            continue;
+        }
+        if (gucc::fs::utils::get_mountpoint_fs(entry.mountpoint) == "vfat"sv) {
+            // absolute path
+            return "/" + rel.generic_string();
+        }
+    }
+    return {};
+}
+
 }  // namespace
 
 namespace cachyos::installer::steps {
@@ -92,7 +115,10 @@ auto partition(InstallContext& ctx) noexcept
     const auto is_efi = ctx.system_mode == InstallContext::SystemMode::UEFI;
 
     // format+mount
-    const auto record = [&ctx](MountSelections selections) -> std::expected<void, std::string> {
+    const auto record = [&ctx, is_efi](MountSelections selections) -> std::expected<void, std::string> {
+        if (is_efi) {
+            ctx.uefi_mount = selections.esp.device.empty() ? std::string{} : selections.esp.mountpoint;
+        }
         auto applied = apply_mount_selections(selections, ctx.mountpoint);
         if (!applied) {
             return std::unexpected(std::move(applied).error());
@@ -103,8 +129,12 @@ auto partition(InstallContext& ctx) noexcept
     };
 
     return ctx.strategy.visit(overloads{
-        [](const partition_strategy::UseExisting&) -> std::expected<void, std::string> {
+        [&](const partition_strategy::UseExisting&) -> std::expected<void, std::string> {
             spdlog::info("using mounted target as-is");
+            // recover me the ESP mountpoint :_)
+            if (is_efi) {
+                ctx.uefi_mount = detect_esp_mountpoint(ctx.mountpoint);
+            }
             return {};
         },
         [&](const partition_strategy::ApplyLayout& layout) -> std::expected<void, std::string> {
