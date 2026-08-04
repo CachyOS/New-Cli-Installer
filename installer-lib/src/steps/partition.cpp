@@ -7,6 +7,8 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 
+#include <algorithm>    // for find
+#include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
@@ -17,6 +19,7 @@
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace {
@@ -114,7 +117,24 @@ auto partition(InstallContext& ctx) noexcept
                 return std::unexpected(fmt::format("failed to write partition table on '{}': {}",
                     layout.device, gucc::to_string(res.error())));
             }
-            return record(mount_selections_from_schema(layout.partitions, layout.btrfs_subvolumes));
+
+            auto selections = mount_selections_from_schema(layout.partitions, layout.btrfs_subvolumes);
+
+            // zfs shits
+            if (layout.zfs_setup) {
+                const auto root_it = std::ranges::find(layout.partitions, "/"sv, &gucc::fs::Partition::mountpoint);
+                if (root_it == std::ranges::end(layout.partitions)) {
+                    return std::unexpected("zfs root requested but no partition is mounted at '/'"s);
+                }
+                if (auto res = apply_zfs_root(*layout.zfs_setup, root_it->device, ctx.mountpoint); !res) {
+                    return std::unexpected(std::move(res).error());
+                }
+                ctx.zfs_zpool_names.push_back(layout.zfs_setup->zpool_name);
+                ctx.zfs_encrypted = layout.zfs_setup->passphrase.has_value();
+                selections.root   = {};
+            }
+
+            return record(std::move(selections));
         },
         [&](const partition_strategy::EraseAndAuto& layout) -> std::expected<void, std::string> {
             spdlog::warn("erasing '{}' and applying the default layout", layout.device);

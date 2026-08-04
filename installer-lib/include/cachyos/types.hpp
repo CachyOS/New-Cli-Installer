@@ -6,6 +6,7 @@
 #include "gucc/btrfs.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/server_profiles.hpp"
+#include "gucc/zfs_types.hpp"
 
 #include <cstdint>      // for int32_t
 #include <functional>   // for function
@@ -93,6 +94,7 @@ namespace partition_strategy {
         std::string device;
         std::vector<gucc::fs::Partition> partitions;
         std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
+        std::optional<gucc::fs::ZfsSetupConfig> zfs_setup;
     };
 
     /// Let the installer pick a default layout for @p device.
@@ -144,6 +146,7 @@ struct InstallContext {
     std::string swap_device;
     std::string uefi_mount;
     std::vector<std::string> zfs_zpool_names;
+    bool zfs_encrypted{false};
 
     /// How the Partition step prepares the target disk.
     PartitionStrategy strategy{partition_strategy::UseExisting{}};

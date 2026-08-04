@@ -53,6 +53,15 @@ struct MountApplicationResult {
 [[nodiscard]] auto default_zfs_datasets(std::string_view zpool_name) noexcept
     -> std::vector<gucc::fs::ZfsDataset>;
 
+/// The default ZFS pool name.
+inline constexpr std::string_view kDefaultZpoolName{"zpcachyos"};
+
+/// Builds the default ZFS pool + dataset configuration for @p zpool_name.
+/// When @p passphrase is set the pool is configured for native encryption.
+[[nodiscard]] auto default_zfs_setup(std::string_view zpool_name,
+    std::optional<std::string> passphrase = std::nullopt) noexcept
+    -> gucc::fs::ZfsSetupConfig;
+
 /// Returns available mount options for a given filesystem type.
 [[nodiscard]] auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string>;
 
@@ -76,6 +85,11 @@ struct MountApplicationResult {
 /// Creates a new zpool on an existing partition.
 [[nodiscard]] auto zfs_create_zpool(std::string_view partition,
     std::string_view pool_name, std::string_view mountpoint) noexcept
+    -> std::expected<void, std::string>;
+
+/// Applies zfs setup on @p root_device, and imports the pool.
+[[nodiscard]] auto apply_zfs_root(const gucc::fs::ZfsSetupConfig& zfs_setup,
+    std::string_view root_device, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
 
 /// Applies the user's partition/mount selections: formats, mounts, and builds partition schema.

@@ -144,6 +144,7 @@ auto install_base(const InstallContext& ctx) noexcept
             .is_lvm           = ctx.crypto.is_lvm,
             .is_luks          = ctx.crypto.is_luks,
             .use_systemd_hook = true,
+            .is_zfs_encrypted = ctx.zfs_encrypted,
         },
         .is_zfs             = !ctx.zfs_zpool_names.empty(),
         .hostcache          = ctx.hostcache,
@@ -203,6 +204,7 @@ auto configure_desktop_extras(const InstallContext& ctx) noexcept
             .is_luks          = ctx.crypto.is_luks,
             .has_plymouth     = true,
             .use_systemd_hook = true,
+            .is_zfs_encrypted = ctx.zfs_encrypted,
         };
         const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
         if (gucc::initcpio::setup_initcpio_config(initcpio_path, initcpio_config)) {

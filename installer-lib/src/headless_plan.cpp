@@ -1,5 +1,6 @@
 #include "cachyos/headless_plan.hpp"
 
+#include "cachyos/disk.hpp"
 #include "cachyos/partition_planner.hpp"
 
 // import gucc
@@ -186,12 +187,12 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
           })
         | std::ranges::to<std::vector<gucc::fs::Partition>>();
 
-    // NOTE(vnepogodin): subvolumes on a btrfs root accepted atm
-    // what do we do for zfs??? it must be also supported
+    // the root filesystem volume layout
     const auto root_entry    = std::ranges::find(numbered, PartitionType::Root,
         [](const NumberedPartition& entry) { return entry.config->type; });
     const auto root_fs_name  = (root_entry != std::ranges::end(numbered)) ? std::string_view{root_entry->config->fs_name} : ""sv;
     const bool root_is_btrfs = root_fs_name == "btrfs"sv;
+    const bool root_is_zfs   = root_fs_name == "zfs"sv;
 
     std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes{};
     if (!cfg.subvolumes.empty()) {
@@ -202,6 +203,14 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
         }
     } else if (root_is_btrfs && cfg.use_default_subvolumes) {
         btrfs_subvolumes = conv_to_btrfs_subvols(partition_planner::default_btrfs_layout());
+    }
+
+    // zfs special handling
+    std::optional<gucc::fs::ZfsSetupConfig> zfs_setup{};
+    if (root_is_zfs) {
+        zfs_setup = default_zfs_setup(kDefaultZpoolName, cfg.zfs_passphrase);
+    } else if (cfg.zfs_passphrase) {
+        errors.push_back(fmt::format(FMT_COMPILE("'zfs_passphrase' requires a zfs root filesystem, but root is '{}'"), root_fs_name));
     }
 
     // only errors block the install
@@ -216,6 +225,7 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
         .device           = device,
         .partitions       = std::move(converted_parts),
         .btrfs_subvolumes = std::move(btrfs_subvolumes),
+        .zfs_setup        = std::move(zfs_setup),
     }};
 }
 

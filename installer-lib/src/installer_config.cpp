@@ -62,6 +62,7 @@ constexpr std::array kKnownKeys{
     "mount_opts"sv,
     "partitions"sv,
     "subvolumes"sv,
+    "zfs_passphrase"sv,
     "hostname"sv,
     "locale"sv,
     "xkbmap"sv,
@@ -100,6 +101,7 @@ constexpr std::array kValidFilesystems{
     "btrfs"sv,
     "xfs"sv,
     "f2fs"sv,
+    "zfs"sv,
 };
 
 [[nodiscard]] auto bootloader_from_name(const std::optional<std::string>& name) noexcept
@@ -304,6 +306,7 @@ auto parse_installer_config(std::string_view json_content) noexcept
              {"user_pass", &config.user_pass},
              {"user_shell", &config.user_shell},
              {"root_pass", &config.root_pass},
+             {"zfs_passphrase", &config.zfs_passphrase},
              {"kernel", &config.kernel},
              {"desktop", &config.desktop},
              {"bootloader", &config.bootloader},
@@ -463,6 +466,23 @@ auto parse_installer_config(std::string_view json_content) noexcept
         } else {
             return std::unexpected("'subvolumes' must be a string ('default') or an array");
         }
+    }
+
+    // zfs handling
+    const auto root_fs = [&config]() -> std::string_view {
+        for (const auto& part : config.partitions) {
+            if (part.type == PartitionType::Root) {
+                return part.fs_name;
+            }
+        }
+        return config.fs_name ? std::string_view{*config.fs_name} : std::string_view{};
+    }();
+    const bool root_is_zfs = root_fs == "zfs"sv;
+    if (config.zfs_passphrase && !root_is_zfs) {
+        return std::unexpected(fmt::format(FMT_COMPILE("'zfs_passphrase' requires a zfs root filesystem, but root is '{}'"), root_fs));
+    }
+    if (!config.subvolumes.empty() && root_is_zfs) {
+        return std::unexpected("'subvolumes' apply to a btrfs root only");
     }
 
     // headless defaults

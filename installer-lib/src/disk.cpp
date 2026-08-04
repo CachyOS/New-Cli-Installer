@@ -165,6 +165,17 @@ auto default_zfs_datasets(std::string_view zpool_name) noexcept
     };
 }
 
+auto default_zfs_setup(std::string_view zpool_name,
+    std::optional<std::string> passphrase) noexcept
+    -> gucc::fs::ZfsSetupConfig {
+    return gucc::fs::ZfsSetupConfig{
+        .zpool_name    = std::string(zpool_name),
+        .zpool_options = std::string(kDefaultZpoolOptions),
+        .passphrase    = std::move(passphrase),
+        .datasets      = default_zfs_datasets(zpool_name),
+    };
+}
+
 auto zfs_auto_pres(std::string_view partition,
     std::string_view zpool_name, std::string_view /*mountpoint*/) noexcept
     -> std::expected<gucc::fs::ZfsSetupConfig, std::string> {
@@ -205,6 +216,24 @@ auto zfs_create_zpool(std::string_view partition,
     // Since zfs manages mountpoints, export and re-import with root at mountpoint
     gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool export {}"), pool_name));
     gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool import -R {} {}"), mountpoint, pool_name));
+
+    return {};
+}
+
+auto apply_zfs_root(const gucc::fs::ZfsSetupConfig& zfs_setup,
+    std::string_view root_device, std::string_view mountpoint) noexcept
+    -> std::expected<void, std::string> {
+    if (!gucc::fs::zfs_create_with_config(root_device, zfs_setup)) {
+        return std::unexpected(fmt::format("failed to create zpool '{}' on {}", zfs_setup.zpool_name, root_device));
+    }
+
+    // re-import
+    const auto& import_cmd = zfs_setup.passphrase
+        ? fmt::format(FMT_COMPILE("echo '{}' | zpool import -l -R {} {}"), *zfs_setup.passphrase, mountpoint, zfs_setup.zpool_name)
+        : fmt::format(FMT_COMPILE("zpool import -R {} {}"), mountpoint, zfs_setup.zpool_name);
+    if (!gucc::utils::exec_checked(import_cmd)) {
+        return std::unexpected(fmt::format("failed to import zpool '{}' at {}", zfs_setup.zpool_name, mountpoint));
+    }
 
     return {};
 }
@@ -440,6 +469,10 @@ auto apply_root_partition(const RootPartitionSelection& selection,
     const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvols,
     std::string_view mountpoint) noexcept
     -> std::expected<RootPartitionResult, std::string> {
+    if (selection.device.empty()) {
+        return RootPartitionResult{};
+    }
+
     // 1. Format if requested
     if (selection.format_requested && !selection.mkfs_command.empty()) {
         const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);

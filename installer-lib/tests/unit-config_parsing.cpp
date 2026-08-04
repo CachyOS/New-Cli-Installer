@@ -108,8 +108,19 @@ TEST_CASE("config parsing")
         CHECK(parse_installer_config(R"({ "menus": 1, "bootloader": "systemd-boot" })"sv).has_value());
         CHECK(!parse_installer_config(R"({ "menus": 1, "fs_name": "reiserfs" })"sv).has_value());
         CHECK(parse_installer_config(R"({ "menus": 1, "fs_name": "btrfs" })"sv).has_value());
+        CHECK(parse_installer_config(R"({ "menus": 1, "fs_name": "zfs" })"sv).has_value());
         CHECK(!parse_installer_config(R"({ "menus": 1, "hw_clock": "martian" })"sv).has_value());
         CHECK(parse_installer_config(R"({ "menus": 1, "hw_clock": "localtime" })"sv).has_value());
+    }
+    SECTION("zfs")
+    {
+        auto encrypted = parse_installer_config(R"({ "menus": 1, "fs_name": "zfs", "zfs_passphrase": "hunter2" })"sv);
+        REQUIRE(encrypted.has_value());
+        REQUIRE(encrypted->zfs_passphrase.has_value());
+        CHECK_EQ(*encrypted->zfs_passphrase, "hunter2"sv);
+
+        CHECK(!parse_installer_config(R"({ "menus": 1, "fs_name": "ext4", "zfs_passphrase": "hunter2" })"sv).has_value());
+        CHECK(!parse_installer_config(R"({ "menus": 1, "fs_name": "zfs", "subvolumes": [ { "subvolume": "@", "mountpoint": "/" } ] })"sv).has_value());
     }
     SECTION("headless")
     {
@@ -167,6 +178,7 @@ TEST_CASE("config parsing")
     {
         for (const auto* path : {
                  "examples/desktop-btrfs.json",
+                 "examples/desktop-zfs.json",
                  "examples/server-web.json",
                  "examples/server-db.json",
                  "examples/server-container-host.json",

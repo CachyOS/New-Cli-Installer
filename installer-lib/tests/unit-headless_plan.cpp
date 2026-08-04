@@ -37,6 +37,18 @@ namespace {
     return cfg;
 }
 
+[[nodiscard]] auto valid_zfs_config() -> InstallerConfig {
+    InstallerConfig cfg{};
+    cfg.headless_mode = true;
+    cfg.device        = "/dev/nvme0n1"s;
+    cfg.fs_name       = "zfs"s;
+    cfg.partitions    = {
+        PartitionConfig{.name = "/dev/nvme0n1p1"s, .mountpoint = "/boot"s, .size = "512M"s, .fs_name = "vfat"s, .type = PartitionType::Boot},
+        PartitionConfig{.name = "/dev/nvme0n1p2"s, .mountpoint = "/"s, .size = "450G"s, .fs_name = "zfs"s, .type = PartitionType::Root},
+    };
+    return cfg;
+}
+
 [[nodiscard]] auto joined_errors(const std::vector<std::string>& errors) -> std::string {
     std::string joined{};
     for (const auto& error : errors) {
@@ -285,5 +297,64 @@ TEST_CASE("headless partitioning")
         const auto strategy = headless_strategy_from_config(cfg, false);
         REQUIRE(strategy.has_value());
         REQUIRE(std::holds_alternative<strategy::CreateLayout>(*strategy));
+    }
+    SECTION("zfs root default pool&datasets")
+    {
+        const auto strategy = headless_strategy_from_config(valid_zfs_config(), true);
+        REQUIRE(strategy.has_value());
+
+        const auto* layout = std::get_if<strategy::CreateLayout>(&*strategy);
+        REQUIRE(layout != nullptr);
+        REQUIRE_EQ(layout->partitions[1].fstype, "zfs"sv);
+        REQUIRE(layout->btrfs_subvolumes.empty());
+
+        REQUIRE(layout->zfs_setup.has_value());
+        REQUIRE_EQ(layout->zfs_setup->zpool_name, "zpcachyos"sv);
+        REQUIRE_FALSE(layout->zfs_setup->zpool_options.empty());
+        REQUIRE_FALSE(layout->zfs_setup->passphrase.has_value());
+        REQUIRE_FALSE(layout->zfs_setup->datasets.empty());
+        REQUIRE(std::ranges::any_of(layout->zfs_setup->datasets,
+            [](const auto& dataset) { return dataset.mountpoint == "/"sv; }));
+    }
+    SECTION("zfs passphrase on the pool")
+    {
+        auto cfg           = valid_zfs_config();
+        cfg.zfs_passphrase = "hunter2"s;
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE(strategy.has_value());
+
+        const auto* layout = std::get_if<strategy::CreateLayout>(&*strategy);
+        REQUIRE(layout != nullptr);
+        REQUIRE(layout->zfs_setup.has_value());
+        REQUIRE(layout->zfs_setup->passphrase.has_value());
+        REQUIRE_EQ(*layout->zfs_setup->passphrase, "hunter2"sv);
+    }
+    SECTION("no zfs_setup for non-zfs")
+    {
+        const auto strategy = headless_strategy_from_config(valid_uefi_config(), true);
+        REQUIRE(strategy.has_value());
+
+        const auto* layout = std::get_if<strategy::CreateLayout>(&*strategy);
+        REQUIRE(layout != nullptr);
+        REQUIRE_FALSE(layout->zfs_setup.has_value());
+    }
+    SECTION("zfs passphrase on non-zfs")
+    {
+        auto cfg           = valid_uefi_config();
+        cfg.zfs_passphrase = "abcd"s;
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE_FALSE(strategy.has_value());
+        REQUIRE(contains(joined_errors(strategy.error()), "requires a zfs root filesystem"sv));
+    }
+    SECTION("subvolumes on a zfs rejected")
+    {
+        auto cfg       = valid_zfs_config();
+        cfg.subvolumes = {SubvolumeConfig{.subvolume = "@"s, .mountpoint = "/"s}};
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE_FALSE(strategy.has_value());
+        REQUIRE(contains(joined_errors(strategy.error()), "requires a btrfs root filesystem"sv));
     }
 }

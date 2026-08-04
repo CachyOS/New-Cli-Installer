@@ -81,6 +81,9 @@ struct InstallerConfig {
     std::optional<std::string> user_shell{};
     std::optional<std::string> root_pass{};
 
+    /// Passphrase for native ZFS encryption of the root pool.
+    std::optional<std::string> zfs_passphrase{};
+
     // Packages
     std::optional<std::string> kernel{};
     std::optional<std::string> desktop{};

@@ -3,6 +3,7 @@
 #include "cachyos/steps.hpp"
 
 // import gucc
+#include "gucc/logger.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <cstdint>  // for uint8_t, uint32_t
@@ -13,6 +14,7 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
+#include <variant>      // for get_if
 
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
@@ -180,6 +182,14 @@ auto run(InstallContext& ctx,
 
     // reset run state
     session.runner.reset_cancel();
+
+    // register secrets
+    gucc::logger::register_secret(root_password);
+    gucc::logger::register_secret(user.password);
+    if (const auto* layout = std::get_if<partition_strategy::CreateLayout>(&ctx.strategy);
+        layout != nullptr && layout->zfs_setup && layout->zfs_setup->passphrase) {
+        gucc::logger::register_secret(*layout->zfs_setup->passphrase);
+    }
 
     // parse pacman progress into session context
     Step current_step{Step::Umount};

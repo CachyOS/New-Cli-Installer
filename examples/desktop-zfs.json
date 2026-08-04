@@ -1,0 +1,20 @@
+{
+    "install_type": "simple",
+    "headless_mode": true,
+    "device": "/dev/nvme0n1",
+    "fs_name": "zfs",
+    "zfs_passphrase": "12345678",
+    "partitions": [
+        {"name": "/dev/nvme0n1p1", "mountpoint": "/boot", "size": "1G", "fs_name": "vfat", "type": "boot"},
+        {"name": "/dev/nvme0n1p2", "mountpoint": "/", "size": "100%", "type": "root"}
+    ],
+    "timezone": "Europe/Berlin",
+    "user_name": "user",
+    "user_pass": "1234",
+    "root_pass": "1234",
+    "kernel": "linux-cachyos",
+    "desktop": "kde",
+    "bootloader": "systemd-boot",
+    "autologin": true,
+    "netinstall_groups": ["Multimedia & Codecs", "Office Suite"]
+}
