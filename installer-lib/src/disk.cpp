@@ -17,7 +17,9 @@
 #include "gucc/umount_partitions.hpp"
 #include "gucc/zfs.hpp"
 
-#include <algorithm>    // for transform
+#include <cctype>  // for tolower
+
+#include <algorithm>    // for transform, sort
 #include <expected>     // for unexpected
 #include <filesystem>   // for create_directories
 #include <ranges>       // for ranges::*
@@ -36,6 +38,20 @@ namespace {
 
 /// Default ZFS pool creation options shared by all ZFS setup paths.
 constexpr auto kDefaultZpoolOptions{"-f -o ashift=12 -o autotrim=on -O mountpoint=none -O acltype=posixacl -O atime=off -O relatime=off -O xattr=sa -O normalization=formD -O dnodesize=auto"sv};
+
+/// Resolve a partition to the best stable device path for zpool creation.
+auto resolve_zfs_vdev(std::string_view device) noexcept -> std::string {
+    const auto& blk = gucc::disk::list_block_devices();
+    if (blk) {
+        const auto& dev = gucc::disk::find_device_by_name(*blk, device);
+        if (dev && dev->partuuid && !dev->partuuid->empty()) {
+            auto uuid = *dev->partuuid;
+            std::ranges::transform(uuid, uuid.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return fmt::format(FMT_COMPILE("/dev/disk/by-partuuid/{}"), uuid);
+        }
+    }
+    return std::string(device);
+}
 
 /// Get appropriate default mountpoint for bootloader.
 constexpr auto bootloader_default_mount(gucc::bootloader::BootloaderType bootloader, std::string_view system_mode) noexcept -> std::string_view {
@@ -223,16 +239,37 @@ auto zfs_create_zpool(std::string_view partition,
 auto apply_zfs_root(const gucc::fs::ZfsSetupConfig& zfs_setup,
     std::string_view root_device, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    if (!gucc::fs::zfs_create_with_config(root_device, zfs_setup)) {
-        return std::unexpected(fmt::format("failed to create zpool '{}' on {}", zfs_setup.zpool_name, root_device));
+    const auto& vdev = resolve_zfs_vdev(root_device);
+    if (!gucc::fs::zfs_create_with_config(vdev, zfs_setup)) {
+        return std::unexpected(fmt::format("failed to create zpool '{}' on {}", zfs_setup.zpool_name, vdev));
     }
 
-    // re-import
-    const auto& import_cmd = zfs_setup.passphrase
-        ? fmt::format(FMT_COMPILE("echo '{}' | zpool import -l -R {} {}"), *zfs_setup.passphrase, mountpoint, zfs_setup.zpool_name)
-        : fmt::format(FMT_COMPILE("zpool import -R {} {}"), mountpoint, zfs_setup.zpool_name);
+    // catch up exported pool before re-import
+    gucc::utils::settle_devices();
+
+    // re-import without encrypt key to load it separately
+    const auto& import_cmd = fmt::format(FMT_COMPILE("zpool import -N -R {} {}"), mountpoint, zfs_setup.zpool_name);
     if (!gucc::utils::exec_checked(import_cmd)) {
         return std::unexpected(fmt::format("failed to import zpool '{}' at {}", zfs_setup.zpool_name, mountpoint));
+    }
+
+    if (zfs_setup.passphrase) {
+        const auto& loadkey_cmd = fmt::format(FMT_COMPILE("echo '{}' | zfs load-key {}"), *zfs_setup.passphrase, zfs_setup.zpool_name);
+        if (!gucc::utils::exec_checked(loadkey_cmd)) {
+            return std::unexpected(fmt::format("failed to load encryption key for zpool '{}'", zfs_setup.zpool_name));
+        }
+    }
+
+    // manually mount datasets in order
+    auto mountable = zfs_setup.datasets
+        | std::ranges::views::filter([](const gucc::fs::ZfsDataset& ds) { return ds.mountpoint != "none"sv && ds.mountpoint != "legacy"sv; })
+        | std::ranges::to<std::vector<gucc::fs::ZfsDataset>>();
+
+    std::ranges::sort(mountable, {}, &gucc::fs::ZfsDataset::mountpoint);
+    for (const auto& dataset : mountable) {
+        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zfs mount {}"), dataset.zpath))) {
+            return std::unexpected(fmt::format("failed to mount zfs dataset '{}' (mountpoint {})", dataset.zpath, dataset.mountpoint));
+        }
     }
 
     return {};
