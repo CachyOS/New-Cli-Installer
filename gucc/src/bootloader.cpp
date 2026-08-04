@@ -221,6 +221,12 @@ auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string {
 }
 
 auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> Result<void> {
+    // bail out at empty path
+    if (config.efi_directory.empty()) {
+        spdlog::error("systemd-boot install requested with an empty EFI directory");
+        return make_error(ErrorCode::InvalidArgument, "systemd-boot requires a non-empty EFI directory");
+    }
+
     // Install systemd-boot onto EFI
     const auto& bootctl_cmd = fmt::format(FMT_COMPILE("bootctl --path={} install"), config.efi_directory);
     if (!utils::arch_chroot_checked(bootctl_cmd, config.root_mountpoint)) {
@@ -258,6 +264,12 @@ auto write_grub_config(const GrubConfig& grub_config, std::string_view root_moun
 }
 
 auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_install_config, std::string_view root_mountpoint) noexcept -> Result<void> {
+    // bail out at empty path
+    if (grub_install_config.is_efi && (!grub_install_config.efi_directory || grub_install_config.efi_directory->empty())) {
+        spdlog::error("grub EFI install requested with an empty EFI directory");
+        return make_error(ErrorCode::InvalidArgument, "grub (EFI) requires a non-empty EFI directory");
+    }
+
     // Write grub configuration on the system
     if (auto res = bootloader::write_grub_config(grub_config, root_mountpoint); !res) {
         return res;
@@ -344,6 +356,12 @@ auto refind_write_extra_kern_strings(std::string_view file_path, const std::vect
 }
 
 auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -> Result<void> {
+    // bail out at empty path
+    if (refind_install_config.boot_mountpoint.empty()) {
+        spdlog::error("refind install requested with an empty boot mountpoint");
+        return make_error(ErrorCode::InvalidArgument, "refind requires a non-empty boot mountpoint");
+    }
+
     // Get refind install cmd
     const auto& refind_install_cmd = [](auto&& root_path, bool is_removable_drive) -> std::string {
         std::string result = fmt::format(FMT_COMPILE("refind-install --root {}"), root_path);
