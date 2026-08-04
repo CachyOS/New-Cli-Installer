@@ -380,7 +380,7 @@ auto run(InstallContext& ctx,
     }
     begin_step(Step::Bootloader);
     if (auto res = steps::bootloader(ctx); !res) {
-        warnings.emplace_back(res.error());
+        return fail_step(session, Step::Bootloader, "Bootloader installation failed"sv, res.error(), std::move(warnings));
     }
 
     // Detect post-install crypto state and stash it on the context for kernel-params use.
