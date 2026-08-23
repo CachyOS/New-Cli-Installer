@@ -503,7 +503,7 @@ auto parse_installer_config(std::string_view json_content) noexcept
         if (!config.user_shell) {
             config.user_shell = "/bin/bash";
         }
-        if (!config.kernel) {
+        if (!config.kernel && !config.server_profile) {
             config.kernel = "linux-cachyos";
         }
     }
@@ -587,6 +587,16 @@ auto installer_config_to_inputs(const InstallerConfig& cfg) noexcept
     // fetch and set server profile
     if (auto res = cachyos::installer::init_server_profile(inputs.ctx); !res) {
         return std::unexpected(std::move(res).error());
+    }
+
+    // A server profile supplies the kernel only when the user omitted it. Keep
+    // the general headless default for profiles without a kernel declaration.
+    if (!cfg.kernel) {
+        if (inputs.ctx.resolved_server && !inputs.ctx.resolved_server->default_kernel.empty()) {
+            inputs.ctx.kernel = inputs.ctx.resolved_server->default_kernel;
+        } else {
+            inputs.ctx.kernel = "linux-cachyos";
+        }
     }
 
     // opts

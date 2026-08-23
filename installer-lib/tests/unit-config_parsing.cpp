@@ -145,6 +145,45 @@ TEST_CASE("config parsing")
 
         CHECK(validate_headless_config(*cfg).has_value());
     }
+    SECTION("server kernel precedence")
+    {
+        SECTION("profile default remains available when kernel is omitted")
+        {
+            auto cfg = parse_installer_config(R"({
+                "menus": 1,
+                "headless_mode": true,
+                "allow_auto_partition": true,
+                "device": "/dev/sda",
+                "fs_name": "btrfs",
+                "user_name": "admin",
+                "user_pass": "x",
+                "root_pass": "y",
+                "server_profile": "minimal",
+                "ssh_authorized_keys": ["ssh-ed25519 AAAA admin@example.com"]
+            })"sv);
+            REQUIRE(cfg.has_value());
+            CHECK(!cfg->kernel.has_value());
+        }
+        SECTION("explicit kernel is preserved")
+        {
+            auto cfg = parse_installer_config(R"({
+                "menus": 1,
+                "headless_mode": true,
+                "allow_auto_partition": true,
+                "device": "/dev/sda",
+                "fs_name": "btrfs",
+                "user_name": "admin",
+                "user_pass": "x",
+                "root_pass": "y",
+                "kernel": "linux-zen",
+                "server_profile": "minimal",
+                "ssh_authorized_keys": ["ssh-ed25519 AAAA admin@example.com"]
+            })"sv);
+            REQUIRE(cfg.has_value());
+            REQUIRE(cfg->kernel.has_value());
+            CHECK_EQ(*cfg->kernel, "linux-zen");
+        }
+    }
     SECTION("optionals")
     {
         auto cfg = parse_installer_config(R"({

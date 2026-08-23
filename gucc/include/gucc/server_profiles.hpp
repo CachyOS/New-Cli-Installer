@@ -57,6 +57,7 @@ struct ResolvedServerProfile {
     std::string id{};
     std::string name{};
     std::string description{};
+    std::string default_kernel{};
     std::vector<std::string> packages{};
     std::vector<ServiceEntry> services{};
     std::vector<std::uint16_t> firewall_tcp_ports{};

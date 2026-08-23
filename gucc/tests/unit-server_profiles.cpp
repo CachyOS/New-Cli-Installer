@@ -88,6 +88,7 @@ TEST_CASE("server profiles")
         {
             auto resolved = gucc::profile::resolve_server_profile(*parsed, "minimal"sv, {});
             REQUIRE(resolved.has_value());
+            CHECK_EQ(resolved->default_kernel, "linux-cachyos-server");
             CHECK(std::ranges::contains(resolved->packages, "openssh"sv));
             CHECK_EQ(resolved->firewall_tcp_ports, std::vector<std::uint16_t>{22});
             auto sshd = std::ranges::find(resolved->services, "sshd"sv, &gucc::profile::ServiceEntry::name);
@@ -129,6 +130,14 @@ TEST_CASE("server profiles")
             REQUIRE(!resolved.has_value());
             CHECK_EQ(resolved.error().code, gucc::ErrorCode::NotFound);
         }
+    }
+    SECTION("an absent profile kernel remains an empty fallback")
+    {
+        auto parsed = gucc::profile::parse_server_profiles(DOC_TEST);
+        REQUIRE(parsed.has_value());
+        auto resolved = gucc::profile::resolve_server_profile(*parsed, "x"sv, {});
+        REQUIRE(resolved.has_value());
+        CHECK(resolved->default_kernel.empty());
     }
     SECTION("profile overrides action service")
     {

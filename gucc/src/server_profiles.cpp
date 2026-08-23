@@ -236,9 +236,10 @@ auto resolve_server_profile(const ServerProfiles& profiles, std::string_view pro
     const auto& profile = *found;
 
     ResolvedServerProfile resolved{};
-    resolved.id          = profile.id;
-    resolved.name        = profile.name;
-    resolved.description = profile.description;
+    resolved.id             = profile.id;
+    resolved.name           = profile.name;
+    resolved.description    = profile.description;
+    resolved.default_kernel = profiles.default_kernel;
 
     // merged packages
     resolved.packages = merge_stable_unique<std::string>(profiles.baseline.packages, profile.packages, user_extras.packages);
