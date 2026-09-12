@@ -48,6 +48,27 @@ constexpr auto find_root_btrfs_part(auto&& parts) noexcept {
 
 }  // namespace
 
+// Mount a single btrfs subvolume: create mountpoint dir, then mount.
+auto btrfs_mount_single_subvol(std::string_view device, std::string_view mount_option,
+    std::string_view subvolume_name, std::string_view subvolume_mountpoint)
+    noexcept -> gucc::Result<void> {
+    std::error_code err{};
+    ::fs::create_directories(subvolume_mountpoint, err);
+    if (err) {
+        return gucc::make_error(gucc::ErrorCode::FileIo,
+            fmt::format("Failed to create mountpoint {}: {}", subvolume_mountpoint, err.message()));
+    }
+
+    const auto& mount_cmd = fmt::format(FMT_COMPILE("mount -o {} \"{}\" {}"),
+        mount_option, device, subvolume_mountpoint);
+    spdlog::debug("mounting..: {}", mount_cmd);
+    if (!gucc::utils::exec_checked(mount_cmd)) {
+        return gucc::make_error(gucc::ErrorCode::SubprocessFailed,
+            fmt::format("Failed to mount subvolume '{}' at {}", subvolume_name, subvolume_mountpoint));
+    }
+    return {};
+}
+
 namespace gucc::fs {
 
 auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mountpoint) noexcept -> Result<void> {
@@ -91,22 +112,12 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
             mount_option = mount_opts;
         }
 
-        // mount at the actual mountpoint where subvolume is going to be mounted after install
         const auto& subvolume_mountpoint = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, subvol.mountpoint);
 
-        // TODO(vnepogodin): refactor create dir and mount into own function
-        std::error_code err{};
-        ::fs::create_directories(subvolume_mountpoint, err);
-        if (err) {
-            return make_error(ErrorCode::FileIo, fmt::format("Failed to create directories for btrfs subvols mountpoint {}: {}", subvolume_mountpoint, err.message()));
-        }
-
-        // now mount subvolume
-        const auto& mount_cmd = fmt::format(FMT_COMPILE("mount -o {} \"{}\" {}"), mount_option, device, subvolume_mountpoint);
-
-        spdlog::debug("mounting..: {}", mount_cmd);
-        if (!utils::exec_checked(mount_cmd)) {
-            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to mount subvolume {} mountpoint {} with: {}", subvol.subvolume, subvolume_mountpoint, mount_cmd));
+        if (auto res = btrfs_mount_single_subvol(device, mount_option,
+                subvol.subvolume.empty() ? "(root)"sv : subvol.subvolume,
+                subvolume_mountpoint); !res) {
+            return res;
         }
     }
     return {};
