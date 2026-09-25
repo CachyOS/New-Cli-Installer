@@ -4,14 +4,13 @@
 #include <cstdio>   // for feof, fgets, pclose, perror, popen
 #include <cstdlib>  // for exit, WIFEXITED, WIFSIGNALED
 
-#include <fstream>  // for ofstream
+#include <fstream>  // for ifstream, ofstream
 
 #include <spdlog/spdlog.h>
 
 namespace gucc::file_utils {
 
 auto read_whole_file(std::string_view filepath) noexcept -> std::string {
-    // Use std::fopen because it's faster than std::ifstream
     auto* file = std::fopen(filepath.data(), "rb");
     if (file == nullptr) {
         spdlog::error("[READWHOLEFILE] '{}' read failed: {}", filepath, std::strerror(errno));
@@ -33,6 +32,17 @@ auto read_whole_file(std::string_view filepath) noexcept -> std::string {
     std::fclose(file);
 
     return buf;
+}
+
+auto read_first_line(std::string_view filepath) noexcept -> std::string {
+    std::ifstream ifs{filepath.data()};
+    if (!ifs.is_open()) return {};
+
+    std::string line;
+    std::getline(ifs, line);
+    // Trim trailing \r (Windows line endings).
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    return line;
 }
 
 auto write_to_file(std::string_view data, std::string_view filepath) noexcept -> bool {

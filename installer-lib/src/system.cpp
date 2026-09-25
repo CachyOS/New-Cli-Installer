@@ -1,5 +1,6 @@
 #include "cachyos/system.hpp"
 
+#include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/pacmanconf_repo.hpp"
@@ -34,12 +35,8 @@ namespace cachyos::installer {
 auto detect_system() noexcept -> std::expected<SystemInfo, std::string> {
     SystemInfo info{};
 
-    // Apple System Detection
-    // TODO(vnepogodin): refactor later to util function to read just single line
-    std::string sys_vendor{};
-    if (std::ifstream ifs{"/sys/class/dmi/id/sys_vendor"}; ifs) {
-        std::getline(ifs, sys_vendor);
-    }
+    // Apple System Detection.
+    const auto sys_vendor = gucc::file_utils::read_first_line("/sys/class/dmi/id/sys_vendor");
     if ((sys_vendor == "Apple Inc."sv) || (sys_vendor == "Apple Computer, Inc."sv)) {
         if (!gucc::utils::exec_checked("modprobe -r -q efivars"sv)) {
             spdlog::warn("failed to unload efivars module");
