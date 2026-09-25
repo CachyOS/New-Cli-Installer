@@ -21,17 +21,12 @@ auto make_multiline_view(std::string_view str, bool reverse, char delim) noexcep
 }
 
 auto make_multiline(const std::vector<std::string>& multiline, bool reverse, std::string_view delim) noexcept -> std::string {
-    // TODO(vnepogodin): refactor with our join
     std::string res{};
     for (const auto& line : multiline) {
         res += line;
-        res += delim.data();
+        res += delim;
     }
-
-    if (reverse) {
-        std::ranges::reverse(res);
-    }
-
+    if (reverse) std::ranges::reverse(res);
     return res;
 }
 
