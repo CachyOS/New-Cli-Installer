@@ -7,12 +7,15 @@
 
 #include <cstddef>  // for size_t
 #include <cstdint>  // for uint32_t
+#include <cstdio>   // for fwrite, fclose
+#include <cstdlib>  // for system
 
+#include <algorithm>           // for ranges::find
 #include <array>               // for array
 #include <atomic>              // for atomic_bool
 #include <condition_variable>  // for condition_variable
 #include <iterator>            // for unreachable_sentinel
-#include <mutex>               // for mutex, lock_guard, unique_lock
+#include <mutex>               // for mutex, scoped_lock, unique_lock
 #include <ranges>              // for ranges::*
 #include <string>              // for string
 #include <string_view>         // for string_view
@@ -20,6 +23,9 @@
 #include <utility>             // for move
 #include <vector>              // for vector
 
+#include <fmt/compile.h>
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 
 using namespace std::string_literals;
@@ -71,6 +77,17 @@ auto env_ptrs_from(const std::vector<std::string>& storage) -> std::vector<const
     return ptrs;
 }
 
+auto display_command(const std::vector<std::string>& argv) -> std::string {
+    const auto shell_at = std::ranges::search(argv, std::array{"/bin/sh"sv, "-c"sv});
+    if (shell_at.empty() || shell_at.end() == argv.end()) {
+        return gucc::utils::join(argv, ' ');
+    }
+    // keep the arch-chroot prefix, if any
+    const auto prefix  = std::ranges::subrange(argv.begin(), shell_at.begin());
+    const auto command = std::ranges::subrange(shell_at.end(), argv.end());
+    return fmt::format(FMT_COMPILE("{}"), fmt::join(std::ranges::views::concat(prefix, command), " "));
+}
+
 [[gnu::pure]] auto child_environment(ProcessLocation proc_location) -> const std::vector<const char*>& {
     bool for_target = proc_location == ProcessLocation::Target;
 
@@ -87,8 +104,9 @@ namespace gucc::utils {
 // TODO(vnepogodin): first to be rewritten in Rust
 
 struct ProcessRunner::Impl {
-    std::mutex sink_mutex;
-    LineSink line_sink;
+    std::mutex observers_mutex;
+    std::vector<ExecutionObserver*> observers;
+    std::atomic_uint64_t next_id{1};
 
     std::atomic_bool dry_run{false};
     std::atomic_bool cancel_flag{false};
@@ -97,6 +115,12 @@ struct ProcessRunner::Impl {
     subprocess_s* active_child{nullptr};
 
     auto launch(std::vector<std::string> argv, const RunOptions& opts) noexcept -> ProcessResult;
+
+    // snapshot so observers may detach while a command runs
+    auto observers_snapshot() -> std::vector<ExecutionObserver*> {
+        const std::scoped_lock lock(observers_mutex);
+        return observers;
+    }
 };
 
 void LineAssembler::feed(std::string_view chunk, const LineCallback& on_line) {
@@ -126,31 +150,60 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
         argv.insert(argv.begin(), {"/usr/bin/arch-chroot"s, std::string{opts.mountpoint}});
     }
 
-    const auto joined = logger::redact(utils::join(argv, ' '));
-    spdlog::debug("[exec] cmd := {}", joined);
+    const auto active_observers = observers_snapshot();
+    const CommandInfo info{
+        .id      = next_id.fetch_add(1),
+        .display = logger::redact(display_command(argv)),
+        .options = opts,
+        .skipped = dry_run.load() && opts.kind == ProcessKind::Mutate,
+    };
+    const auto finish = [&](ProcessResult result) -> ProcessResult {
+        for (auto* observer : active_observers) {
+            observer->on_finish(info, result);
+        }
+        return result;
+    };
 
     if (cancel_flag.load()) {
         return ProcessResult{.cancelled = true, .exit_code = -1};
     }
 
-    if (dry_run.load() && opts.kind == ProcessKind::Mutate) {
-        spdlog::info("[dry-run] would run: {}", joined);
-        return ProcessResult{.exit_code = 0};
+    for (auto* observer : active_observers) {
+        observer->on_start(info);
+    }
+    if (info.skipped) {
+        return finish(ProcessResult{.exit_code = 0});
     }
 
     auto argv_ptrs = env_ptrs_from(argv);
 
-    const auto& env_ptrs = child_environment(opts.location);
+    const auto& base_env = child_environment(opts.location);
+    std::vector<const char*> extended_env;
+    if (!opts.env.empty()) {
+        extended_env.assign(base_env.begin(), std::prev(base_env.end()));
+        std::ranges::copy(opts.env | std::ranges::views::transform(&std::string::c_str), std::back_inserter(extended_env));
+        extended_env.emplace_back(nullptr);
+    }
+    const auto& env_ptrs = opts.env.empty() ? base_env : extended_env;
 
     subprocess_s process{};
     const int options = subprocess_option_enable_async | subprocess_option_combined_stdout_stderr;
     if (subprocess_create_ex(argv_ptrs.data(), options, env_ptrs.data(), &process) != 0) {
-        spdlog::error("[exec] failed to spawn: {}", joined);
-        return ProcessResult{.exit_code = -1};
+        spdlog::error("[exec] failed to spawn: {}", info.display);
+        return finish(ProcessResult{.exit_code = -1});
+    }
+
+    // written before any output is read, so only small payloads
+    if (auto* child_stdin = subprocess_stdin(&process); child_stdin != nullptr) {
+        if (!opts.input.empty() && std::fwrite(opts.input.data(), 1, opts.input.size(), child_stdin) != opts.input.size()) {
+            spdlog::error("[exec] failed to write stdin: {}", info.display);
+        }
+        std::fclose(child_stdin);
+        process.stdin_file = nullptr;
     }
 
     {
-        const std::lock_guard<std::mutex> lock(child_mutex);
+        const std::scoped_lock lock(child_mutex);
         active_child = &process;
     }
 
@@ -169,17 +222,11 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
                 }
             }
             timed_out.store(true);
-            const std::lock_guard<std::mutex> child_lock(child_mutex);
+            const std::scoped_lock child_lock(child_mutex);
             if (active_child != nullptr) {
                 subprocess_terminate(active_child);
             }
         });
-    }
-
-    LineSink sink_copy;
-    {
-        const std::lock_guard<std::mutex> lock(sink_mutex);
-        sink_copy = line_sink;
     }
 
     ProcessResult result{};
@@ -194,9 +241,8 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
             owned = logger::redact(line);
             line  = owned;
         }
-        spdlog::info("{}", line);
-        if (sink_copy) {
-            sink_copy(line);
+        for (auto* observer : active_observers) {
+            observer->on_line(info, line);
         }
     };
 
@@ -214,18 +260,18 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
 
     int ret{-1};
     if (subprocess_join(&process, &ret) != 0) {
-        spdlog::error("[exec] failed to join: {}", joined);
+        spdlog::error("[exec] failed to join: {}", info.display);
         ret = -1;
     }
 
     // wake timeout watcher
     {
-        const std::lock_guard<std::mutex> lock(done_mutex);
+        const std::scoped_lock lock(done_mutex);
         done = true;
     }
     done_cv.notify_all();
     {
-        const std::lock_guard<std::mutex> lock(child_mutex);
+        const std::scoped_lock lock(child_mutex);
         active_child = nullptr;
     }
     subprocess_destroy(&process);
@@ -237,15 +283,21 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
     result.timed_out = timed_out.load();
     result.cancelled = cancel_flag.load();
     result.exit_code = ret;
-    return result;
+    return finish(std::move(result));
 }
 
 ProcessRunner::ProcessRunner() noexcept : m_impl(std::make_unique<Impl>()) { }
 ProcessRunner::~ProcessRunner() = default;
 
-void ProcessRunner::set_line_sink(LineSink sink) noexcept {
-    const std::lock_guard<std::mutex> lock(m_impl->sink_mutex);
-    m_impl->line_sink = std::move(sink);
+auto ProcessRunner::add_observer(ExecutionObserver& observer) noexcept -> ObserverHandle {
+    const std::scoped_lock lock(m_impl->observers_mutex);
+    m_impl->observers.push_back(&observer);
+    return ObserverHandle{[impl = m_impl.get(), target = &observer]() noexcept {
+        const std::scoped_lock lock(impl->observers_mutex);
+        if (const auto it = std::ranges::find(impl->observers, target); it != std::ranges::end(impl->observers)) {
+            impl->observers.erase(it);
+        }
+    }};
 }
 
 void ProcessRunner::set_dry_run(bool enabled) noexcept {
@@ -258,7 +310,7 @@ auto ProcessRunner::dry_run() const noexcept -> bool {
 
 void ProcessRunner::cancel() noexcept {
     m_impl->cancel_flag.store(true);
-    const std::lock_guard<std::mutex> lock(m_impl->child_mutex);
+    const std::scoped_lock lock(m_impl->child_mutex);
     if (m_impl->active_child != nullptr) {
         subprocess_terminate(m_impl->active_child);
     }
@@ -287,6 +339,11 @@ auto ProcessRunner::run_shell(std::string_view cmdline, const RunOptions& opts) 
 auto default_runner() noexcept -> ProcessRunner& {
     static ProcessRunner runner;
     return runner;
+}
+
+auto run_interactive(std::string_view cmdline) noexcept -> std::int32_t {
+    // NOTE: subprocess.h can't hand the child our TTY, so this stays on system()
+    return std::system(std::string{cmdline}.c_str());  // NOLINT(bugprone-command-processor,cert-env33-c)
 }
 
 }  // namespace gucc::utils
