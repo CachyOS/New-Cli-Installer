@@ -3,9 +3,9 @@
 
 #include <unistd.h>  // for sync
 
-#include <cstdlib>  // for getenv, system
+#include <cstdlib>  // for getenv
 
-#include <string>   // for string, to_string
+#include <string>   // for string
 #include <utility>  // for move
 #include <vector>   // for vector
 
@@ -14,6 +14,34 @@
 
 using namespace std::string_view_literals;
 
+namespace {
+
+using gucc::utils::ProcessKind;
+using gucc::utils::ProcessLocation;
+using gucc::utils::RunOptions;
+
+using gucc::ErrorCode;
+using gucc::Result;
+
+constexpr RunOptions kQuery{.quiet = true, .kind = ProcessKind::Query};
+constexpr RunOptions kMutate{.kind = ProcessKind::Mutate};
+
+constexpr auto in_target(RunOptions opts, std::string_view mountpoint) noexcept -> RunOptions {
+    opts.location   = ProcessLocation::Target;
+    opts.mountpoint = mountpoint;
+    return opts;
+}
+
+// NOTE(vnepogodin): yenuenly that should be in Result as monadic
+constexpr auto or_error(bool succeeded, std::string context) noexcept -> Result<void> {
+    if (!succeeded) {
+        return make_error(ErrorCode::SubprocessFailed, std::move(context));
+    }
+    return {};
+}
+
+}  // namespace
+
 namespace gucc::utils {
 
 auto safe_getenv(const char* env_name) noexcept -> std::string_view {
@@ -21,39 +49,98 @@ auto safe_getenv(const char* env_name) noexcept -> std::string_view {
     return raw_val != nullptr ? std::string_view{raw_val} : std::string_view{};
 }
 
-void exec(const std::vector<std::string>& vec) noexcept {
-    default_runner().run(vec, RunOptions{.kind = ProcessKind::Mutate});
+auto exec(std::string_view command) noexcept -> std::string {
+    return std::move(default_runner().run_shell(command, kQuery).output);
 }
 
-// https://github.com/sheredom/subprocess.h
-// https://gist.github.com/konstantint/d49ab683b978b3d74172
-// https://github.com/arun11299/cpp-subprocess/blob/master/subprocess.hpp#L1218
-// https://stackoverflow.com/questions/11342868/c-interface-for-interactive-bash
-// https://github.com/hniksic/rust-subprocess
-auto exec(std::string_view command, bool interactive) noexcept -> std::string {
-    if (interactive) {
-        const auto ret_code = std::system(command.data());
-        return std::to_string(ret_code);
-    }
-
-    // readonly only to capture output
-    return std::move(default_runner().run_shell(command, RunOptions{.quiet = true, .kind = ProcessKind::Query}).output);
+auto query_checked(std::string_view command) noexcept -> bool {
+    return default_runner().run_shell(command, kQuery).ok();
 }
 
 auto exec_checked(std::string_view command) noexcept -> bool {
-    return default_runner().run_shell(command, RunOptions{.kind = ProcessKind::Mutate}).ok();
+    return default_runner().run_shell(command, kMutate).ok();
 }
 
-void arch_chroot(std::string_view command, std::string_view mountpoint, [[maybe_unused]] bool interactive) noexcept {
-    default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint});
+auto exec_checked_with_input(std::string_view command, std::string_view input) noexcept -> bool {
+    auto opts  = kMutate;
+    opts.input = input;
+    return default_runner().run_shell(command, opts).ok();
+}
+
+auto exec_with_input(std::string_view command, std::string_view input) noexcept -> std::optional<std::string> {
+    auto opts  = kQuery;
+    opts.input = input;
+    auto res   = default_runner().run_shell(command, opts);
+    if (!res.ok()) {
+        return std::nullopt;
+    }
+    return std::move(res.output);
+}
+
+void exec(const std::vector<std::string>& argv) noexcept {
+    default_runner().run(argv, kMutate);
+}
+
+auto exec_checked(const std::vector<std::string>& argv) noexcept -> bool {
+    return default_runner().run(argv, kMutate).ok();
+}
+
+auto exec_checked(const std::vector<std::string>& argv, std::span<const std::string> env) noexcept -> bool {
+    auto opts = kMutate;
+    opts.env  = env;
+    return default_runner().run(argv, opts).ok();
+}
+
+void arch_chroot(std::string_view command, std::string_view mountpoint) noexcept {
+    default_runner().run_shell(command, in_target(kMutate, mountpoint));
 }
 
 auto arch_chroot_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool {
-    return default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint}).ok();
+    return default_runner().run_shell(command, in_target(kMutate, mountpoint)).ok();
 }
 
-auto arch_chroot_follow(std::string_view command, std::string_view mountpoint) noexcept -> bool {
-    return default_runner().run_shell(command, RunOptions{.location = ProcessLocation::Target, .mountpoint = mountpoint}).ok();
+auto arch_chroot_checked(const std::vector<std::string>& argv, std::string_view mountpoint) noexcept -> bool {
+    return default_runner().run(argv, in_target(kMutate, mountpoint)).ok();
+}
+
+auto arch_chroot_output(std::string_view command, std::string_view mountpoint) noexcept -> std::optional<std::string> {
+    auto res = default_runner().run_shell(command, in_target(kMutate, mountpoint));
+    if (!res.ok()) {
+        return std::nullopt;
+    }
+    return std::move(res.output);
+}
+
+auto arch_chroot_query(std::string_view command, std::string_view mountpoint) noexcept -> std::string {
+    return std::move(default_runner().run_shell(command, in_target(kQuery, mountpoint)).output);
+}
+
+auto arch_chroot_query_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool {
+    return default_runner().run_shell(command, in_target(kQuery, mountpoint)).ok();
+}
+
+auto exec_or_error(std::string_view command, std::string context) noexcept -> Result<void> {
+    return or_error(exec_checked(command), std::move(context));
+}
+
+auto exec_or_error(const std::vector<std::string>& argv, std::string context) noexcept -> Result<void> {
+    return or_error(exec_checked(argv), std::move(context));
+}
+
+auto exec_or_error(const std::vector<std::string>& argv, std::span<const std::string> env, std::string context) noexcept -> Result<void> {
+    return or_error(exec_checked(argv, env), std::move(context));
+}
+
+auto exec_or_error_with_input(std::string_view command, std::string_view input, std::string context) noexcept -> Result<void> {
+    return or_error(exec_checked_with_input(command, input), std::move(context));
+}
+
+auto arch_chroot_or_error(std::string_view command, std::string_view mountpoint, std::string context) noexcept -> Result<void> {
+    return or_error(arch_chroot_checked(command, mountpoint), std::move(context));
+}
+
+auto arch_chroot_or_error(const std::vector<std::string>& argv, std::string_view mountpoint, std::string context) noexcept -> Result<void> {
+    return or_error(arch_chroot_checked(argv, mountpoint), std::move(context));
 }
 
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::string_view pacman_config, bool hostcache) noexcept -> bool {
@@ -65,7 +152,7 @@ auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::s
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("pacstrap {} {} {} {}"), cache_flag, config_flag, mountpoint, packages);
 
     spdlog::info("Running pacstrap with packages: '{}'", packages);
-    return default_runner().run_shell(cmd_formatted, RunOptions{.kind = ProcessKind::Mutate}).ok();
+    return exec_checked(cmd_formatted);
 }
 
 void settle_devices() noexcept {
