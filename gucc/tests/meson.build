@@ -7,6 +7,7 @@ doctest_main_lib = static_library('doctest_main',
 gucc_test_names = [
     'block_devices',
     'btrfs',
+    'chwd',
     'crypto_detection',
     'crypttab_gen',
     'error',

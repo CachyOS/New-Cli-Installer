@@ -20,4 +20,14 @@ auto install_available_profiles(std::string_view root_mountpoint) noexcept -> Re
 
 }  // namespace gucc::chwd
 
+namespace gucc::chwd::detail {
+
+// every row of list all
+auto parse_profile_table(std::string_view output) noexcept -> std::vector<std::string>;
+
+// value of every `Name` row
+auto parse_profile_details(std::string_view output) noexcept -> std::vector<std::string>;
+
+}  // namespace gucc::chwd::detail
+
 #endif  // CHWD_HPP
