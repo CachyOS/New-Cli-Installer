@@ -4,11 +4,12 @@
 #include <algorithm>    // for transform, contains, find_if_not
 #include <array>        // for array
 #include <charconv>     // for from_chars
-#include <concepts>     // for same_as, unsigned_integral
+#include <concepts>     // for invocable, same_as, unsigned_integral
 #include <optional>     // for optional
 #include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <utility>      // for forward
 #include <vector>       // for vector
 
 namespace gucc::utils {
@@ -57,6 +58,22 @@ constexpr auto make_split_view(std::string_view str, char delim = '\n') noexcept
         | std::ranges::views::split(delim)
         | std::ranges::views::transform(functor)
         | std::ranges::views::filter(second);
+}
+
+/// Unlike make_split_view, keeps empty lines, so joining them back restores the text.
+constexpr auto split_lines(std::string_view str) noexcept {
+    return str
+        | std::ranges::views::split('\n')
+        | std::ranges::views::transform([](auto&& line) { return std::string_view{line}; });
+}
+
+/// Maps every line through @p fn, keeping empty lines and line breaks as they were.
+template <std::invocable<std::string_view> Fn>
+constexpr auto map_lines(std::string_view str, Fn&& fn) -> std::string {
+    return split_lines(str)
+        | std::ranges::views::transform(std::forward<Fn>(fn))
+        | std::ranges::views::join_with('\n')
+        | std::ranges::to<std::string>();
 }
 
 /// @brief Concept representing a type that supports string find operations.
@@ -128,6 +145,12 @@ constexpr auto rtrim(std::string_view str) noexcept -> std::string_view {
 /// @return The trimmed string view.
 constexpr auto trim(std::string_view str) noexcept -> std::string_view {
     return rtrim(ltrim(str));
+}
+
+/// Leading whitespace is skipped.
+constexpr auto first_field(std::string_view line) noexcept -> std::string_view {
+    line = ltrim(line);
+    return line.substr(0, line.find_first_of(" \t"));
 }
 
 /// @brief Parse unsigned integer from string view.

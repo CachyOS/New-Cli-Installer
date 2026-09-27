@@ -99,6 +99,13 @@ TEST_CASE("string_utils")
       REQUIRE_EQ(joined_str, "1,22,333");
     }
   }
+  SECTION("make_multiline join test")
+  {
+      const std::vector<std::string> input{"1", "22", "333"};
+      REQUIRE_EQ(gucc::utils::make_multiline(std::vector<std::string>{}), "");
+      REQUIRE_EQ(gucc::utils::make_multiline(input), "1\n22\n333\n");
+      REQUIRE_EQ(gucc::utils::make_multiline(input, true, ", "), "333, 22, 1, ");
+  }
   SECTION("trim test")
   {
     SECTION("empty string view")
@@ -262,5 +269,12 @@ TEST_CASE("string_utils")
       REQUIRE(id.has_value());
       REQUIRE_EQ(*id, 256ULL);
     }
+  }
+  SECTION("first_field")
+  {
+      REQUIRE(gucc::utils::first_field(""sv).empty());
+      REQUIRE(gucc::utils::first_field(" \t "sv).empty());
+      REQUIRE_EQ(gucc::utils::first_field("\t    /dev/sda1  ONLINE\t0 0 0  "sv), "/dev/sda1"sv);
+      REQUIRE_EQ(gucc::utils::first_field("zpcachyos/ROOT\t/"sv), "zpcachyos/ROOT"sv);
   }
 }
