@@ -1,5 +1,6 @@
 #include "gucc/block_devices.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/ranges_utils.hpp"
 
 #include <algorithm>  // for find, find_if, equal
 #include <cctype>     // for tolower
@@ -93,31 +94,15 @@ auto parse_lsblk_json(std::string_view json_output) -> std::vector<BlockDevice> 
 namespace gucc::disk {
 
 auto find_device_by_name(const std::vector<BlockDevice>& devices, std::string_view device_name) -> std::optional<BlockDevice> {
-    auto it = std::ranges::find(devices, device_name, &BlockDevice::name);
-    if (it != std::ranges::end(devices)) {
-        return *it;
-    }
-    return std::nullopt;
+    return utils::find_optional(devices, device_name, &BlockDevice::name);
 }
 
 auto find_device_by_pkname(const std::vector<BlockDevice>& devices, std::string_view pkname) -> std::optional<BlockDevice> {
-    auto it = std::ranges::find_if(devices, [pkname](const auto& dev) {
-        return dev.pkname == pkname;
-    });
-    if (it != std::ranges::end(devices)) {
-        return *it;
-    }
-    return std::nullopt;
+    return utils::find_if_optional(devices, [pkname](const BlockDevice& dev) { return dev.pkname == pkname; });
 }
 
 auto find_device_by_mountpoint(const std::vector<BlockDevice>& devices, std::string_view mountpoint) -> std::optional<BlockDevice> {
-    auto it = std::ranges::find_if(devices, [mountpoint](const auto& dev) {
-        return std::ranges::contains(dev.mountpoints, mountpoint);
-    });
-    if (it != std::ranges::end(devices)) {
-        return *it;
-    }
-    return std::nullopt;
+    return utils::find_if_optional(devices, [mountpoint](const BlockDevice& dev) { return std::ranges::contains(dev.mountpoints, mountpoint); });
 }
 
 auto has_type_in_ancestry(const std::vector<BlockDevice>& devices, std::string_view device_name, std::string_view type) -> bool {

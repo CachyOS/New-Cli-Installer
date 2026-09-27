@@ -1,5 +1,6 @@
 #include "gucc/display_manager.hpp"
 #include "gucc/file_utils.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/systemd_services.hpp"
 
 #include <algorithm>
@@ -61,21 +62,11 @@ auto to_string(Kind k) noexcept -> std::string_view {
 }
 
 auto from_string(std::string_view name) noexcept -> std::optional<Kind> {
-    const auto* const it = std::ranges::find(kPreferred, name, &to_string);
-    if (it == kPreferred.end()) {
-        return std::nullopt;
-    }
-    return *it;
+    return utils::find_optional(kPreferred, name, &to_string);
 }
 
 auto detect_installed(std::string_view root_mountpoint) noexcept -> std::optional<Kind> {
-    const auto* const it = std::ranges::find_if(kPreferred, [root_mountpoint](Kind k) noexcept {
-        return services::systemd_unit_exists(to_string(k), root_mountpoint);
-    });
-    if (it == kPreferred.end()) {
-        return std::nullopt;
-    }
-    return *it;
+    return utils::find_if_optional(kPreferred, [root_mountpoint](Kind k) noexcept { return services::systemd_unit_exists(to_string(k), root_mountpoint); });
 }
 
 auto enable(Kind kind, std::string_view root_mountpoint) noexcept -> Result<void> {
