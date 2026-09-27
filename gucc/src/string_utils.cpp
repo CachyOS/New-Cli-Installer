@@ -1,5 +1,11 @@
 #include "gucc/string_utils.hpp"
 
+#include <algorithm>    // for for_each, transform
+#include <ranges>       // for ranges::*
+#include <string>       // for string
+#include <string_view>  // for string_view
+#include <vector>       // for vector
+
 namespace gucc::utils {
 
 auto make_multiline(std::string_view str, bool reverse, char delim) noexcept -> std::vector<std::string> {
@@ -21,18 +27,13 @@ auto make_multiline_view(std::string_view str, bool reverse, char delim) noexcep
 }
 
 auto make_multiline(const std::vector<std::string>& multiline, bool reverse, std::string_view delim) noexcept -> std::string {
-    // TODO(vnepogodin): refactor with our join
-    std::string res{};
-    for (const auto& line : multiline) {
-        res += line;
-        res += delim.data();
-    }
-
-    if (reverse) {
-        std::ranges::reverse(res);
-    }
-
-    return res;
+    const auto join_terminated = [delim](auto&& lines) {
+        return lines
+            | std::ranges::views::transform([delim](std::string_view line) { return std::ranges::views::concat(line, delim); })
+            | std::ranges::views::join
+            | std::ranges::to<std::string>();
+    };
+    return reverse ? join_terminated(multiline | std::ranges::views::reverse) : join_terminated(multiline);
 }
 
 auto join(const std::vector<std::string>& lines, char delim) noexcept -> std::string {
