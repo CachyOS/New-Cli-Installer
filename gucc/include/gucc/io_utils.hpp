@@ -20,6 +20,7 @@ auto exec_checked_with_input(std::string_view command, std::string_view input) n
 auto exec_with_input(std::string_view command, std::string_view input) noexcept -> std::optional<std::string>;
 
 void exec(const std::vector<std::string>& argv) noexcept;
+auto query(const std::vector<std::string>& argv) noexcept -> std::string;
 auto exec_checked(const std::vector<std::string>& argv) noexcept -> bool;
 auto exec_checked(const std::vector<std::string>& argv, std::span<const std::string> env) noexcept -> bool;
 

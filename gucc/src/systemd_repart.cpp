@@ -1,9 +1,12 @@
 #include "gucc/systemd_repart.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
-#include <algorithm>    // for ranges
-#include <filesystem>   // for path, create_directories
+#include <cstdint>  // for uint8_t
+
+#include <algorithm>    // for replace, find
+#include <filesystem>   // for path
 #include <ranges>       // for ranges::*
 #include <string_view>  // for string_view
 
@@ -16,6 +19,45 @@ using namespace std::string_view_literals;
 using namespace std::string_literals;
 
 namespace fs = std::filesystem;
+
+namespace {
+
+enum class RepartInvocation : std::uint8_t {
+    Apply,
+    Preview,
+};
+
+auto build_repart_argv(const gucc::disk::RepartConfig& config, RepartInvocation invocation) noexcept -> std::vector<std::string> {
+    const bool preview = invocation == RepartInvocation::Preview;
+
+    std::vector<std::string> args{"/usr/bin/systemd-repart"s};
+    if (preview) {
+        args.emplace_back("--pretty=yes"sv);
+    }
+    args.push_back(fmt::format(FMT_COMPILE("--dry-run={}"), (preview || config.dry_run) ? "yes"sv : "no"sv));
+    args.push_back(fmt::format(FMT_COMPILE("--empty={}"), gucc::disk::empty_mode_to_string(config.empty_mode)));
+    if (!config.definitions_dir.empty()) {
+        args.push_back(fmt::format(FMT_COMPILE("--definitions={}"), config.definitions_dir));
+    }
+    if (config.root_dir) {
+        args.push_back(fmt::format(FMT_COMPILE("--root={}"), *config.root_dir));
+    }
+    if (!preview) {
+        if (config.key_file) {
+            args.push_back(fmt::format(FMT_COMPILE("--key-file={}"), *config.key_file));
+        }
+        if (config.tpm2_device) {
+            args.push_back(fmt::format(FMT_COMPILE("--tpm2-device={}"), *config.tpm2_device));
+        }
+        if (config.tpm2_pcrs) {
+            args.push_back(fmt::format(FMT_COMPILE("--tpm2-pcrs={}"), *config.tpm2_pcrs));
+        }
+    }
+    args.push_back(config.target_device);
+    return args;
+}
+
+}  // namespace
 
 namespace gucc::disk {
 
@@ -126,14 +168,7 @@ auto generate_repart_config_content(const RepartPartitionConfig& config) noexcep
 
     // Subvolumes for btrfs
     if (!config.subvolumes.empty()) {
-        std::string subvols_str;
-        for (const auto& subvol : config.subvolumes) {
-            if (!subvols_str.empty()) {
-                subvols_str += " ";
-            }
-            subvols_str += subvol;
-        }
-        content += fmt::format(FMT_COMPILE("Subvolumes={}\n"), subvols_str);
+        content += fmt::format(FMT_COMPILE("Subvolumes={}\n"), utils::join(config.subvolumes, ' '));
     }
 
     // Default subvolume
@@ -150,33 +185,25 @@ auto generate_repart_config_content(const RepartPartitionConfig& config) noexcep
 }
 
 auto write_repart_config(std::string_view dir_path, std::string_view filename, const RepartPartitionConfig& config) noexcept -> Result<void> {
-    const auto dir = ::fs::path{dir_path};
-    if (!::fs::exists(dir)) {
-        std::error_code ec;
-        if (!::fs::create_directories(dir, ec)) {
-            return make_error(ErrorCode::FileIo, fmt::format("Failed to create directory '{}': {}", dir_path, ec.message()));
-        }
+    if (auto res = file_utils::create_directories(dir_path); !res) {
+        return res;
     }
 
-    const auto file_path = dir / filename;
-    const auto content   = generate_repart_config_content(config);
-    if (!file_utils::create_file_for_overwrite(file_path.string(), content)) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to write repart config to '{}'", file_path.string()));
+    const auto& file_path = (::fs::path{dir_path} / filename).string();
+    if (auto res = file_utils::write_file(file_path, generate_repart_config_content(config)); !res) {
+        return res;
     }
 
-    spdlog::debug("Wrote repart config to '{}'", file_path.string());
+    spdlog::debug("Wrote repart config to '{}'", file_path);
     return {};
 }
 
 auto write_repart_configs(std::string_view dir_path, const std::vector<RepartPartitionConfig>& partitions) noexcept -> Result<void> {
-    std::size_t index = 0;
-    for (const auto& partition : partitions) {
-        const auto filename = fmt::format(FMT_COMPILE("{:02d}-{}.conf"), index * 10, partition.type);
+    for (const auto& [index, partition] : partitions | std::ranges::views::enumerate) {
+        const auto& filename = fmt::format(FMT_COMPILE("{:02d}-{}.conf"), index * 10, partition.type);
         if (auto res = write_repart_config(dir_path, filename, partition); !res) {
             return res;
         }
-
-        ++index;
     }
 
     spdlog::info("Wrote {} repart config files to '{}'", partitions.size(), dir_path);
@@ -184,75 +211,12 @@ auto write_repart_configs(std::string_view dir_path, const std::vector<RepartPar
 }
 
 auto run_systemd_repart(const RepartConfig& config) noexcept -> Result<void> {
-    // Build the command
-    std::string cmd = "systemd-repart";
-
-    // Dry run option
-    cmd += fmt::format(FMT_COMPILE(" --dry-run={}"), config.dry_run ? "yes" : "no");
-
-    // Empty mode
-    cmd += fmt::format(FMT_COMPILE(" --empty={}"), empty_mode_to_string(config.empty_mode));
-
-    // Definitions directory
-    if (!config.definitions_dir.empty()) {
-        cmd += fmt::format(FMT_COMPILE(" --definitions={}"), config.definitions_dir);
-    }
-
-    // Root directory
-    if (config.root_dir.has_value()) {
-        cmd += fmt::format(FMT_COMPILE(" --root={}"), *config.root_dir);
-    }
-
-    // Key file for LUKS
-    if (config.key_file.has_value()) {
-        cmd += fmt::format(FMT_COMPILE(" --key-file={}"), *config.key_file);
-    }
-
-    // TPM2 device
-    if (config.tpm2_device.has_value()) {
-        cmd += fmt::format(FMT_COMPILE(" --tpm2-device={}"), *config.tpm2_device);
-    }
-
-    // TPM2 PCRs
-    if (config.tpm2_pcrs.has_value()) {
-        cmd += fmt::format(FMT_COMPILE(" --tpm2-pcrs={}"), *config.tpm2_pcrs);
-    }
-
-    // Target device
-    cmd += fmt::format(FMT_COMPILE(" {}"), config.target_device);
-
-    // Execute the command
-    spdlog::info("Executing: {}", cmd);
-    if (!utils::exec_checked(cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("systemd-repart command failed: {}", cmd));
-    }
-
-    return {};
+    const auto argv = build_repart_argv(config, RepartInvocation::Apply);
+    return utils::exec_or_error(argv, fmt::format(FMT_COMPILE("systemd-repart command failed: {}"), utils::join(argv, ' ')));
 }
 
 auto preview_systemd_repart(const RepartConfig& config) noexcept -> std::string {
-    // Always dry run for preview
-    std::string cmd = "systemd-repart --pretty=yes --dry-run=yes";
-
-    // Empty mode
-    cmd += fmt::format(FMT_COMPILE(" --empty={}"), empty_mode_to_string(config.empty_mode));
-
-    // Definitions directory
-    if (!config.definitions_dir.empty()) {
-        cmd += fmt::format(FMT_COMPILE(" --definitions={}"), config.definitions_dir);
-    }
-
-    // Root directory
-    if (config.root_dir.has_value()) {
-        cmd += fmt::format(FMT_COMPILE(" --root={}"), *config.root_dir);
-    }
-
-    // Target device
-    cmd += fmt::format(FMT_COMPILE(" {}"), config.target_device);
-
-    // Execute and capture output
-    spdlog::debug("Executing preview: {}", cmd);
-    return utils::exec(cmd);
+    return utils::query(build_repart_argv(config, RepartInvocation::Preview));
 }
 
 auto convert_partition_to_repart(const fs::Partition& partition) noexcept -> RepartPartitionConfig {
@@ -308,11 +272,7 @@ auto convert_partitions_to_repart(const std::vector<fs::Partition>& partitions) 
     for (const auto& partition : partitions) {
         // Subvolumes should be combined with parent partition
         if (partition.subvolume.has_value()) {
-            auto it = std::ranges::find_if(result, [&](const RepartPartitionConfig& cfg) {
-                return cfg.format.has_value() && *cfg.format == "btrfs"sv;
-            });
-
-            // Add subvolume to existing btrfs partition config
+            auto it = std::ranges::find(result, std::optional{"btrfs"s}, &RepartPartitionConfig::format);
             if (it != std::ranges::end(result)) {
                 it->subvolumes.push_back(*partition.subvolume);
                 continue;
