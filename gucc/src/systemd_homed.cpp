@@ -2,15 +2,36 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <string>  // for string
-#include <vector>  // for vector
+#include <algorithm>  // for move
+#include <array>      // for array
+#include <iterator>   // for back_inserter
+#include <ranges>     // for ranges::*
+#include <string>     // for string
+#include <vector>     // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
+
+namespace {
+
+// NOLINTNEXTLINE
+using namespace gucc;
+
+auto homectl(std::string_view verb, std::string_view action, std::string_view username) noexcept -> Result<void> {
+    if (username.empty()) {
+        return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("Cannot {}: username is empty"), action));
+    }
+    spdlog::info("homectl {} {}", verb, username);
+    return utils::exec_or_error({"/usr/bin/homectl"s, std::string{verb}, std::string{username}},
+        fmt::format(FMT_COMPILE("Failed to {}: {}"), action, username));
+}
+
+}  // namespace
 
 namespace gucc::homed {
 
@@ -89,51 +110,28 @@ auto create_homed_user(const HomedUserConfig& config) noexcept -> Result<void> {
     }
 
     spdlog::info("Creating homed user: {}", config.username);
-    const auto& args = utils::join(generate_homectl_args(config), ' ');
-    const auto& cmd  = fmt::format(FMT_COMPILE("NEWPASSWORD='{}' homectl create {} --password-change-now=true {}"), config.password, config.username, args);
-    if (!utils::exec_checked(cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create homed user: {}", config.username));
-    }
-    return {};
+    // keep secrets to proc env
+    const std::array env{fmt::format(FMT_COMPILE("NEWPASSWORD={}"), config.password)};
+    std::vector<std::string> argv{
+        "/usr/bin/homectl"s,
+        "create"s,
+        std::string{config.username},
+        "--password-change-now=true"s,
+    };
+    std::ranges::move(generate_homectl_args(config), std::back_inserter(argv));
+    return utils::exec_or_error(argv, env, fmt::format(FMT_COMPILE("Failed to create homed user: {}"), config.username));
 }
 
 auto activate_home(std::string_view username) noexcept -> Result<void> {
-    if (username.empty()) {
-        return make_error(ErrorCode::InvalidArgument, "Cannot activate home: username is empty");
-    }
-
-    spdlog::info("Activating home for user: {}", username);
-    const auto& cmd = fmt::format(FMT_COMPILE("homectl activate {}"), username);
-    if (!utils::exec_checked(cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to activate home for user: {}", username));
-    }
-    return {};
+    return homectl("activate"sv, "activate home"sv, username);
 }
 
 auto deactivate_home(std::string_view username) noexcept -> Result<void> {
-    if (username.empty()) {
-        return make_error(ErrorCode::InvalidArgument, "Cannot deactivate home: username is empty");
-    }
-
-    spdlog::info("Deactivating home for user: {}", username);
-    const auto& cmd = fmt::format(FMT_COMPILE("homectl deactivate {}"), username);
-    if (!utils::exec_checked(cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to deactivate home for user: {}", username));
-    }
-    return {};
+    return homectl("deactivate"sv, "deactivate home"sv, username);
 }
 
 auto remove_homed_user(std::string_view username) noexcept -> Result<void> {
-    if (username.empty()) {
-        return make_error(ErrorCode::InvalidArgument, "Cannot remove homed user: username is empty");
-    }
-
-    spdlog::info("Removing homed user: {}", username);
-    const auto& cmd = fmt::format(FMT_COMPILE("homectl remove {}"), username);
-    if (!utils::exec_checked(cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to remove homed user: {}", username));
-    }
-    return {};
+    return homectl("remove"sv, "remove homed user"sv, username);
 }
 
 }  // namespace gucc::homed
