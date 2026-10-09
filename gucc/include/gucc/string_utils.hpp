@@ -1,8 +1,9 @@
 #ifndef STRING_UTILS_HPP
 #define STRING_UTILS_HPP
 
-#include <algorithm>    // for transform, contains, find_if_not
-#include <array>        // for array
+#include <cstddef>  // for size_t
+
+#include <algorithm>    // for find_if_not
 #include <charconv>     // for from_chars
 #include <concepts>     // for invocable, same_as, unsigned_integral
 #include <optional>     // for optional
@@ -61,9 +62,9 @@ constexpr auto make_split_view(std::string_view str, char delim = '\n') noexcept
 }
 
 /// Unlike make_split_view, keeps empty lines, so joining them back restores the text.
-constexpr auto split_lines(std::string_view str) noexcept {
+constexpr auto split_lines(std::string_view str, char delim = '\n') noexcept {
     return str
-        | std::ranges::views::split('\n')
+        | std::ranges::views::split(delim)
         | std::ranges::views::transform([](auto&& line) { return std::string_view{line}; });
 }
 
@@ -116,14 +117,14 @@ constexpr auto extract_after(std::string_view str, std::string_view prefix, char
     return std::nullopt;
 }
 
+/// The isspace set.
+inline constexpr std::string_view kWhitespaceChars{" \f\n\r\t\v"};
+
 /// @brief Trim leading whitespace from a string view.
 /// @param str The string to trim.
 /// @return The trimmed string view.
 constexpr auto ltrim(std::string_view str) noexcept -> std::string_view {
-    auto it       = std::ranges::find_if_not(str, [](unsigned char ch) {
-        constexpr std::array spaces_ch{' ', '\f', '\n', '\r', '\t', '\v'};
-        return std::ranges::contains(spaces_ch, ch);
-    });
+    auto it       = std::ranges::find_if_not(str, [](char ch) { return kWhitespaceChars.contains(ch); });
     auto last_pos = std::ranges::distance(str.begin(), it);
     return str.substr(static_cast<size_t>(last_pos));
 }
@@ -132,10 +133,7 @@ constexpr auto ltrim(std::string_view str) noexcept -> std::string_view {
 /// @param str The string to trim.
 /// @return The trimmed string view.
 constexpr auto rtrim(std::string_view str) noexcept -> std::string_view {
-    auto it       = std::ranges::find_if_not(str | std::ranges::views::reverse, [](unsigned char ch) {
-        constexpr std::array spaces_ch{' ', '\f', '\n', '\r', '\t', '\v'};
-        return std::ranges::contains(spaces_ch, ch);
-    });
+    auto it       = std::ranges::find_if_not(str | std::ranges::views::reverse, [](char ch) { return kWhitespaceChars.contains(ch); });
     auto last_pos = std::ranges::distance(str.rbegin(), it);
     return str.substr(0, str.size() - static_cast<size_t>(last_pos));
 }
@@ -147,11 +145,27 @@ constexpr auto trim(std::string_view str) noexcept -> std::string_view {
     return rtrim(ltrim(str));
 }
 
-/// Leading whitespace is skipped.
-constexpr auto first_field(std::string_view line) noexcept -> std::string_view {
-    line = ltrim(line);
-    return line.substr(0, line.find_first_of(" \t"));
+/// True when @p line starts with @p word followed by one of @p delims or the end.
+constexpr auto starts_with_word(std::string_view line, std::string_view word, std::string_view delims = " \t") noexcept -> bool {
+    return line.starts_with(word) && (line.size() == word.size() || delims.contains(line[word.size()]));
 }
+
+/// Field @p n of @p line split on any char of @p delims.
+constexpr auto nth_field(std::string_view line, std::size_t n, std::string_view delims = " \t") noexcept -> std::string_view {
+    const auto is_delim = [delims](char ch) { return delims.contains(ch); };
+    auto fields         = line
+        | std::ranges::views::chunk_by([is_delim](char lhs, char rhs) { return is_delim(lhs) == is_delim(rhs); })
+        | std::ranges::views::filter([is_delim](auto&& run) { return !is_delim(run.front()); })
+        | std::ranges::views::drop(n);
+    const auto it = std::ranges::begin(fields);
+    return it == std::ranges::end(fields) ? std::string_view{} : std::string_view{*it};
+}
+
+constexpr auto first_field(std::string_view line) noexcept -> std::string_view {
+    return nth_field(line, 0);
+}
+
+auto decode_escapes(std::string_view str, std::string_view intro, int32_t base, std::size_t width) noexcept -> std::string;
 
 /// @brief Parse unsigned integer from string view.
 /// @tparam T The unsigned integer type to parse into.
@@ -162,6 +176,17 @@ constexpr auto parse_uint(std::string_view str) noexcept -> std::optional<T> {
     T value{};
     auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), value);
     if (ec == std::errc{}) {
+        return value;
+    }
+    return std::nullopt;
+}
+
+/// Unlike parse_uint, the whole string must be number.
+template <std::unsigned_integral T>
+constexpr auto parse_uint_exact(std::string_view str) noexcept -> std::optional<T> {
+    T value{};
+    auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), value);
+    if (ec == std::errc{} && ptr == str.data() + str.size()) {
         return value;
     }
     return std::nullopt;
