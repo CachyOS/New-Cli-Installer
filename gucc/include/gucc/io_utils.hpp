@@ -15,6 +15,8 @@ auto safe_getenv(const char* env_name) noexcept -> std::string_view;
 
 auto exec(std::string_view command) noexcept -> std::string;
 auto query_checked(std::string_view command) noexcept -> bool;
+/// nullopt on a nonzero exit, so failed stderr is never parsed as output.
+auto query_output(std::string_view command) noexcept -> std::optional<std::string>;
 auto exec_checked(std::string_view command) noexcept -> bool;
 auto exec_checked_with_input(std::string_view command, std::string_view input) noexcept -> bool;
 auto exec_with_input(std::string_view command, std::string_view input) noexcept -> std::optional<std::string>;
@@ -32,12 +34,13 @@ auto arch_chroot_output(std::string_view command, std::string_view mountpoint) n
 auto arch_chroot_query(std::string_view command, std::string_view mountpoint) noexcept -> std::string;
 auto arch_chroot_query_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool;
 
-auto exec_or_error(std::string_view command, std::string context) noexcept -> Result<void>;
-auto exec_or_error(const std::vector<std::string>& argv, std::string context) noexcept -> Result<void>;
-auto exec_or_error(const std::vector<std::string>& argv, std::span<const std::string> env, std::string context) noexcept -> Result<void>;
-auto exec_or_error_with_input(std::string_view command, std::string_view input, std::string context) noexcept -> Result<void>;
-auto arch_chroot_or_error(std::string_view command, std::string_view mountpoint, std::string context) noexcept -> Result<void>;
-auto arch_chroot_or_error(const std::vector<std::string>& argv, std::string_view mountpoint, std::string context) noexcept -> Result<void>;
+/// @brief Run a command, returning SubprocessFailed on failure.
+auto exec_or_error(std::string_view command, std::string_view what = {}) noexcept -> Result<void>;
+auto exec_or_error(const std::vector<std::string>& argv, std::string_view what = {}) noexcept -> Result<void>;
+auto exec_or_error(const std::vector<std::string>& argv, std::span<const std::string> envs, std::string_view what = {}) noexcept -> Result<void>;
+auto exec_or_error_with_input(std::string_view command, std::string_view input, std::string_view what = {}) noexcept -> Result<void>;
+auto arch_chroot_or_error(std::string_view command, std::string_view mountpoint, std::string_view what = {}) noexcept -> Result<void>;
+auto arch_chroot_or_error(const std::vector<std::string>& argv, std::string_view mountpoint, std::string_view what = {}) noexcept -> Result<void>;
 
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::string_view pacman_config, bool hostcache) noexcept -> bool;
 

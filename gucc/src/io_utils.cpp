@@ -1,5 +1,7 @@
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/process.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <unistd.h>  // for sync
 
@@ -18,6 +20,7 @@ namespace {
 
 using gucc::utils::ProcessKind;
 using gucc::utils::ProcessLocation;
+using gucc::utils::ProcessResult;
 using gucc::utils::RunOptions;
 
 using gucc::ErrorCode;
@@ -32,12 +35,39 @@ constexpr auto in_target(RunOptions opts, std::string_view mountpoint) noexcept 
     return opts;
 }
 
-// NOTE(vnepogodin): yenuenly that should be in Result as monadic
-constexpr auto or_error(bool succeeded, std::string context) noexcept -> Result<void> {
-    if (!succeeded) {
-        return make_error(ErrorCode::SubprocessFailed, std::move(context));
+constexpr auto command_line(std::string_view command) noexcept -> std::string_view {
+    return command;
+}
+
+constexpr auto command_line(const std::vector<std::string>& argv) noexcept -> std::string {
+    return gucc::utils::join(argv, ' ');
+}
+
+constexpr auto failure_context(std::string_view what, std::string_view command, std::string_view mountpoint, const ProcessResult& res) noexcept -> std::string {
+    const auto shown  = gucc::logger::redact(command);
+    const auto where  = mountpoint.empty() ? std::string{} : fmt::format(FMT_COMPILE(" in {}"), mountpoint);
+    const auto status = [&res] {
+        if (res.timed_out) {
+            return std::string{"timed out"};
+        }
+        if (res.cancelled) {
+            return std::string{"was cancelled"};
+        }
+        return fmt::format(FMT_COMPILE("exited with {}"), res.exit_code);
+    }();
+    if (what.empty()) {
+        return fmt::format(FMT_COMPILE("'{}'{} {}"), shown, where, status);
     }
-    return {};
+    return fmt::format(FMT_COMPILE("{}: '{}'{} {}"), what, shown, where, status);
+}
+
+// NOTE(vnepogodin): yenuenly that should be in Result as monadic
+template <class Command>
+constexpr auto or_error(const ProcessResult& res, std::string_view what, const Command& command, std::string_view mountpoint = {}) noexcept -> Result<void> {
+    if (res.ok()) {
+        return {};
+    }
+    return make_error(ErrorCode::SubprocessFailed, failure_context(what, command_line(command), mountpoint, res));
 }
 
 }  // namespace
@@ -55,6 +85,14 @@ auto exec(std::string_view command) noexcept -> std::string {
 
 auto query_checked(std::string_view command) noexcept -> bool {
     return default_runner().run_shell(command, kQuery).ok();
+}
+
+auto query_output(std::string_view command) noexcept -> std::optional<std::string> {
+    auto res = default_runner().run_shell(command, kQuery);
+    if (!res.ok()) {
+        return std::nullopt;
+    }
+    return std::move(res.output);
 }
 
 auto exec_checked(std::string_view command) noexcept -> bool {
@@ -75,6 +113,10 @@ auto exec_with_input(std::string_view command, std::string_view input) noexcept 
         return std::nullopt;
     }
     return std::move(res.output);
+}
+
+auto query(const std::vector<std::string>& argv) noexcept -> std::string {
+    return std::move(default_runner().run(argv, kQuery).output);
 }
 
 void exec(const std::vector<std::string>& argv) noexcept {
@@ -119,28 +161,32 @@ auto arch_chroot_query_checked(std::string_view command, std::string_view mountp
     return default_runner().run_shell(command, in_target(kQuery, mountpoint)).ok();
 }
 
-auto exec_or_error(std::string_view command, std::string context) noexcept -> Result<void> {
-    return or_error(exec_checked(command), std::move(context));
+auto exec_or_error(std::string_view command, std::string_view what) noexcept -> Result<void> {
+    return or_error(default_runner().run_shell(command, kMutate), what, command);
 }
 
-auto exec_or_error(const std::vector<std::string>& argv, std::string context) noexcept -> Result<void> {
-    return or_error(exec_checked(argv), std::move(context));
+auto exec_or_error(const std::vector<std::string>& argv, std::string_view what) noexcept -> Result<void> {
+    return or_error(default_runner().run(argv, kMutate), what, argv);
 }
 
-auto exec_or_error(const std::vector<std::string>& argv, std::span<const std::string> env, std::string context) noexcept -> Result<void> {
-    return or_error(exec_checked(argv, env), std::move(context));
+auto exec_or_error(const std::vector<std::string>& argv, std::span<const std::string> envs, std::string_view what) noexcept -> Result<void> {
+    auto opts = kMutate;
+    opts.env  = envs;
+    return or_error(default_runner().run(argv, opts), what, argv);
 }
 
-auto exec_or_error_with_input(std::string_view command, std::string_view input, std::string context) noexcept -> Result<void> {
-    return or_error(exec_checked_with_input(command, input), std::move(context));
+auto exec_or_error_with_input(std::string_view command, std::string_view input, std::string_view what) noexcept -> Result<void> {
+    auto opts  = kMutate;
+    opts.input = input;
+    return or_error(default_runner().run_shell(command, opts), what, command);
 }
 
-auto arch_chroot_or_error(std::string_view command, std::string_view mountpoint, std::string context) noexcept -> Result<void> {
-    return or_error(arch_chroot_checked(command, mountpoint), std::move(context));
+auto arch_chroot_or_error(std::string_view command, std::string_view mountpoint, std::string_view what) noexcept -> Result<void> {
+    return or_error(default_runner().run_shell(command, in_target(kMutate, mountpoint)), what, command, mountpoint);
 }
 
-auto arch_chroot_or_error(const std::vector<std::string>& argv, std::string_view mountpoint, std::string context) noexcept -> Result<void> {
-    return or_error(arch_chroot_checked(argv, mountpoint), std::move(context));
+auto arch_chroot_or_error(const std::vector<std::string>& argv, std::string_view mountpoint, std::string_view what) noexcept -> Result<void> {
+    return or_error(default_runner().run(argv, in_target(kMutate, mountpoint)), what, argv, mountpoint);
 }
 
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::string_view pacman_config, bool hostcache) noexcept -> bool {
