@@ -12,7 +12,6 @@
 namespace gucc::file_utils {
 
 auto read_whole_file(std::string_view filepath) noexcept -> std::string;
-/// Needed for sysfs/procfs files, which report zero size.
 auto read_first_line(std::string_view filepath) noexcept -> std::string;
 auto write_to_file(std::string_view data, std::string_view filepath) noexcept -> bool;
 
