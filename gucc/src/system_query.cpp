@@ -3,13 +3,16 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/zfs.hpp"
 
-#include <algorithm>  // for find_if, transform
-#include <fstream>    // for ifstream
-#include <ranges>     // for ranges::*
+#include "detail/lsblk_json.hpp"
+
+#include <algorithm>   // for find_if, transform
+#include <fstream>     // for ifstream
+#include <functional>  // for function_ref
+#include <ranges>      // for ranges::*
 
 #include <rapidjson/document.h>
-#include <rapidjson/error/en.h>
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -22,27 +25,17 @@ using namespace std::string_literals;
 
 static constexpr auto DEV_PATH_PREFIX  = "/dev/"sv;
 static constexpr auto TRAILING_NUMBERS = "0123456789"sv;
+static constexpr auto LSBLK_DISKS_CMD  = "lsblk -J -b -o NAME,TYPE,SIZE,MODEL,FSTYPE,LABEL,UUID,PARTUUID,MOUNTPOINTS,PTTYPE,RM,RO,TRAN -p"sv;
 
 namespace {
 
-/// Determines transport type from device path and tran field
+/// lsblk leaves TRAN empty for virtual disks, so fall back to the device name.
 auto determine_transport(std::string_view device, std::string_view tran) noexcept -> gucc::disk::DiskTransport {
     using gucc::disk::DiskTransport;
 
-    if (!tran.empty()) {
-        if (tran == "sata"sv || tran == "ata"sv) {
-            return DiskTransport::Sata;
-        } else if (tran == "nvme"sv) {
-            return DiskTransport::Nvme;
-        } else if (tran == "usb"sv) {
-            return DiskTransport::Usb;
-        } else if (tran == "scsi"sv || tran == "sas"sv) {
-            return DiskTransport::Scsi;
-        } else if (tran == "virtio"sv) {
-            return DiskTransport::Virtio;
-        }
+    if (const auto transport = gucc::disk::string_to_disk_transport(tran); transport != DiskTransport::Unknown) {
+        return transport;
     }
-
     if (device.contains("nvme"sv)) {
         return DiskTransport::Nvme;
     } else if (device.contains("vd"sv)) {
@@ -52,83 +45,42 @@ auto determine_transport(std::string_view device, std::string_view tran) noexcep
     return DiskTransport::Unknown;
 }
 
-auto get_partition_from_json(const rapidjson::Value& doc) -> gucc::disk::PartitionInfo {
+namespace json = gucc::detail::lsblk_json;
+
+auto has_type(const rapidjson::Value& obj, std::string_view type) noexcept -> bool {
+    return json::string(obj, "type"sv) == type;
+}
+
+auto get_partition_from_json(const rapidjson::Value& obj) -> gucc::disk::PartitionInfo {
     gucc::disk::PartitionInfo part{};
+    part.device   = json::string(obj, "name"sv).value_or(""sv);
+    part.fstype   = json::string(obj, "fstype"sv).value_or(""sv);
+    part.label    = json::owned_string(obj, "label"sv);
+    part.uuid     = json::owned_string(obj, "uuid"sv);
+    part.partuuid = json::owned_string(obj, "partuuid"sv);
+    part.size     = json::uint64(obj, "size"sv).value_or(0);
 
-    if (doc.HasMember("name") && doc["name"].IsString()) {
-        part.device = doc["name"].GetString();
-    }
-    if (doc.HasMember("fstype") && doc["fstype"].IsString()) {
-        part.fstype = doc["fstype"].GetString();
-    }
-    if (doc.HasMember("label") && doc["label"].IsString()) {
-        part.label = doc["label"].GetString();
-    }
-    if (doc.HasMember("uuid") && doc["uuid"].IsString()) {
-        part.uuid = doc["uuid"].GetString();
-    }
-    if (doc.HasMember("partuuid") && doc["partuuid"].IsString()) {
-        part.partuuid = doc["partuuid"].GetString();
-    }
-    if (doc.HasMember("size") && doc["size"].IsInt64()) {
-        part.size = static_cast<std::uint64_t>(doc["size"].GetInt64());
-    }
-    if (doc.HasMember("mountpoints") && doc["mountpoints"].IsArray()) {
-        for (const auto& mp : doc["mountpoints"].GetArray()) {
-            if (mp.IsString()) {
-                std::string_view mp_str = mp.GetString();
-                if (!mp_str.empty()) {
-                    part.mountpoints.emplace_back(mp_str);
-                }
-            }
-        }
-        part.is_mounted = !part.mountpoints.empty();
-    }
-
+    part.mountpoints = json::mountpoints(obj);
+    part.is_mounted  = !part.mountpoints.empty();
     part.part_number = gucc::disk::parse_partition_number(part.device);
-
     return part;
 }
 
-auto get_disk_from_json(const rapidjson::Value& doc) -> gucc::disk::DiskInfo {
+auto get_disk_from_json(const rapidjson::Value& obj, std::function_ref<bool(std::string_view)> is_ssd) -> gucc::disk::DiskInfo {
     gucc::disk::DiskInfo disk{};
+    disk.device       = json::string(obj, "name"sv).value_or(""sv);
+    disk.model        = json::owned_string(obj, "model"sv);
+    disk.size         = json::uint64(obj, "size"sv).value_or(0);
+    disk.pttype       = json::owned_string(obj, "pttype"sv);
+    disk.is_removable = json::boolean(obj, "rm"sv).value_or(false);
+    disk.transport    = determine_transport(disk.device, json::string(obj, "tran"sv).value_or(""sv));
+    disk.is_ssd       = is_ssd(disk.device);
 
-    if (doc.HasMember("name") && doc["name"].IsString()) {
-        disk.device = doc["name"].GetString();
-    }
-    if (doc.HasMember("model") && doc["model"].IsString()) {
-        disk.model = doc["model"].GetString();
-    }
-    if (doc.HasMember("size") && doc["size"].IsInt64()) {
-        disk.size = static_cast<std::uint64_t>(doc["size"].GetInt64());
-    }
-    if (doc.HasMember("pttype") && doc["pttype"].IsString()) {
-        disk.pttype = doc["pttype"].GetString();
-    }
-    if (doc.HasMember("rm") && doc["rm"].IsBool()) {
-        disk.is_removable = doc["rm"].GetBool();
-    }
-
-    std::string_view tran{};
-    if (doc.HasMember("tran") && doc["tran"].IsString()) {
-        tran = doc["tran"].GetString();
-    }
-
-    disk.transport = determine_transport(disk.device, tran);
-    disk.is_ssd    = gucc::disk::is_device_ssd(disk.device);
-
-    // Parse children (partitions)
-    if (doc.HasMember("children") && doc["children"].IsArray()) {
-        for (const auto& child : doc["children"].GetArray()) {
-            if (child.HasMember("type") && child["type"].IsString()) {
-                std::string_view child_type = child["type"].GetString();
-                if (child_type == "part"sv) {
-                    disk.partitions.emplace_back(get_partition_from_json(child));
-                }
-            }
+    for (const auto& child : json::array(obj, "children"sv)) {
+        if (has_type(child, "part"sv)) {
+            disk.partitions.emplace_back(get_partition_from_json(child));
         }
     }
-
     return disk;
 }
 
@@ -222,34 +174,20 @@ auto string_to_disk_transport(std::string_view transport_str) noexcept -> DiskTr
     return DiskTransport::Unknown;
 }
 
-auto parse_lsblk_disks_json(std::string_view json_output) noexcept -> std::vector<DiskInfo> {
+auto parse_lsblk_disks_json(std::string_view json_output, std::function_ref<bool(std::string_view)> is_ssd) noexcept -> std::vector<DiskInfo> {
     if (json_output.empty()) {
         return {};
     }
 
     rapidjson::Document document;
-    document.Parse(json_output.data(), json_output.size());
-
-    // Check for parse errors and ensure document is a valid object
-    if (document.HasParseError()) {
-        spdlog::error("Failed to parse lsblk output: {}", rapidjson::GetParseError_En(document.GetParseError()));
-        return {};
-    }
-    if (document.IsNull() || !document.IsObject()) {
-        spdlog::error("lsblk output is not a valid JSON object");
+    if (!json::parse_or_log(document, json_output)) {
         return {};
     }
 
     std::vector<DiskInfo> disks{};
-    if (document.HasMember("blockdevices") && document["blockdevices"].IsArray()) {
-        for (const auto& device_json : document["blockdevices"].GetArray()) {
-            if (device_json.HasMember("type") && device_json["type"].IsString()) {
-                std::string_view dev_type = device_json["type"].GetString();
-                if (dev_type == "disk"sv) {
-                    auto disk = get_disk_from_json(device_json);
-                    disks.emplace_back(std::move(disk));
-                }
-            }
+    for (const auto& device_json : json::array(document, "blockdevices"sv)) {
+        if (has_type(device_json, "disk"sv)) {
+            disks.emplace_back(get_disk_from_json(device_json, is_ssd));
         }
     }
     return disks;
@@ -257,8 +195,7 @@ auto parse_lsblk_disks_json(std::string_view json_output) noexcept -> std::vecto
 
 auto list_disks() noexcept -> std::optional<std::vector<DiskInfo>> {
     // Query all disk devices with their partitions
-    const auto& lsblk_output = utils::exec(
-        R"(lsblk -J -b -o NAME,TYPE,SIZE,MODEL,FSTYPE,LABEL,UUID,PARTUUID,MOUNTPOINTS,PTTYPE,RM,RO,TRAN -p)"sv);
+    const auto& lsblk_output = utils::exec(LSBLK_DISKS_CMD);
 
     if (lsblk_output.empty()) {
         spdlog::error("Failed to get lsblk output");
@@ -274,8 +211,7 @@ auto list_disks() noexcept -> std::optional<std::vector<DiskInfo>> {
 }
 
 auto get_disk_info(std::string_view device) noexcept -> std::optional<DiskInfo> {
-    const auto& lsblk_output = utils::exec(
-        fmt::format(FMT_COMPILE(R"(lsblk -J -b -o NAME,TYPE,SIZE,MODEL,FSTYPE,LABEL,UUID,PARTUUID,MOUNTPOINTS,PTTYPE,RM,RO,TRAN -p {})"), device));
+    const auto& lsblk_output = utils::exec(fmt::format(FMT_COMPILE("{} {}"), LSBLK_DISKS_CMD, device));
 
     if (lsblk_output.empty()) {
         spdlog::error("Failed to get lsblk output for device: {}", device);
@@ -413,19 +349,30 @@ auto list_mountable_partitions(const std::vector<std::string>& include_types) no
         append_of_type("part"sv);
     }
 
-    // always append ZFS zvols
-    static constexpr auto zvol_list_cmd = "zfs list -Ht volume -o name,volsize 2>/dev/null"sv;
-    const auto& zvols_raw               = utils::exec(zvol_list_cmd);
-    for (const auto& line : utils::make_multiline(zvols_raw)) {
-        const auto& fields = utils::make_multiline_view(line, false, '\t');
-        if (fields.empty()) {
-            continue;
-        }
-        const auto& volsize = (fields.size() > 1) ? fields[1] : std::string_view{};
-        result.emplace_back(fmt::format(FMT_COMPILE("/dev/zvol/{} {}"), fields[0], volsize));
+    // ZFS zvols are always listed
+    const auto zvol_output = fs::zfs_list_datasets("zvol"sv);
+    for (const auto& [name, volsize] : detail::parse_zvol_list(zvol_output)) {
+        result.emplace_back(fmt::format(FMT_COMPILE("/dev/zvol/{} {}"), name, volsize));
     }
 
     return result;
 }
 
 }  // namespace gucc::disk
+
+namespace gucc::disk::detail {
+
+auto parse_zvol_list(std::string_view output) noexcept -> std::vector<ZvolEntry> {
+    constexpr auto to_entry = [](std::string_view line) -> ZvolEntry {
+        const auto tab_pos = line.find('\t');
+        return ZvolEntry{
+            .name    = line.substr(0, tab_pos),
+            .volsize = tab_pos == std::string_view::npos ? std::string_view{} : line.substr(tab_pos + 1),
+        };
+    };
+    return utils::make_split_view(output)
+        | std::ranges::views::transform(to_entry)
+        | std::ranges::to<std::vector<ZvolEntry>>();
+}
+
+}  // namespace gucc::disk::detail

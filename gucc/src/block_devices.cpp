@@ -2,13 +2,14 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/ranges_utils.hpp"
 
+#include "detail/lsblk_json.hpp"
+
 #include <algorithm>  // for find, find_if, equal
 #include <cctype>     // for tolower
 #include <ranges>     // for ranges::*
 #include <set>        // for set
 
 #include <rapidjson/document.h>
-#include <rapidjson/error/en.h>
 
 #include <spdlog/spdlog.h>
 
@@ -16,80 +17,64 @@ using namespace std::string_view_literals;
 
 namespace {
 
+namespace json = gucc::detail::lsblk_json;
+
 using BlockDevice = gucc::disk::BlockDevice;
 
-/// Constructs a BlockDevice from a RapidJSON object.
-auto get_blockdevice_from_json(const rapidjson::Value& doc) -> BlockDevice {
-    auto device = BlockDevice{};
-    if (doc.HasMember("name") && doc["name"].IsString()) {
-        device.name = doc["name"].GetString();
-    }
-    if (doc.HasMember("type") && doc["type"].IsString()) {
-        device.type = doc["type"].GetString();
-    }
-    if (doc.HasMember("fstype") && doc["fstype"].IsString()) {
-        device.fstype = doc["fstype"].GetString();
-    }
-    if (doc.HasMember("uuid") && doc["uuid"].IsString()) {
-        device.uuid = doc["uuid"].GetString();
-    }
+auto to_block_device(const rapidjson::Value& obj) -> BlockDevice {
+    auto device     = BlockDevice{};
+    device.name     = json::string(obj, "name"sv).value_or(""sv);
+    device.type     = json::string(obj, "type"sv).value_or(""sv);
+    device.fstype   = json::string(obj, "fstype"sv).value_or(""sv);
+    device.uuid     = json::string(obj, "uuid"sv).value_or(""sv);
+    device.model    = json::owned_string(obj, "model"sv);
+    device.pkname   = json::owned_string(obj, "pkname"sv);
+    device.label    = json::owned_string(obj, "label"sv);
+    device.partuuid = json::owned_string(obj, "partuuid"sv);
+    device.size     = json::uint64(obj, "size"sv);
 
-    if (doc.HasMember("model") && doc["model"].IsString()) {
-        device.model = doc["model"].GetString();
+    // previous unil-linux provided only scalar MOUNTPOINT
+    if (json::member(obj, "mountpoints"sv) != nullptr) {
+        device.mountpoints = json::mountpoints(obj);
+    } else if (auto mountpoint = json::string(obj, "mountpoint"sv); mountpoint && !mountpoint->empty()) {
+        device.mountpoints.emplace_back(*mountpoint);
     }
-    if (doc.HasMember("mountpoints") && doc["mountpoints"].IsArray()) {
-        for (const auto& mnt : doc["mountpoints"].GetArray()) {
-            if (!mnt.IsString()) {
-                continue;
-            }
-            auto mountpoint = std::string{mnt.GetString()};
-            if (!mountpoint.empty()) {
-                device.mountpoints.emplace_back(std::move(mountpoint));
-            }
-        }
-    } else if (doc.HasMember("mountpoint") && doc["mountpoint"].IsString()) {
-        auto mountpoint = std::string{doc["mountpoint"].GetString()};
-        if (!mountpoint.empty()) {
-            device.mountpoints.emplace_back(std::move(mountpoint));
-        }
-    }
-    if (doc.HasMember("pkname") && doc["pkname"].IsString()) {
-        device.pkname = doc["pkname"].GetString();
-    }
-    if (doc.HasMember("label") && doc["label"].IsString()) {
-        device.label = doc["label"].GetString();
-    }
-    if (doc.HasMember("partuuid") && doc["partuuid"].IsString()) {
-        device.partuuid = doc["partuuid"].GetString();
-    }
-    if (doc.HasMember("size") && doc["size"].IsInt64()) {
-        device.size = doc["size"].GetInt64();
-    }
-
     return device;
 }
 
-auto parse_lsblk_json(std::string_view json_output) -> std::vector<BlockDevice> {
-    rapidjson::Document document;
+void flatten_into(std::vector<BlockDevice>& out, const rapidjson::Value& obj) {
+    if (!obj.IsObject()) {
+        return;
+    }
+    out.emplace_back(to_block_device(obj));
+    for (const auto& child : json::array(obj, "children"sv)) {
+        flatten_into(out, child);
+    }
+}
 
-    document.Parse(json_output.data(), json_output.size());
-    if (document.HasParseError()) {
-        spdlog::error("Failed to parse lsblk output: {}", rapidjson::GetParseError_En(document.GetParseError()));
-        return {};
+}  // namespace
+
+namespace gucc::disk::detail {
+
+auto parse_lsblk_json(std::string_view json_output) noexcept -> std::optional<std::vector<BlockDevice>> {
+    rapidjson::Document document;
+    if (!json::parse_or_log(document, json_output)) {
+        return std::nullopt;
+    }
+    const auto* devices_json = json::member(document, "blockdevices"sv);
+    if (devices_json == nullptr || !devices_json->IsArray()) {
+        spdlog::error("lsblk output has no blockdevices array");
+        return std::nullopt;
     }
 
-    // Extract data from JSON
     std::vector<BlockDevice> block_devices{};
-    if (document.HasMember("blockdevices") && document["blockdevices"].IsArray()) {
-        for (const auto& device_json : document["blockdevices"].GetArray()) {
-            auto block_device = get_blockdevice_from_json(device_json);
-            block_devices.emplace_back(std::move(block_device));
-        }
+    for (const auto& device_json : devices_json->GetArray()) {
+        flatten_into(block_devices, device_json);
     }
     return block_devices;
 }
 
-}  // namespace
+}  // namespace gucc::disk::detail
 
 namespace gucc::disk {
 
@@ -148,11 +133,8 @@ auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, st
 }
 
 auto list_block_devices() -> std::optional<std::vector<BlockDevice>> {
-    const auto& lsblk_output = utils::exec(R"cmd(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd");
-    if (lsblk_output.empty()) {
-        return std::nullopt;
-    }
-    return std::make_optional<std::vector<BlockDevice>>(parse_lsblk_json(lsblk_output));
+    return utils::query_output(R"cmd(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd"sv)
+        .and_then(detail::parse_lsblk_json);
 }
 
 }  // namespace gucc::disk

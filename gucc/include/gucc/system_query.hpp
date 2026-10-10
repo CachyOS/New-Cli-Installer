@@ -1,9 +1,10 @@
-#ifndef SYSTEM_QUERY_HPP
-#define SYSTEM_QUERY_HPP
+#pragma once
 
 #include "gucc/partition.hpp"
 
-#include <cstdint>      // for uint64_t
+#include <cstdint>  // for uint64_t
+
+#include <functional>   // for function_ref
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -109,8 +110,10 @@ auto is_device_ssd(std::string_view device) noexcept -> bool;
 
 /// @brief Parses JSON output from lsblk command into DiskInfo structures
 /// @param json_output The JSON string from lsblk -J command
+/// @param is_ssd is_device_ssd, primarily for testing.
 /// @return vector of DiskInfo, empty on error
-auto parse_lsblk_disks_json(std::string_view json_output) noexcept -> std::vector<DiskInfo>;
+auto parse_lsblk_disks_json(std::string_view json_output, std::function_ref<bool(std::string_view)> is_ssd = is_device_ssd) noexcept
+    -> std::vector<DiskInfo>;
 
 /// @brief Parses partition number of device
 /// @param device The device path
@@ -138,4 +141,13 @@ auto format_device_table() noexcept -> std::string;
 
 }  // namespace gucc::disk
 
-#endif  // SYSTEM_QUERY_HPP
+namespace gucc::disk::detail {
+
+struct ZvolEntry final {
+    std::string_view name;
+    std::string_view volsize;
+};
+
+auto parse_zvol_list(std::string_view output) noexcept -> std::vector<ZvolEntry>;
+
+}  // namespace gucc::disk::detail

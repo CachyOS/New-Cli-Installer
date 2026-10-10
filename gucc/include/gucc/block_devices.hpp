@@ -102,4 +102,10 @@ auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, st
 
 }  // namespace gucc::disk
 
+namespace gucc::disk::detail {
+
+auto parse_lsblk_json(std::string_view json_output) noexcept -> std::optional<std::vector<BlockDevice>>;
+
+}  // namespace gucc::disk::detail
+
 #endif  // BLOCK_DEVICES_HPP

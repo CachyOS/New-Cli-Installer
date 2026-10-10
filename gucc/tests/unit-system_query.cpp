@@ -587,3 +587,88 @@ TEST_CASE("system_query")
         }
     }
 }
+
+TEST_CASE("parse_lsblk_disks_json is_ssd probing")
+{
+    using gucc::disk::parse_lsblk_disks_json;
+
+    auto noop_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) { });
+    spdlog::set_default_logger(std::make_shared<spdlog::logger>("default", noop_sink));
+
+    static constexpr auto kJson = R"({"blockdevices":[
+  {"name":"/dev/sda", "type":"disk", "size":500107862016, "model":"HDD", "rm":false, "tran":"sata", "pttype":"gpt",
+   "children":[{"name":"/dev/sda1", "type":"part", "size":536870912, "fstype":"vfat", "mountpoints":[null]}]},
+  {"name":"/dev/nvme0n1", "type":"disk", "size":1000204886016, "model":"NVMe", "rm":false, "tran":"nvme", "pttype":"gpt"}
+]})"sv;
+
+    constexpr auto noop_ssd = [](std::string_view) { return false; };
+
+    SECTION("per disk")
+    {
+        std::vector<std::string> asked{};
+        const auto disks = parse_lsblk_disks_json(kJson, [&asked](std::string_view device) {
+            asked.emplace_back(device);
+            return device == "/dev/sda"sv;
+        });
+        REQUIRE_EQ(disks.size(), 2u);
+        CHECK(disks[0].is_ssd);
+        CHECK_FALSE(disks[1].is_ssd);
+        CHECK_EQ(asked, std::vector<std::string>{"/dev/sda", "/dev/nvme0n1"});
+    }
+    SECTION("stderr noise")
+    {
+        const auto input = "lsblk: /dev/loop0: failed to open\n"s + std::string{kJson};
+        const auto disks = parse_lsblk_disks_json(input, noop_ssd);
+        REQUIRE_EQ(disks.size(), 2u);
+        CHECK_EQ(disks[0].partitions.size(), 1u);
+    }
+    SECTION("negative size is rejected")
+    {
+        const auto disks = parse_lsblk_disks_json(R"({"blockdevices":[{"name":"/dev/sdz","type":"disk","size":-1}]})"sv, noop_ssd);
+        REQUIRE_EQ(disks.size(), 1u);
+        CHECK_EQ(disks[0].size, 0u);
+    }
+    SECTION("non-object elements do not abort")
+    {
+        const auto disks = parse_lsblk_disks_json(R"({"blockdevices":[1, null, {"name":"/dev/sdy","type":"disk","children":["x", 3, {"name":"/dev/sdy1","type":"part"}]}]})"sv,
+            noop_ssd);
+        REQUIRE_EQ(disks.size(), 1u);
+        REQUIRE_EQ(disks[0].partitions.size(), 1u);
+        CHECK_EQ(disks[0].partitions[0].device, "/dev/sdy1"sv);
+        CHECK_EQ(disks[0].partitions[0].part_number, 1u);
+    }
+    SECTION("malformed input")
+    {
+        CHECK(parse_lsblk_disks_json("not json"sv, noop_ssd).empty());
+        CHECK(parse_lsblk_disks_json(R"({"blockdevices":[)"sv, noop_ssd).empty());
+        CHECK(parse_lsblk_disks_json(R"([])"sv, noop_ssd).empty());
+        CHECK(parse_lsblk_disks_json(R"({"blockdevices":"sda"})"sv, noop_ssd).empty());
+    }
+}
+
+TEST_CASE("parse_zvol_list")
+{
+    using gucc::disk::detail::parse_zvol_list;
+
+    SECTION("name and volsize columns")
+    {
+        const auto zvols = parse_zvol_list("tank/swap\t8G\ntank/vm/disk0\t32G\n"sv);
+        REQUIRE_EQ(zvols.size(), 2u);
+        CHECK_EQ(zvols[0].name, "tank/swap"sv);
+        CHECK_EQ(zvols[0].volsize, "8G"sv);
+        CHECK_EQ(zvols[1].name, "tank/vm/disk0"sv);
+        CHECK_EQ(zvols[1].volsize, "32G"sv);
+    }
+    SECTION("row without size")
+    {
+        const auto zvols = parse_zvol_list("tank/odd"sv);
+        REQUIRE_EQ(zvols.size(), 1u);
+        CHECK_EQ(zvols[0].name, "tank/odd"sv);
+        CHECK(zvols[0].volsize.empty());
+    }
+    SECTION("empty output and blank lines")
+    {
+        CHECK(parse_zvol_list(""sv).empty());
+        CHECK_EQ(parse_zvol_list("\n\ntank/a\t1G\n\n"sv).size(), 1u);
+    }
+}
