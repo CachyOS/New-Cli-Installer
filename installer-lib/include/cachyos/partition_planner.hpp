@@ -2,6 +2,9 @@
 
 #include "cachyos/types.hpp"
 
+// import gucc
+#include "gucc/luks.hpp"
+
 #include <cstdint>      // for uint64_t
 #include <expected>     // for expected
 #include <string>       // for string
@@ -113,10 +116,7 @@ struct ZfsDatasetChoice {
     -> std::expected<void, std::string>;
 
 /// @brief LUKS header version on disk.
-enum class LuksVersion : std::uint8_t {
-    Luks1,  ///< old header, only when the bootloader can't read LUKS2
-    Luks2,  ///< the normal choice
-};
+using LuksVersion = gucc::crypto::LuksVersion;
 
 /// @brief What you need to format a new LUKS partition.
 ///

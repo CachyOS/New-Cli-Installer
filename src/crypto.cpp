@@ -198,7 +198,7 @@ void luks_express() noexcept {
 
 void luks_show() noexcept {
     static constexpr auto luks_success = "Done!";
-    const auto& lsblk                  = gucc::utils::exec(R"(lsblk -o NAME,TYPE,FSTYPE,SIZE | grep "part\|crypt\|NAME\|TYPE\|FSTYPE\|SIZE")");
+    const auto& lsblk                  = gucc::utils::exec(R"(lsblk -o NAME,TYPE,FSTYPE,SIZE -Q "type=='part' || type=='crypt'")");
     const auto& content                = fmt::format(FMT_COMPILE("\n{}\n \n{}"), luks_success, lsblk);
     detail::msgbox_widget(content, size(HEIGHT, GREATER_THAN, 5));
 }
@@ -237,7 +237,7 @@ void luks_menu_advanced() noexcept {
         break;
     }
     case 2: {
-        if (!tui::luks_setup() && !tui::luks_key_define()) { return; }
+        if (!tui::luks_setup() || !tui::luks_key_define()) { return; }
         tui::luks_show();
         break;
     }
@@ -247,6 +247,8 @@ void luks_menu_advanced() noexcept {
         tui::luks_show();
         break;
     }
+    default:
+        break;
     }
     /* clang-format on */
 }
