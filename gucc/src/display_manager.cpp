@@ -40,23 +40,19 @@ auto known_kinds() noexcept -> std::span<const Kind> {
     return {kPreferred};
 }
 
-// TODO(vnepogodin): refactor using staticmap
+constexpr std::array kKindStrings{
+    std::pair{Kind::Gdm,          "gdm"sv},
+    std::pair{Kind::Sddm,         "sddm"sv},
+    std::pair{Kind::Lightdm,      "lightdm"sv},
+    std::pair{Kind::Lxdm,         "lxdm"sv},
+    std::pair{Kind::Ly,           "ly"sv},
+    std::pair{Kind::Plasmalogin,  "plasmalogin"sv},
+    std::pair{Kind::CosmicGreeter,"cosmic-greeter"sv},
+};
+
 auto to_string(Kind k) noexcept -> std::string_view {
-    switch (k) {
-    case Kind::Gdm:
-        return "gdm"sv;
-    case Kind::Sddm:
-        return "sddm"sv;
-    case Kind::Lightdm:
-        return "lightdm"sv;
-    case Kind::Lxdm:
-        return "lxdm"sv;
-    case Kind::Ly:
-        return "ly"sv;
-    case Kind::Plasmalogin:
-        return "plasmalogin"sv;
-    case Kind::CosmicGreeter:
-        return "cosmic-greeter"sv;
+    for (const auto& [kind, s] : kKindStrings) {
+        if (kind == k) return s;
     }
     return {};
 }

@@ -1,5 +1,6 @@
 #include "gucc/error.hpp"
 
+#include <array>    // for array
 #include <string_view>  // for string_view
 #include <utility>      // for move
 
@@ -12,25 +13,20 @@ namespace {
 
 using gucc::ErrorCode;
 
-// TODO(vnepogodin): refactor that using staticmap enum
+constexpr std::array kCodeStrings{
+    std::pair{ErrorCode::SubprocessFailed, "SubprocessFailed"sv},
+    std::pair{ErrorCode::FileIo,           "FileIo"sv},
+    std::pair{ErrorCode::ParseError,       "ParseError"sv},
+    std::pair{ErrorCode::InvalidArgument,  "InvalidArgument"sv},
+    std::pair{ErrorCode::NotFound,         "NotFound"sv},
+    std::pair{ErrorCode::PermissionDenied, "PermissionDenied"sv},
+    std::pair{ErrorCode::Unsupported,      "Unsupported"sv},
+    std::pair{ErrorCode::Unknown,          "Unknown"sv},
+};
+
 [[nodiscard]] auto code_to_string(ErrorCode code) noexcept -> std::string_view {
-    switch (code) {
-    case ErrorCode::SubprocessFailed:
-        return "SubprocessFailed"sv;
-    case ErrorCode::FileIo:
-        return "FileIo"sv;
-    case ErrorCode::ParseError:
-        return "ParseError"sv;
-    case ErrorCode::InvalidArgument:
-        return "InvalidArgument"sv;
-    case ErrorCode::NotFound:
-        return "NotFound"sv;
-    case ErrorCode::PermissionDenied:
-        return "PermissionDenied"sv;
-    case ErrorCode::Unsupported:
-        return "Unsupported"sv;
-    case ErrorCode::Unknown:
-        return "Unknown"sv;
+    for (const auto& [c, s] : kCodeStrings) {
+        if (c == code) return s;
     }
     return "Unknown"sv;
 }

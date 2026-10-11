@@ -6,6 +6,7 @@
 #include "gucc/kernel_params.hpp"
 #include "gucc/string_utils.hpp"
 
+#include <array>       // for array
 #include <filesystem>  // for copy_file, copy_options
 #include <ranges>      // for ranges::*
 #include <string>      // for string
@@ -183,28 +184,23 @@ auto parse_grub_line(const gucc::bootloader::GrubConfig& grub_config, std::strin
 
 namespace gucc::bootloader {
 
-// TODO(vnepogodin): refactor that with staticmap enum
+constexpr std::array kBootloaderMap{
+    std::pair{BootloaderType::Grub,         "grub"sv},
+    std::pair{BootloaderType::SystemdBoot,  "systemd-boot"sv},
+    std::pair{BootloaderType::Refind,       "refind"sv},
+    std::pair{BootloaderType::Limine,       "limine"sv},
+};
+
 auto bootloader_from_string(std::string_view name) noexcept -> std::optional<BootloaderType> {
-    /* clang-format off */
-    if (name == "grub"sv) return BootloaderType::Grub; // NOLINT
-    if (name == "systemd-boot"sv) return BootloaderType::SystemdBoot; // NOLINT
-    if (name == "refind"sv) return BootloaderType::Refind; // NOLINT
-    if (name == "limine"sv) return BootloaderType::Limine; // NOLINT
-    /* clang-format on */
+    for (const auto& [t, s] : kBootloaderMap) {
+        if (s == name) return t;
+    }
     return std::nullopt;
 }
 
-// TODO(vnepogodin): refactor that with staticmap enum
 auto bootloader_to_string(BootloaderType type) noexcept -> std::string_view {
-    switch (type) {
-    case BootloaderType::Grub:
-        return "grub"sv;
-    case BootloaderType::SystemdBoot:
-        return "systemd-boot"sv;
-    case BootloaderType::Refind:
-        return "refind"sv;
-    case BootloaderType::Limine:
-        return "limine"sv;
+    for (const auto& [t, s] : kBootloaderMap) {
+        if (t == type) return s;
     }
     return "unknown"sv;
 }
