@@ -6,6 +6,7 @@
 #include <functional>        // for function, move_only_function
 #include <initializer_list>  // for initializer_list
 #include <memory>            // for unique_ptr
+#include <optional>          // for optional
 #include <span>              // for span
 #include <string>            // for string
 #include <string_view>       // for string_view
@@ -48,6 +49,18 @@ struct ProcessResult {
         return exit_code == 0 && !timed_out && !cancelled;
     }
 };
+
+/// What a test interceptor sees.
+struct InterceptedCommand {
+    /// As passed by the caller, without the arch-chroot prefix.
+    std::span<const std::string> argv{};
+    /// The cmdline, otherwise argv joined by spaces.
+    std::string_view command_line{};
+    RunOptions options{};
+};
+
+/// Returning nullopt falls through to real execution.
+using TestInterceptor = std::function<std::optional<ProcessResult>(const InterceptedCommand&)>;
 
 class LineAssembler final {
  public:
@@ -148,6 +161,15 @@ class ProcessRunner final {
     auto run(std::initializer_list<std::string> argv, const RunOptions& opts = {}) noexcept -> ProcessResult;
 
     auto run_shell(std::string_view cmdline, const RunOptions& opts = {}) noexcept -> ProcessResult;
+
+    /// @brief Test-only.
+    ///
+    /// Consulted after on_start and after the dry-run skip, so skipped Mutate
+    /// commands never reach it. Output is replayed through on_line.
+    /// Empty @p interceptor uninstalls.
+    /// @return The previously installed interceptor.
+    /// @see gucc/testing/command_stub.hpp
+    auto set_test_interceptor(TestInterceptor interceptor) noexcept -> TestInterceptor;
 
  private:
     struct Impl;

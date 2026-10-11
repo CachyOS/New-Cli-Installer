@@ -15,6 +15,7 @@
 #include <atomic>              // for atomic_bool
 #include <condition_variable>  // for condition_variable
 #include <iterator>            // for unreachable_sentinel
+#include <memory>              // for shared_ptr, make_shared
 #include <mutex>               // for mutex, scoped_lock, unique_lock
 #include <ranges>              // for ranges::*
 #include <string>              // for string
@@ -114,7 +115,17 @@ struct ProcessRunner::Impl {
     std::mutex child_mutex;
     subprocess_s* active_child{nullptr};
 
-    auto launch(std::vector<std::string> argv, const RunOptions& opts) noexcept -> ProcessResult;
+    // in-flight call keeps its interceptor alive across a swap
+    std::mutex interceptor_mutex;
+    std::shared_ptr<const TestInterceptor> interceptor;
+    // production use fast path where no interceptor is ever installed
+    std::atomic_bool has_interceptor{false};
+
+    /// @p shell_cmdline is non-empty only for run_shell
+    auto launch(std::vector<std::string> argv, std::string_view shell_cmdline, const RunOptions& opts) noexcept -> ProcessResult;
+
+    auto intercept(std::span<const std::string> argv, std::string_view shell_cmdline, const RunOptions& opts) noexcept
+        -> std::optional<ProcessResult>;
 
     // snapshot so observers may detach while a command runs
     auto observers_snapshot() -> std::vector<ExecutionObserver*> {
@@ -140,12 +151,39 @@ void LineAssembler::flush(const LineCallback& on_line) {
     }
 }
 
-auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions& opts) noexcept -> ProcessResult {
+auto ProcessRunner::Impl::intercept(std::span<const std::string> argv, std::string_view shell_cmdline, const RunOptions& opts) noexcept
+    -> std::optional<ProcessResult> {
+    if (!has_interceptor.load(std::memory_order_relaxed)) {
+        return std::nullopt;
+    }
+    std::shared_ptr<const TestInterceptor> active;
+    {
+        const std::scoped_lock lock(interceptor_mutex);
+        active = interceptor;
+    }
+    if (!active) {
+        return std::nullopt;
+    }
+    const auto joined = shell_cmdline.empty()
+        ? fmt::format(FMT_COMPILE("{}"), fmt::join(argv, " "))
+        : std::string{};
+
+    // ugly-ish
+    return (*active)(InterceptedCommand{
+        .argv         = argv,
+        .command_line = shell_cmdline.empty() ? std::string_view{joined} : shell_cmdline,
+        .options      = opts,
+    });
+}
+
+auto ProcessRunner::Impl::launch(std::vector<std::string> argv, std::string_view shell_cmdline, const RunOptions& opts) noexcept -> ProcessResult {
     if (argv.empty()) {
         spdlog::error("[exec] refusing to run an empty command");
         return ProcessResult{.exit_code = -1};
     }
 
+    // interceptor sees the caller argv, not the chroot wrapper
+    const auto caller_argc = argv.size();
     if (opts.location == ProcessLocation::Target) {
         argv.insert(argv.begin(), {"/usr/bin/arch-chroot"s, std::string{opts.mountpoint}});
     }
@@ -157,7 +195,7 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
         .options = opts,
         .skipped = dry_run.load() && opts.kind == ProcessKind::Mutate,
     };
-    const auto finish = [&](ProcessResult result) -> ProcessResult {
+    const auto finish = [&](const ProcessResult& result) -> ProcessResult {
         for (auto* observer : active_observers) {
             observer->on_finish(info, result);
         }
@@ -173,6 +211,43 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
     }
     if (info.skipped) {
         return finish(ProcessResult{.exit_code = 0});
+    }
+
+    LineAssembler assembler;
+    const auto emit = [&](std::string_view line) {
+        if (opts.quiet) {
+            return;
+        }
+        // redact passwords etc
+        std::string owned;
+        if (logger::has_secrets()) {
+            owned = logger::redact(line);
+            line  = owned;
+        }
+        for (auto* observer : active_observers) {
+            observer->on_line(info, line);
+        }
+    };
+
+    // shared output path
+    ProcessResult result{};
+    const auto consume = [&](std::string_view chunk) {
+        result.output.append(chunk);
+        assembler.feed(chunk, emit);
+    };
+    const auto conclude = [&]() -> ProcessResult {
+        assembler.flush(emit);
+        if (result.output.ends_with('\n')) {
+            result.output.pop_back();
+        }
+        return finish(std::move(result));
+    };
+
+    if (auto intercepted = intercept(std::span{argv}.last(caller_argc), shell_cmdline, opts)) {
+        const auto output = std::exchange(intercepted->output, {});
+        result            = std::move(*intercepted);
+        consume(output);
+        return conclude();
     }
 
     auto argv_ptrs = env_ptrs_from(argv);
@@ -229,34 +304,14 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
         });
     }
 
-    ProcessResult result{};
-    LineAssembler assembler;
-    const auto emit = [&](std::string_view line) {
-        if (opts.quiet) {
-            return;
-        }
-        // redact passwords etc
-        std::string owned;
-        if (logger::has_secrets()) {
-            owned = logger::redact(line);
-            line  = owned;
-        }
-        for (auto* observer : active_observers) {
-            observer->on_line(info, line);
-        }
-    };
-
     std::array<char, 8192> buf{};
     std::uint32_t bytes_read{};
     do {
         bytes_read = subprocess_read_stdout(&process, buf.data(), static_cast<std::uint32_t>(buf.size()));
         if (bytes_read > 0) {
-            const std::string_view chunk{buf.data(), bytes_read};
-            result.output.append(chunk);
-            assembler.feed(chunk, emit);
+            consume(std::string_view{buf.data(), bytes_read});
         }
     } while (bytes_read != 0);
-    assembler.flush(emit);
 
     int ret{-1};
     if (subprocess_join(&process, &ret) != 0) {
@@ -276,14 +331,10 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, const RunOptions
     }
     subprocess_destroy(&process);
 
-    if (result.output.ends_with('\n')) {
-        result.output.pop_back();
-    }
-
     result.timed_out = timed_out.load();
     result.cancelled = cancel_flag.load();
     result.exit_code = ret;
-    return finish(std::move(result));
+    return conclude();
 }
 
 ProcessRunner::ProcessRunner() noexcept : m_impl(std::make_unique<Impl>()) { }
@@ -325,15 +376,26 @@ void ProcessRunner::reset_cancel() noexcept {
 }
 
 auto ProcessRunner::run(std::span<const std::string> argv, const RunOptions& opts) noexcept -> ProcessResult {
-    return m_impl->launch(std::vector<std::string>{argv.begin(), argv.end()}, opts);
+    return m_impl->launch(std::vector<std::string>{argv.begin(), argv.end()}, {}, opts);
 }
 
 auto ProcessRunner::run(std::initializer_list<std::string> argv, const RunOptions& opts) noexcept -> ProcessResult {
-    return m_impl->launch(std::vector<std::string>{argv}, opts);
+    return m_impl->launch(std::vector<std::string>{argv}, {}, opts);
 }
 
 auto ProcessRunner::run_shell(std::string_view cmdline, const RunOptions& opts) noexcept -> ProcessResult {
-    return m_impl->launch({"/bin/sh"s, "-c"s, std::string{cmdline}}, opts);
+    return m_impl->launch({"/bin/sh"s, "-c"s, std::string{cmdline}}, cmdline, opts);
+}
+
+auto ProcessRunner::set_test_interceptor(TestInterceptor interceptor) noexcept -> TestInterceptor {
+    auto next = interceptor ? std::make_shared<const TestInterceptor>(std::move(interceptor)) : nullptr;
+    std::shared_ptr<const TestInterceptor> previous;
+    {
+        const std::scoped_lock lock(m_impl->interceptor_mutex);
+        m_impl->has_interceptor.store(next != nullptr, std::memory_order_relaxed);
+        previous = std::exchange(m_impl->interceptor, std::move(next));
+    }
+    return previous ? *previous : TestInterceptor{};
 }
 
 auto default_runner() noexcept -> ProcessRunner& {

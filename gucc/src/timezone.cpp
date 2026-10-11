@@ -6,6 +6,8 @@
 #include <cctype>      // for isupper
 #include <filesystem>  // for exists, directory_iterator
 #include <ranges>      // for ranges::*
+#include <string>      // for string
+#include <vector>      // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -32,6 +34,12 @@ constexpr auto is_valid_region(const fs::directory_entry& entry) noexcept -> boo
     }
     const auto name = entry.path().filename().string();
     return is_valid_tz_entry(name);
+}
+
+auto zone_files(const fs::path& dir, fs::path base) noexcept {
+    return fs::recursive_directory_iterator(dir)
+        | std::ranges::views::filter([](const fs::directory_entry& entry) { return entry.is_regular_file(); })
+        | std::ranges::views::transform([base = std::move(base)](const fs::directory_entry& entry) { return fs::relative(entry.path(), base).string(); });
 }
 
 auto timezone_region_iter() noexcept {
@@ -78,28 +86,18 @@ auto get_available_timezones() noexcept -> std::vector<std::string> {
     }
 
     // for whatever reason timedatectl didn't work or doesn't exist
-    std::vector<std::string> result{};
-    for (const auto& region_path : timezone_region_iter()) {
-        for (const auto& zone_entry : fs::recursive_directory_iterator(region_path)) {
-            if (!zone_entry.is_regular_file()) {
-                continue;
-            }
-            auto zone_path = fs::relative(zone_entry.path(), ZONEINFO_PATH).string();
-            result.push_back(std::move(zone_path));
-        }
-    }
-
+    auto result = timezone_region_iter()
+        | std::ranges::views::transform([](const fs::path& region_path) { return zone_files(region_path, ZONEINFO_PATH); })
+        | std::ranges::views::join
+        | std::ranges::to<std::vector<std::string>>();
     std::ranges::sort(result);
     return result;
 }
 
 auto get_timezone_regions() noexcept -> std::vector<std::string> {
-    std::vector<std::string> regions{};
-    for (const auto& region_path : timezone_region_iter()) {
-        auto name = region_path.filename().string();
-        regions.emplace_back(std::move(name));
-    }
-
+    auto regions = timezone_region_iter()
+        | std::ranges::views::transform([](const fs::path& region_path) { return region_path.filename().string(); })
+        | std::ranges::to<std::vector<std::string>>();
     std::ranges::sort(regions);
     return regions;
 }
@@ -111,15 +109,7 @@ auto get_timezone_zones(std::string_view region) noexcept -> std::vector<std::st
         return {};
     }
 
-    std::vector<std::string> zones{};
-    for (const auto& entry : fs::recursive_directory_iterator(region_path)) {
-        if (!entry.is_regular_file()) {
-            continue;
-        }
-        auto zone_path = fs::relative(entry.path(), region_path).string();
-        zones.push_back(std::move(zone_path));
-    }
-
+    auto zones = zone_files(region_path, region_path) | std::ranges::to<std::vector<std::string>>();
     std::ranges::sort(zones);
     return zones;
 }
