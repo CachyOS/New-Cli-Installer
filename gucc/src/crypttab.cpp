@@ -23,11 +23,7 @@ static constexpr auto CRYPTTAB_HEADER = R"(# Configuration for encrypted block d
 # <name>       <device>                                     <password>              <options>
 )"sv;
 
-}  // namespace
-
-namespace gucc::fs {
-
-auto gen_crypttab_entry(const Partition& partition, std::string_view crypttab_opts, bool is_root_encrypted, bool is_boot_encrypted) noexcept -> std::optional<std::string> {
+auto gen_crypttab_entry(const gucc::fs::Partition& partition, std::string_view crypttab_opts, bool is_root_encrypted, bool has_unencrypted_boot) noexcept -> std::optional<std::string> {
     // skip if partition is not encypted
     if (!partition.luks_mapper_name || !partition.luks_uuid) {
         return std::nullopt;
@@ -41,8 +37,8 @@ auto gen_crypttab_entry(const Partition& partition, std::string_view crypttab_op
     auto crypt_options  = fmt::format(FMT_COMPILE(" {}"), crypttab_opts);
 
     // 1. if root partition is not encrypted
-    // 2. if root partition is encrypted, but boot partition is not encrypted
-    if (!is_root_encrypted || (partition.mountpoint == "/"sv && !is_boot_encrypted)) {
+    // 2. if root partition is encrypted, but a separate boot partition is not
+    if (!is_root_encrypted || (partition.is_root() && has_unencrypted_boot)) {
         crypt_password = "none"s;
         crypt_options  = ""s;
     }
@@ -50,6 +46,10 @@ auto gen_crypttab_entry(const Partition& partition, std::string_view crypttab_op
     const auto& device_str = fmt::format(FMT_COMPILE("UUID={}"), *partition.luks_uuid);
     return std::make_optional<std::string>(fmt::format(FMT_COMPILE("{:21} {:<45} {}{}\n"), *partition.luks_mapper_name, device_str, crypt_password, crypt_options));
 }
+
+}  // namespace
+
+namespace gucc::fs {
 
 auto generate_crypttab_content(const std::vector<Partition>& partitions, std::string_view crypttab_opts) noexcept -> std::string {
     std::string crypttab_content{CRYPTTAB_HEADER};
@@ -66,11 +66,11 @@ auto generate_crypttab_content(const std::vector<Partition>& partitions, std::st
         {},
         &Partition::device);
 
-    const bool is_root_encrypted = std::ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/"sv && part.luks_mapper_name; });
-    const bool is_boot_encrypted = std::ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/bool"sv && part.luks_mapper_name; });
+    const bool is_root_encrypted    = std::ranges::any_of(partitions, [](const Partition& part) { return part.is_root() && part.luks_mapper_name; });
+    const bool has_unencrypted_boot = std::ranges::any_of(partitions, [](auto&& part) { return part.mountpoint == "/boot"sv && !part.luks_mapper_name; });
 
     for (auto&& partition : partitions_filtered) {
-        auto crypttab_entry = gen_crypttab_entry(partition, crypttab_opts, is_root_encrypted, is_boot_encrypted);
+        auto crypttab_entry = gen_crypttab_entry(partition, crypttab_opts, is_root_encrypted, has_unencrypted_boot);
         if (!crypttab_entry) {
             continue;
         }
@@ -83,10 +83,7 @@ auto generate_crypttab_content(const std::vector<Partition>& partitions, std::st
 auto generate_crypttab(const std::vector<Partition>& partitions, std::string_view root_mountpoint, std::string_view crypttab_opts) noexcept -> Result<void> {
     const auto& crypttab_filepath = fmt::format(FMT_COMPILE("{}/etc/crypttab"), root_mountpoint);
     const auto& crypttab_content  = fs::generate_crypttab_content(partitions, crypttab_opts);
-    if (!file_utils::create_file_for_overwrite(crypttab_filepath, crypttab_content)) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to open crypttab for writing {}", crypttab_filepath));
-    }
-    return {};
+    return file_utils::write_file(crypttab_filepath, crypttab_content);
 }
 
 }  // namespace gucc::fs

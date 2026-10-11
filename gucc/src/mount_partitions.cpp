@@ -1,12 +1,11 @@
 #include "gucc/mount_partitions.hpp"
 #include "gucc/block_devices.hpp"
 #include "gucc/crypto_detection.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
-
-#include <filesystem>  // for create_directories
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -25,11 +24,7 @@ auto build_mount_command(std::string_view partition, std::string_view mount_dir,
 }
 
 auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype) noexcept -> Result<void> {
-    const auto& cmd = build_mount_command(partition, mount_dir, mount_opts, fstype);
-    if (!utils::exec_checked(cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to mount {} at {}", partition, mount_dir));
-    }
-    return {};
+    return utils::exec_or_error(build_mount_command(partition, mount_dir, mount_opts, fstype), "mount partition"sv);
 }
 
 auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int32_t& is_lvm, std::string& luks_name, std::string& luks_dev, std::string& luks_uuid) noexcept -> Result<void> {
@@ -62,38 +57,30 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
     // Format esp part if requested
     if (format) {
         const auto& mkfs_cmd = fs::get_mkfs_command(fs::FilesystemType::Vfat);
-        if (!utils::exec_checked(fmt::format(FMT_COMPILE("{} {}"), mkfs_cmd, device))) {
-            spdlog::error("Failed to format ESP partition {} with {}", device, mkfs_cmd);
-            return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to format ESP partition {}", device));
+        const auto& format_cmd = fmt::format(FMT_COMPILE("{} {}"), mkfs_cmd, device);
+        if (auto res = utils::exec_or_error(format_cmd, "format ESP"sv); !res) {
+            return std::unexpected(std::move(res.error()));
         }
         spdlog::info("Formatted ESP partition {} with {}", device, mkfs_cmd);
         // let blkid see the fresh vfat before we mount it
         utils::settle_devices();
     }
 
-    // Create mount directory
-    std::error_code err{};
-    std::filesystem::create_directories(full_mountpoint, err);
-    if (err) {
-        spdlog::error("Failed to create ESP directory {}: {}", full_mountpoint, err.message());
-        return make_error(ErrorCode::FileIo, fmt::format("failed to create ESP directory {}: {}", full_mountpoint, err.message()));
+    if (auto res = file_utils::create_directories(full_mountpoint); !res) {
+        return std::unexpected(std::move(res.error()));
     }
 
     // Mount the partition. boot is always vfat so hardcode as so
     const auto& boot_opts = fs::get_default_mount_opts(fs::FilesystemType::Vfat, is_ssd);
     if (auto res = mount_partition(device, full_mountpoint, boot_opts, "vfat"sv); !res) {
-        spdlog::error("Failed to mount ESP {} at {}", device, full_mountpoint);
-        return make_error(res.error().code, std::move(res.error().context));
+        return std::unexpected(std::move(res.error()));
     }
 
-    // Construct Partition struct
-    const auto& part_fs   = fs::utils::get_mountpoint_fs(full_mountpoint);
-    const auto& part_uuid = fs::utils::get_device_uuid(device);
-
+    auto [part_fs, part_uuid] = fs::utils::get_device_info(device);
     return fs::Partition{
-        .fstype     = part_fs.empty() ? "vfat"s : part_fs,
+        .fstype     = part_fs.empty() ? "vfat"s : std::move(part_fs),
         .mountpoint = std::string{mountpoint},
-        .uuid_str   = part_uuid,
+        .uuid_str   = std::move(part_uuid),
         .device     = std::string{device},
         .mount_opts = boot_opts,
     };

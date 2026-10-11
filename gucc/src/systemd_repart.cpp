@@ -212,7 +212,7 @@ auto write_repart_configs(std::string_view dir_path, const std::vector<RepartPar
 
 auto run_systemd_repart(const RepartConfig& config) noexcept -> Result<void> {
     const auto argv = build_repart_argv(config, RepartInvocation::Apply);
-    return utils::exec_or_error(argv, fmt::format(FMT_COMPILE("systemd-repart command failed: {}"), utils::join(argv, ' ')));
+    return utils::exec_or_error(argv, "repartition disk"sv);
 }
 
 auto preview_systemd_repart(const RepartConfig& config) noexcept -> std::string {

@@ -6,17 +6,17 @@
 #include "gucc/kernel_params.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <filesystem>  // for copy_file, copy_options
-#include <ranges>      // for ranges::*
-#include <string>      // for string
+#include <algorithm>  // for any_of
+#include <ranges>     // for ranges::*
+#include <string>     // for string
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
-namespace fs = std::filesystem;
 
 #define CONV_REQ_F(needle, f)               \
     if (line.starts_with(needle)) {         \
@@ -179,6 +179,14 @@ auto parse_grub_line(const gucc::bootloader::GrubConfig& grub_config, std::strin
     return std::string{line.data(), line.size()};
 }
 
+void remove_autodetect_hook(std::string_view root_mountpoint) noexcept {
+    const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), root_mountpoint);
+    auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
+    if (initcpio.remove_hook("autodetect")) {
+        spdlog::info("\"autodetect\" hook was removed");
+    }
+}
+
 }  // namespace
 
 namespace gucc::bootloader {
@@ -210,14 +218,7 @@ auto bootloader_to_string(BootloaderType type) noexcept -> std::string_view {
 }
 
 auto gen_grub_config(const GrubConfig& grub_config) noexcept -> std::string {
-    std::string result = GRUB_DEFAULT_CONFIG | std::ranges::views::split('\n')
-        | std::ranges::views::transform([&](auto&& rng) {
-              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
-              return parse_grub_line(grub_config, line);
-          })
-        | std::ranges::views::join_with('\n')
-        | std::ranges::to<std::string>();
-    return result;
+    return utils::map_lines(GRUB_DEFAULT_CONFIG, [&](std::string_view line) { return parse_grub_line(grub_config, line); });
 }
 
 auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> Result<void> {
@@ -229,26 +230,17 @@ auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> Re
 
     // Install systemd-boot onto EFI
     const auto& bootctl_cmd = fmt::format(FMT_COMPILE("bootctl --path={} install"), config.efi_directory);
-    if (!utils::arch_chroot_checked(bootctl_cmd, config.root_mountpoint)) {
-        spdlog::error("Failed to run bootctl on path {} with: {}", config.root_mountpoint, bootctl_cmd);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to run bootctl on {}", config.root_mountpoint));
+    if (auto res = utils::arch_chroot_or_error(bootctl_cmd, config.root_mountpoint, "install systemd-boot"sv); !res) {
+        return res;
     }
 
     // Generate systemd-boot configuration entries with sdboot-manage
-    static constexpr auto sdboot_cmd = "sdboot-manage gen"sv;
-    if (!utils::arch_chroot_checked(sdboot_cmd, config.root_mountpoint)) {
-        spdlog::error("Failed to run sdboot-manage gen on mountpoint: {}", config.root_mountpoint);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to run sdboot-manage gen on {}", config.root_mountpoint));
+    if (auto res = utils::arch_chroot_or_error("sdboot-manage gen"sv, config.root_mountpoint, "generate systemd-boot entries"sv); !res) {
+        return res;
     }
 
-    // if the volume is removable don't use autodetect
     if (config.is_removable) {
-        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), config.root_mountpoint);
-
-        // Remove autodetect hook
-        auto initcpio = detail::Initcpio{initcpio_filename};
-        initcpio.remove_hook("autodetect");
-        spdlog::info("\"Autodetect\" hook was removed");
+        remove_autodetect_hook(config.root_mountpoint);
     }
     return {};
 }
@@ -256,11 +248,7 @@ auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> Re
 auto write_grub_config(const GrubConfig& grub_config, std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto& grub_config_content = bootloader::gen_grub_config(grub_config);
     const auto& grub_config_path    = fmt::format(FMT_COMPILE("{}/etc/default/grub"), root_mountpoint);
-    if (!file_utils::create_file_for_overwrite(grub_config_path, grub_config_content)) {
-        spdlog::error("Failed to open grub config for writing {}", grub_config_path);
-        return make_error(ErrorCode::FileIo, fmt::format("failed to write grub config {}", grub_config_path));
-    }
-    return {};
+    return file_utils::write_file(grub_config_path, grub_config_content);
 }
 
 auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_install_config, std::string_view root_mountpoint) noexcept -> Result<void> {
@@ -305,19 +293,12 @@ auto install_grub(const GrubConfig& grub_config, const GrubInstallConfig& grub_i
     }(grub_install_config);
 
     // Install grub on the system
-    if (!utils::arch_chroot_checked(grub_install_cmd, root_mountpoint)) {
-        spdlog::error("Failed to install grub on path {} with: {}", root_mountpoint, grub_install_cmd);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to install grub on {}", root_mountpoint));
+    if (auto res = utils::arch_chroot_or_error(grub_install_cmd, root_mountpoint, "install grub"sv); !res) {
+        return res;
     }
 
     // Generate grub configuration on the boot partition
-    static constexpr auto grub_config_cmd = "grub-mkconfig -o /boot/grub/grub.cfg"sv;
-    if (!utils::arch_chroot_checked(grub_config_cmd, root_mountpoint)) {
-        spdlog::error("Failed to generate grub on path {} with: {}", root_mountpoint, grub_config_cmd);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to generate grub config on {}", root_mountpoint));
-    }
-
-    return {};
+    return utils::arch_chroot_or_error("grub-mkconfig -o /boot/grub/grub.cfg"sv, root_mountpoint, "generate grub config"sv);
 }
 
 auto gen_refind_config(const std::vector<std::string>& kernel_params) noexcept -> std::string {
@@ -372,19 +353,12 @@ auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -
     }(refind_install_config.root_mountpoint, refind_install_config.is_removable);
 
     // Install refind on the system
-    if (!utils::exec_checked(refind_install_cmd)) {
-        spdlog::error("Failed to install refind on path {} with: {}", refind_install_config.root_mountpoint, refind_install_cmd);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to install refind on {}", refind_install_config.root_mountpoint));
+    if (auto res = utils::exec_or_error(refind_install_cmd, "install refind"sv); !res) {
+        return res;
     }
 
-    // Adjust mkinitcpio for removable drive
     if (refind_install_config.is_removable) {
-        const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), refind_install_config.root_mountpoint);
-
-        // Remove autodetect hook
-        auto initcpio = detail::Initcpio{initcpio_filename};
-        initcpio.remove_hook("autodetect");
-        spdlog::info("'Autodetect' hook was removed");
+        remove_autodetect_hook(refind_install_config.root_mountpoint);
     }
 
     // Generate refind configuration
@@ -392,18 +366,13 @@ auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -
 
     // Write generated config to system
     const auto& refind_config_path = fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), refind_install_config.root_mountpoint);
-    if (!file_utils::create_file_for_overwrite(refind_config_path, refind_config_content)) {
-        spdlog::error("Failed to open refind config for writing {}", refind_config_path);
-        return make_error(ErrorCode::FileIo, fmt::format("failed to write refind config {}", refind_config_path));
+    if (auto res = file_utils::write_file(refind_config_path, refind_config_content); !res) {
+        return res;
     }
 
     // handle extra kernel version strings in {efi boot partition}/EFI/refind/refind.conf
     const auto& extra_refind_config_path = fmt::format(FMT_COMPILE("{}/EFI/refind/refind.conf"), refind_install_config.boot_mountpoint);
-    if (auto res = bootloader::refind_write_extra_kern_strings(extra_refind_config_path, refind_install_config.extra_kernel_versions); !res) {
-        spdlog::error("Failed to write extra kernel strings into {}", refind_config_path);
-        return res;
-    }
-    return {};
+    return bootloader::refind_write_extra_kern_strings(extra_refind_config_path, refind_install_config.extra_kernel_versions);
 }
 
 auto gen_limine_entry_config(const std::vector<std::string>& kernel_params, std::optional<std::string_view> esp_path) noexcept -> std::string {
@@ -422,18 +391,16 @@ auto gen_limine_entry_config(const std::vector<std::string>& kernel_params, std:
 auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> Result<void> {
     // Write limine.conf theme/base config to the boot partition
     const auto& limine_config_path = fmt::format(FMT_COMPILE("{}/limine.conf"), limine_install_config.boot_mountpoint);
-    if (!file_utils::create_file_for_overwrite(limine_config_path, LIMINE_DEFAULT_CONFIG)) {
-        spdlog::error("Failed to open limine config for writing {}", limine_config_path);
-        return make_error(ErrorCode::FileIo, fmt::format("failed to write limine config {}", limine_config_path));
+    if (auto res = file_utils::write_file(limine_config_path, LIMINE_DEFAULT_CONFIG); !res) {
+        return res;
     }
 
     // Write /etc/default/limine config
     const auto& limine_entry_config_path = fmt::format(FMT_COMPILE("{}/etc/default/limine"), limine_install_config.root_mountpoint);
     const auto& limine_config_content    = bootloader::gen_limine_entry_config(
         limine_install_config.kernel_params, limine_install_config.efi_directory);
-    if (!file_utils::create_file_for_overwrite(limine_entry_config_path, limine_config_content)) {
-        spdlog::error("Failed to open limine-entry-tool config for writing {}", limine_entry_config_path);
-        return make_error(ErrorCode::FileIo, fmt::format("failed to write limine entry config {}", limine_entry_config_path));
+    if (auto res = file_utils::write_file(limine_entry_config_path, limine_config_content); !res) {
+        return res;
     }
 
     if (limine_install_config.is_efi) {
@@ -441,17 +408,13 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
         spdlog::info("Bootloader: limine (efi)");
         if (!utils::arch_chroot_checked("limine-install"sv, limine_install_config.root_mountpoint)) {
             spdlog::warn("Failed to install limine bootloader, trying fallback option");
-            if (!utils::arch_chroot_checked("limine-install --skip-uefi --fallback"sv, limine_install_config.root_mountpoint)) {
-                spdlog::error("Failed to install limine (fallback) on path {}", limine_install_config.root_mountpoint);
-                return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to install limine (fallback) on {}", limine_install_config.root_mountpoint));
+            if (auto res = utils::arch_chroot_or_error("limine-install --skip-uefi --fallback"sv, limine_install_config.root_mountpoint, "install limine"sv); !res) {
+                return res;
             }
 
-            // Append fallback flags to /etc/default/limine
-            const auto& fallback_config = fmt::format(FMT_COMPILE("{}\nSKIP_UEFI=yes\nENABLE_LIMINE_FALLBACK=yes\n"),
-                file_utils::read_whole_file(limine_entry_config_path));
-            if (!file_utils::create_file_for_overwrite(limine_entry_config_path, fallback_config)) {
-                spdlog::error("Failed to append fallback config to {}", limine_entry_config_path);
-                return make_error(ErrorCode::FileIo, fmt::format("failed to append fallback config to {}", limine_entry_config_path));
+            const auto& fallback_config = fmt::format(FMT_COMPILE("{}\nSKIP_UEFI=yes\nENABLE_LIMINE_FALLBACK=yes\n"), limine_config_content);
+            if (auto res = file_utils::write_file(limine_entry_config_path, fallback_config); !res) {
+                return res;
             }
         }
     } else {
@@ -466,28 +429,18 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
         const auto& bios_sys_src = fmt::format(FMT_COMPILE("{}/usr/share/limine/limine-bios.sys"), limine_install_config.root_mountpoint);
         const auto& bios_sys_dst = fmt::format(FMT_COMPILE("{}/limine-bios.sys"), limine_install_config.boot_mountpoint);
 
-        std::error_code ec;
-        ::fs::copy_file(bios_sys_src, bios_sys_dst, ::fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            spdlog::error("Failed to copy limine-bios.sys to {}", bios_sys_dst);
-            return make_error(ErrorCode::FileIo, fmt::format("failed to copy limine-bios.sys to {}", bios_sys_dst));
+        if (auto res = file_utils::copy_file(bios_sys_src, bios_sys_dst); !res) {
+            return res;
         }
 
-        // Run limine bios-install on the target device
         const auto& bios_install_cmd = fmt::format(FMT_COMPILE("limine bios-install {}"), *limine_install_config.bios_device);
-        if (!utils::arch_chroot_checked(bios_install_cmd, limine_install_config.root_mountpoint)) {
-            spdlog::error("Failed to run limine bios-install on {}", *limine_install_config.bios_device);
-            return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to run limine bios-install on {}", *limine_install_config.bios_device));
+        if (auto res = utils::arch_chroot_or_error(bios_install_cmd, limine_install_config.root_mountpoint, "install limine for bios"sv); !res) {
+            return res;
         }
     }
 
     // Add kernel entries via limine-mkinitcpio
-    if (!utils::arch_chroot_checked("limine-mkinitcpio"sv, limine_install_config.root_mountpoint)) {
-        spdlog::error("Failed to run limine-mkinitcpio on path {}", limine_install_config.root_mountpoint);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to run limine-mkinitcpio on {}", limine_install_config.root_mountpoint));
-    }
-
-    return {};
+    return utils::arch_chroot_or_error("limine-mkinitcpio"sv, limine_install_config.root_mountpoint, "add limine kernel entries"sv);
 }
 
 }  // namespace gucc::bootloader

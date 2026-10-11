@@ -21,8 +21,8 @@ namespace {
 
 auto run_ufw_commands(std::string_view root_mountpoint, const std::vector<std::string>& commands) noexcept -> gucc::Result<void> {
     for (const auto& command : commands) {
-        if (!gucc::utils::arch_chroot_checked(command, root_mountpoint)) {
-            return make_error(gucc::ErrorCode::SubprocessFailed, fmt::format(FMT_COMPILE("Failed to configure ufw on {}: {}"), root_mountpoint, command));
+        if (auto res = gucc::utils::arch_chroot_or_error(command, root_mountpoint, "configure ufw"sv); !res) {
+            return res;
         }
     }
     return {};

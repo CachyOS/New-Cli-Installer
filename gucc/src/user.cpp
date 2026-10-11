@@ -2,11 +2,14 @@
 #include "gucc/autologin.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/logger.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>   // for find, contains
 #include <filesystem>  // for permissions
 #include <ranges>      // for ranges::*
+#include <string>      // for string
+#include <vector>      // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -16,6 +19,15 @@
 namespace fs = std::filesystem;
 
 using namespace std::string_view_literals;
+using namespace std::string_literals;
+
+namespace {
+auto set_user_groups(const std::vector<std::string>& user_groups, std::string_view username, std::string_view mountpoint) noexcept -> gucc::Result<void> {
+    const auto& groups = gucc::utils::join(user_groups, ',');
+    const auto argv    = std::vector{"/usr/bin/usermod"s, "-aG"s, groups, std::string{username}};
+    return gucc::utils::arch_chroot_or_error(argv, mountpoint, "set user groups"sv);
+}
+}  // namespace
 
 namespace gucc::user {
 
@@ -25,22 +37,23 @@ auto create_group(std::string_view group, std::string_view mountpoint, bool is_s
     // 2. add parameter if the group should be --system group
 
     // --force is used to exit successfully if the group already exists
-    const auto& cmd = fmt::format(FMT_COMPILE("groupadd --force {}{}"), is_system ? "--system"sv : ""sv, group);
-    if (!utils::arch_chroot_checked(cmd, mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to create group {}", group));
+    std::vector<std::string> argv{"/usr/bin/groupadd"s, "--force"s};
+    if (is_system) {
+        argv.emplace_back("--system"s);
     }
-    return {};
+    argv.emplace_back(group);
+    return utils::arch_chroot_or_error(argv, mountpoint, "create group"sv);
 }
 
 auto set_user_password(std::string_view username, std::string_view password, std::string_view mountpoint) noexcept -> Result<void> {
-    // TODO(vnepogodin): should encrypt user password properly here
-    const auto& encrypted_passwd = utils::exec(fmt::format(FMT_COMPILE("openssl passwd '{}'"), password));
-    const auto& password_set_cmd = fmt::format(FMT_COMPILE("usermod -p '{}' '{}'"), encrypted_passwd, username);
-    if (!utils::arch_chroot_checked(password_set_cmd, mountpoint)) {
-        spdlog::error("Failed to set password for user {}", username);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to set password for user {}", username));
+    const auto hash_output      = utils::exec_with_input("openssl passwd -6 -stdin"sv, password);
+    const auto encrypted_passwd = hash_output ? std::string{utils::trim(*hash_output)} : std::string{};
+    if (encrypted_passwd.empty()) {
+        return make_error(ErrorCode::SubprocessFailed, fmt::format(FMT_COMPILE("failed to hash password for user {}"), username));
     }
-    return {};
+    logger::register_secret(encrypted_passwd);
+
+    return utils::arch_chroot_or_error({"/usr/bin/usermod"s, "-p"s, encrypted_passwd, std::string{username}}, mountpoint, "set user password"sv);
 }
 
 auto create_new_user(const user::UserInfo& user_info, const std::vector<std::string>& default_groups, std::string_view mountpoint) noexcept -> Result<void> {
@@ -52,43 +65,34 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
     // Create needed groups
     for (const auto& default_group : default_groups) {
         if (auto res = user::create_group(default_group, mountpoint); !res) {
-            spdlog::error("Failed to create group {}", default_group);
             return res;
         }
     }
 
     // Create the user
     spdlog::info("Creating user {}", user_info.username);
-    const auto& usercmd = [](auto&& username, auto&& user_shell) -> std::string {
-        using namespace std::string_view_literals;
-        static constexpr auto USER_BASE_CMD = "useradd -m -U"sv;
-        if (!user_shell.empty()) {
-            return fmt::format(FMT_COMPILE("{} -s '{}' '{}'"), USER_BASE_CMD, user_shell, username);
-        }
-        return fmt::format(FMT_COMPILE("{} '{}'"), USER_BASE_CMD, username);
-    }(user_info.username, user_info.shell);
+    std::vector<std::string> useradd_argv{"/usr/bin/useradd"s, "-m"s, "-U"s};
+    if (!user_info.shell.empty()) {
+        useradd_argv.insert(useradd_argv.end(), {"-s"s, std::string{user_info.shell}});
+    }
+    useradd_argv.emplace_back(user_info.username);
 
-    if (!utils::arch_chroot_checked(usercmd, mountpoint)) {
-        spdlog::error("Failed to create user with {}", usercmd);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to create user {}", user_info.username));
+    if (auto res = utils::arch_chroot_or_error(useradd_argv, mountpoint, "create user"sv); !res) {
+        return res;
     }
 
     // Set user groups
     spdlog::info("Setting groups for user {}", user_info.username);
-    const auto& groups_set_cmd = fmt::format(FMT_COMPILE("usermod -aG {} {}"), utils::join(default_groups, ','), user_info.username);
-    if (!utils::arch_chroot_checked(groups_set_cmd, mountpoint)) {
-        spdlog::error("Failed to set user groups with {}", groups_set_cmd);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to set groups for user {}", user_info.username));
+    if (auto res = set_user_groups(default_groups, user_info.username, mountpoint); !res) {
+        return res;
     }
 
     // Setup user permissions
     spdlog::info("Setting user permissions for {}", user_info.username);
     const auto& user_group   = fmt::format(FMT_COMPILE("{0}:{0}"), user_info.username);
     const auto& user_homedir = fmt::format(FMT_COMPILE("/home/{}"), user_info.username);
-    const auto& setup_cmd    = fmt::format(FMT_COMPILE("chown -R {} '{}'"), user_group, user_homedir);
-    if (!utils::arch_chroot_checked(setup_cmd, mountpoint)) {
-        spdlog::error("Failed to setup user permissions on {} as {}", user_homedir, user_group);
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to setup permissions on {}", user_homedir));
+    if (auto res = utils::arch_chroot_or_error({"/usr/bin/chown"s, "-R"s, user_group, user_homedir}, mountpoint, "set home permissions"sv); !res) {
+        return res;
     }
 
     // Set user password
@@ -103,12 +107,9 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
     }
 
     const auto& sudoers_filepath = fmt::format(FMT_COMPILE("{}/etc/sudoers.d/10-installer"), mountpoint);
-    {
-        const auto& sudoers_line = fmt::format(FMT_COMPILE("%{} ALL=(ALL) ALL\n"), user_info.sudoers_group);
-        if (!file_utils::create_file_for_overwrite(sudoers_filepath, sudoers_line)) {
-            spdlog::error("Failed to open sudoers for writing {}", sudoers_filepath);
-            return make_error(ErrorCode::FileIo, fmt::format("failed to write sudoers file {}", sudoers_filepath));
-        }
+    const auto& sudoers_line     = fmt::format(FMT_COMPILE("%{} ALL=(ALL) ALL\n"), user_info.sudoers_group);
+    if (auto res = file_utils::write_file(sudoers_filepath, sudoers_line); !res) {
+        return res;
     }
 
     std::error_code err{};
@@ -116,27 +117,17 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
         fs::perms::owner_read | fs::perms::group_read,  // 0440
         fs::perm_options::replace, err);
     if (err) {
-        spdlog::error("Failed to set permissions for sudoers file: {}", err.message());
-        return make_error(ErrorCode::FileIo, fmt::format("failed to set permissions for sudoers file: {}", err.message()));
+        return make_error(ErrorCode::FileIo, fmt::format(FMT_COMPILE("failed to set permissions for sudoers file: {}"), err.message()));
     }
     return {};
 }
 
 auto set_hostname(std::string_view hostname, std::string_view mountpoint) noexcept -> Result<void> {
-    {
-        const auto& hostname_filepath = fmt::format(FMT_COMPILE("{}/etc/hostname"), mountpoint);
-        const auto& hostname_line     = fmt::format(FMT_COMPILE("{}\n"), hostname);
-        if (!file_utils::create_file_for_overwrite(hostname_filepath, hostname_line)) {
-            spdlog::error("Failed to open hostname for writing {}", hostname_filepath);
-            return make_error(ErrorCode::FileIo, fmt::format("failed to write hostname file {}", hostname_filepath));
-        }
-    }
-
-    if (auto res = user::set_hosts(hostname, mountpoint); !res) {
-        spdlog::error("Failed to set hosts");
+    const auto& hostname_filepath = fmt::format(FMT_COMPILE("{}/etc/hostname"), mountpoint);
+    if (auto res = file_utils::write_file(hostname_filepath, fmt::format(FMT_COMPILE("{}\n"), hostname)); !res) {
         return res;
     }
-    return {};
+    return user::set_hosts(hostname, mountpoint);
 }
 
 auto set_hosts(std::string_view hostname, std::string_view mountpoint) noexcept -> Result<void> {
@@ -150,15 +141,9 @@ ff02::2    ip6-allrouters
 127.0.1.1  {}
 )";
 
-    {
-        const auto& hosts_filepath = fmt::format(FMT_COMPILE("{}/etc/hosts"), mountpoint);
-        const auto& hosts_text     = fmt::format(FMT_COMPILE("{}{}"), STANDARD_HOSTS, hostname.empty() ? std::string{} : fmt::format(REQUESTED_HOST, hostname));
-        if (!file_utils::create_file_for_overwrite(hosts_filepath, hosts_text)) {
-            spdlog::error("Failed to open hosts for writing {}", hosts_filepath);
-            return make_error(ErrorCode::FileIo, fmt::format("failed to write hosts file {}", hosts_filepath));
-        }
-    }
-    return {};
+    const auto& hosts_filepath = fmt::format(FMT_COMPILE("{}/etc/hosts"), mountpoint);
+    const auto& hosts_text     = fmt::format(FMT_COMPILE("{}{}"), STANDARD_HOSTS, hostname.empty() ? std::string{} : fmt::format(REQUESTED_HOST, hostname));
+    return file_utils::write_file(hosts_filepath, hosts_text);
 }
 
 auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept -> Result<void> {
@@ -193,9 +178,9 @@ auto setup_user_environment(const UserAllInfo& info, std::string_view mountpoint
         if (info.users_info.size() > 1) {
             spdlog::warn("Only single user is supported for autologin! Setting autologin for {}", user_info.username);
         }
-        if (!enable_autologin(info.display_manager, user_info.username, mountpoint)) {
+        if (auto res = enable_autologin(info.display_manager, user_info.username, mountpoint); !res) {
             spdlog::error("Failed to enable autologin for user {}", user_info.username);
-            return make_error(ErrorCode::SubprocessFailed, fmt::format("failed to enable autologin for user {}", user_info.username));
+            return res;
         }
     }
 

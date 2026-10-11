@@ -5,6 +5,8 @@
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
+using namespace std::string_view_literals;
+
 namespace gucc::swap {
 
 auto make_swapfile(std::string_view root_mountpoint, std::string_view swap_size) noexcept -> Result<void> {
@@ -12,37 +14,31 @@ auto make_swapfile(std::string_view root_mountpoint, std::string_view swap_size)
 
     // allocate size for the file
     const auto& alloc_cmd = fmt::format(FMT_COMPILE("fallocate -l {} {}"), swap_size, swapfile_path);
-    if (!utils::exec_checked(alloc_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to allocate swapfile: {}", alloc_cmd));
+    if (auto res = utils::exec_or_error(alloc_cmd, "allocate swapfile"sv); !res) {
+        return res;
     }
 
     // create swap
     const auto& mkswap_cmd = fmt::format(FMT_COMPILE("chmod 600 {0} && mkswap {0}"), swapfile_path);
-    if (!utils::exec_checked(mkswap_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run mkswap: {}", mkswap_cmd));
+    if (auto res = utils::exec_or_error(mkswap_cmd, "create swapfile"sv); !res) {
+        return res;
     }
 
     // enable swap on file
     const auto& swapon_cmd = fmt::format(FMT_COMPILE("swapon {}"), swapfile_path);
-    if (!utils::exec_checked(swapon_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run swapon on {}", swapfile_path));
-    }
-    return {};
+    return utils::exec_or_error(swapon_cmd, "enable swapfile"sv);
 }
 
 auto make_swap_partition(const fs::Partition& swap_partition) noexcept -> Result<void> {
     // create swap
     const auto& mkswap_cmd = fmt::format(FMT_COMPILE("mkswap {}"), swap_partition.device);
-    if (!utils::exec_checked(mkswap_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to make swap partition: {}", swap_partition.device));
+    if (auto res = utils::exec_or_error(mkswap_cmd, "make swap partition"sv); !res) {
+        return res;
     }
 
     // whether existing to newly created, activate swap
     const auto& swapon_cmd = fmt::format(FMT_COMPILE("swapon {}"), swap_partition.device);
-    if (!utils::exec_checked(swapon_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to swapon partition: {}", swap_partition.device));
-    }
-    return {};
+    return utils::exec_or_error(swapon_cmd, "enable swap partition"sv);
 }
 
 }  // namespace gucc::swap

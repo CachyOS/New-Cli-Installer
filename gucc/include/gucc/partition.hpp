@@ -1,8 +1,9 @@
 #ifndef PARTITION_HPP
 #define PARTITION_HPP
 
-#include <optional>  // for optional
-#include <string>    // for string
+#include <optional>     // for optional
+#include <string>       // for string
+#include <string_view>  // for string_view
 
 namespace gucc::fs {
 
@@ -34,8 +35,14 @@ struct Partition final {
     std::optional<std::string> luks_uuid{};
     std::optional<std::string> luks_passphrase{};
 
+    [[nodiscard]] constexpr auto is_root() const noexcept -> bool { return mountpoint == "/"; }
+
     constexpr bool operator==(const Partition&) const = default;
 };
+
+[[nodiscard]] constexpr auto is_root_on(const Partition& partition, std::string_view fstype) noexcept -> bool {
+    return partition.is_root() && partition.fstype == fstype;
+}
 
 }  // namespace gucc::fs
 

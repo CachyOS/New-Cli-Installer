@@ -1,5 +1,6 @@
 #include "gucc/network.hpp"
 #include "gucc/file_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -55,12 +56,7 @@ auto make_ip_section(std::string_view section_name,
         out += fmt::format(FMT_COMPILE("address1={}\n"), cfg->address);
     }
     if (!cfg->dns.empty()) {
-        out += "dns="sv;
-        std::ranges::for_each(cfg->dns, [&out](const std::string& d) {
-            out += d;
-            out += ';';
-        });
-        out += '\n';
+        out += fmt::format(FMT_COMPILE("dns={};\n"), gucc::utils::join(cfg->dns, ';'));
     }
     return out;
 }
@@ -136,15 +132,14 @@ auto write_connection(std::string_view filename,
     std::string_view body,
     std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto target_dir = fs::path{root_mountpoint} / kSystemConnectionsRel;
-    std::error_code ec;
-    fs::create_directories(target_dir, ec);
-    if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("network: failed to create {}: {}", target_dir.string(), ec.message()));
+    if (auto res = file_utils::create_directories(target_dir.native()); !res) {
+        return res;
     }
     const auto target_path = (target_dir / fs::path{filename}).string();
-    if (!file_utils::create_file_for_overwrite(target_path, body)) {
-        return make_error(ErrorCode::FileIo, fmt::format("network: failed to write {}", target_path));
+    if (auto res = file_utils::write_file(target_path, body); !res) {
+        return res;
     }
+    std::error_code ec;
     fs::permissions(target_path, kConnectionMode, fs::perm_options::replace, ec);
     if (ec) {
         return make_error(ErrorCode::FileIo, fmt::format("network: failed to set 0600 on {}: {}", target_path, ec.message()));
@@ -161,9 +156,8 @@ auto copy_connections_from(std::string_view source_dir,
     }
 
     const auto target_dir = fs::path{root_mountpoint} / kSystemConnectionsRel;
-    fs::create_directories(target_dir, ec);
-    if (ec) {
-        spdlog::error("network: failed to create {}: {}", target_dir.string(), ec.message());
+    if (auto res = file_utils::create_directories(target_dir.native()); !res) {
+        spdlog::error("network: {}", to_string(res.error()));
         return -1;
     }
 
@@ -177,9 +171,8 @@ auto copy_connections_from(std::string_view source_dir,
             continue;
         }
         const auto dest = target_dir / entry.path().filename();
-        fs::copy_file(entry.path(), dest, fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            spdlog::error("network: failed to copy {}: {}", entry.path().string(), ec.message());
+        if (auto res = file_utils::copy_file(entry.path().native(), dest.native()); !res) {
+            spdlog::error("network: {}", to_string(res.error()));
             return -1;
         }
         fs::permissions(dest, kConnectionMode, fs::perm_options::replace, ec);

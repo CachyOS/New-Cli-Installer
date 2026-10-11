@@ -1,10 +1,10 @@
 #include "gucc/repos.hpp"
 #include "gucc/cpu.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 
 #include <algorithm>    // for contains
-#include <filesystem>   // for rename,copy_file
 #include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -15,7 +15,6 @@
 
 #include <spdlog/spdlog.h>
 
-namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
 namespace {
@@ -66,8 +65,8 @@ auto add_arch_specific_repo(std::string_view config_path, std::string_view isa_l
         return {};
     }
 
-    if (!gucc::detail::pacmanconf::push_repos_front(config_path, repos_data)) {
-        return gucc::make_error(gucc::ErrorCode::FileIo, fmt::format("Failed to add CachyOS {} repo to {}", repo_name, config_path));
+    if (auto res = gucc::detail::pacmanconf::push_repos_front(config_path, repos_data); !res) {
+        return res;
     }
     spdlog::info("CachyOS {} Repo added to {}", repo_name, config_path);
     return {};
@@ -81,7 +80,7 @@ auto apply_cachyos_repos(std::string_view config_path) noexcept -> gucc::Result<
     }
 
     // Oracle VM doesn't support ISA levels
-    if (gucc::utils::exec_checked("systemd-detect-virt | grep -q oracle"sv)) {
+    if (gucc::utils::exec("systemd-detect-virt"sv).contains("oracle"sv)) {
         spdlog::info("Oracle VM detected. skipping ISA specific repos");
         return {};
     }
@@ -107,22 +106,17 @@ namespace gucc::repos {
 
 auto install_cachyos_keyring() noexcept -> Result<void> {
     // fetch cachyos keyring, in some cases required on the ISO
-    if (!utils::exec_checked("pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com"sv)) {
-        return make_error(ErrorCode::SubprocessFailed, "pacman-key --recv-keys failed");
+    if (auto res = utils::exec_or_error({"/usr/bin/pacman-key", "--recv-keys", "F3B607488DB35A47", "--keyserver", "keyserver.ubuntu.com"}, "fetch cachyos keyring"sv);
+        !res) {
+        return res;
     }
-    if (!utils::exec_checked("pacman-key --lsign-key F3B607488DB35A47"sv)) {
-        return make_error(ErrorCode::SubprocessFailed, "failed to locally sign pacman-key");
-    }
-    return {};
+    return utils::exec_or_error({"/usr/bin/pacman-key", "--lsign-key", "F3B607488DB35A47"}, "locally sign cachyos keyring"sv);
 }
 
 auto create_target_pacman_config(std::string_view base_config, std::string_view output_config) noexcept -> Result<void> {
-    std::error_code err{};
-    fs::copy_file(base_config, output_config, fs::copy_options::overwrite_existing, err);
-    if (err) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to copy {}->{}: {}", base_config, output_config, err.message()));
+    if (auto res = file_utils::copy_file(base_config, output_config); !res) {
+        return res;
     }
-
     return apply_cachyos_repos(output_config);
 }
 

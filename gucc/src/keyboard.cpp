@@ -5,7 +5,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <system_error>
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -15,12 +14,23 @@ namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
 namespace {
+
 auto as_view(const std::optional<std::string>& opt) noexcept -> std::optional<std::string_view> {
-    if (!opt) {
-        return std::nullopt;
-    }
-    return std::string_view{*opt};
+    return opt.transform([](const std::string& str) { return std::string_view{str}; });
 }
+
+auto write_config(const fs::path& dir, std::string_view filename, std::string_view body) noexcept -> gucc::Result<void> {
+    if (auto res = gucc::file_utils::create_directories(dir.native()); !res) {
+        return res;
+    }
+    const auto path = (dir / filename).string();
+    if (auto res = gucc::file_utils::write_file(path, body); !res) {
+        return res;
+    }
+    spdlog::info("keyboard: {} written", path);
+    return {};
+}
+
 }  // namespace
 
 namespace gucc::keyboard {
@@ -57,37 +67,20 @@ auto make_x11_keymap_conf(std::string_view layout,
 }
 
 auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> Result<void> {
-    const fs::path root{root_mountpoint};
+    const auto etc_dir = fs::path{root_mountpoint} / "etc";
 
     if (cfg.console_keymap) {
-        const auto etc_dir       = root / "etc";
-        const auto vconsole_path = (etc_dir / "vconsole.conf").string();
-        std::error_code ec;
-        fs::create_directories(etc_dir, ec);
-        if (ec) {
-            return make_error(ErrorCode::FileIo, fmt::format("keyboard: failed to create {}: {}", etc_dir.string(), ec.message()));
+        if (auto res = write_config(etc_dir, "vconsole.conf"sv, make_vconsole_conf(*cfg.console_keymap, as_view(cfg.console_font))); !res) {
+            return res;
         }
-        const auto body = make_vconsole_conf(*cfg.console_keymap, as_view(cfg.console_font));
-        if (!file_utils::create_file_for_overwrite(vconsole_path, body)) {
-            return make_error(ErrorCode::FileIo, fmt::format("keyboard: failed to write {}", vconsole_path));
-        }
-        spdlog::info("keyboard: vconsole.conf written to {}", vconsole_path);
     }
 
     if (cfg.x11_layout) {
-        const auto xorg_dir  = root / "etc" / "X11" / "xorg.conf.d";
-        const auto conf_path = (xorg_dir / "00-keyboard.conf").string();
-        std::error_code ec;
-        fs::create_directories(xorg_dir, ec);
-        if (ec) {
-            return make_error(ErrorCode::FileIo, fmt::format("keyboard: failed to create {}: {}", xorg_dir.string(), ec.message()));
-        }
         const auto body = make_x11_keymap_conf(*cfg.x11_layout,
             as_view(cfg.x11_model), as_view(cfg.x11_variant), as_view(cfg.x11_options));
-        if (!file_utils::create_file_for_overwrite(conf_path, body)) {
-            return make_error(ErrorCode::FileIo, fmt::format("keyboard: failed to write {}", conf_path));
+        if (auto res = write_config(etc_dir / "X11" / "xorg.conf.d", "00-keyboard.conf"sv, body); !res) {
+            return res;
         }
-        spdlog::info("keyboard: X11 keymap written to {}", conf_path);
     }
 
     return {};

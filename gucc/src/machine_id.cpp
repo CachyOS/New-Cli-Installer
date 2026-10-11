@@ -1,13 +1,17 @@
 #include "gucc/machine_id.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 
 #include <filesystem>  // for path, remove
 #include <system_error>
 
+#include <fmt/compile.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
 namespace fs = std::filesystem;
+
+using namespace std::string_view_literals;
 
 namespace gucc::machine_id::detail {
 
@@ -29,12 +33,11 @@ auto link_dbus_to_etc(std::string_view root_mountpoint) noexcept -> Result<void>
     const fs::path root{root_mountpoint};
     const auto dbus_path = root / "var" / "lib" / "dbus" / "machine-id";
 
-    std::error_code ec;
-    fs::create_directories(dbus_path.parent_path(), ec);
-    if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to create {}: {}", dbus_path.parent_path().string(), ec.message()));
+    if (auto res = file_utils::create_directories(dbus_path.parent_path().native()); !res) {
+        return res;
     }
     // Replace any leftover regular file or stale symlink.
+    std::error_code ec;
     fs::remove(dbus_path, ec);
     if (ec) {
         return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to clear {}: {}", dbus_path.string(), ec.message()));
@@ -58,9 +61,9 @@ auto reset(std::string_view root_mountpoint) noexcept -> Result<void> {
     // TODO(vnepogodin): expose a wrapper around systemd-firstboot
     // to seed several first-boot settings in single call.
 
-    const auto cmd = fmt::format("systemd-machine-id-setup --root={}", root_mountpoint);
-    if (!utils::exec_checked(cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("machine_id: systemd-machine-id-setup failed for root '{}'", root_mountpoint));
+    const auto cmd = fmt::format(FMT_COMPILE("systemd-machine-id-setup --root={}"), root_mountpoint);
+    if (auto res = utils::exec_or_error(cmd, "set up machine-id"sv); !res) {
+        return res;
     }
 
     return detail::link_dbus_to_etc(root_mountpoint);

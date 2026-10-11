@@ -15,6 +15,8 @@
 
 namespace fs = std::filesystem;
 
+using namespace std::string_view_literals;
+
 namespace gucc::plymouth {
 
 auto is_installed(std::string_view root_mountpoint) noexcept -> bool {
@@ -49,9 +51,8 @@ auto list_themes(std::string_view root_mountpoint) noexcept -> std::vector<std::
 }
 
 auto set_default_theme(std::string_view theme, std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto cmd = fmt::format(FMT_COMPILE("plymouth-set-default-theme {}"), theme);
-    if (!utils::arch_chroot_checked(cmd, root_mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("plymouth: failed to set default theme to '{}' on '{}'", theme, root_mountpoint));
+    if (auto res = utils::arch_chroot_or_error({"/usr/bin/plymouth-set-default-theme", std::string{theme}}, root_mountpoint, "set plymouth theme"sv); !res) {
+        return res;
     }
     spdlog::info("plymouth: default theme set to '{}'", theme);
     return {};

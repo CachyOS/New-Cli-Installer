@@ -27,8 +27,7 @@ auto homectl(std::string_view verb, std::string_view action, std::string_view us
         return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("Cannot {}: username is empty"), action));
     }
     spdlog::info("homectl {} {}", verb, username);
-    return utils::exec_or_error({"/usr/bin/homectl"s, std::string{verb}, std::string{username}},
-        fmt::format(FMT_COMPILE("Failed to {}: {}"), action, username));
+    return utils::exec_or_error({"/usr/bin/homectl"s, std::string{verb}, std::string{username}}, action);
 }
 
 }  // namespace
@@ -119,7 +118,7 @@ auto create_homed_user(const HomedUserConfig& config) noexcept -> Result<void> {
         "--password-change-now=true"s,
     };
     std::ranges::move(generate_homectl_args(config), std::back_inserter(argv));
-    return utils::exec_or_error(argv, env, fmt::format(FMT_COMPILE("Failed to create homed user: {}"), config.username));
+    return utils::exec_or_error(argv, env, "create homed user"sv);
 }
 
 auto activate_home(std::string_view username) noexcept -> Result<void> {

@@ -147,8 +147,8 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
 
 auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcept -> Result<void> {
     const auto& sfdisk_cmd = fmt::format(FMT_COMPILE("echo -e '{}' | sfdisk -w always '{}'"), commands, device);
-    if (!utils::exec_checked(sfdisk_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run partitioning with sfdisk: {}", sfdisk_cmd));
+    if (auto res = utils::exec_or_error(sfdisk_cmd, "partition disk"sv); !res) {
+        return res;
     }
     // let the new partition nodes/links appear before anyone formats them
     utils::settle_devices();
@@ -156,22 +156,19 @@ auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcep
 }
 
 auto erase_disk(std::string_view device) noexcept -> Result<void> {
-    // 1. write zeros
-    const auto& dd_cmd = fmt::format(FMT_COMPILE("dd if=/dev/zero of='{}' bs=512 count=1"), device);
-    if (!utils::exec_checked(dd_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run dd on disk: {}", dd_cmd));
+    const std::array steps{
+        // 1. write zeros
+        fmt::format(FMT_COMPILE("dd if=/dev/zero of='{}' bs=512 count=1"), device),
+        // 2. run wipefs on disk
+        fmt::format(FMT_COMPILE("wipefs -af '{}'"), device),
+        // 3. clear all data and destroy GPT data structures
+        fmt::format(FMT_COMPILE("sgdisk -Zo '{}'"), device),
+    };
+    for (const auto& cmd : steps) {
+        if (auto res = utils::exec_or_error(cmd, "erase disk"sv); !res) {
+            return res;
+        }
     }
-    // 2. run wipefs on disk
-    const auto& wipe_cmd = fmt::format(FMT_COMPILE("wipefs -af '{}'"), device);
-    if (!utils::exec_checked(wipe_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run wipefs on disk: {}", wipe_cmd));
-    }
-    // 3. clear all data and destroy GPT data structures
-    const auto& sgdisk_cmd = fmt::format(FMT_COMPILE("sgdisk -Zo '{}'"), device);
-    if (!utils::exec_checked(sgdisk_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run sgdisk on disk: {}", sgdisk_cmd));
-    }
-
     return {};
 }
 
@@ -195,11 +192,7 @@ auto make_clean_partschema(std::string_view device, const std::vector<fs::Partit
         return res;
     }
     // apply schema
-    const auto& sfdisk_commands = gucc::disk::gen_sfdisk_command(partitions, is_efi);
-    if (auto res = run_sfdisk_part(sfdisk_commands, device); !res) {
-        return res;
-    }
-    return {};
+    return run_sfdisk_part(gen_sfdisk_command(partitions, is_efi), device);
 }
 
 auto generate_partition_schema_from_config(std::string_view device, const fs::DefaultPartitionSchemaConfig& config, bool is_efi) noexcept -> std::vector<fs::Partition> {

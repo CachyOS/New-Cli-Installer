@@ -1,22 +1,20 @@
 #include "gucc/btrfs.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition.hpp"
-#include "gucc/process.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>   // for find_if
-#include <filesystem>  // for create_directories
-#include <fstream>     // for ofstream
+#include <algorithm>   // for find_if, sort
+#include <functional>  // for bind_back
 #include <optional>    // for optional
 #include <ranges>      // for ranges::*
-#include <utility>     // for make_optional
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
 
-namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
 namespace {
@@ -37,31 +35,17 @@ constexpr auto find_partition(const gucc::fs::Partition& part, const gucc::fs::B
     return (part.mountpoint == subvol.mountpoint) || (part.subvolume && *part.subvolume == subvol.subvolume);
 }
 
-constexpr auto is_root_btrfs_part(const gucc::fs::Partition& part) noexcept -> bool {
-    return (part.mountpoint == "/"sv) && (part.fstype == "btrfs"sv);
-}
-
-constexpr auto find_root_btrfs_part(auto&& parts) noexcept {
-    return std::ranges::find_if(parts,
-        [](auto&& part) { return is_root_btrfs_part(part); });
-}
-
 }  // namespace
 
 namespace gucc::fs {
 
 auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto& subvol_dirs_path = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, get_dirname(subvolume));
-    std::error_code err{};
-    ::fs::create_directories(subvol_dirs_path, err);
-    if (err) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to create directories for btrfs subvolume {}: {}", subvol_dirs_path, err.message()));
+    if (auto res = file_utils::create_directories(subvol_dirs_path); !res) {
+        return res;
     }
-    auto cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}{}"), root_mountpoint, subvolume);
-    if (!utils::exec_checked(cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create btrfs subvolume {}{}", root_mountpoint, subvolume));
-    }
-    return {};
+    const auto& cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}{}"), root_mountpoint, subvolume);
+    return utils::exec_or_error(cmd, "create btrfs subvolume"sv);
 }
 
 auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> Result<void> {
@@ -74,14 +58,11 @@ auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::strin
             return res;
         }
     }
-    // TODO(vnepogodin): handle exit code
-    utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {}"), root_mountpoint));
-
-    // Mount subvolumes
-    if (auto res = fs::btrfs_mount_subvols(subvols, device, root_mountpoint, mount_opts); !res) {
-        return res;
+    if (!utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {}"), root_mountpoint))) {
+        spdlog::warn("Failed to umount {} before mounting btrfs subvolumes", root_mountpoint);
     }
-    return {};
+
+    return fs::btrfs_mount_subvols(subvols, device, root_mountpoint, mount_opts);
 }
 
 auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string_view device, std::string_view root_mountpoint, std::string_view mount_opts) noexcept -> Result<void> {
@@ -95,18 +76,16 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
         const auto& subvolume_mountpoint = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, subvol.mountpoint);
 
         // TODO(vnepogodin): refactor create dir and mount into own function
-        std::error_code err{};
-        ::fs::create_directories(subvolume_mountpoint, err);
-        if (err) {
-            return make_error(ErrorCode::FileIo, fmt::format("Failed to create directories for btrfs subvols mountpoint {}: {}", subvolume_mountpoint, err.message()));
+        if (auto res = file_utils::create_directories(subvolume_mountpoint); !res) {
+            return res;
         }
 
         // now mount subvolume
         const auto& mount_cmd = fmt::format(FMT_COMPILE("mount -o {} \"{}\" {}"), mount_option, device, subvolume_mountpoint);
 
         spdlog::debug("mounting..: {}", mount_cmd);
-        if (!utils::exec_checked(mount_cmd)) {
-            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to mount subvolume {} mountpoint {} with: {}", subvol.subvolume, subvolume_mountpoint, mount_cmd));
+        if (auto res = utils::exec_or_error(mount_cmd, "mount btrfs subvolume"sv); !res) {
+            return res;
         }
     }
     return {};
@@ -118,9 +97,10 @@ auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vect
         return {};
     }
 
-    auto root_part_it = find_root_btrfs_part(partitions);
-    if (root_part_it == std::ranges::end(partitions)) {
-        return make_error(ErrorCode::NotFound, fmt::format("Unable to find root btrfs partition!"));
+    // NOTE: that's a copy, no need to care
+    const auto root_part = utils::find_if_optional(partitions, std::bind_back(is_root_on, "btrfs"sv));
+    if (!root_part) {
+        return make_error(ErrorCode::NotFound, "Unable to find root btrfs partition!");
     }
 
     for (auto&& subvol : subvols) {
@@ -134,22 +114,17 @@ auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vect
             part_it->subvolume  = std::make_optional<std::string>(subvol.subvolume);
             continue;
         }
-        // overwise, let's insert the partition based on the root partition
-
-        // NOTE: we don't need to check for root part here,
-        // because it was already checked in the beginning
-        root_part_it = find_root_btrfs_part(partitions);
-
+        // otherwise, insert the partition based on the root partition
         Partition part{};
-        part.fstype           = root_part_it->fstype;
+        part.fstype           = root_part->fstype;
         part.mountpoint       = subvol.mountpoint;
-        part.uuid_str         = root_part_it->uuid_str;
-        part.device           = root_part_it->device;
-        part.mount_opts       = root_part_it->mount_opts;
+        part.uuid_str         = root_part->uuid_str;
+        part.device           = root_part->device;
+        part.mount_opts       = root_part->mount_opts;
         part.subvolume        = std::make_optional<std::string>(subvol.subvolume);
-        part.luks_mapper_name = root_part_it->luks_mapper_name;
-        part.luks_uuid        = root_part_it->luks_uuid;
-        part.luks_passphrase  = root_part_it->luks_passphrase;
+        part.luks_mapper_name = root_part->luks_mapper_name;
+        part.luks_uuid        = root_part->luks_uuid;
+        part.luks_passphrase  = root_part->luks_passphrase;
         partitions.emplace_back(std::move(part));
     }
 
@@ -159,35 +134,25 @@ auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vect
 }
 
 auto create_btrfs_installation_snapshot(std::string_view root_mountpoint) noexcept -> Result<void> {
-    if (!utils::arch_chroot_checked("pacman -Qs cachyos-snapper-support"sv, root_mountpoint)) {
+    if (!utils::arch_chroot_query_checked("pacman -Q cachyos-snapper-support"sv, root_mountpoint)) {
         spdlog::info("cachyos-snapper-support not installed, skipping");
         return {};
     }
 
-    // ensure the dir exists
-    std::error_code err{};
-    const auto& cachyos_dir = fmt::format(FMT_COMPILE("{}/etc/cachyos"), root_mountpoint);
-    ::fs::create_directories(cachyos_dir, err);
-    if (err) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to create {}: {}", cachyos_dir, err.message()));
+    if (auto res = file_utils::create_directories(fmt::format(FMT_COMPILE("{}/etc/cachyos"), root_mountpoint)); !res) {
+        return res;
     }
 
     // create a permanent snapper snapshot of the finished install
-    const auto& snapshot_result = utils::default_runner().run_shell(
-        R"(snapper --no-dbus -c root create --print-number --description 'Fresh CachyOS Installation' --userdata 'important=yes')"sv,
-        utils::RunOptions{.location = utils::ProcessLocation::Target, .mountpoint = root_mountpoint});
-    if (!snapshot_result.ok()) {
+    const auto snapshot_id = utils::arch_chroot_output(
+        R"(snapper --no-dbus -c root create --print-number --description 'Fresh CachyOS Installation' --userdata 'important=yes')"sv, root_mountpoint);
+    if (!snapshot_id) {
         return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create btrfs installation snapshot on {}", root_mountpoint));
     }
 
     // save the record id for easy restore
     const auto& snap_file = fmt::format(FMT_COMPILE("{}/etc/cachyos/installation-snapshot"), root_mountpoint);
-    std::ofstream snap_ofs{snap_file};
-    if (!snap_ofs.is_open()) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to write {}", snap_file));
-    }
-    snap_ofs << utils::trim(snapshot_result.output) << '\n';
-    return {};
+    return file_utils::write_file(snap_file, fmt::format(FMT_COMPILE("{}\n"), utils::trim(*snapshot_id)));
 }
 
 }  // namespace gucc::fs

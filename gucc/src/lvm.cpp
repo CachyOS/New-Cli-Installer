@@ -2,9 +2,12 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>  // for transform, filter
-#include <ranges>     // for ranges::*
-#include <utility>    // for make_pair
+#include <array>        // for array
+#include <ranges>       // for ranges::*
+#include <string>       // for string
+#include <string_view>  // for string_view
+#include <utility>      // for make_pair, move, pair
+#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -13,15 +16,16 @@
 
 using namespace std::string_view_literals;
 
-namespace {
+namespace gucc::lvm::detail {
+
 auto parse_simple_lvm_output(std::string_view output) noexcept -> std::vector<std::string> {
-    return gucc::utils::make_multiline_view(output)
-        | std::ranges::views::transform([](std::string_view sv) { return gucc::utils::trim(sv); })
+    return utils::make_multiline_view(output)
+        | std::ranges::views::transform(utils::trim)
         | std::ranges::views::filter([](std::string_view sv) { return !sv.empty(); })
-        | std::ranges::views::transform([](std::string_view sv) { return std::string{sv}; })
         | std::ranges::to<std::vector<std::string>>();
 }
-}  // namespace
+
+}  // namespace gucc::lvm::detail
 
 namespace gucc::lvm {
 
@@ -42,7 +46,7 @@ auto parse_vgs_output(std::string_view output) noexcept -> std::vector<std::pair
               auto vg_name = std::string{utils::trim(*it)};
               ++it;
 
-              if (it == split.end()) {
+              if (it == std::ranges::end(split)) {
                   return std::make_pair(std::move(vg_name), std::string{});
               }
               auto vg_size = std::string{utils::trim(*it)};
@@ -54,43 +58,27 @@ auto parse_vgs_output(std::string_view output) noexcept -> std::vector<std::pair
 }
 
 auto detect_lvm() noexcept -> LvmInfo {
-    LvmInfo info{};
-
-    // Get physical volumes using --noheading for clean output
-    const auto& pv_output = utils::exec("pvs -o pv_name --noheading 2>/dev/null");
-    if (!pv_output.empty()) {
-        info.physical_volumes = parse_simple_lvm_output(pv_output);
-    }
-
-    // Get volume groups
-    const auto& vg_output = utils::exec("vgs -o vg_name --noheading 2>/dev/null");
-    if (!vg_output.empty()) {
-        info.volume_groups = parse_simple_lvm_output(vg_output);
-    }
-
-    // Get logical volumes as vg-lv pairs
-    const auto& lv_output = utils::exec("lvs -o vg_name,lv_name --noheading --separator='-' 2>/dev/null");
-    if (!lv_output.empty()) {
-        info.logical_volumes = parse_simple_lvm_output(lv_output);
-    }
-
-    return info;
+    const auto query_list = [](std::string_view command) -> std::vector<std::string> {
+        return utils::query_output(command).transform(detail::parse_simple_lvm_output).value_or(std::vector<std::string>{});
+    };
+    return LvmInfo{
+        .physical_volumes = query_list("pvs -o pv_name --noheading 2>/dev/null"sv),
+        .volume_groups    = query_list("vgs -o vg_name --noheading 2>/dev/null"sv),
+        // vg-lv pairs
+        .logical_volumes = query_list("lvs -o vg_name,lv_name --noheading --separator='-' 2>/dev/null"sv),
+    };
 }
 
 auto activate_lvm() noexcept -> Result<void> {
-    // Load dm-mod kernel module
-    if (!utils::exec_checked("modprobe -v dm-mod")) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to load dm-mod kernel module"));
-    }
-
-    // Scan for volume groups
-    if (!utils::exec_checked("vgscan -v")) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to scan for volume groups"));
-    }
-
-    // Activate all volume groups
-    if (!utils::exec_checked("vgchange -ay -v")) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to activate logical volumes"));
+    static constexpr std::array steps{
+        std::pair{"modprobe -v dm-mod"sv, "load dm-mod kernel module"sv},
+        std::pair{"vgscan -v"sv, "scan for volume groups"sv},
+        std::pair{"vgchange -ay -v"sv, "activate logical volumes"sv},
+    };
+    for (const auto& [cmd, what] : steps) {
+        if (auto res = utils::exec_or_error(cmd, what); !res) {
+            return res;
+        }
     }
 
     spdlog::info("LVM volumes activated successfully");
@@ -98,8 +86,9 @@ auto activate_lvm() noexcept -> Result<void> {
 }
 
 auto show_volume_groups() noexcept -> std::vector<std::pair<std::string, std::string>> {
-    const auto& output = utils::exec("vgs -o vg_name,vg_size --noheading --separator='\t' --units=g 2>/dev/null");
-    return parse_vgs_output(output);
+    return utils::query_output("vgs -o vg_name,vg_size --noheading --separator='\t' --units=g 2>/dev/null"sv)
+        .transform(parse_vgs_output)
+        .value_or(std::vector<std::pair<std::string, std::string>>{});
 }
 
 }  // namespace gucc::lvm

@@ -2,8 +2,11 @@
 
 #include "gucc/logger.hpp"
 #include "gucc/lvm.hpp"
+#include "gucc/process.hpp"
 
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include <spdlog/sinks/callback_sink.h>
 #include <spdlog/spdlog.h>
@@ -21,6 +24,7 @@ TEST_CASE("lvm test")
 
     SECTION("detect lvm returns valid structure")
     {
+        gucc::utils::default_runner().set_dry_run(true);
         auto info = gucc::lvm::detect_lvm();
         if (info.physical_volumes.empty() || info.volume_groups.empty() || info.logical_volumes.empty()) {
             REQUIRE_FALSE(info.is_active());

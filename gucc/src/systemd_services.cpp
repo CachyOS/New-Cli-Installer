@@ -1,40 +1,44 @@
 #include "gucc/systemd_services.hpp"
 #include "gucc/io_utils.hpp"
 
-#include <filesystem>  // for exists
-#include <string>      // for string
+#include <filesystem>   // for exists
+#include <string>       // for string
+#include <string_view>  // for string_view
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
-#include <spdlog/spdlog.h>
-
 namespace fs = std::filesystem;
+
+using namespace std::string_view_literals;
+
+namespace {
+
+enum class Scope : bool {
+    System,
+    Global,
+};
+
+auto systemctl(std::string_view verb, Scope scope, std::string_view service_name, std::string_view root_mountpoint) noexcept -> gucc::Result<void> {
+    const bool global = scope == Scope::Global;
+    const auto cmd    = fmt::format(FMT_COMPILE("systemctl {}{} {}"), global ? "--global "sv : ""sv, verb, service_name);
+    return gucc::utils::arch_chroot_or_error(cmd, root_mountpoint, verb);
+}
+
+}  // namespace
 
 namespace gucc::services {
 
 auto enable_systemd_service(std::string_view service_name, std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto& systemctl_cmd = fmt::format(FMT_COMPILE("systemctl enable {}"), service_name);
-    if (!utils::arch_chroot_checked(systemctl_cmd, root_mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to enable systemd service on {}: {}", root_mountpoint, service_name));
-    }
-    return {};
+    return systemctl("enable"sv, Scope::System, service_name, root_mountpoint);
 }
 
 auto disable_systemd_service(std::string_view service_name, std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto& systemctl_cmd = fmt::format(FMT_COMPILE("systemctl disable {}"), service_name);
-    if (!utils::arch_chroot_checked(systemctl_cmd, root_mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to disable systemd service on {}: {}", root_mountpoint, service_name));
-    }
-    return {};
+    return systemctl("disable"sv, Scope::System, service_name, root_mountpoint);
 }
 
 auto enable_user_systemd_service(std::string_view service_name, std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto& systemctl_cmd = fmt::format(FMT_COMPILE("systemctl --global enable {}"), service_name);
-    if (!utils::arch_chroot_checked(systemctl_cmd, root_mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to enable user systemd service on {}: {}", root_mountpoint, service_name));
-    }
-    return {};
+    return systemctl("enable"sv, Scope::Global, service_name, root_mountpoint);
 }
 
 auto systemd_unit_exists(std::string_view unit_name, std::string_view root_mountpoint) noexcept -> bool {

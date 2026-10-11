@@ -1,6 +1,7 @@
 #include "gucc/install.hpp"
 #include "gucc/chwd.hpp"
 #include "gucc/error.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
 #include "gucc/initcpio.hpp"
@@ -39,26 +40,15 @@ auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> bool {
         : zfs_source;
 
     const auto& zpool_cmd = fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache {}"), pool_name);
-    if (!gucc::utils::exec_checked(zpool_cmd)) {
-        spdlog::error("Failed to set zpool cachefile for pool '{}'", pool_name);
-        return false;
+    if (auto res = gucc::utils::exec_or_error(zpool_cmd, "set zpool cachefile"sv); !res) {
+        return res;
+    }
+    if (auto res = gucc::file_utils::create_directories(fmt::format(FMT_COMPILE("{}/etc/zfs"), mountpoint)); !res) {
+        return res;
     }
 
-    std::error_code ec;
-    ::fs::create_directories(fmt::format(FMT_COMPILE("{}/etc/zfs"), mountpoint), ec);
-    if (ec) {
-        spdlog::error("Failed to create /etc/zfs directory: {}", ec.message());
-        return false;
-    }
-
-    const auto cache_src = "/etc/zfs/zpool.cache"sv;
-    const auto cache_dst = fmt::format(FMT_COMPILE("{}{}"), mountpoint, cache_src);
-    ::fs::copy_file(cache_src, cache_dst, ::fs::copy_options::overwrite_existing, ec);
-    if (ec) {
-        spdlog::error("Failed to copy zpool.cache: {}", ec.message());
-        return false;
-    }
-    return true;
+    static constexpr auto cache_src = "/etc/zfs/zpool.cache"sv;
+    return gucc::file_utils::copy_file(cache_src, fmt::format(FMT_COMPILE("{}{}"), mountpoint, cache_src));
 }
 
 }  // namespace
@@ -77,12 +67,8 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
     }
 
     // 1. Create obligatory directories on target
-    {
-        std::error_code ec;
-        ::fs::create_directories(fmt::format(FMT_COMPILE("{}/etc"), mountpoint), ec);
-        if (ec) {
-            return make_error(ErrorCode::FileIo, fmt::format("Failed to create /etc directory on target: {}", ec.message()));
-        }
+    if (auto res = file_utils::create_directories(fmt::format(FMT_COMPILE("{}/etc"), mountpoint)); !res) {
+        return res;
     }
 
     // 2. Set console keymap (needed for mkinitcpio hook)
@@ -106,11 +92,8 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
 
     // 5. Copy host files into target
     for (const auto& [src, dst_relative] : config.host_files_to_copy) {
-        const auto dst = fmt::format(FMT_COMPILE("{}{}"), mountpoint, dst_relative);
-        std::error_code ec;
-        ::fs::copy_file(src, dst, ::fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            return make_error(ErrorCode::FileIo, fmt::format("Failed to copy '{}' -> '{}': {}", src, dst, ec.message()));
+        if (auto res = file_utils::copy_file(src, fmt::format(FMT_COMPILE("{}{}"), mountpoint, dst_relative)); !res) {
+            return res;
         }
     }
 
@@ -129,13 +112,13 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
 
     // 7. Regenerate initramfs with the new mkinitcpio config
     spdlog::info("Regenerating initramfs...");
-    if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to regenerate initramfs"));
+    if (auto res = gucc::utils::arch_chroot_or_error("mkinitcpio -P"sv, mountpoint, "regenerate initramfs"sv); !res) {
+        return res;
     }
 
     // 8. Generate fstab
-    if (!gucc::fs::run_genfstab_on_mount(mountpoint)) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to generate fstab"));
+    if (auto res = gucc::fs::run_genfstab_on_mount(mountpoint); !res) {
+        return res;
     }
 
     // 9. Install hardware drivers

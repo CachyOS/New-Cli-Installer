@@ -1,22 +1,23 @@
 #include "gucc/mirrors.hpp"
-#include "gucc/process.hpp"
+#include "gucc/io_utils.hpp"
+
+#include <string>  // for string
+#include <vector>  // for vector
 
 #include <spdlog/spdlog.h>
+
+using namespace std::string_view_literals;
 
 namespace gucc::mirrors {
 
 auto rank_mirrors() noexcept -> Result<void> {
-    using utils::default_runner;
-    using utils::ProcessKind;
-    using utils::RunOptions;
-
     spdlog::info("Running rate-mirrors...");
-    if (!default_runner().run({"/usr/bin/pacman", "-Sy", "--noconfirm", "--needed", "cachyos-rate-mirrors", "rate-mirrors"}, RunOptions{.kind = ProcessKind::Mutate}).ok()) {
+    if (!utils::exec_checked({"/usr/bin/pacman", "-Sy", "--noconfirm", "--needed", "cachyos-rate-mirrors", "rate-mirrors"})) {
         spdlog::warn("Failed to fetch latest cachyos-rate-mirrors. Continuing..");
     }
 
-    if (!default_runner().run({"/usr/bin/cachyos-rate-mirrors"}, RunOptions{.kind = ProcessKind::Mutate}).ok()) {
-        return make_error(ErrorCode::SubprocessFailed, "Failed to rank mirrors");
+    if (auto res = utils::exec_or_error(std::vector<std::string>{"/usr/bin/cachyos-rate-mirrors"}, "rank mirrors"sv); !res) {
+        return res;
     }
     spdlog::info("Ranked CachyOS mirrors");
     return {};
