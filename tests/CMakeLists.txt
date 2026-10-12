@@ -8,12 +8,12 @@ list(APPEND test_SOURCES
         ${CMAKE_SOURCE_DIR}/src/crypto.cpp
         ${CMAKE_SOURCE_DIR}/src/misc.cpp
         ${CMAKE_SOURCE_DIR}/src/simple_tui.cpp
-        ${CMAKE_SOURCE_DIR}/src/tui.cpp
+        ${CMAKE_SOURCE_DIR}/src/cli.cpp
 )
 
 add_library(test_libreq STATIC ${test_SOURCES})
 target_include_directories(test_libreq PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR})
-target_link_libraries(test_libreq PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus cachyos::installer-lib)
+target_link_libraries(test_libreq PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus cachyos::installer-lib argparse::argparse)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(test_libreq PRIVATE cpr::cpr)
 endif()
@@ -34,8 +34,9 @@ foreach(file ${files})
         $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
     )
     target_include_directories(${testcase} PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR} ${CMAKE_SOURCE_DIR}/gucc/tests)
-    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib doctest::doctest)
+    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib doctest::doctest argparse::argparse)
     if(NOT ENABLE_DEVENV)
       target_link_libraries(${testcase} PRIVATE cpr::cpr)
     endif()
+    add_test(NAME "${testcase}" COMMAND ${testcase})
 endforeach()

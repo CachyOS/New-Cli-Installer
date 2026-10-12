@@ -1,0 +1,7 @@
+[wrap-file]
+directory = argparse-3.1
+source_url = https://github.com/p-ranav/argparse/archive/refs/tags/v3.1.tar.gz
+source_filename = argparse-3.1.tar.gz
+
+[provide]
+dependency_names = argparse_dep

@@ -77,6 +77,12 @@ CPMAddPackage(
    GIT_TAG v2.4.12
    EXCLUDE_FROM_ALL YES
 )
+CPMAddPackage(
+  NAME argparse
+  GITHUB_REPOSITORY p-ranav/argparse
+  GIT_TAG v3.1
+  EXCLUDE_FROM_ALL YES
+)
 
 # FIXME(vnepogodin): temp hack for ftxui
 target_compile_options(screen PRIVATE
@@ -115,7 +121,7 @@ add_executable(${PROJECT_NAME}
    src/installer_data.hpp
    src/simple_tui.cpp src/simple_tui.hpp
    src/tui.cpp src/tui.hpp
-   src/main.cpp
+   src/main.cpp src/cli.hpp src/cli.cpp
    )
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
@@ -143,7 +149,7 @@ if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus argparse::argparse gucc::gucc cachyos::installer-lib)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
 endif()
