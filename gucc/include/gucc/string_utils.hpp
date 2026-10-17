@@ -4,13 +4,14 @@
 #include <cstddef>  // for size_t
 
 #include <algorithm>    // for find_if_not
+#include <array>        // for array
 #include <charconv>     // for from_chars
 #include <concepts>     // for invocable, same_as, unsigned_integral
 #include <optional>     // for optional
 #include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
-#include <utility>      // for forward
+#include <utility>      // for forward, pair
 #include <vector>       // for vector
 
 namespace gucc::utils {
@@ -163,6 +164,51 @@ constexpr auto nth_field(std::string_view line, std::size_t n, std::string_view 
 
 constexpr auto first_field(std::string_view line) noexcept -> std::string_view {
     return nth_field(line, 0);
+}
+
+/// Splits at the first @p sep. nullopt without one.
+constexpr auto split_once(std::string_view str, char sep) noexcept -> std::optional<std::pair<std::string_view, std::string_view>> {
+    const auto pos = str.find(sep);
+    if (pos == std::string_view::npos) {
+        return std::nullopt;
+    }
+    return std::pair{str.substr(0, pos), str.substr(pos + 1)};
+}
+
+/// The first @p N fields split on @p delim, empty ones included.
+template <std::size_t N>
+constexpr auto split_fields(std::string_view line, char delim) noexcept -> std::optional<std::array<std::string_view, N>> {
+    std::array<std::string_view, N> fields{};
+    if (line.empty()) {
+        return N == 1 ? std::optional{fields} : std::nullopt;
+    }
+    const auto [in, out] = std::ranges::copy(split_lines(line, delim) | std::ranges::views::take(N), fields.begin());
+    if (out != fields.end()) {
+        return std::nullopt;
+    }
+    return fields;
+}
+
+constexpr auto key_value(std::string_view token, std::string_view key, char sep = '=') noexcept -> std::optional<std::string_view> {
+    return split_once(token, sep).and_then([key](auto kv) -> std::optional<std::string_view> {
+        return !key.empty() && kv.first == key ? std::optional{kv.second} : std::nullopt;
+    });
+}
+
+template <std::ranges::input_range R>
+constexpr auto value_of(R&& tokens, std::string_view key, char sep = '=') noexcept -> std::optional<std::string_view> {
+    auto values = std::forward<R>(tokens)
+        | std::ranges::views::transform([key, sep](std::string_view token) { return key_value(token, key, sep); })
+        | std::ranges::views::join;
+    const auto it = std::ranges::begin(values);
+    return it == std::ranges::end(values) ? std::nullopt : std::optional<std::string_view>{*it};
+}
+
+/// Lines that hold more than whitespace, trimmed.
+constexpr auto nonblank_lines(std::string_view str) noexcept {
+    return split_lines(str)
+        | std::ranges::views::transform(trim)
+        | std::ranges::views::filter([](std::string_view line) { return !line.empty(); });
 }
 
 auto decode_escapes(std::string_view str, std::string_view intro, int32_t base, std::size_t width) noexcept -> std::string;
