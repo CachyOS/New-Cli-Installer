@@ -5,11 +5,13 @@
 #include "gucc/package_profiles.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>  // for find, search
-#include <array>      // for array
-#include <ranges>     // for ranges::*
-#include <string>     // for string
-#include <vector>     // for erase_if
+#include <algorithm>    // for find, search
+#include <array>        // for array
+#include <ranges>       // for ranges::*
+#include <string>       // for string
+#include <type_traits>  // for invoke_result_t
+#include <utility>      // for forward
+#include <vector>       // for erase_if
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -109,6 +111,19 @@ auto load_net_profs_content(const gucc::package::NetProfileInfo& info) noexcept 
     return content;
 }
 
+template <typename Parser>
+auto load_net_profiles_as(const gucc::package::NetProfileInfo& info, Parser&& parse) noexcept -> std::invoke_result_t<Parser, std::string_view> {
+    auto content = load_net_profs_content(info);
+    if (!content) {
+        return std::nullopt;
+    }
+    auto parsed = std::forward<Parser>(parse)(*content);
+    if (!parsed) {
+        spdlog::error("Failed to parse net profiles");
+    }
+    return parsed;
+}
+
 }  // namespace
 
 namespace gucc::package {
@@ -136,13 +151,8 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
         pkg_list.insert(pkg_list.cend(), {"bcachefs-tools"});
     }
 
-    auto net_profs_content = load_net_profs_content(net_profile_info);
-    if (!net_profs_content) {
-        return std::nullopt;
-    }
-    auto base_net_profs = profile::parse_base_profiles(*net_profs_content);
-    if (!base_net_profs.has_value()) {
-        spdlog::error("Failed to parse net profiles");
+    auto base_net_profs = load_net_profiles_as(net_profile_info, profile::parse_base_profiles);
+    if (!base_net_profs) {
         return std::nullopt;
     }
 
@@ -170,13 +180,8 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
 }
 
 auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<std::string>> {
-    auto net_profs_content = load_net_profs_content(net_profile_info);
-    if (!net_profs_content) {
-        return std::nullopt;
-    }
-    auto desktop_net_profs = profile::parse_desktop_profiles(*net_profs_content);
-    if (!desktop_net_profs.has_value()) {
-        spdlog::error("Failed to parse net profiles");
+    auto desktop_net_profs = load_net_profiles_as(net_profile_info, profile::parse_desktop_profiles);
+    if (!desktop_net_profs) {
         return std::nullopt;
     }
 
@@ -208,21 +213,12 @@ auto get_pkglist_desktop(std::string_view desktop_env, NetProfileInfo net_profil
 }
 
 auto get_netinstall_groups(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::NetinstallGroup>> {
-    auto net_profs_content = load_net_profs_content(net_profile_info);
-    if (!net_profs_content) {
-        return std::nullopt;
-    }
-    return profile::parse_netinstall_groups(*net_profs_content);
+    return load_net_profiles_as(net_profile_info, profile::parse_netinstall_groups);
 }
 
 auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>> {
-    auto net_profs_content = load_net_profs_content(net_profile_info);
-    if (!net_profs_content) {
-        return std::nullopt;
-    }
-    auto base_profs = profile::parse_base_profiles(*net_profs_content);
+    auto base_profs = load_net_profiles_as(net_profile_info, profile::parse_base_profiles);
     if (!base_profs) {
-        spdlog::error("Failed to parse net profiles");
         return std::nullopt;
     }
 
@@ -237,17 +233,9 @@ auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noe
 }
 
 auto get_servicelist_desktop(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>> {
-    auto net_profs_content = load_net_profs_content(net_profile_info);
-    if (!net_profs_content) {
-        return std::nullopt;
-    }
-    auto base_profs = profile::parse_base_profiles(*net_profs_content);
-    if (!base_profs) {
-        spdlog::error("Failed to parse net profiles");
-        return std::nullopt;
-    }
-
-    return std::make_optional(std::move(base_profs->base_desktop_services));
+    return load_net_profiles_as(net_profile_info, profile::parse_base_profiles).transform([](profile::BaseProfiles base_profs) {
+        return std::move(base_profs.base_desktop_services);
+    });
 }
 
 }  // namespace gucc::package

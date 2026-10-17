@@ -151,6 +151,24 @@ TEST_CASE("server profiles")
             REQUIRE(!parsed.has_value());
             CHECK_EQ(parsed.error().code, gucc::ErrorCode::ParseError);
         }
+        SECTION("table header without a key")
+        {
+            auto parsed = gucc::profile::parse_server_profiles("[ = 1\n"sv);
+            REQUIRE(!parsed.has_value());
+            CHECK_EQ(parsed.error().code, gucc::ErrorCode::ParseError);
+        }
+        SECTION("non-ASCII non-whitespace where whitespace may appear")
+        {
+            auto parsed = gucc::profile::parse_server_profiles("\xEF\xBB\xB4hp"sv);
+            REQUIRE(!parsed.has_value());
+            CHECK_EQ(parsed.error().code, gucc::ErrorCode::ParseError);
+        }
+        SECTION("value terminator where an array element should start")
+        {
+            auto parsed = gucc::profile::parse_server_profiles("p=[}"sv);
+            REQUIRE(!parsed.has_value());
+            CHECK_EQ(parsed.error().code, gucc::ErrorCode::ParseError);
+        }
         SECTION("unsupported schema version")
         {
             auto parsed = gucc::profile::parse_server_profiles("[server]\nschema_version = 99\n"sv);

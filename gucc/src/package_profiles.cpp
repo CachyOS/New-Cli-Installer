@@ -158,84 +158,64 @@ inline void parse_toml_service_array(const toml::array* arr, std::vector<gucc::p
     }
 }
 
+auto parse_toml(std::string_view content, std::string_view what) noexcept -> std::optional<toml::table> {
+    toml::parse_result result = toml::parse(content);
+    if (result.failed()) {
+        spdlog::error("Failed to parse {}: {}", what, result.error().description());
+        return std::nullopt;
+    }
+    return std::move(result).table();
+}
+
+auto base_profiles_from(const toml::table& netprof_table) noexcept -> gucc::profile::BaseProfiles {
+    gucc::profile::BaseProfiles base_profiles{};
+    parse_toml_array(netprof_table["base-packages"]["packages"].as_array(), base_profiles.base_packages);
+    parse_toml_array(netprof_table["base-packages"]["desktop"]["packages"].as_array(), base_profiles.base_desktop_packages);
+    parse_toml_service_array(netprof_table["services"]["units"].as_array(), base_profiles.base_services);
+    parse_toml_service_array(netprof_table["services"]["desktop"]["units"].as_array(), base_profiles.base_desktop_services);
+    return base_profiles;
+}
+
+auto desktop_profiles_from(const toml::table& netprof_table) noexcept -> std::vector<gucc::profile::DesktopProfile> {
+    std::vector<gucc::profile::DesktopProfile> desktop_profiles{};
+    parse_desktop_table(netprof_table["desktop"].as_table(), desktop_profiles);
+    return desktop_profiles;
+}
+
 }  // namespace
 
 namespace gucc::profile {
 
 auto parse_base_profiles(std::string_view config_content) noexcept -> std::optional<BaseProfiles> {
-    toml::parse_result netprof = toml::parse(config_content);
-    if (netprof.failed()) {
-        spdlog::error("Failed to parse profiles: {}", netprof.error().description());
-        return std::nullopt;
-    }
-    const auto& netprof_table = std::move(netprof).table();
-
-    BaseProfiles base_profiles{};
-    parse_toml_array(netprof_table["base-packages"]["packages"].as_array(), base_profiles.base_packages);
-    parse_toml_array(netprof_table["base-packages"]["desktop"]["packages"].as_array(), base_profiles.base_desktop_packages);
-    parse_toml_service_array(netprof_table["services"]["units"].as_array(), base_profiles.base_services);
-    parse_toml_service_array(netprof_table["services"]["desktop"]["units"].as_array(), base_profiles.base_desktop_services);
-    return std::make_optional<BaseProfiles>(std::move(base_profiles));
+    return parse_toml(config_content, "profiles"sv).transform(base_profiles_from);
 }
 
 auto parse_desktop_profiles(std::string_view config_content) noexcept -> std::optional<std::vector<DesktopProfile>> {
-    toml::parse_result netprof = toml::parse(config_content);
-    if (netprof.failed()) {
-        spdlog::error("Failed to parse profiles: {}", netprof.error().description());
-        return std::nullopt;
-    }
-    const auto& netprof_table = std::move(netprof).table();
-
-    // simply no desktop profiles offered
-    std::vector<DesktopProfile> desktop_profiles{};
-    parse_desktop_table(netprof_table["desktop"].as_table(), desktop_profiles);
-    return std::make_optional<std::vector<DesktopProfile>>(std::move(desktop_profiles));
+    return parse_toml(config_content, "profiles"sv).transform(desktop_profiles_from);
 }
 
 auto parse_net_profiles(std::string_view config_content) noexcept -> std::optional<NetProfiles> {
-    toml::parse_result netprof = toml::parse(config_content);
-    if (netprof.failed()) {
-        spdlog::error("Failed to parse profiles: {}", netprof.error().description());
-        return std::nullopt;
-    }
-    const auto& netprof_table = std::move(netprof).table();
-
-    NetProfiles net_profiles{};
-
-    // parse base
-    parse_toml_array(netprof_table["base-packages"]["packages"].as_array(), net_profiles.base_profiles.base_packages);
-    parse_toml_array(netprof_table["base-packages"]["desktop"]["packages"].as_array(), net_profiles.base_profiles.base_desktop_packages);
-
-    // parse services
-    parse_toml_service_array(netprof_table["services"]["units"].as_array(), net_profiles.base_profiles.base_services);
-    parse_toml_service_array(netprof_table["services"]["desktop"]["units"].as_array(), net_profiles.base_profiles.base_desktop_services);
-
-    // parse desktop
-    parse_desktop_table(netprof_table["desktop"].as_table(), net_profiles.desktop_profiles);
-    return std::make_optional<NetProfiles>(std::move(net_profiles));
+    return parse_toml(config_content, "profiles"sv).transform([](const toml::table& netprof_table) noexcept {
+        return NetProfiles{
+            .base_profiles    = base_profiles_from(netprof_table),
+            .desktop_profiles = desktop_profiles_from(netprof_table),
+        };
+    });
 }
 
 auto parse_netinstall_groups(std::string_view config_content) noexcept -> std::optional<std::vector<NetinstallGroup>> {
-    toml::parse_result netprof = toml::parse(config_content);
-    if (netprof.failed()) {
-        spdlog::error("Failed to parse profiles: {}", netprof.error().description());
-        return std::nullopt;
-    }
-    const auto& netprof_table = std::move(netprof).table();
-
-    std::vector<NetinstallGroup> groups{};
-
-    // simply no optional groups offered.
-    const auto* group_arr = netprof_table["netinstall"]["group"].as_array();
-    if (group_arr == nullptr) {
-        return std::make_optional<std::vector<NetinstallGroup>>(std::move(groups));
-    }
-    for (const auto& node_el : *group_arr) {
-        if (const auto* tbl = node_el.as_table(); tbl != nullptr) {
-            groups.emplace_back(parse_netinstall_group(*tbl));
+    return parse_toml(config_content, "profiles"sv).transform([](const toml::table& netprof_table) noexcept {
+        // simply no optional groups offered when the array is missing
+        std::vector<NetinstallGroup> groups{};
+        if (const auto* group_arr = netprof_table["netinstall"]["group"].as_array(); group_arr != nullptr) {
+            for (const auto& node_el : *group_arr) {
+                if (const auto* tbl = node_el.as_table(); tbl != nullptr) {
+                    groups.emplace_back(parse_netinstall_group(*tbl));
+                }
+            }
         }
-    }
-    return std::make_optional<std::vector<NetinstallGroup>>(std::move(groups));
+        return groups;
+    });
 }
 
 auto merge_net_profiles(std::string_view lower, std::string_view higher) noexcept -> std::optional<std::string> {
@@ -243,33 +223,26 @@ auto merge_net_profiles(std::string_view lower, std::string_view higher) noexcep
         // nothing to merge
         return std::make_optional<std::string>(lower);
     }
+    const auto higher_table = parse_toml(higher, "net profiles (hi)"sv);
+    if (!higher_table) {
+        return std::nullopt;
+    }
     if (lower.empty()) {
         // lo doesn't exist
-        toml::parse_result higher_res = toml::parse(higher);
-        if (higher_res.failed()) {
-            spdlog::error("Failed to parse net profiles (hi): {}", higher_res.error().description());
-            return std::nullopt;
-        }
         return std::make_optional<std::string>(higher);
     }
 
-    toml::parse_result lower_res = toml::parse(lower);
-    if (lower_res.failed()) {
-        spdlog::error("Failed to parse net profiles (lo): {}", lower_res.error().description());
+    auto lower_table = parse_toml(lower, "net profiles (lo)"sv);
+    if (!lower_table) {
         return std::nullopt;
     }
-    toml::parse_result higher_res = toml::parse(higher);
-    if (higher_res.failed()) {
-        spdlog::error("Failed to parse net profiles (hi): {}", higher_res.error().description());
-        return std::nullopt;
-    }
+    merge_table(*lower_table, *higher_table);
 
-    auto lower_table        = std::move(lower_res).table();
-    const auto higher_table = std::move(higher_res).table();
-    merge_table(lower_table, higher_table);
-
+    // overflow UB by default
+    static constexpr auto kFlags = (toml::toml_formatter::default_flags | toml::format_flags::force_multiline_arrays)
+        & ~(toml::format_flags::allow_literal_strings | toml::format_flags::allow_multi_line_strings);
     std::ostringstream oss;
-    oss << lower_table;
+    oss << toml::toml_formatter{*lower_table, kFlags};
     return std::make_optional<std::string>(oss.str());
 }
 

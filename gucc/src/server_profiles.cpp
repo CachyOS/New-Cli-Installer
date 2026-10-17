@@ -1,6 +1,7 @@
 #include "gucc/server_profiles.hpp"
 #include "detail/toml.hpp"
 #include "gucc/error.hpp"
+#include "gucc/ranges_utils.hpp"
 
 #include <cstdint>  // for int64_t, uint16_t
 
@@ -90,7 +91,7 @@ auto parse_services_strict(const toml::array* arr) noexcept -> gucc::Result<std:
         } else {
             return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("unknown service action '{}' for unit '{}'"), action_str, name));
         }
-        if (std::ranges::find(out, name, &gucc::profile::ServiceEntry::name) != out.end()) {
+        if (std::ranges::contains(out, name, &gucc::profile::ServiceEntry::name)) {
             return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("duplicate unit '{}' in server profile"), name));
         }
         out.emplace_back(gucc::profile::ServiceEntry{
@@ -101,6 +102,19 @@ auto parse_services_strict(const toml::array* arr) noexcept -> gucc::Result<std:
         });
     }
     return out;
+}
+
+constexpr auto store_into(auto& field) noexcept {
+    return [&field](auto&& value) noexcept { field = std::forward<decltype(value)>(value); };
+}
+
+template <class Target>
+auto parse_common_lists(const toml::table& tbl, Target& out) noexcept -> gucc::Result<void> {
+    const auto packages  = [&] { return parse_packages(tbl["packages"].as_array()).transform(store_into(out.packages)); };
+    const auto services  = [&] { return parse_services_strict(tbl["units"].as_array()).transform(store_into(out.services)); };
+    const auto tcp_ports = [&] { return parse_ports(tbl["firewall_tcp_ports"].as_array()).transform(store_into(out.firewall_tcp_ports)); };
+    const auto udp_ports = [&] { return parse_ports(tbl["firewall_udp_ports"].as_array()).transform(store_into(out.firewall_udp_ports)); };
+    return packages().and_then(services).and_then(tcp_ports).and_then(udp_ports);
 }
 
 }  // namespace
@@ -143,35 +157,12 @@ auto parse_server_profiles(std::string_view config_content) noexcept -> Result<S
 
     // [server.base]
     if (const auto* base = (*server)["base"].as_table(); base != nullptr) {
-        auto packages = parse_packages((*base)["packages"].as_array());
-        if (!packages) {
-            return std::unexpected(std::move(packages.error()));
+        auto res = parse_common_lists(*base, result.baseline).and_then([&] {
+            return parse_packages((*base)["features"].as_array()).transform(store_into(result.baseline.features));
+        });
+        if (!res) {
+            return std::unexpected(std::move(res.error()));
         }
-        result.baseline.packages = std::move(*packages);
-
-        auto services = parse_services_strict((*base)["units"].as_array());
-        if (!services) {
-            return std::unexpected(std::move(services.error()));
-        }
-        result.baseline.services = std::move(*services);
-
-        auto tcp = parse_ports((*base)["firewall_tcp_ports"].as_array());
-        if (!tcp) {
-            return std::unexpected(std::move(tcp.error()));
-        }
-        result.baseline.firewall_tcp_ports = std::move(*tcp);
-
-        auto udp = parse_ports((*base)["firewall_udp_ports"].as_array());
-        if (!udp) {
-            return std::unexpected(std::move(udp.error()));
-        }
-        result.baseline.firewall_udp_ports = std::move(*udp);
-
-        auto features = parse_packages((*base)["features"].as_array());
-        if (!features) {
-            return std::unexpected(std::move(features.error()));
-        }
-        result.baseline.features = std::move(*features);
     }
 
     // [server.profiles.<id>]
@@ -186,29 +177,9 @@ auto parse_server_profiles(std::string_view config_content) noexcept -> Result<S
             profile.name        = std::string{(*prof_tbl)["name"].value_or(""sv)};
             profile.description = std::string{(*prof_tbl)["description"].value_or(""sv)};
 
-            auto packages = parse_packages((*prof_tbl)["packages"].as_array());
-            if (!packages) {
-                return std::unexpected(std::move(packages.error()));
+            if (auto res = parse_common_lists(*prof_tbl, profile); !res) {
+                return std::unexpected(std::move(res.error()));
             }
-            profile.packages = std::move(*packages);
-
-            auto services = parse_services_strict((*prof_tbl)["units"].as_array());
-            if (!services) {
-                return std::unexpected(std::move(services.error()));
-            }
-            profile.services = std::move(*services);
-
-            auto tcp = parse_ports((*prof_tbl)["firewall_tcp_ports"].as_array());
-            if (!tcp) {
-                return std::unexpected(std::move(tcp.error()));
-            }
-            profile.firewall_tcp_ports = std::move(*tcp);
-
-            auto udp = parse_ports((*prof_tbl)["firewall_udp_ports"].as_array());
-            if (!udp) {
-                return std::unexpected(std::move(udp.error()));
-            }
-            profile.firewall_udp_ports = std::move(*udp);
 
             if (const auto* warnings = (*prof_tbl)["warnings"].as_array(); warnings != nullptr) {
                 for (const auto& node_el : *warnings) {
@@ -227,8 +198,8 @@ auto parse_server_profiles(std::string_view config_content) noexcept -> Result<S
 }
 
 auto resolve_server_profile(const ServerProfiles& profiles, std::string_view profile_id, const ServerUserExtras& user_extras) noexcept -> Result<ResolvedServerProfile> {
-    const auto found = std::ranges::find(profiles.profiles, profile_id, &ServerProfile::id);
-    if (found == profiles.profiles.end()) {
+    const auto* found = utils::find_ptr(profiles.profiles, profile_id, &ServerProfile::id);
+    if (found == nullptr) {
         return make_error(ErrorCode::NotFound, fmt::format(FMT_COMPILE("unknown server profile '{}'"), profile_id));
     }
     const auto& profile = *found;
@@ -244,8 +215,7 @@ auto resolve_server_profile(const ServerProfiles& profiles, std::string_view pro
     // merged services
     resolved.services = profiles.baseline.services;
     for (const auto& service : profile.services) {
-        auto existing = std::ranges::find(resolved.services, service.name, &ServiceEntry::name);
-        if (existing != resolved.services.end()) {
+        if (auto* existing = utils::find_ptr(resolved.services, service.name, &ServiceEntry::name)) {
             *existing = service;
         } else {
             resolved.services.emplace_back(service);

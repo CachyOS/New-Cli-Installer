@@ -201,6 +201,22 @@ TEST_CASE("merge net profiles")
         auto merged_bad_higher = gucc::profile::merge_net_profiles(VENDORED, INVALID);
         REQUIRE(!merged_bad_higher);
     }
+    SECTION("merged doc keeps multi-line strings intact")
+    {
+        static constexpr auto TRICKY = "a = \"\"\"h\n'''\"\"\"\nb = \"\"\"\n\n\"\"\"\n"sv;
+        const auto merged            = gucc::profile::merge_net_profiles(TRICKY, "c = 1\n"sv);
+        REQUIRE(merged);
+        const auto again = gucc::profile::merge_net_profiles(*merged, "d = 1\n"sv);
+        REQUIRE(again);
+        CHECK(again->contains(R"(a = "h\n'''")"));
+        CHECK(again->contains(R"(b = "\n")"));
+    }
+    SECTION("arrays of nan and INT64_MIN serialize")
+    {
+        const auto merged = gucc::profile::merge_net_profiles("s = [nan, -inf, -9223372036854775808]\n"sv, "b = 1\n"sv);
+        REQUIRE(merged);
+        REQUIRE(gucc::profile::merge_net_profiles(*merged, "c = 1\n"sv));
+    }
     SECTION("3 layer")
     {
         static constexpr auto FETCHED = R"(

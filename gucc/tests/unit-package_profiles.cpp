@@ -181,4 +181,9 @@ TEST_CASE("package profiles test")
         REQUIRE(groups);
         REQUIRE(groups->empty());
     }
+    SECTION("table header without a key")
+    {
+        REQUIRE_FALSE(gucc::profile::parse_net_profiles("[[[netinstall]\n= 1\n"sv));
+        REQUIRE_FALSE(gucc::profile::merge_net_profiles("a = 1\n"sv, "[ = 1\n"sv));
+    }
 }
