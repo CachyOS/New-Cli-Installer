@@ -1,9 +1,16 @@
 #include "gucc/initcpio.hpp"
 #include "detail/initcpio_impl.hpp"
 #include "gucc/file_utils.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <filesystem>  // for exists
+#include <array>        // for array
+#include <filesystem>   // for exists
+#include <optional>     // for optional
+#include <ranges>       // for ranges::*
+#include <string>       // for string
+#include <string_view>  // for string_view
+#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -14,85 +21,125 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr auto modify_initcpio_line(std::string_view line, std::string_view modules, std::string_view files, std::string_view hooks) noexcept -> std::string {
-    if (line.starts_with("MODULES"sv)) {
-        return fmt::format(FMT_COMPILE("MODULES=({})"), modules);
-    } else if (line.starts_with("FILES"sv)) {
-        return fmt::format(FMT_COMPILE("FILES=({})"), files);
-    } else if (line.starts_with("HOOKS"sv)) {
-        return fmt::format(FMT_COMPILE("HOOKS=({})"), hooks);
-    }
-    return std::string{line.data(), line.size()};
+using gucc::detail::InitcpioArrays;
+
+struct Joined {
+    std::string_view modules;
+    std::string_view files;
+    std::string_view hooks;
+};
+
+struct Key {
+    std::string_view Joined::* joined{};
+    std::string_view prefix;
+    std::vector<std::string> InitcpioArrays::* field{};
+};
+
+// map every field
+static constexpr std::array KEYS{
+    Key{.field = &InitcpioArrays::modules, .joined = &Joined::modules, .prefix = "MODULES="sv},
+    Key{.field = &InitcpioArrays::files, .joined = &Joined::files, .prefix = "FILES="sv},
+    Key{.field = &InitcpioArrays::hooks, .joined = &Joined::hooks, .prefix = "HOOKS="sv},
+};
+
+constexpr auto match_key(std::string_view line) noexcept -> std::optional<Key> {
+    return gucc::utils::find_if_optional(KEYS, [line = gucc::utils::ltrim(line)](std::string_view prefix) { return line.starts_with(prefix); }, &Key::prefix);
 }
 
-constexpr auto modify_initcpio_fields(std::string_view file_content, std::string_view modules, std::string_view files, std::string_view hooks) noexcept -> std::string {
-    return file_content | std::ranges::views::split('\n')
-        | std::ranges::views::transform([&](auto&& rng) {
-              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
-              return modify_initcpio_line(line, modules, files, hooks);
-          })
-        | std::ranges::views::join_with('\n')
-        | std::ranges::to<std::string>();
+constexpr auto is_blank(char ch) noexcept -> bool {
+    return ch == ' ' || ch == '\t' || ch == '\r';
+}
+
+constexpr auto words(std::string_view line) noexcept {
+    return line
+        | std::ranges::views::chunk_by([](char lhs, char rhs) { return is_blank(lhs) == is_blank(rhs); })
+        | std::ranges::views::transform([](auto&& chunk) { return std::string_view{chunk}; })
+        | std::ranges::views::filter([](std::string_view word) { return !is_blank(word.front()); })
+        | std::ranges::views::take_while([](std::string_view word) { return !word.starts_with('#'); });
+}
+
+constexpr auto unquote(std::string_view word) noexcept -> std::string_view {
+    if (word.size() >= 2 && (word.front() == '"' || word.front() == '\'') && word.back() == word.front()) {
+        return word.substr(1, word.size() - 2);
+    }
+    return word;
+}
+
+auto parse_array(std::string_view value) -> std::vector<std::string> {
+    const auto open = value.find('(');
+    if (open == std::string_view::npos) {
+        return {};
+    }
+    std::vector<std::string> values{};
+    for (const auto word : words(value.substr(open + 1))) {
+        const auto close = word.find(')');
+        if (const auto head = word.substr(0, close); !head.empty()) {
+            values.emplace_back(unquote(head));
+        }
+        if (close != std::string_view::npos) {
+            return values;
+        }
+    }
+    return {};
 }
 
 }  // namespace
 
 namespace gucc::detail {
 
-bool Initcpio::write() const noexcept {
+auto parse_initcpio(std::string_view content) noexcept -> InitcpioArrays {
+    InitcpioArrays arrays{};
+    for (const auto line : utils::split_lines(content)) {
+        if (const auto key = match_key(line)) {
+            arrays.*key->field = parse_array(utils::ltrim(line).substr(key->prefix.size()));
+        }
+    }
+    return arrays;
+}
+
+auto modify_initcpio_line(std::string_view line, std::string_view modules, std::string_view files, std::string_view hooks) noexcept -> std::string {
+    const Joined joined{.modules = modules, .files = files, .hooks = hooks};
+    return match_key(line)
+        .transform([&joined](const Key& key) { return fmt::format(FMT_COMPILE("{}({})"), key.prefix, joined.*key.joined); })
+        .value_or(std::string{line});
+}
+
+auto rewrite_initcpio(std::string_view content, std::string_view modules, std::string_view files, std::string_view hooks) noexcept -> std::string {
+    return utils::map_lines(content, [&](std::string_view line) { return modify_initcpio_line(line, modules, files, hooks); });
+}
+
+auto Initcpio::read_config() const noexcept -> std::optional<std::string> {
     if (!::fs::exists(m_file_path)) {
         spdlog::error("[INITCPIO] '{}' file doesn't exist!", m_file_path);
-        return false;
+        return std::nullopt;
     }
-
-    auto&& file_content = file_utils::read_whole_file(m_file_path);
+    auto file_content = file_utils::read_whole_file(m_file_path);
     if (file_content.empty()) {
         spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
+        return std::nullopt;
+    }
+    return file_content;
+}
+
+bool Initcpio::write() const noexcept {
+    const auto& file_content = read_config();
+    if (!file_content) {
         return false;
     }
-    const auto& formatted_modules = utils::join(modules, ' ');
-    const auto& formatted_files   = utils::join(files, ' ');
-    const auto& formatted_hooks   = utils::join(hooks, ' ');
+    const auto& formatted_modules = utils::join(m_arrays.modules, ' ');
+    const auto& formatted_files   = utils::join(m_arrays.files, ' ');
+    const auto& formatted_hooks   = utils::join(m_arrays.hooks, ' ');
 
-    auto result = modify_initcpio_fields(file_content, formatted_modules, formatted_files, formatted_hooks);
-    return file_utils::create_file_for_overwrite(m_file_path, result);
+    return file_utils::create_file_for_overwrite(m_file_path, rewrite_initcpio(*file_content, formatted_modules, formatted_files, formatted_hooks));
 }
 
 bool Initcpio::parse_file() noexcept {
-    if (!::fs::exists(m_file_path)) {
-        spdlog::error("[INITCPIO] '{}' file doesn't exist!", m_file_path);
+    const auto& file_content = read_config();
+    if (!file_content) {
         return false;
     }
 
-    auto&& file_content = file_utils::read_whole_file(m_file_path);
-    if (file_content.empty()) {
-        spdlog::error("[INITCPIO] '{}' error occurred!", m_file_path);
-        return false;
-    }
-
-    const auto& parse_line = [](std::string_view line) -> std::vector<std::string> {
-        auto&& open_bracket_pos = line.find('(');
-        auto&& close_bracket    = std::ranges::find(line, ')');
-        if (open_bracket_pos != std::string_view::npos && close_bracket != line.end()) {
-            const auto length = std::ranges::distance(line.begin() + static_cast<std::int64_t>(open_bracket_pos), close_bracket - 1);
-
-            auto&& input_data = line.substr(open_bracket_pos + 1, static_cast<std::size_t>(length));
-            return input_data | std::ranges::views::split(' ') | std::ranges::to<std::vector<std::string>>();
-        }
-        return {};
-    };
-
-    auto&& file_content_lines = utils::make_split_view(file_content);
-    for (auto&& line : file_content_lines) {
-        if (line.starts_with("MODULES"sv)) {
-            modules = parse_line(std::move(line));
-        } else if (line.starts_with("FILES"sv)) {
-            files = parse_line(std::move(line));
-        } else if (line.starts_with("HOOKS"sv)) {
-            hooks = parse_line(std::move(line));
-        }
-    }
-
+    m_arrays = parse_initcpio(*file_content);
     return true;
 }
 
@@ -183,7 +230,7 @@ auto setup_initcpio_config(std::string_view initcpio_path,
     }
 
     // write/flush to disk
-    initcpio.hooks = std::move(hooks);
+    initcpio.arrays().hooks = std::move(hooks);
     if (!initcpio.write()) {
         return make_error(ErrorCode::FileIo, fmt::format("initcpio: failed to write config '{}'", initcpio_path));
     }
