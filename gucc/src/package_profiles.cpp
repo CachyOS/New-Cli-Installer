@@ -1,13 +1,11 @@
 #include "gucc/package_profiles.hpp"
+#include "detail/toml.hpp"
 
 #include <algorithm>  // for contains
 #include <ranges>     // for ranges::*
 #include <sstream>    // for ostringstream
 
 #include <spdlog/spdlog.h>
-
-#define TOML_EXCEPTIONS 0  // disable exceptions
-#include <toml++/toml.h>
 
 using namespace std::string_view_literals;
 

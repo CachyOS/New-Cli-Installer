@@ -1,4 +1,5 @@
 #include "gucc/server_profiles.hpp"
+#include "detail/toml.hpp"
 #include "gucc/error.hpp"
 
 #include <cstdint>  // for int64_t, uint16_t
@@ -9,9 +10,6 @@
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
-
-#define TOML_EXCEPTIONS 0  // disable exceptions
-#include <toml++/toml.h>
 
 using namespace std::string_view_literals;
 
