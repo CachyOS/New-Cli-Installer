@@ -1,47 +1,61 @@
 #include "gucc/autologin.hpp"
+#include "gucc/conf.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/user.hpp"
+
+#include <filesystem>        // for exists
+#include <initializer_list>  // for initializer_list
+#include <string>            // for string
+#include <system_error>      // for error_code
+#include <utility>           // for pair
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
-#include <spdlog/spdlog.h>
-
 using namespace std::string_view_literals;
+using namespace std::string_literals;
+
+namespace {
+
+auto set_config_values(std::string_view path, std::string_view section, std::initializer_list<std::pair<std::string_view, std::string_view>> values) noexcept -> gucc::Result<void> {
+    std::error_code err{};
+    auto content = std::filesystem::exists(path, err) ? gucc::file_utils::read_whole_file(path) : std::string{};
+    for (const auto& [key, value] : values) {
+        content = gucc::conf::set_value(content, section, key, value);
+    }
+    return gucc::file_utils::write_file(path, content);
+}
+
+}  // namespace
 
 namespace gucc::user {
 
 auto enable_autologin(std::string_view displaymanager, std::string_view username, std::string_view root_mountpoint) noexcept -> Result<void> {
-    // TODO(vnepogodin): check for failed commands
-
-    // enable autologin
     if (displaymanager == "gdm"sv) {
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^AutomaticLogin=*/AutomaticLogin={}/g' {}/etc/gdm/custom.conf"), username, root_mountpoint));
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^AutomaticLoginEnable=*/AutomaticLoginEnable=true/g' {}/etc/gdm/custom.conf"), root_mountpoint));
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^TimedLoginEnable=*/TimedLoginEnable=true/g' {}/etc/gdm/custom.conf"), root_mountpoint));
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^TimedLogin=*/TimedLoginEnable={}/g' {}/etc/gdm/custom.conf"), username, root_mountpoint));
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^TimedLoginDelay=*/TimedLoginDelay=0/g' {}/etc/gdm/custom.conf"), root_mountpoint));
-    } else if (displaymanager == "lightdm"sv) {
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^#autologin-user=/autologin-user={}/' {}/etc/lightdm/lightdm.conf"), username, root_mountpoint));
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^#autologin-user-timeout=0/autologin-user-timeout=0/' {}/etc/lightdm/lightdm.conf"), root_mountpoint));
-
-        // create autologin group
-        if (!user::create_group("autologin"sv, root_mountpoint, true)) {
-            return make_error(ErrorCode::SubprocessFailed, "Failed to create autologin group");
-        }
-        // add group to user
-        const auto& groupadd_cmd = fmt::format(FMT_COMPILE("gpasswd -a {} autologin"), username);
-        if (!utils::arch_chroot_checked(groupadd_cmd, root_mountpoint)) {
-            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to add autologin group to user: {}", username));
-        }
-    } else if (displaymanager == "plasmalogin"sv) {
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' {}/etc/plasmalogin.conf"), username, root_mountpoint));
-    } else if (displaymanager == "sddm"sv) {
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^User=/User={}/g' {}/etc/sddm.conf"), username, root_mountpoint));
-    } else if (displaymanager == "lxdm"sv) {
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/^# autologin=dgod/autologin={}/g' {}/etc/lxdm/lxdm.conf"), username, root_mountpoint));
+        return set_config_values(fmt::format(FMT_COMPILE("{}/etc/gdm/custom.conf"), root_mountpoint), "daemon"sv,
+            {{"AutomaticLoginEnable"sv, "True"sv}, {"AutomaticLogin"sv, username}});
     }
-
+    if (displaymanager == "lightdm"sv) {
+        if (auto res = set_config_values(fmt::format(FMT_COMPILE("{}/etc/lightdm/lightdm.conf"), root_mountpoint), "Seat:*"sv,
+                {{"autologin-user"sv, username}, {"autologin-user-timeout"sv, "0"sv}});
+            !res) {
+            return res;
+        }
+        if (auto res = user::create_group("autologin"sv, root_mountpoint, true); !res) {
+            return res;
+        }
+        return utils::arch_chroot_or_error({"/usr/bin/gpasswd"s, "-a"s, std::string{username}, "autologin"s}, root_mountpoint, "add user to autologin group"sv);
+    }
+    if (displaymanager == "plasmalogin"sv) {
+        return set_config_values(fmt::format(FMT_COMPILE("{}/etc/plasmalogin.conf"), root_mountpoint), "Autologin"sv, {{"User"sv, username}});
+    }
+    if (displaymanager == "sddm"sv) {
+        return set_config_values(fmt::format(FMT_COMPILE("{}/etc/sddm.conf"), root_mountpoint), "Autologin"sv, {{"User"sv, username}});
+    }
+    if (displaymanager == "lxdm"sv) {
+        return set_config_values(fmt::format(FMT_COMPILE("{}/etc/lxdm/lxdm.conf"), root_mountpoint), "base"sv, {{"autologin"sv, username}});
+    }
     return {};
 }
 

@@ -1,6 +1,7 @@
 #include "gucc/systemd_repart.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <cstdint>  // for uint8_t
@@ -272,9 +273,8 @@ auto convert_partitions_to_repart(const std::vector<fs::Partition>& partitions) 
     for (const auto& partition : partitions) {
         // Subvolumes should be combined with parent partition
         if (partition.subvolume.has_value()) {
-            auto it = std::ranges::find(result, std::optional{"btrfs"s}, &RepartPartitionConfig::format);
-            if (it != std::ranges::end(result)) {
-                it->subvolumes.push_back(*partition.subvolume);
+            if (auto* btrfs = utils::find_ptr(result, std::optional{"btrfs"s}, &RepartPartitionConfig::format)) {
+                btrfs->subvolumes.push_back(*partition.subvolume);
                 continue;
             }
         }

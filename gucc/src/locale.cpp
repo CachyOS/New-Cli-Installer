@@ -1,11 +1,14 @@
 #include "gucc/locale.hpp"
+#include "gucc/conf.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/keyboard.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>   // for transform
-#include <filesystem>  // for path
-#include <ranges>      // for ranges::*
+#include <algorithm>  // for transform
+#include <ranges>     // for ranges::*
+#include <string>     // for string
+#include <vector>     // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -13,6 +16,19 @@
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
+
+namespace {
+
+auto list_localectl(std::string_view subcommand, std::string_view what) noexcept -> std::vector<std::string> {
+    const auto& output = gucc::utils::exec(fmt::format(FMT_COMPILE("localectl {} 2>/dev/null"), subcommand));
+    if (output.empty()) {
+        spdlog::warn("Cannot list {}", what);
+        return {};
+    }
+    return gucc::utils::make_multiline(output);
+}
+
+}  // namespace
 
 namespace gucc::locale {
 
@@ -33,15 +49,15 @@ LC_IDENTIFICATION="{0}"
 LC_MESSAGES="{0}"
 )";
 
-    {
-        const auto& locale_config_text = fmt::format(LOCALE_CONFIG_PART, locale);
-        if (!file_utils::create_file_for_overwrite(locale_config_path, locale_config_text)) {
-            return make_error(ErrorCode::FileIo, fmt::format("Failed to open locale config for writing {}", locale_config_path));
-        }
+    if (auto res = file_utils::write_file(locale_config_path, fmt::format(LOCALE_CONFIG_PART, locale)); !res) {
+        return res;
     }
 
     // TODO(vnepogodin): refactor and make backups of locale config and locale gen
-    utils::exec_checked(fmt::format(FMT_COMPILE("sed -i \"s/#{0}/{0}/\" {1}"), locale, locale_gen_path));
+    const auto& locale_gen = file_utils::read_whole_file(locale_gen_path);
+    if (locale_gen.empty() || !file_utils::write_file(locale_gen_path, detail::uncomment_locale(locale_gen, locale))) {
+        spdlog::warn("Failed to uncomment locale '{}' in {}", locale, locale_gen_path);
+    }
 
     // NOTE: maybe we should also write into /etc/default/locale if /etc/default exists and is a dir?
     return {};
@@ -54,101 +70,53 @@ auto set_locale(std::string_view locale, std::string_view mountpoint) noexcept -
     }
 
     // Generate locales
-    if (!utils::arch_chroot_checked("locale-gen", mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run locale-gen with locale '{}'", locale));
-    }
-
-    return {};
+    return utils::arch_chroot_or_error("locale-gen"sv, mountpoint, "generate locales"sv);
 }
 
 auto parse_locale_gen(std::string_view content) noexcept -> std::vector<std::string> {
-    if (content.empty()) {
-        return {};
-    }
-
-    return utils::make_multiline_view(content)
-        | std::ranges::views::filter([](std::string_view line) {
-              // Skip lines that are just comments or empty
-              auto trimmed = utils::ltrim(line);
-              if (trimmed.empty() || trimmed.starts_with("#  "sv)) {
-                  return false;
-              }
-              return trimmed.contains("UTF-8"sv);
-          })
-        | std::ranges::views::transform([](std::string_view line) {
-              // Remove leading # if present and get first word
-              auto trimmed = utils::ltrim(line);
-              if (trimmed.starts_with('#')) {
-                  trimmed = utils::ltrim(trimmed.substr(1));
-              }
-              // Get first word (locale name)
-              auto space_pos = trimmed.find(' ');
-              return std::string{trimmed.substr(0, space_pos)};
-          })
+    return utils::make_split_view(content)
+        | std::ranges::views::transform([](std::string_view line) { return conf::classify(line); })
+        | std::ranges::views::join
+        // `#  en_US.UTF-8 UTF-8` in the header is an example, not an entry
+        | std::ranges::views::filter([](const conf::Line& line) { return !(line.commented && line.body.starts_with("  "sv)) && line.body.contains("UTF-8"sv); })
+        | std::ranges::views::transform([](const conf::Line& line) { return std::string{utils::first_field(line.body)}; })
         | std::ranges::views::filter([](const auto& s) { return !s.empty(); })
         | std::ranges::to<std::vector<std::string>>();
 }
 
 auto get_possible_locales() noexcept -> std::vector<std::string> {
-    const auto& locales = utils::exec("cat /etc/locale.gen 2>/dev/null");
-    return parse_locale_gen(locales);
+    return parse_locale_gen(file_utils::read_whole_file("/etc/locale.gen"sv));
 }
 
 auto set_xkbmap(std::string_view xkbmap, std::string_view mountpoint) noexcept -> Result<void> {
     // TODO(vnepogodin): should use localectl instead of doing manually
-    static constexpr auto XKBMAP_CONFIG = R"(Section "InputClass"
-    Identifier "system-keyboard"
-    MatchIsKeyboard "on"
-    Option "XkbLayout" "{}"
-EndSection
-)";
-
-    const auto& xorg_conf_dir      = fmt::format(FMT_COMPILE("{}/etc/X11/xorg.conf.d"), mountpoint);
-    const auto& keyboard_conf_path = fmt::format(FMT_COMPILE("{}/00-keyboard.conf"), xorg_conf_dir);
-
-    // Create directory if it doesn't exist
-    std::error_code ec{};
-    std::filesystem::create_directories(xorg_conf_dir, ec);
-    if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to create xorg.conf.d directory: {}", ec.message()));
-    }
-
-    const auto& config_content = fmt::format(XKBMAP_CONFIG, xkbmap);
-    if (!file_utils::create_file_for_overwrite(keyboard_conf_path, config_content)) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to write keyboard config to {}", keyboard_conf_path));
-    }
-
-    spdlog::info("X11 keyboard layout set to '{}'", xkbmap);
-    return {};
+    keyboard::Config cfg{};
+    cfg.x11_layout = xkbmap;
+    return keyboard::apply(cfg, mountpoint);
 }
 
 auto get_x11_keymap_layouts() noexcept -> std::vector<std::string> {
-    const auto& layouts = utils::exec("localectl list-x11-keymap-layouts 2>/dev/null");
-    if (layouts.empty()) {
-        spdlog::warn("Cannot list X11 keymap layouts");
-        return {};
-    }
-    return utils::make_multiline(layouts);
+    return list_localectl("list-x11-keymap-layouts"sv, "X11 keymap layouts"sv);
 }
 
 auto set_keymap(std::string_view keymap, std::string_view mountpoint) noexcept -> Result<void> {
-    const auto& vconsole_path = fmt::format(FMT_COMPILE("{}/etc/vconsole.conf"), mountpoint);
-    const auto& vconsole_conf = fmt::format(FMT_COMPILE("KEYMAP={}\n"), keymap);
-    if (!file_utils::create_file_for_overwrite(vconsole_path, vconsole_conf)) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to write vconsole.conf to {}", vconsole_path));
-    }
-
-    spdlog::info("Console keymap set to '{}' in {}", keymap, vconsole_path);
-    return {};
+    keyboard::Config cfg{};
+    cfg.console_keymap = keymap;
+    return keyboard::apply(cfg, mountpoint);
 }
 
 auto get_vconsole_keymap_list() noexcept -> std::vector<std::string> {
-    const auto& keymaps = utils::exec("localectl list-keymaps 2>/dev/null");
-    if (keymaps.empty()) {
-        spdlog::warn("Cannot list console keymaps");
-        return {};
-    }
-    return utils::make_multiline(keymaps);
+    return list_localectl("list-keymaps"sv, "console keymaps"sv);
 }
 
 }  // namespace gucc::locale
+
+namespace gucc::locale::detail {
+
+auto uncomment_locale(std::string_view content, std::string_view locale) noexcept -> std::string {
+    return conf::uncomment_where(content, [locale](const conf::Line& line) {
+        return !locale.empty() && utils::starts_with_word(line.body, locale, utils::kBlankChars);
+    });
+}
+
+}  // namespace gucc::locale::detail

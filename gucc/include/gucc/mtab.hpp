@@ -1,5 +1,4 @@
-#ifndef MTAB_HPP
-#define MTAB_HPP
+#pragma once
 
 #include <optional>     // for optional
 #include <string>       // for string
@@ -11,6 +10,8 @@ namespace gucc::mtab {
 struct MTabEntry {
     std::string device{};
     std::string mountpoint{};
+    std::string fstype{};
+    std::string options{};
 };
 
 // Parse mtab
@@ -19,6 +20,10 @@ auto parse_mtab(std::string_view root_mountpoint, std::string_view mtab_path = "
 // Parse mtab content
 auto parse_mtab_content(std::string_view mtab_content, std::string_view root_mountpoint) noexcept -> std::vector<MTabEntry>;
 
-}  // namespace gucc::mtab
+/// Find the last match.
+auto find_mount(const std::vector<MTabEntry>& entries, std::string_view mountpoint) noexcept -> std::optional<MTabEntry>;
 
-#endif  // MTAB_HPP
+/// Value of the first key value pair.
+auto mount_option_value(std::string_view options, std::string_view key) noexcept -> std::optional<std::string_view>;
+
+}  // namespace gucc::mtab

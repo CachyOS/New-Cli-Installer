@@ -173,3 +173,107 @@ TEST_CASE("mtab test")
         fs::remove(filename);
     }
 }
+
+TEST_CASE("mtab visible mount and options")
+{
+    static constexpr auto kMounts = R"(proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+/dev/nvme0n1p2 /mnt btrfs rw,noatime,compress=zstd:3,ssd,space_cache=v2,subvolid=256,subvol=/@ 0 0
+/dev/nvme0n1p2 /mnt/home btrfs rw,noatime,subvolid=257,subvol=/@home 0 0
+/dev/sda1 /mnt/my\040disk ext4 rw,relatime 0 0
+tmpfs /mnt/stacked tmpfs rw 0 0
+/dev/sdb1 /mnt/stacked btrfs rw,subvolid=5,subvol=/ 0 0
+/dev/sdb1 /mnt/stacked btrfs rw,subvolid=300,subvol=/@top 0 0
+)"sv;
+    const auto entries            = gucc::mtab::parse_mtab_content(kMounts, "/"sv);
+
+    SECTION("fstype and options parsed")
+    {
+        const auto mount = gucc::mtab::find_mount(entries, "/mnt"sv);
+        REQUIRE(mount.has_value());
+        CHECK_EQ(mount->fstype, "btrfs"sv);
+        CHECK_EQ(mount->options, "rw,noatime,compress=zstd:3,ssd,space_cache=v2,subvolid=256,subvol=/@"sv);
+    }
+    SECTION("exact mountpoint, not prefix")
+    {
+        CHECK_FALSE(gucc::mtab::find_mount(entries, "/mn"sv).has_value());
+        CHECK_FALSE(gucc::mtab::find_mount(entries, "/nonexistent"sv).has_value());
+    }
+    SECTION("octal-escaped mountpoint decoded")
+    {
+        const auto mount = gucc::mtab::find_mount(entries, "/mnt/my disk"sv);
+        REQUIRE(mount.has_value());
+        CHECK_EQ(mount->fstype, "ext4"sv);
+    }
+    SECTION("last stacked entry is the visible one")
+    {
+        const auto mount = gucc::mtab::find_mount(entries, "/mnt/stacked"sv);
+        REQUIRE(mount.has_value());
+        CHECK_EQ(mount->options, "rw,subvolid=300,subvol=/@top"sv);
+    }
+    SECTION("empty table")
+    {
+        CHECK_FALSE(gucc::mtab::find_mount({}, "/mnt"sv).has_value());
+    }
+}
+
+TEST_CASE("mtab mount_option_value")
+{
+    using gucc::mtab::mount_option_value;
+    constexpr auto kOpts = "rw,noatime,subvolid=256,subvol=/@"sv;
+    CHECK_EQ(mount_option_value(kOpts, "subvol"sv), "/@"sv);
+    CHECK_EQ(mount_option_value(kOpts, "subvolid"sv), "256"sv);
+    CHECK_EQ(mount_option_value("subvol=/@,rw"sv, "subvol"sv), "/@"sv);
+    CHECK_FALSE(mount_option_value(kOpts, "compress"sv).has_value());
+    CHECK_FALSE(mount_option_value(kOpts, "rw"sv).has_value());
+    CHECK_FALSE(mount_option_value("subvolid=500"sv, "subvol"sv).has_value());
+    CHECK_FALSE(mount_option_value(""sv, "subvol"sv).has_value());
+}
+
+TEST_CASE("mtab mount_option_value edge cases")
+{
+    using gucc::mtab::mount_option_value;
+    CHECK_EQ(mount_option_value("subvol="sv, "subvol"sv), ""sv);
+    CHECK_EQ(mount_option_value("compress=zstd:3,subvol=/@"sv, "compress"sv), "zstd:3"sv);
+    CHECK_EQ(mount_option_value("context=system_u:object_r:a=b"sv, "context"sv), "system_u:object_r:a=b"sv);
+    CHECK_EQ(mount_option_value("subvol=/@,subvol=/@home"sv, "subvol"sv), "/@"sv);
+    CHECK_EQ(mount_option_value(",,subvol=/@,"sv, "subvol"sv), "/@"sv);
+    CHECK_FALSE(mount_option_value("=orphan"sv, ""sv).has_value());
+    CHECK_FALSE(mount_option_value("rw"sv, ""sv).has_value());
+    CHECK_FALSE(mount_option_value("xsubvol=/@"sv, "subvol"sv).has_value());
+}
+
+TEST_CASE("mtab octal escape edge cases")
+{
+    const auto mountpoint_of = [](std::string_view field) {
+        const auto line    = fmt::format("/dev/sda1 {} ext4 rw 0 0\n", field);
+        const auto entries = gucc::mtab::parse_mtab_content(line, "/"sv);
+        REQUIRE_EQ(entries.size(), 1u);
+        return entries.front().mountpoint;
+    };
+
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\040b)"sv), "/mnt/a b"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\011b)"sv), "/mnt/a\tb"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\012b)"sv), "/mnt/a\nb"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\134b)"sv), R"(/mnt/a\b)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/\040\040)"sv), "/mnt/  "sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/\134040)"sv), R"(/mnt/\040)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\04)"sv), R"(/mnt/a\04)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\0)"sv), R"(/mnt/a\0)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\)"sv), R"(/mnt/a\)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\\)"sv), R"(/mnt/a\\)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\089)"sv), R"(/mnt/a\089)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\x40)"sv), R"(/mnt/a\x40)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\777)"sv), R"(/mnt/a\777)"sv);
+    CHECK_EQ(mountpoint_of(R"(/mnt/a\-01)"sv), R"(/mnt/a\-01)"sv);
+
+    SECTION("escaped device is decoded too")
+    {
+        const auto entries = gucc::mtab::parse_mtab_content("/dev/disk/by-label/my\\040disk /mnt ext4 rw 0 0\n"sv, "/"sv);
+        REQUIRE_EQ(entries.size(), 1u);
+        CHECK_EQ(entries[0].device, "/dev/disk/by-label/my disk"sv);
+    }
+    SECTION("line with fewer than three fields is skipped")
+    {
+        CHECK(gucc::mtab::parse_mtab_content("/dev/sda1 /mnt\n"sv, "/"sv).empty());
+    }
+}

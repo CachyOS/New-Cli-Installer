@@ -22,11 +22,12 @@ struct TableRow {
 
 // chwd prints two-column tables
 constexpr auto parse_table_row(std::string_view line) noexcept -> std::optional<TableRow> {
+    // TODO(vnepogodin): why not just --json?
     constexpr auto kBorder    = "│"sv;
     constexpr auto kSeparator = "┆"sv;
 
     line = gucc::utils::trim(line);
-    if (!line.starts_with(kBorder) || !line.ends_with(kBorder)) {
+    if ((line.size() < 2 * kBorder.size()) || !line.starts_with(kBorder) || !line.ends_with(kBorder)) {
         return std::nullopt;
     }
     line.remove_prefix(kBorder.size());

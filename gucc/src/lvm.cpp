@@ -19,10 +19,7 @@ using namespace std::string_view_literals;
 namespace gucc::lvm::detail {
 
 auto parse_simple_lvm_output(std::string_view output) noexcept -> std::vector<std::string> {
-    return utils::make_multiline_view(output)
-        | std::ranges::views::transform(utils::trim)
-        | std::ranges::views::filter([](std::string_view sv) { return !sv.empty(); })
-        | std::ranges::to<std::vector<std::string>>();
+    return utils::nonblank_lines(output) | std::ranges::to<std::vector<std::string>>();
 }
 
 }  // namespace gucc::lvm::detail
@@ -30,28 +27,11 @@ auto parse_simple_lvm_output(std::string_view output) noexcept -> std::vector<st
 namespace gucc::lvm {
 
 auto parse_vgs_output(std::string_view output) noexcept -> std::vector<std::pair<std::string, std::string>> {
-    if (output.empty()) {
-        return {};
-    }
-
-    return utils::make_multiline_view(output)
+    return utils::make_split_view(output)
+        // NAME<TAB>SIZE
         | std::ranges::views::transform([](std::string_view line) {
-              auto trimmed = utils::trim(line);
-              auto split   = utils::make_split_view(trimmed, '\t');
-              auto it      = std::ranges::begin(split);
-
-              if (it == std::ranges::end(split)) {
-                  return std::pair<std::string, std::string>{};
-              }
-              auto vg_name = std::string{utils::trim(*it)};
-              ++it;
-
-              if (it == std::ranges::end(split)) {
-                  return std::make_pair(std::move(vg_name), std::string{});
-              }
-              auto vg_size = std::string{utils::trim(*it)};
-
-              return std::make_pair(std::move(vg_name), std::move(vg_size));
+              const auto column = [line](std::size_t n) { return std::string{utils::trim(utils::nth_field(line, n, "\t"))}; };
+              return std::pair{column(0), column(1)};
           })
         | std::ranges::views::filter([](auto&& pair) { return !pair.first.empty(); })
         | std::ranges::to<std::vector<std::pair<std::string, std::string>>>();

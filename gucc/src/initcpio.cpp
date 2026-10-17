@@ -1,5 +1,6 @@
 #include "gucc/initcpio.hpp"
 #include "detail/initcpio_impl.hpp"
+#include "gucc/conf.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
@@ -31,30 +32,32 @@ struct Joined {
 
 struct Key {
     std::string_view Joined::* joined{};
-    std::string_view prefix;
+    std::string_view name;
     std::vector<std::string> InitcpioArrays::* field{};
 };
 
 // map every field
 static constexpr std::array KEYS{
-    Key{.field = &InitcpioArrays::modules, .joined = &Joined::modules, .prefix = "MODULES="sv},
-    Key{.field = &InitcpioArrays::files, .joined = &Joined::files, .prefix = "FILES="sv},
-    Key{.field = &InitcpioArrays::hooks, .joined = &Joined::hooks, .prefix = "HOOKS="sv},
+    Key{.joined = &Joined::modules, .name = "MODULES"sv, .field = &InitcpioArrays::modules},
+    Key{.joined = &Joined::files, .name = "FILES"sv, .field = &InitcpioArrays::files},
+    Key{.joined = &Joined::hooks, .name = "HOOKS"sv, .field = &InitcpioArrays::hooks},
 };
 
-constexpr auto match_key(std::string_view line) noexcept -> std::optional<Key> {
-    return gucc::utils::find_if_optional(KEYS, [line = gucc::utils::ltrim(line)](std::string_view prefix) { return line.starts_with(prefix); }, &Key::prefix);
-}
+struct Assignment {
+    Key key;
+    std::string_view value;
+};
 
-constexpr auto is_blank(char ch) noexcept -> bool {
-    return ch == ' ' || ch == '\t' || ch == '\r';
+constexpr auto match_key(std::string_view line) noexcept -> std::optional<Assignment> {
+    return gucc::conf::active(line).and_then([](std::string_view body) { return gucc::utils::split_once(body, '='); }).and_then([](auto assignment) {
+        return gucc::utils::find_optional(KEYS, assignment.first, &Key::name).transform([&assignment](const Key& key) {
+            return Assignment{.key = key, .value = assignment.second};
+        });
+    });
 }
 
 constexpr auto words(std::string_view line) noexcept {
-    return line
-        | std::ranges::views::chunk_by([](char lhs, char rhs) { return is_blank(lhs) == is_blank(rhs); })
-        | std::ranges::views::transform([](auto&& chunk) { return std::string_view{chunk}; })
-        | std::ranges::views::filter([](std::string_view word) { return !is_blank(word.front()); })
+    return gucc::utils::words(line, gucc::utils::kBlankChars)
         | std::ranges::views::take_while([](std::string_view word) { return !word.starts_with('#'); });
 }
 
@@ -90,8 +93,8 @@ namespace gucc::detail {
 auto parse_initcpio(std::string_view content) noexcept -> InitcpioArrays {
     InitcpioArrays arrays{};
     for (const auto line : utils::split_lines(content)) {
-        if (const auto key = match_key(line)) {
-            arrays.*key->field = parse_array(utils::ltrim(line).substr(key->prefix.size()));
+        if (const auto assignment = match_key(line)) {
+            arrays.*assignment->key.field = parse_array(assignment->value);
         }
     }
     return arrays;
@@ -100,7 +103,7 @@ auto parse_initcpio(std::string_view content) noexcept -> InitcpioArrays {
 auto modify_initcpio_line(std::string_view line, std::string_view modules, std::string_view files, std::string_view hooks) noexcept -> std::string {
     const Joined joined{.modules = modules, .files = files, .hooks = hooks};
     return match_key(line)
-        .transform([&joined](const Key& key) { return fmt::format(FMT_COMPILE("{}({})"), key.prefix, joined.*key.joined); })
+        .transform([&joined](const Assignment& assignment) { return fmt::format(FMT_COMPILE("{}=({})"), assignment.key.name, joined.*assignment.key.joined); })
         .value_or(std::string{line});
 }
 

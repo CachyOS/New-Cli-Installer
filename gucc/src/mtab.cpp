@@ -1,12 +1,18 @@
 #include "gucc/mtab.hpp"
+#include "gucc/conf.hpp"
 #include "gucc/file_utils.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
 
+#include <algorithm>  // for copy
+#include <array>      // for array
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <ranges>  // for ranges::*
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace std::string_view_literals;
@@ -33,6 +39,10 @@ auto read_mtab(std::string_view mtab_path) noexcept -> std::optional<std::string
     return std::make_optional<std::string>(std::move(mtab_content));
 }
 
+auto unescape_field(std::string_view field) noexcept -> std::string {
+    return gucc::utils::decode_escapes(field, "\\"sv, 8, 3);
+}
+
 }  // namespace
 
 namespace gucc::mtab {
@@ -41,22 +51,41 @@ auto parse_mtab_content(std::string_view mtab_content, std::string_view root_mou
     std::vector<MTabEntry> entries{};
 
     auto&& file_content_lines = utils::make_split_view(mtab_content);
-    for (auto&& line : file_content_lines) {
-        if (line.empty() || line.starts_with('#')) {
+    for (auto&& raw_line : file_content_lines) {
+        const auto line = conf::active(raw_line);
+        if (!line) {
             continue;
         }
 
-        auto&& line_split = utils::make_split_view(line, ' ');
-        auto&& device     = *utils::index_viewable_range(line_split, 0);
-        if (utils::size_viewable_range(line_split) >= 3 && !device.starts_with('#')) {
-            // e.g format: <device> <mountpoint> <fstype> <options>
-            auto&& mountpoint = *utils::index_viewable_range(line_split, 1);
-            if (mountpoint.starts_with(root_mountpoint)) {
-                entries.emplace_back(MTabEntry{.device = std::string{device}, .mountpoint = std::string{mountpoint}});
-            }
+        // e.g format: <device> <mountpoint> <fstype> <options>
+        std::array<std::string_view, 4> fields{};
+        const auto filled = std::ranges::copy(utils::words(*line, " "sv) | std::ranges::views::take(fields.size()), fields.begin()).out;
+        if (std::ranges::distance(fields.begin(), filled) < 3) {
+            continue;
+        }
+        const auto& [device, raw_mountpoint, fstype, options] = fields;
+        if (!raw_mountpoint.contains('\\') && !raw_mountpoint.starts_with(root_mountpoint)) {
+            continue;
+        }
+        auto mountpoint = unescape_field(raw_mountpoint);
+        if (mountpoint.starts_with(root_mountpoint)) {
+            entries.emplace_back(MTabEntry{
+                .device     = unescape_field(device),
+                .mountpoint = std::move(mountpoint),
+                .fstype     = std::string{fstype},
+                .options    = std::string{options},
+            });
         }
     }
     return entries;
+}
+
+auto find_mount(const std::vector<MTabEntry>& entries, std::string_view mountpoint) noexcept -> std::optional<MTabEntry> {
+    return utils::find_optional(entries | std::ranges::views::reverse, mountpoint, &MTabEntry::mountpoint);
+}
+
+auto mount_option_value(std::string_view options, std::string_view key) noexcept -> std::optional<std::string_view> {
+    return utils::value_of(utils::make_split_view(options, ','), key);
 }
 
 auto parse_mtab(std::string_view root_mountpoint, std::string_view mtab_path) noexcept -> std::optional<std::vector<MTabEntry>> {

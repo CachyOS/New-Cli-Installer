@@ -114,3 +114,28 @@ TEST_CASE("parse_vgs_output test")
         CHECK(result[0].second == "476.45g");
     }
 }
+
+TEST_CASE("parse_simple_lvm_output test")
+{
+    using gucc::lvm::detail::parse_simple_lvm_output;
+
+    SECTION("pvs --noheading with leading spaces")
+    {
+        const auto pvs = parse_simple_lvm_output("  /dev/sda2\n  /dev/mapper/cryptlvm  \n"sv);
+        CHECK_EQ(pvs, std::vector<std::string>{"/dev/sda2", "/dev/mapper/cryptlvm"});
+    }
+    SECTION("lvs vg-lv pairs")
+    {
+        const auto lvs = parse_simple_lvm_output("  vg0-root\n  vg0-home\n  vg0-swap\n"sv);
+        CHECK_EQ(lvs, std::vector<std::string>{"vg0-root", "vg0-home", "vg0-swap"});
+    }
+    SECTION("blank and whitespace dropped")
+    {
+        CHECK_EQ(parse_simple_lvm_output("\n   \n\t\n  vg0\n\n"sv), std::vector<std::string>{"vg0"});
+    }
+    SECTION("empty output")
+    {
+        CHECK(parse_simple_lvm_output(""sv).empty());
+        CHECK(parse_simple_lvm_output("\n"sv).empty());
+    }
+}

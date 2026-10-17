@@ -38,4 +38,10 @@ auto get_vconsole_keymap_list() noexcept -> std::vector<std::string>;
 
 }  // namespace gucc::locale
 
+namespace gucc::locale::detail {
+
+[[nodiscard]] auto uncomment_locale(std::string_view content, std::string_view locale) noexcept -> std::string;
+
+}  // namespace gucc::locale::detail
+
 #endif  // LOCALE_HPP

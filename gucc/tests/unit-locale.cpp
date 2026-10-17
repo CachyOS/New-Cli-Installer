@@ -123,7 +123,7 @@ TEST_CASE("locale")
 #de_DE.UTF-8 UTF-8
 #ru_RU.UTF-8 UTF-8
 )"sv;
-            auto result = parse_locale_gen(content);
+            auto result            = parse_locale_gen(content);
             REQUIRE(result.size() == 3);
             CHECK(result[0] == "en_US.UTF-8");
             CHECK(result[1] == "de_DE.UTF-8");
@@ -133,7 +133,7 @@ TEST_CASE("locale")
         {
             constexpr auto content = R"(en_US.UTF-8 UTF-8
 )"sv;
-            auto result = parse_locale_gen(content);
+            auto result            = parse_locale_gen(content);
             REQUIRE(result.size() == 1);
             CHECK(result[0] == "en_US.UTF-8");
         }
@@ -144,7 +144,7 @@ TEST_CASE("locale")
 #de_DE ISO-8859-1
 #ru_RU UTF-8
 )"sv;
-            auto result = parse_locale_gen(content);
+            auto result            = parse_locale_gen(content);
             REQUIRE(result.size() == 2);
             CHECK(result[0] == "en_US.UTF-8");
             CHECK(result[1] == "ru_RU");
@@ -156,7 +156,7 @@ TEST_CASE("locale")
 #  Another comment with leading space
 #en_US.UTF-8 UTF-8
 )"sv;
-            auto result = parse_locale_gen(content);
+            auto result            = parse_locale_gen(content);
             REQUIRE(result.size() == 1);
             CHECK(result[0] == "en_US.UTF-8");
         }
@@ -170,7 +170,7 @@ en_US.UTF-8 UTF-8
 #ru_RU.UTF-8 UTF-8
 #ru_RU ISO-8859-5
 )"sv;
-            auto result = parse_locale_gen(content);
+            auto result            = parse_locale_gen(content);
             REQUIRE(result.size() == 3);
             CHECK(result[0] == "aa_DJ.UTF-8");
             CHECK(result[1] == "en_US.UTF-8");
@@ -209,5 +209,50 @@ en_US.UTF-8 UTF-8
         {
             REQUIRE_FALSE(gucc::locale::set_keymap("us"sv, "/nonexistent/path/test-keymap"sv));
         }
+    }
+}
+
+TEST_CASE("uncomment_locale")
+{
+    using gucc::locale::detail::uncomment_locale;
+
+    const auto locale_gen = gucc::file_utils::read_whole_file(GUCC_TEST_DIR "/files/locale.gen");
+    REQUIRE_FALSE(locale_gen.empty());
+
+    SECTION("only the exact entry")
+    {
+        REQUIRE_EQ(filtered_res(uncomment_locale(locale_gen, "ru_RU.UTF-8")), "ru_RU.UTF-8 UTF-8\n");
+        REQUIRE_EQ(filtered_res(uncomment_locale(locale_gen, "en_US.UTF-8")), "en_US.UTF-8 UTF-8\n");
+    }
+    SECTION("bare name does not over-match longer names")
+    {
+        REQUIRE_EQ(filtered_res(uncomment_locale(locale_gen, "en_US")), "en_US ISO-8859-1\n");
+        REQUIRE_EQ(filtered_res(uncomment_locale(locale_gen, "sr_RS")), "sr_RS UTF-8\n");
+    }
+    SECTION("header examples stay commented")
+    {
+        const auto result = uncomment_locale(locale_gen, "de_DE");
+        REQUIRE(result.contains("#  de_DE ISO-8859-1\n"));
+        REQUIRE(result.contains("\nde_DE ISO-8859-1\n"));
+    }
+    SECTION("unknown locale file untouched")
+    {
+        REQUIRE_EQ(uncomment_locale(locale_gen, "xx_XX.UTF-8"), locale_gen);
+        REQUIRE_EQ(uncomment_locale(locale_gen, ""), locale_gen);
+    }
+    SECTION("full entry picks a single charset")
+    {
+        REQUIRE_EQ(uncomment_locale("#en_US.UTF-8 UTF-8\n#en_US ISO-8859-1\n", "en_US ISO-8859-1"), "#en_US.UTF-8 UTF-8\nen_US ISO-8859-1\n");
+    }
+    SECTION("modifier variants are distinct names")
+    {
+        REQUIRE_EQ(uncomment_locale("#sr_RS UTF-8\n#sr_RS@latin UTF-8\n", "sr_RS@latin"), "#sr_RS UTF-8\nsr_RS@latin UTF-8\n");
+    }
+    SECTION("already enabled, indented and CRLF entries")
+    {
+        REQUIRE_EQ(uncomment_locale("en_US.UTF-8 UTF-8\n", "en_US.UTF-8"), "en_US.UTF-8 UTF-8\n");
+        REQUIRE_EQ(uncomment_locale("  #en_US.UTF-8 UTF-8", "en_US.UTF-8"), "  en_US.UTF-8 UTF-8");
+        REQUIRE_EQ(uncomment_locale("#en_US.UTF-8\r\n", "en_US.UTF-8"), "en_US.UTF-8\r\n");
+        REQUIRE_EQ(uncomment_locale("", "en_US.UTF-8"), "");
     }
 }

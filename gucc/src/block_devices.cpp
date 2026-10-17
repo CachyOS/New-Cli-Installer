@@ -100,17 +100,17 @@ auto find_ancestor_of_type(const std::vector<BlockDevice>& devices, std::string_
     while (!visited.contains(current_name)) {
         visited.insert(current_name);
 
-        auto it = std::ranges::find(devices, current_name, &BlockDevice::name);
-        if (it == std::ranges::end(devices)) {
+        const auto* device = utils::find_ptr(devices, current_name, &BlockDevice::name);
+        if (device == nullptr) {
             break;
         }
-        if (it->type == type) {
-            return *it;
+        if (device->type == type) {
+            return *device;
         }
-        if (!it->pkname) {
+        if (!device->pkname) {
             break;
         }
-        current_name = *it->pkname;
+        current_name = *device->pkname;
     }
     return std::nullopt;
 }

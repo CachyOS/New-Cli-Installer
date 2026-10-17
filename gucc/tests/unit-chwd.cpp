@@ -68,4 +68,9 @@ TEST_CASE("chwd table parsing")
         REQUIRE(detail::parse_profile_table(""sv).empty());
         REQUIRE(detail::parse_profile_details(""sv).empty());
     }
+    SECTION("lone border not a row")
+    {
+        REQUIRE(detail::parse_profile_table("│\n  │  \n"sv).empty());
+        REQUIRE(detail::parse_profile_details("│"sv).empty());
+    }
 }

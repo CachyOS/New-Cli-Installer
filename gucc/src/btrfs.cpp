@@ -105,11 +105,10 @@ auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vect
 
     for (auto&& subvol : subvols) {
         // check if we already have a partition with such subvolume
-        auto part_it = std::ranges::find_if(partitions,
-            [&subvol](auto&& part) { return find_partition(part, subvol); });
+        auto* part_it = utils::find_if_ptr(partitions, [&subvol](auto&& part) { return find_partition(part, subvol); });
 
         // we have found it. proceed to overwrite the values
-        if (part_it != std::ranges::end(partitions)) {
+        if (part_it != nullptr) {
             part_it->mountpoint = subvol.mountpoint;
             part_it->subvolume  = std::make_optional<std::string>(subvol.subvolume);
             continue;
