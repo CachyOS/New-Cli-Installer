@@ -61,12 +61,9 @@ class Initcpio final {
         if (!parse_file()) {
             return false;
         }
-        auto& values  = m_arrays.*field;
-        const auto it = std::ranges::find(values, item);
-        if (it == values.end()) {
+        if (std::erase(m_arrays.*field, item) == 0) {
             return false;
         }
-        values.erase(it);
         return write();
     }
 

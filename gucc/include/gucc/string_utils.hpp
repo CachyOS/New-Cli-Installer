@@ -44,7 +44,14 @@ auto make_multiline(const std::vector<std::string>& multiline, bool reverse = fa
 /// @param lines The lines to join.
 /// @param delim The delimiter to join the lines.
 /// @return The joined lines as a single string.
-auto join(const std::vector<std::string>& lines, char delim = '\n') noexcept -> std::string;
+template <std::ranges::input_range R, class Delim = char>
+    requires std::convertible_to<std::ranges::range_reference_t<R>, std::string_view>
+constexpr auto join(R&& lines, Delim delim = '\n') noexcept -> std::string {
+    return std::forward<R>(lines)
+        | std::ranges::views::transform([](std::string_view line) { return line; })
+        | std::ranges::views::join_with(delim)
+        | std::ranges::to<std::string>();
+}
 
 /// @brief Make a split view from a string into multiple lines based on a delimiter.
 /// @param str The string to split.
@@ -120,6 +127,8 @@ constexpr auto extract_after(std::string_view str, std::string_view prefix, char
 
 /// The isspace set.
 inline constexpr std::string_view kWhitespaceChars{" \f\n\r\t\v"};
+/// Word separators.
+inline constexpr std::string_view kBlankChars{" \t\r"};
 
 /// @brief Trim leading whitespace from a string view.
 /// @param str The string to trim.
@@ -151,15 +160,20 @@ constexpr auto starts_with_word(std::string_view line, std::string_view word, st
     return line.starts_with(word) && (line.size() == word.size() || delims.contains(line[word.size()]));
 }
 
-/// Field @p n of @p line split on any char of @p delims.
-constexpr auto nth_field(std::string_view line, std::size_t n, std::string_view delims = " \t") noexcept -> std::string_view {
+/// The blank-separated words of @p line.
+constexpr auto words(std::string_view line, std::string_view delims = " \t") noexcept {
     const auto is_delim = [delims](char ch) { return delims.contains(ch); };
-    auto fields         = line
+    return line
         | std::ranges::views::chunk_by([is_delim](char lhs, char rhs) { return is_delim(lhs) == is_delim(rhs); })
         | std::ranges::views::filter([is_delim](auto&& run) { return !is_delim(run.front()); })
-        | std::ranges::views::drop(n);
+        | std::ranges::views::transform([](auto&& run) { return std::string_view{run}; });
+}
+
+/// Field @p n of @p line split on any char of @p delims.
+constexpr auto nth_field(std::string_view line, std::size_t n, std::string_view delims = " \t") noexcept -> std::string_view {
+    auto fields   = words(line, delims) | std::ranges::views::drop(n);
     const auto it = std::ranges::begin(fields);
-    return it == std::ranges::end(fields) ? std::string_view{} : std::string_view{*it};
+    return it == std::ranges::end(fields) ? std::string_view{} : *it;
 }
 
 constexpr auto first_field(std::string_view line) noexcept -> std::string_view {
@@ -182,8 +196,7 @@ constexpr auto split_fields(std::string_view line, char delim) noexcept -> std::
     if (line.empty()) {
         return N == 1 ? std::optional{fields} : std::nullopt;
     }
-    const auto [in, out] = std::ranges::copy(split_lines(line, delim) | std::ranges::views::take(N), fields.begin());
-    if (out != fields.end()) {
+    if (std::ranges::copy(split_lines(line, delim) | std::ranges::views::take(N), fields.begin()).out != fields.end()) {
         return std::nullopt;
     }
     return fields;

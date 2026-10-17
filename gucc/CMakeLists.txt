@@ -19,6 +19,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/error.cpp include/gucc/error.hpp
    src/log_redact.cpp
    src/io_utils.cpp include/gucc/io_utils.hpp
+   src/conf.cpp include/gucc/conf.hpp
    src/string_utils.cpp include/gucc/string_utils.hpp
    src/file_utils.cpp include/gucc/file_utils.hpp
    src/fs_utils.cpp include/gucc/fs_utils.hpp
