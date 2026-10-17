@@ -26,7 +26,6 @@
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
-#include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
 
 using namespace std::string_literals;
@@ -86,7 +85,7 @@ auto display_command(const std::vector<std::string>& argv) -> std::string {
     // keep the arch-chroot prefix, if any
     const auto prefix  = std::ranges::subrange(argv.begin(), shell_at.begin());
     const auto command = std::ranges::subrange(shell_at.end(), argv.end());
-    return fmt::format(FMT_COMPILE("{}"), fmt::join(std::ranges::views::concat(prefix, command), " "));
+    return gucc::utils::join(std::ranges::views::concat(prefix, command), ' ');
 }
 
 [[gnu::pure]] auto child_environment(ProcessLocation proc_location) -> const std::vector<const char*>& {
@@ -165,7 +164,7 @@ auto ProcessRunner::Impl::intercept(std::span<const std::string> argv, std::stri
         return std::nullopt;
     }
     const auto joined = shell_cmdline.empty()
-        ? fmt::format(FMT_COMPILE("{}"), fmt::join(argv, " "))
+        ? utils::join(argv, ' ')
         : std::string{};
 
     // ugly-ish
@@ -345,9 +344,7 @@ auto ProcessRunner::add_observer(ExecutionObserver& observer) noexcept -> Observ
     m_impl->observers.push_back(&observer);
     return ObserverHandle{[impl = m_impl.get(), target = &observer]() noexcept {
         const std::scoped_lock lock(impl->observers_mutex);
-        if (const auto it = std::ranges::find(impl->observers, target); it != std::ranges::end(impl->observers)) {
-            impl->observers.erase(it);
-        }
+        std::erase(impl->observers, target);
     }};
 }
 

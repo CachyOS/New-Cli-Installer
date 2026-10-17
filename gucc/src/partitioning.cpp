@@ -39,27 +39,6 @@ constexpr auto to_preview_row(const gucc::fs::Partition& part) noexcept -> Previ
     };
 }
 
-constexpr auto convert_fsname(std::string_view fsname) noexcept -> std::string_view {
-    if (fsname == "fat16"sv || fsname == "fat32"sv) {
-        return "vfat"sv;
-    } else if (fsname == "linuxswap"sv) {
-        return "swap"sv;
-    }
-    return fsname;
-}
-
-constexpr auto get_part_type_alias(std::string_view fsname) noexcept -> std::string_view {
-    if (fsname == "vfat"sv) {
-        return "U"sv;
-    } else if (fsname == "swap"sv) {
-        return "S"sv;
-    }
-    return "L"sv;
-}
-
-// fs names that mean an EFI System Partition
-constexpr auto FAT_FS_NAMES = std::array{"vfat"sv, "fat32"sv, "fat16"sv};
-
 constexpr auto is_fill_size(std::string_view size) noexcept -> bool {
     const auto trimmed = gucc::utils::trim(size);
     return trimmed.empty() || trimmed == "100%"sv;
@@ -67,12 +46,11 @@ constexpr auto is_fill_size(std::string_view size) noexcept -> bool {
 
 // single sfdisk command line
 constexpr auto to_sfdisk_line(const gucc::fs::Partition& part) noexcept -> std::string {
-    const auto& fsname   = convert_fsname(part.fstype);
-    const auto& fs_alias = get_part_type_alias(fsname);
+    const auto fs_type = gucc::fs::string_to_filesystem_type(part.fstype);
 
     // L - alias 'linux'. Linux
     // U - alias 'uefi'. EFI System partition
-    auto line = fmt::format(FMT_COMPILE("type={}"), fs_alias);
+    auto line = fmt::format(FMT_COMPILE("type={}"), gucc::fs::get_sfdisk_type_alias(fs_type));
 
     // The field size= support '+' and '-' in the same way as Unnamed-fields
     // format. The default value of size indicates "as much as possible";
@@ -90,7 +68,7 @@ constexpr auto to_sfdisk_line(const gucc::fs::Partition& part) noexcept -> std::
     }
 
     // set boot flag
-    if (fsname == "vfat"sv) {
+    if (fs_type == gucc::fs::FilesystemType::Vfat) {
         // bootable is specified as [*|-], with as default not-bootable.
         // The value of this field is irrelevant for Linux
         // - when Linux runs it has been booted already
@@ -204,50 +182,29 @@ auto generate_partition_schema_from_config(std::string_view device, const fs::De
         fs::get_default_mount_opts(config.root_fs_type, config.is_ssd));
 
     // currently partition uuid doesn't matter, it will be assigned much after during FS partitioning
+    const auto add_partition = [&](std::string fstype, std::string mountpoint, std::string size, std::string mount_opts) {
+        partitions.emplace_back(fs::Partition{
+            .fstype     = std::move(fstype),
+            .mountpoint = std::move(mountpoint),
+            .uuid_str   = {},
+            .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
+            .size       = std::move(size),
+            .mount_opts = std::move(mount_opts)});
+    };
 
     // For UEFI: create EFI partition first
     if (is_efi) {
-        fs::Partition efi_partition{
-            .fstype     = "vfat"s,
-            .mountpoint = config.boot_mountpoint,
-            .uuid_str   = {},
-            .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
-            .size       = config.efi_partition_size,
-            .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Vfat, config.is_ssd)};
-        partitions.emplace_back(std::move(efi_partition));
+        add_partition("vfat"s, config.boot_mountpoint, config.efi_partition_size, fs::get_default_mount_opts(fs::FilesystemType::Vfat, config.is_ssd));
     } else if (config.boot_partition_size) {
         // For BIOS with separate boot partition
-        fs::Partition boot_partition{
-            .fstype     = "ext4"s,
-            .mountpoint = config.boot_mountpoint,
-            .uuid_str   = {},
-            .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
-            .size       = *config.boot_partition_size,
-            .mount_opts = fs::get_default_mount_opts(fs::FilesystemType::Ext4, config.is_ssd)};
-        partitions.emplace_back(std::move(boot_partition));
+        add_partition("ext4"s, config.boot_mountpoint, *config.boot_partition_size, fs::get_default_mount_opts(fs::FilesystemType::Ext4, config.is_ssd));
     }
-
     // Create swap partition if configured
     if (config.swap_partition_size) {
-        fs::Partition swap_partition{
-            .fstype     = "linuxswap"s,
-            .mountpoint = ""s,
-            .uuid_str   = {},
-            .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
-            .size       = *config.swap_partition_size,
-            .mount_opts = "defaults"s};
-        partitions.emplace_back(std::move(swap_partition));
+        add_partition("linuxswap"s, {}, *config.swap_partition_size, "defaults"s);
     }
-
-    // Create root partition (uses remaining space)
-    fs::Partition root_partition{
-        .fstype     = std::string{fs::filesystem_type_to_string(config.root_fs_type)},
-        .mountpoint = "/"s,
-        .uuid_str   = {},
-        .device     = insert_partition_number(device, static_cast<std::uint32_t>(partitions.size() + 1)),
-        .size       = {},
-        .mount_opts = root_mount_opts};
-    partitions.emplace_back(std::move(root_partition));
+    // root takes the remaining space
+    add_partition(std::string{fs::filesystem_type_to_string(config.root_fs_type)}, "/"s, {}, root_mount_opts);
 
     return partitions;
 }
@@ -268,16 +225,15 @@ auto validate_partition_schema(const std::vector<fs::Partition>& partitions, std
     }
 
     // Check for root partition
-    const bool has_root = std::ranges::any_of(
-        partitions, [](std::string_view mountpoint) { return mountpoint == "/"sv; }, &fs::Partition::mountpoint);
+    const bool has_root = std::ranges::any_of(partitions, &fs::Partition::is_root);
     if (!has_root) {
         result.is_valid = false;
         result.errors.emplace_back("No root (/) partition defined");
     }
 
     // Check for EFI partition on UEFI systems
-    const bool has_efi = std::ranges::any_of(
-        partitions, [](std::string_view fstype) { return std::ranges::contains(FAT_FS_NAMES, fstype); }, &fs::Partition::fstype);
+    const bool has_efi = std::ranges::contains(partitions, fs::FilesystemType::Vfat,
+        [](const fs::Partition& part) { return fs::string_to_filesystem_type(part.fstype); });
     if (is_efi && !has_efi) {
         result.is_valid = false;
         result.errors.emplace_back("UEFI system requires an EFI partition (vfat/fat32)");
