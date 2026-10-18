@@ -6,8 +6,6 @@
 
 #include <algorithm>  // for copy
 #include <array>      // for array
-#include <filesystem>
-#include <fstream>
 #include <optional>
 #include <ranges>  // for ranges::*
 #include <string>
@@ -16,28 +14,8 @@
 #include <vector>
 
 using namespace std::string_view_literals;
-namespace fs = std::filesystem;
 
 namespace {
-
-auto read_mtab(std::string_view mtab_path) noexcept -> std::optional<std::string> {
-    // mtab file size is reported as zero bytes
-    // so just read line by line until EOF
-    std::ifstream file(fs::path{mtab_path}, std::ios::binary);
-    if (!file.is_open()) {
-        return std::nullopt;
-    }
-
-    std::vector<std::string> lines{};
-    while (file) {
-        std::string line{};
-        std::getline(file, line);
-        lines.push_back(std::move(line));
-    }
-
-    auto&& mtab_content = gucc::utils::join(lines);
-    return std::make_optional<std::string>(std::move(mtab_content));
-}
 
 auto unescape_field(std::string_view field) noexcept -> std::string {
     return gucc::utils::decode_escapes(field, "\\"sv, 8, 3);
@@ -94,12 +72,11 @@ auto parse_mtab(std::string_view root_mountpoint, std::string_view mtab_path) no
         return std::nullopt;
     }
 
-    // use "non-standard" read due to reported zero size
-    auto&& file_content = read_mtab(mtab_path);
-    if (!file_content || file_content->empty()) {
+    const auto file_content = file_utils::read_whole_file(mtab_path);
+    if (file_content.empty()) {
         return std::nullopt;
     }
-    return mtab::parse_mtab_content(*file_content, root_mountpoint);
+    return mtab::parse_mtab_content(file_content, root_mountpoint);
 }
 
 }  // namespace gucc::mtab
