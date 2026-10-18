@@ -1,11 +1,12 @@
+#include "cachyos/result.hpp"
 #include "cachyos/steps.hpp"
 
 // import gucc
 #include "gucc/autologin.hpp"
 #include "gucc/display_manager.hpp"
 
+#include <fmt/compile.h>
 #include <fmt/format.h>
-#include <spdlog/spdlog.h>
 
 using namespace std::string_literals;
 
@@ -21,15 +22,12 @@ auto autologin(const UserSettings& user, const InstallContext& ctx) noexcept -> 
 
     const auto dm = gucc::display_manager::detect_installed(ctx.mountpoint);
     if (!dm) {
-        spdlog::warn("autologin requested but no display manager is installed on the target");
         return std::unexpected("no display manager installed on target"s);
     }
 
     const auto dm_name = gucc::display_manager::to_string(*dm);
-    if (auto res = gucc::user::enable_autologin(dm_name, user.username, ctx.mountpoint); !res) {
-        return std::unexpected(fmt::format("enable_autologin failed for dm={} user={}: {}", dm_name, user.username, res.error().context));
-    }
-    return {};
+    return lift(gucc::user::enable_autologin(dm_name, user.username, ctx.mountpoint),
+        fmt::format(FMT_COMPILE("enable_autologin failed for dm={} user={}"), dm_name, user.username));
 }
 
 }  // namespace cachyos::installer::steps

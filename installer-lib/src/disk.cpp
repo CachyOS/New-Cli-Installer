@@ -1,10 +1,12 @@
 #include "cachyos/disk.hpp"
 #include "cachyos/packages.hpp"
+#include "cachyos/result.hpp"
 
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/crypto_detection.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
 #include "gucc/io_utils.hpp"
@@ -147,8 +149,8 @@ auto auto_partition(std::string_view device, std::string_view system_mode,
         return std::unexpected("failed to generate default partition schema: it cannot be empty");
     }
 
-    if (!gucc::disk::make_clean_partschema(device, partitions, is_system_efi)) {
-        return std::unexpected("failed to perform automatic partitioning");
+    if (auto res = lift(gucc::disk::make_clean_partschema(device, partitions, is_system_efi), "failed to perform automatic partitioning"); !res) {
+        return std::unexpected(std::move(res.error()));
     }
 
     return partitions;
@@ -157,16 +159,10 @@ auto auto_partition(std::string_view device, std::string_view system_mode,
 auto secure_wipe(std::string_view device) noexcept
     -> std::expected<void, std::string> {
     // Ensure wipe tool is installed
-    auto needed_result = install_needed("wipe");
-    if (!needed_result) {
-        return std::unexpected(needed_result.error());
+    if (auto res = install_needed("wipe"); !res) {
+        return res;
     }
-
-    const auto& cmd = fmt::format(FMT_COMPILE("wipe -Ifre {}"), device);
-    if (!gucc::utils::exec_checked(cmd)) {
-        return std::unexpected(fmt::format("failed to wipe device: {}", device));
-    }
-    return {};
+    return lift(gucc::utils::exec_or_error(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device), "wipe device"sv));
 }
 
 auto default_zfs_datasets(std::string_view zpool_name) noexcept
@@ -203,8 +199,8 @@ auto zfs_auto_pres(std::string_view partition,
         .datasets      = default_zfs_datasets(zpool_name),
     };
 
-    if (!gucc::fs::zfs_create_with_config(partition, zfs_setup_config)) {
-        return std::unexpected("failed to create ZFS automatically");
+    if (auto res = lift(gucc::fs::zfs_create_with_config(partition, zfs_setup_config)); !res) {
+        return std::unexpected(std::move(res.error()));
     }
 
     return zfs_setup_config;
@@ -267,8 +263,8 @@ auto apply_zfs_root(const gucc::fs::ZfsSetupConfig& zfs_setup,
 
     std::ranges::sort(mountable, {}, &gucc::fs::ZfsDataset::mountpoint);
     for (const auto& dataset : mountable) {
-        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zfs mount {}"), dataset.zpath))) {
-            return std::unexpected(fmt::format("failed to mount zfs dataset '{}' (mountpoint {})", dataset.zpath, dataset.mountpoint));
+        if (auto res = lift(gucc::utils::exec_or_error(fmt::format(FMT_COMPILE("zfs mount {}"), dataset.zpath), "mount zfs dataset"sv)); !res) {
+            return res;
         }
     }
 
@@ -379,26 +375,17 @@ auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& subvols
     /* clang-format on */
 
     // Create subvolumes (mount opts are already known from the selection)
-    if (!gucc::fs::btrfs_create_subvols(subvols, selection.device, mountpoint, selection.mount_opts)) {
-        return std::unexpected("failed to create btrfs subvolumes");
+    if (auto res = lift(gucc::fs::btrfs_create_subvols(subvols, selection.device, mountpoint, selection.mount_opts)); !res) {
+        return res;
     }
-
-    if (!gucc::fs::btrfs_append_subvolumes(partitions, subvols)) {
-        return std::unexpected("failed to append btrfs subvolumes into partition scheme");
-    }
-
-    return {};
+    return lift(gucc::fs::btrfs_append_subvolumes(partitions, subvols));
 }
 
 auto setup_esp_partition(std::string_view device, std::string_view mountpoint,
     std::string_view root_mountpoint, bool format_requested) noexcept
     -> std::expected<gucc::fs::Partition, std::string> {
     const bool is_boot_ssd = gucc::disk::is_device_ssd(device);
-    auto boot_part_struct  = gucc::mount::setup_esp_partition(device, mountpoint, root_mountpoint, format_requested, is_boot_ssd);
-    if (!boot_part_struct) {
-        return std::unexpected(gucc::to_string(boot_part_struct.error()));
-    }
-    return std::move(*boot_part_struct);
+    return lift(gucc::mount::setup_esp_partition(device, mountpoint, root_mountpoint, format_requested, is_boot_ssd));
 }
 
 auto umount_partitions(std::string_view mountpoint,
@@ -474,8 +461,8 @@ auto apply_swap(const SwapSelection& swap,
     switch (swap.type) {
     case SwapSelection::Type::Swapfile: {
         const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
-        if (!gucc::swap::make_swapfile(mountpoint, swap.swapfile_size)) {
-            return std::unexpected("failed to create swapfile");
+        if (auto res = lift(gucc::swap::make_swapfile(mountpoint, swap.swapfile_size)); !res) {
+            return std::unexpected(std::move(res.error()));
         }
         result.swap_device = swapfile_path;
         break;
@@ -488,8 +475,8 @@ auto apply_swap(const SwapSelection& swap,
             .device     = swap.device,
             .mount_opts = std::move(swap_opts),
         };
-        if (!gucc::swap::make_swap_partition(swap_part)) {
-            return std::unexpected("failed to create swap partition");
+        if (auto res = lift(gucc::swap::make_swap_partition(swap_part)); !res) {
+            return std::unexpected(std::move(res.error()));
         }
         result.swap_device    = swap.device;
         swap_part.uuid_str    = gucc::fs::utils::get_device_uuid(swap.device);

@@ -15,6 +15,9 @@ namespace cachyos::installer::steps {
 
 [[nodiscard]] auto needs_umount(const InstallContext& ctx) noexcept -> bool;
 
+/// Whenever should install desktop profiles on server edition.
+[[nodiscard]] auto has_desktop(const InstallContext& ctx) noexcept -> bool;
+
 /// Unmount any existing partitions on the install target.
 [[nodiscard]] auto umount(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;

@@ -1,5 +1,6 @@
 #include "cachyos/config.hpp"
 #include "cachyos/packages.hpp"
+#include "cachyos/result.hpp"
 
 // import gucc
 #include "gucc/autologin.hpp"
@@ -11,6 +12,7 @@
 
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <utility>      // for move
 #include <vector>       // for vector
 
 #include <fmt/compile.h>
@@ -25,22 +27,11 @@ namespace {
 using cachyos::installer::SystemSettings;
 
 auto apply_hw_clock(SystemSettings::HwClock hw_clock, std::string_view mountpoint) noexcept -> std::expected<void, std::string> {
-    spdlog::info("Setting hw_clock: {}", (hw_clock == SystemSettings::HwClock::UTC) ? "utc"sv : "localtime"sv);
-    switch (hw_clock) {
-    case SystemSettings::HwClock::UTC: {
-        if (auto res = gucc::hwclock::set_hwclock_utc(mountpoint); !res) {
-            return std::unexpected("failed to set UTC hwclock");
-        }
-        break;
-    }
-    case SystemSettings::HwClock::Localtime: {
-        if (auto res = gucc::hwclock::set_hwclock_localtime(mountpoint); !res) {
-            return std::unexpected("failed to set localtime hwclock");
-        }
-        break;
-    }
-    }
-    return {};
+    const bool is_utc = hw_clock == SystemSettings::HwClock::UTC;
+    spdlog::info("Setting hw_clock: {}", is_utc ? "utc"sv : "localtime"sv);
+    return is_utc
+        ? cachyos::installer::lift(gucc::hwclock::set_hwclock_utc(mountpoint), "failed to set UTC hwclock")
+        : cachyos::installer::lift(gucc::hwclock::set_hwclock_localtime(mountpoint), "failed to set localtime hwclock");
 }
 
 }  // namespace
@@ -53,7 +44,7 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     if (!settings.hostname.empty()) {
         spdlog::info("Setting hostname {}", settings.hostname);
         if (auto res = gucc::user::set_hostname(settings.hostname, mountpoint); !res) {
-            return std::unexpected(gucc::to_string(res.error()));
+            return lift(std::move(res));
         }
     }
 
@@ -61,7 +52,7 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     if (!settings.locale.empty()) {
         spdlog::info("Setting locale: {}", settings.locale);
         if (auto res = gucc::locale::set_locale(settings.locale, mountpoint); !res) {
-            return std::unexpected(fmt::format("failed to set locale: {}", res.error().context));
+            return lift(std::move(res), "failed to set locale");
         }
     }
 
@@ -69,7 +60,7 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     if (!settings.xkbmap.empty()) {
         spdlog::info("Setting xkbmap: {}", settings.xkbmap);
         if (auto res = gucc::locale::set_xkbmap(settings.xkbmap, mountpoint); !res) {
-            return std::unexpected(fmt::format("failed to set xkbmap: {}: {}", settings.xkbmap, res.error().context));
+            return lift(std::move(res), fmt::format(FMT_COMPILE("failed to set xkbmap: {}"), settings.xkbmap));
         }
     }
 
@@ -86,16 +77,13 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     if (!settings.timezone.empty()) {
         spdlog::info("Setting timezone: {}", settings.timezone);
         if (auto res = gucc::timezone::set_timezone(settings.timezone, mountpoint); !res) {
-            return std::unexpected(fmt::format("failed to set timezone: {}: {}", settings.timezone, res.error().context));
+            return lift(std::move(res), fmt::format(FMT_COMPILE("failed to set timezone: {}"), settings.timezone));
         }
     }
 
     // Hardware clock
     if (settings.hw_clock.has_value()) {
-        auto result = apply_hw_clock(*settings.hw_clock, mountpoint);
-        if (!result) {
-            return result;
-        }
+        return apply_hw_clock(*settings.hw_clock, mountpoint);
     }
     return {};
 }
@@ -127,27 +115,17 @@ auto create_user(const UserSettings& settings, std::string_view mountpoint,
     static const std::vector kDefaultUserGroups{"wheel"s, "rfkill"s, "sys"s, "users"s, "lp"s, "video"s, "network"s, "storage"s, "audio"s};
 
     const auto& groups = settings.groups.empty() ? kDefaultUserGroups : settings.groups;
-    if (auto res = gucc::user::create_new_user(user_info, groups, mountpoint); !res) {
-        return std::unexpected(gucc::to_string(res.error()));
-    }
-
-    return {};
+    return lift(gucc::user::create_new_user(user_info, groups, mountpoint));
 }
 
 auto set_root_password(std::string_view password, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    if (auto res = gucc::user::set_root_password(password, mountpoint); !res) {
-        return std::unexpected(gucc::to_string(res.error()));
-    }
-    return {};
+    return lift(gucc::user::set_root_password(password, mountpoint));
 }
 
 auto enable_autologin(std::string_view dm, std::string_view username, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    if (auto res = gucc::user::enable_autologin(dm, username, mountpoint); !res) {
-        return std::unexpected(fmt::format("failed to enable autologin: {}", res.error().context));
-    }
-    return {};
+    return lift(gucc::user::enable_autologin(dm, username, mountpoint), "failed to enable autologin");
 }
 
 }  // namespace cachyos::installer

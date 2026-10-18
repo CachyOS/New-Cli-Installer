@@ -46,6 +46,7 @@ add_library(${PROJECT_NAME}
    src/steps/btrfs_snapshot.cpp
    src/steps/final_validation.cpp
    src/steps/cleanup.cpp
+   include/cachyos/result.hpp
    include/cachyos/types.hpp
    include/cachyos/installer.hpp
    )

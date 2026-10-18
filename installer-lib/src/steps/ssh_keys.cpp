@@ -24,7 +24,7 @@ auto ssh_keys(const UserSettings& user, const InstallContext& ctx) noexcept
     }
     const auto& keys = ctx.resolved_server->ssh_authorized_keys;
     if (keys.empty()) {
-        return std::unexpected("ssh_keys: server profile resolved with no authorized keys");
+        return std::unexpected("server profile resolved with no authorized keys");
     }
 
     const auto& mountpoint = ctx.mountpoint;
