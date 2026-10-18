@@ -144,3 +144,57 @@ TEST_CASE("fstab gen test")
         REQUIRE_EQ(fstab_content, FSTAB_LUKS_BTRFS_TEST);
     }
 }
+
+TEST_CASE("fstab comment out zfs-mounted datasets")
+{
+    constexpr auto input    = "# <file system> <dir> <type> <options> <dump> <pass>\n"
+                              "UUID=AAAA-BBBB /boot vfat defaults 0 2\n"
+                              "\n"
+                              "zpcachyos/ROOT/cos/home\t/home\tzfs\trw,xattr 0 0\n"
+                              "zpcachyos/legacy /mnt/legacy zfs rw 0 0\n"
+                              "#zpcachyos/ROOT/cos/varcache /var/cache zfs rw 0 0\n"sv;
+    constexpr auto expected = "# <file system> <dir> <type> <options> <dump> <pass>\n"
+                              "UUID=AAAA-BBBB /boot vfat defaults 0 2\n"
+                              "\n"
+                              "#zpcachyos/ROOT/cos/home\t/home\tzfs\trw,xattr 0 0\n"
+                              "zpcachyos/legacy /mnt/legacy zfs rw 0 0\n"
+                              "#zpcachyos/ROOT/cos/varcache /var/cache zfs rw 0 0\n"sv;
+    const std::vector<std::string> datasets{"zpcachyos/ROOT/cos/home", "zpcachyos/ROOT/cos/varcache"};
+    REQUIRE_EQ(gucc::fs::detail::comment_out_zfs_entries(input, datasets), expected);
+    REQUIRE_EQ(gucc::fs::detail::comment_out_zfs_entries(""sv, datasets), ""s);
+}
+
+TEST_CASE("fstab genfstab post")
+{
+    using gucc::fs::detail::strip_root_prefix;
+    using gucc::fs::detail::strip_subvolid_options;
+
+    SECTION("swapfile with no install root")
+    {
+        REQUIRE_EQ(strip_root_prefix("/mnt/swapfile none swap defaults 0 0\n"sv, "/mnt"sv), "/swapfile none swap defaults 0 0\n"s);
+        REQUIRE_EQ(strip_root_prefix("/mnt/a /mnt/b\n"sv, "/mnt"sv), "/a /mnt/b\n"s);
+        REQUIRE_EQ(strip_root_prefix("UUID=x / ext4 rw 0 1\n"sv, "/mnt"sv), "UUID=x / ext4 rw 0 1\n"s);
+        REQUIRE_EQ(strip_root_prefix("/mnt/swapfile\n"sv, ""sv), "/mnt/swapfile\n"s);
+    }
+    SECTION("keeps trailing subvol")
+    {
+        static constexpr auto usual = "UUID=x / btrfs rw,ssd,subvolid=256,subvol=/@ 0 0\n"sv;
+        REQUIRE_EQ(strip_subvolid_options(usual), std::string{usual});
+    }
+    SECTION("removes the pair")
+    {
+        REQUIRE_EQ(strip_subvolid_options("UUID=x / btrfs rw,subvolid=256,subvol=/@,compress=zstd 0 0\n"sv),
+            "UUID=x / btrfs rw,compress=zstd 0 0\n"s);
+    }
+    SECTION("til last comma")
+    {
+        REQUIRE_EQ(strip_subvolid_options("subvolid=5,subvol=/@,a,b c\n"sv), "b c\n"s);
+        REQUIRE_EQ(strip_subvolid_options("subvolid=5,subvol=/,x\n"sv), "x\n"s);
+    }
+    SECTION("subvol after subvolid")
+    {
+        REQUIRE_EQ(strip_subvolid_options("rw,subvolid=5,x\n"sv), "rw,subvolid=5,x\n"s);
+        REQUIRE_EQ(strip_subvolid_options("rw,subvol=/@,subvolid=5,x\n"sv), "rw,subvol=/@,subvolid=5,x\n"s);
+        REQUIRE_EQ(strip_subvolid_options(""sv), ""s);
+    }
+}

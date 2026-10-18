@@ -1,7 +1,9 @@
 #include "gucc/fstab.hpp"
+#include "gucc/conf.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/zfs_query.hpp"
 
 #include <cctype>  // for tolower
 
@@ -135,24 +137,64 @@ auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> Result<
     spdlog::info("Created fstab file:\n{}", fstab_content);
 
     // append swapfile in case it was detected
+    auto content          = fstab_content;
     const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), root_mountpoint);
     if (::fs::exists(swap_file) && ::fs::is_regular_file(swap_file)) {
         spdlog::info("Appending swapfile to the fstab..");
-        utils::exec_checked(fmt::format(FMT_COMPILE("sed -i \"s/\\\\{0}//\" {1}"), root_mountpoint, fstab_filepath));
+        content = detail::strip_root_prefix(content, root_mountpoint);
     }
 
     // Edit fstab in case of btrfs subvolumes
-    utils::exec_checked(fmt::format(FMT_COMPILE("sed -i 's/subvolid=.*,subvol=\\/.*,//g' {}"), fstab_filepath));
+    content = detail::strip_subvolid_options(content);
 
     // remove any zfs datasets that are mounted by zfs
-    const auto& query_zfs_cmd = fmt::format(FMT_COMPILE("cat {} | grep '^[a-z,A-Z]' | {}"), fstab_filepath, "awk '{print $1}'");
-    const auto& msource_list  = utils::make_multiline(utils::exec(query_zfs_cmd));
-    for (const auto& msource : msource_list) {
-        if (utils::exec_checked(fmt::format(FMT_COMPILE("zfs list -H -o mountpoint,name | grep '^/' | {} | grep -q '^{}$'"), "awk '{print $2}'", msource))) {
-            utils::exec_checked(fmt::format(FMT_COMPILE("sed -e '\\|^{}[[:space:]]| s/^#*/#/' -i {}"), msource, fstab_filepath));
-        }
+    const auto& zfs_datasets = list_zfs_datasets()
+        | std::ranges::views::filter([](const ZfsDatasetInfo& ds) { return ds.mountpoint.starts_with('/'); })
+        | std::ranges::views::transform(&ZfsDatasetInfo::name)
+        | std::ranges::to<std::vector<std::string>>();
+    if (!zfs_datasets.empty()) {
+        content = detail::comment_out_zfs_entries(content, zfs_datasets);
+    }
+
+    if (content != fstab_content && !file_utils::write_file(fstab_filepath, content)) {
+        spdlog::warn("Failed to post-process {}", fstab_filepath);
     }
     return {};
 }
 
 }  // namespace gucc::fs
+
+namespace gucc::fs::detail {
+
+auto comment_out_zfs_entries(std::string_view fstab_content, const std::vector<std::string>& zfs_datasets) noexcept -> std::string {
+    return conf::comment_out_where(fstab_content, [&zfs_datasets](const conf::Line& line) {
+        return std::ranges::contains(zfs_datasets, utils::first_field(line.body));
+    });
+}
+
+auto strip_root_prefix(std::string_view fstab_content, std::string_view root_mountpoint) noexcept -> std::string {
+    return utils::map_lines(fstab_content, [root_mountpoint](std::string_view line) {
+        const auto pos = root_mountpoint.empty() ? std::string_view::npos : line.find(root_mountpoint);
+        if (pos == std::string_view::npos) {
+            return std::string{line};
+        }
+        return fmt::format(FMT_COMPILE("{}{}"), line.substr(0, pos), line.substr(pos + root_mountpoint.size()));
+    });
+}
+
+auto strip_subvolid_options(std::string_view fstab_content) noexcept -> std::string {
+    static constexpr auto kSubvolid = "subvolid="sv;
+    static constexpr auto kSubvol   = ",subvol=/"sv;
+    return utils::map_lines(fstab_content, [](std::string_view line) {
+        // TODO(vnepogodin): ugly but let it be, position shouldn't even matter here
+        const auto start  = line.find(kSubvolid);
+        const auto subvol = start == std::string_view::npos ? start : line.find(kSubvol, start + kSubvolid.size());
+        const auto end    = line.rfind(',');
+        if (subvol == std::string_view::npos || end == std::string_view::npos || end < subvol + kSubvol.size()) {
+            return std::string{line};
+        }
+        return fmt::format(FMT_COMPILE("{}{}"), line.substr(0, start), line.substr(end + 1));
+    });
+}
+
+}  // namespace gucc::fs::detail

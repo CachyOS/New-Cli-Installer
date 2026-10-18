@@ -1,5 +1,4 @@
-#ifndef FSTAB_HPP
-#define FSTAB_HPP
+#pragma once
 
 #include "gucc/error.hpp"
 #include "gucc/partition.hpp"
@@ -22,4 +21,10 @@ auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> Result<
 
 }  // namespace gucc::fs
 
-#endif  // FSTAB_HPP
+namespace gucc::fs::detail {
+
+auto comment_out_zfs_entries(std::string_view fstab_content, const std::vector<std::string>& zfs_datasets) noexcept -> std::string;
+auto strip_root_prefix(std::string_view fstab_content, std::string_view root_mountpoint) noexcept -> std::string;
+auto strip_subvolid_options(std::string_view fstab_content) noexcept -> std::string;
+
+}  // namespace gucc::fs::detail

@@ -48,7 +48,10 @@ auto set_value(std::string_view content, std::string_view section, std::string_v
 
         if (is_directive(line, key, KeyStyle::Assign, "#;"sv)) {
             line = assignment;
-            return fmt::format(FMT_COMPILE("{}{}"), utils::join(lines), had_trailing_newline ? "\n"sv : ""sv);
+            if (had_trailing_newline) {
+                lines.emplace_back();
+            }
+            return utils::join(lines);
         }
         if (!utils::trim(line).empty()) {
             section_end = position;
@@ -65,7 +68,8 @@ auto set_value(std::string_view content, std::string_view section, std::string_v
         lines.emplace_back(header);
         lines.emplace_back(assignment);
     }
-    return fmt::format(FMT_COMPILE("{}\n"), utils::join(lines));
+    lines.emplace_back();
+    return utils::join(lines);
 }
 
 }  // namespace gucc::conf
