@@ -12,6 +12,7 @@
 #include <system_error>
 #include <vector>
 
+#include <fmt/compile.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
@@ -72,10 +73,10 @@ auto detect_installed(std::string_view root_mountpoint) noexcept -> std::optiona
 auto enable(Kind kind, std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto unit = to_string(kind);
     if (!services::systemd_unit_exists(unit, root_mountpoint)) {
-        return make_error(ErrorCode::NotFound, fmt::format("display_manager: unit '{}' not present on target, skipping enable", unit));
+        return make_error(ErrorCode::NotFound, FMT_COMPILE("display_manager: unit '{}' not present on target, skipping enable"), unit);
     }
-    if (!services::enable_systemd_service(unit, root_mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("display_manager: failed to enable '{}'", unit));
+    if (auto res = services::enable_systemd_service(unit, root_mountpoint); !res) {
+        return res;
     }
     spdlog::info("display_manager: enabled '{}'", unit);
     return {};
@@ -87,25 +88,16 @@ auto pick_lightdm_greeter(std::string_view xgreeters_dir) noexcept -> std::optio
         return std::nullopt;
     }
 
-    std::vector<std::string> candidates;
-    for (const auto& entry : fs::directory_iterator{xgreeters_dir, ec}) {
-        if (ec) {
-            break;
-        }
-        const auto name = entry.path().filename().string();
-        if (!name.starts_with("lightdm-"sv) || !name.ends_with("-greeter"sv)) {
-            continue;
-        }
-        if (name == kDefaultLightdmGreeter) {
-            continue;
-        }
-        candidates.push_back(name);
-    }
+    const auto candidates = fs::directory_iterator{xgreeters_dir, ec}
+        | std::ranges::views::transform([](const fs::directory_entry& entry) { return entry.path().filename().string(); })
+        | std::ranges::views::filter([](std::string_view name) {
+              return name.starts_with("lightdm-"sv) && name.ends_with("-greeter"sv) && name != kDefaultLightdmGreeter;
+          })
+        | std::ranges::to<std::vector<std::string>>();
     if (candidates.empty()) {
         return std::nullopt;
     }
-    std::ranges::sort(candidates);
-    return candidates.front();
+    return std::ranges::min(candidates);
 }
 
 auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> Result<void> {
@@ -122,26 +114,14 @@ auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> Res
         return {};
     }
 
-    const auto contents = file_utils::read_whole_file(conf_path);
-    std::string rewritten;
-    rewritten.reserve(contents.size() + picked->size());
-
-    auto transformed = std::ranges::views::split(std::string_view{contents}, '\n')
-        | std::ranges::views::transform([](auto&& chunk) { return std::string_view{chunk}; })
-        | std::ranges::views::filter([](std::string_view line) { return !line.empty(); })
-        | std::ranges::views::transform([&picked](std::string_view line) -> std::string {
-              if (line.contains("greeter-session="sv)) {
-                  return fmt::format("greeter-session={}", *picked);
-              }
-              return std::string{line};
-          });
-    for (const auto& line : transformed) {
-        rewritten.append(line);
-        rewritten += '\n';
-    }
-
-    if (!file_utils::create_file_for_overwrite(conf_path, rewritten)) {
-        return make_error(ErrorCode::FileIo, fmt::format("display_manager: failed to write {}", conf_path));
+    auto res = file_utils::rewrite_lines(conf_path, [&picked](std::string_view line) -> std::string {
+        if (line.contains("greeter-session="sv)) {
+            return fmt::format(FMT_COMPILE("greeter-session={}"), *picked);
+        }
+        return std::string{line};
+    });
+    if (!res) {
+        return res;
     }
     spdlog::info("display_manager: lightdm greeter set to '{}'", *picked);
     return {};

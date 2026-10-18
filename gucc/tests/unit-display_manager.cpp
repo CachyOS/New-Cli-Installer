@@ -4,6 +4,7 @@
 #include "gucc/display_manager.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/logger.hpp"
+#include "gucc/process.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -105,6 +106,7 @@ TEST_CASE("display_manager")
         SECTION("returns false when the unit is not present")
         {
             TempRoot root;
+            gucc::utils::default_runner().set_dry_run(true);
             REQUIRE_FALSE(gucc::display_manager::enable(Kind::Sddm, root.path().string()));
         }
     }
