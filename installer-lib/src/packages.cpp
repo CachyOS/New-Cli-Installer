@@ -1,9 +1,11 @@
 #include "cachyos/packages.hpp"
+#include "cachyos/result.hpp"
 
 // import gucc
 #include "gucc/display_manager.hpp"
 #include "gucc/error.hpp"
 #include "gucc/fetch_file.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/firewall.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/initcpio.hpp"
@@ -19,9 +21,9 @@
 #include <algorithm>    // for ranges::find
 #include <expected>     // for unexpected
 #include <filesystem>   // for exists
-#include <fstream>      // for ofstream
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <utility>      // for move
 #include <vector>       // for vector
 
 #include <fmt/compile.h>
@@ -83,6 +85,18 @@ auto make_net_profs_info(const InstallContext& ctx) noexcept -> gucc::package::N
     };
 }
 
+auto make_initcpio_config(const InstallContext& ctx, std::string_view root_filesystem, bool has_plymouth) noexcept
+    -> gucc::initcpio::InitcpioConfig {
+    return {
+        .filesystem_type  = gucc::fs::string_to_filesystem_type(root_filesystem),
+        .is_lvm           = ctx.crypto.is_lvm,
+        .is_luks          = ctx.crypto.is_luks,
+        .has_plymouth     = has_plymouth,
+        .use_systemd_hook = true,
+        .is_zfs_encrypted = ctx.zfs_encrypted,
+    };
+}
+
 void collect_group_packages(const gucc::profile::NetinstallGroup& group, std::vector<std::string>& out) noexcept {
     out.insert(out.cend(), group.packages.cbegin(), group.packages.cend());
     for (const auto& sub : group.subgroups) {
@@ -121,7 +135,6 @@ auto install_base(const InstallContext& ctx) noexcept
 
     // Get the root filesystem type
     const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-    const auto fs_type          = gucc::fs::string_to_filesystem_type(root_filesystem);
 
     // Fetch base package list
     const auto net_profs_info = make_net_profs_info(ctx);
@@ -139,16 +152,9 @@ auto install_base(const InstallContext& ctx) noexcept
         .mountpoint      = mountpoint,
         .packages        = base_pkgs,
         .keymap          = ctx.keymap,
-        .initcpio_config = gucc::initcpio::InitcpioConfig{
-            .filesystem_type  = fs_type,
-            .is_lvm           = ctx.crypto.is_lvm,
-            .is_luks          = ctx.crypto.is_luks,
-            .use_systemd_hook = true,
-            .is_zfs_encrypted = ctx.zfs_encrypted,
-        },
-        .is_zfs             = !ctx.zfs_zpool_names.empty(),
-        .hostcache          = ctx.hostcache,
-        .host_files_to_copy = {{"/etc/pacman.conf", "/etc/pacman.conf"}},
+        .initcpio_config = make_initcpio_config(ctx, root_filesystem, false),
+        .is_zfs          = !ctx.zfs_zpool_names.empty(),
+        .hostcache       = ctx.hostcache,
     };
 
     // Run install_base
@@ -157,8 +163,9 @@ auto install_base(const InstallContext& ctx) noexcept
     }
 
     // Marker file
-    const auto base_installed_path = fmt::format(FMT_COMPILE("{}/.base_installed"), mountpoint);
-    std::ofstream{base_installed_path};  // NOLINT
+    if (auto res = gucc::file_utils::write_file(fmt::format(FMT_COMPILE("{}/.base_installed"), mountpoint), {}); !res) {
+        spdlog::warn("{}", res.error().context);
+    }
 
     return {};
 }
@@ -170,18 +177,14 @@ auto install_desktop_packages(std::string_view desktop, const InstallContext& ct
     if (!pkg_list.has_value()) {
         return std::unexpected("failed to get desktop package list");
     }
+    return install_with_netinstall(std::move(*pkg_list), ctx);
+}
 
-    // append netinstall groups
-    const auto extra = resolve_netinstall_packages(ctx);
-    pkg_list->insert(pkg_list->cend(), extra.cbegin(), extra.cend());
-
-    spdlog::info("Preparing for desktop envs to install: '{}'", gucc::utils::join(*pkg_list, ' '));
-
-    auto pkg_result = install_packages(*pkg_list, ctx.mountpoint, ctx.hostcache);
-    if (!pkg_result) {
-        return std::unexpected(pkg_result.error());
-    }
-    return {};
+auto install_with_netinstall(std::vector<std::string> packages, const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string> {
+    packages.append_range(resolve_netinstall_packages(ctx));
+    spdlog::info("Preparing for pkgs to install: '{}'", gucc::utils::join(packages, ' '));
+    return install_packages(packages, ctx.mountpoint, ctx.hostcache);
 }
 
 auto configure_desktop_extras(const InstallContext& ctx) noexcept
@@ -195,20 +198,10 @@ auto configure_desktop_extras(const InstallContext& ctx) noexcept
             spdlog::error("Failed to set plymouth theme: {}", res.error().context);
         }
 
-        const auto& filesystem_type = gucc::fs::utils::get_mountpoint_fs(mountpoint);
-        const auto fs_type          = gucc::fs::string_to_filesystem_type(filesystem_type);
-
-        const auto initcpio_config = gucc::initcpio::InitcpioConfig{
-            .filesystem_type  = fs_type,
-            .is_lvm           = ctx.crypto.is_lvm,
-            .is_luks          = ctx.crypto.is_luks,
-            .has_plymouth     = true,
-            .use_systemd_hook = true,
-            .is_zfs_encrypted = ctx.zfs_encrypted,
-        };
-        const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+        const auto initcpio_config = make_initcpio_config(ctx, gucc::fs::utils::get_mountpoint_fs(mountpoint), true);
+        const auto initcpio_path   = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
         if (gucc::initcpio::setup_initcpio_config(initcpio_path, initcpio_config)) {
-            if (!gucc::utils::arch_chroot_follow("mkinitcpio -P"sv, mountpoint)) {
+            if (!gucc::utils::arch_chroot_checked("mkinitcpio -P"sv, mountpoint)) {
                 return std::unexpected("failed to rebuild initramfs with plymouth hook");
             }
         } else {
@@ -251,7 +244,7 @@ auto remove_packages(const std::vector<std::string>& packages,
 
     const auto& pkgs_str       = gucc::utils::join(packages, ' ');
     const auto& chroot_command = fmt::format(FMT_COMPILE("pacman -Rsn {}"), pkgs_str);
-    if (!gucc::utils::arch_chroot_follow(chroot_command, mountpoint)) {
+    if (!gucc::utils::arch_chroot_checked(chroot_command, mountpoint)) {
         return std::unexpected(fmt::format("failed to remove packages: {}", pkgs_str));
     }
     return {};
@@ -318,9 +311,9 @@ auto init_server_profile(InstallContext& ctx) noexcept
             ctx.server_profiles_url, ctx.server_profiles_fallback_url));
     }
 
-    auto profiles = gucc::profile::parse_server_profiles(*content);
+    auto profiles = lift(gucc::profile::parse_server_profiles(*content), "invalid server profiles doc");
     if (!profiles) {
-        return std::unexpected(fmt::format(FMT_COMPILE("invalid server profiles doc: {}"), gucc::to_string(profiles.error())));
+        return std::unexpected(std::move(profiles).error());
     }
 
     const gucc::profile::ServerUserExtras extras{
@@ -330,14 +323,9 @@ auto init_server_profile(InstallContext& ctx) noexcept
         .ssh_authorized_keys = ctx.ssh_authorized_keys,
     };
 
-    auto resolved = gucc::profile::resolve_server_profile(*profiles, ctx.server_profile, extras);
-    if (!resolved) {
-        return std::unexpected(fmt::format(FMT_COMPILE("cannot resolve server profile '{}': {}"),
-            ctx.server_profile, gucc::to_string(resolved.error())));
-    }
-
-    ctx.resolved_server = std::move(*resolved);
-    return {};
+    return lift(gucc::profile::resolve_server_profile(*profiles, ctx.server_profile, extras),
+        fmt::format(FMT_COMPILE("cannot resolve server profile '{}'"), ctx.server_profile))
+        .transform([&ctx](gucc::profile::ResolvedServerProfile&& resolved) { ctx.resolved_server = std::move(resolved); });
 }
 
 auto install_needed(std::string_view pkg) noexcept

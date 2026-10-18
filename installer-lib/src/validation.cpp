@@ -2,13 +2,18 @@
 
 // import gucc
 #include "gucc/bootloader.hpp"
+#include "gucc/conf.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
+#include <cstddef>  // for size_t
+
+#include <algorithm>    // for any_of, contains, count_if
 #include <array>        // for array
-#include <cstdint>      // for uint32_t
 #include <filesystem>   // for exists
+#include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
 
@@ -24,14 +29,11 @@ namespace {
     using gucc::bootloader::BootloaderType;
     switch (ctx.bootloader) {
     case BootloaderType::Grub:
-        return gucc::utils::exec_checked(
-            fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq grub &> /dev/null"), ctx.mountpoint));
+        return gucc::utils::arch_chroot_query_checked("pacman -Qq grub"sv, ctx.mountpoint);
     case BootloaderType::Refind:
-        return gucc::utils::exec_checked(
-            fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq refind &> /dev/null"), ctx.mountpoint));
+        return gucc::utils::arch_chroot_query_checked("pacman -Qq refind"sv, ctx.mountpoint);
     case BootloaderType::Limine:
-        return gucc::utils::exec_checked(
-            fmt::format(FMT_COMPILE("arch-chroot {} pacman -Qq limine &> /dev/null"), ctx.mountpoint));
+        return gucc::utils::arch_chroot_query_checked("pacman -Qq limine"sv, ctx.mountpoint);
     case BootloaderType::SystemdBoot:
         // Check both common ESP mount points (loader.conf lives at ESP root).
         return fs::exists(fmt::format(FMT_COMPILE("{}/boot/loader/loader.conf"), ctx.mountpoint))
@@ -41,7 +43,32 @@ namespace {
 }
 }  // namespace
 
+namespace cachyos::installer::detail {
+
+auto count_generated_locales(std::string_view locale_a_output) noexcept -> std::size_t {
+    static constexpr std::array kBuiltin{"C"sv, "C.utf8"sv, "C.UTF-8"sv, "POSIX"sv};
+    return static_cast<std::size_t>(std::ranges::count_if(gucc::utils::nonblank_lines(locale_a_output), [](std::string_view line) {
+        return !std::ranges::contains(kBuiltin, line);
+    }));
+}
+
+}  // namespace cachyos::installer::detail
+
 namespace cachyos::installer {
+
+auto fstab_has_entries(std::string_view fstab_content) noexcept -> bool {
+    return std::ranges::any_of(gucc::utils::split_lines(fstab_content), [](std::string_view line) { return gucc::conf::active(line).has_value(); });
+}
+
+auto shadow_password_empty(std::string_view shadow_content, std::string_view user) noexcept -> bool {
+    const auto fields = gucc::utils::value_of(gucc::utils::make_split_view(shadow_content), user, ':');
+    if (!fields) {
+        return true;
+    }
+    const auto password = fields->substr(0, fields->find(':'));
+    static constexpr std::array kNoPassword{""sv, "*"sv, "!"sv, "!!"sv, "!*"sv};
+    return std::ranges::contains(kNoPassword, password);
+}
 
 auto check_mount(std::string_view mountpoint) noexcept -> bool {
     return !gucc::fs::utils::get_mountpoint_source(mountpoint).empty();
@@ -87,20 +114,19 @@ auto final_check(const InstallContext& ctx) noexcept -> ValidationResult {
     }
 
     // Check if fstab is generated
-    if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("grep -qv '^#' {}/etc/fstab 2>/dev/null"), ctx.mountpoint))) {
+    if (!fstab_has_entries(gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/fstab"), ctx.mountpoint)))) {
         result.success = false;
         result.errors.emplace_back("Fstab has not been generated");
     }
 
     // Check if locales have been generated
-    const auto& locale_count_str = gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} locale -a | wc -l"), ctx.mountpoint), false);
-    if (gucc::utils::parse_uint<std::uint32_t>(locale_count_str).value_or(0) < 3) {
+    if (detail::count_generated_locales(gucc::utils::arch_chroot_query("locale -a"sv, ctx.mountpoint)) == 0) {
         result.success = false;
         result.errors.emplace_back("Locales have not been generated");
     }
 
     // Check if root password has been set
-    if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("arch-chroot {} passwd --status root | cut -d' ' -f2 | grep -q 'NP'"), ctx.mountpoint))) {
+    if (shadow_password_empty(gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/shadow"), ctx.mountpoint)), "root"sv)) {
         result.success = false;
         result.errors.emplace_back("Root password is not set");
     }

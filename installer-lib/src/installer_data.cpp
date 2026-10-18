@@ -30,8 +30,7 @@ auto get_device_list() noexcept -> std::vector<std::string> {
 }
 
 auto parse_device_name(std::string_view entry) noexcept -> std::string {
-    const auto& parts = gucc::utils::make_multiline(entry, false, ' ');
-    return parts.empty() ? std::string{} : parts[0];
+    return std::string{gucc::utils::first_field(entry)};
 }
 
 }  // namespace cachyos::installer::data

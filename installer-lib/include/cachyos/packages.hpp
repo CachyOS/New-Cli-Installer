@@ -31,6 +31,10 @@ namespace cachyos::installer {
     std::string_view mountpoint, bool hostcache) noexcept
     -> std::expected<void, std::string>;
 
+/// Installs an arbitrary set of packages with netinstall groups into the target system.
+[[nodiscard]] auto install_with_netinstall(std::vector<std::string> packages, const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Removes packages from the target system.
 [[nodiscard]] auto remove_packages(const std::vector<std::string>& packages,
     std::string_view mountpoint) noexcept

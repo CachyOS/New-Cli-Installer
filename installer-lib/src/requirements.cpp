@@ -3,9 +3,10 @@
 #include "cachyos/system.hpp"
 #include "cachyos/types.hpp"
 
+#include "gucc/file_utils.hpp"
+#include "gucc/memory.hpp"
 #include "gucc/system_query.hpp"
 
-#include <sys/sysinfo.h>  // for sysinfo
 #include <unistd.h>       // for getuid
 
 #include <cstdint>  // for uint64_t
@@ -13,7 +14,6 @@
 #include <algorithm>      // for max, find
 #include <atomic>         // for atomic_bool
 #include <filesystem>     // for directory_iterator
-#include <fstream>        // for ifstream
 #include <mutex>          // for mutex, lock_guard
 #include <ranges>         // for ranges::*
 #include <string>         // for getline
@@ -37,7 +37,6 @@ using namespace cachyos::installer;
 
 namespace {
 constexpr auto kPowerSupplyPath      = "/sys/class/power_supply"sv;
-constexpr std::uint64_t kBytesPerGiB = 1024ULL * 1024ULL * 1024ULL;
 
 // Calamares applies a ~5% margin when comparing reported totalram against the
 // configured threshold.
@@ -56,7 +55,7 @@ auto registry() noexcept -> Registry& {
 }
 
 auto bytes_to_gib(std::uint64_t bytes) noexcept -> double {
-    return static_cast<double>(bytes) / static_cast<double>(kBytesPerGiB);
+    return static_cast<double>(bytes) / static_cast<double>(gucc::memory::kGiB);
 }
 }  // namespace
 
@@ -84,16 +83,13 @@ static auto uefi(const RequirementsConfig&) noexcept -> Requirement {
 static auto ram(const RequirementsConfig& cfg) noexcept -> Requirement {
     Requirement r{};
 
-    std::uint64_t total_bytes{};
-    struct ::sysinfo info{};
-    if (::sysinfo(&info) == 0) {
-        total_bytes = static_cast<std::uint64_t>(info.totalram) * info.mem_unit;
-    } else {
-        spdlog::warn("requirements: sysinfo() failed");
+    const auto total_bytes = gucc::memory::total_bytes();
+    if (total_bytes == 0) {
+        spdlog::warn("requirements: cannot read total memory");
     }
 
     const auto threshold_bytes = static_cast<std::uint64_t>(
-        cfg.required_ram_gib * static_cast<double>(kBytesPerGiB));
+        cfg.required_ram_gib * static_cast<double>(gucc::memory::kGiB));
 
     r.message_ok = fmt::format(
         FMT_COMPILE("Has at least {:.1f} GiB of RAM ({:.1f} GiB detected)"),
@@ -121,7 +117,7 @@ static auto storage(const RequirementsConfig& cfg) noexcept -> Requirement {
     }
 
     const auto threshold_bytes = static_cast<std::uint64_t>(
-        cfg.required_storage_gib * static_cast<double>(kBytesPerGiB));
+        cfg.required_storage_gib * static_cast<double>(gucc::memory::kGiB));
 
     r.message_ok = fmt::format(
         FMT_COMPILE("Has at least {:.1f} GiB of disk space ({:.1f} GiB available)"),
@@ -131,15 +127,6 @@ static auto storage(const RequirementsConfig& cfg) noexcept -> Requirement {
         cfg.required_storage_gib, bytes_to_gib(largest_bytes));
     r.satisfied = largest_bytes >= threshold_bytes;
     return r;
-}
-
-static auto read_first_line(const fs::path& path) noexcept -> std::string {
-    std::ifstream ifs{path};
-    std::string line;
-    if (ifs) {
-        std::getline(ifs, line);
-    }
-    return line;
 }
 
 static auto power(const RequirementsConfig&) noexcept -> Requirement {
@@ -155,15 +142,15 @@ static auto power(const RequirementsConfig&) noexcept -> Requirement {
         return r;
     }
     for (const auto& entry : fs::directory_iterator{kPowerSupplyPath, ec}) {
-        const auto type = read_first_line(entry.path() / "type");
+        const auto type = gucc::file_utils::read_first_line((entry.path() / "type").native());
         if (type == "Battery"sv) {
             // Skip peripherals
-            if (read_first_line(entry.path() / "scope") == "Device"sv) {
+            if (gucc::file_utils::read_first_line((entry.path() / "scope").native()) == "Device"sv) {
                 continue;
             }
             has_battery = true;
         } else if (type == "Mains"sv || type == "USB"sv || type == "USB_PD"sv) {
-            if (read_first_line(entry.path() / "online") == "1") {
+            if (gucc::file_utils::read_first_line((entry.path() / "online").native()) == "1") {
                 on_ac = true;
             }
         }

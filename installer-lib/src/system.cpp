@@ -1,5 +1,7 @@
 #include "cachyos/system.hpp"
+#include "cachyos/result.hpp"
 
+#include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/pacmanconf_repo.hpp"
@@ -8,12 +10,15 @@
 #include <sys/mount.h>  // for mount
 #include <unistd.h>     // for getuid
 
+#include <cerrno>   // for errno
+#include <cstring>  // for strerror
+
 #include <chrono>      // for seconds
 #include <expected>    // for unexpected
 #include <filesystem>  // for exists, is_directory
-#include <fstream>     // for ifstream
 #include <string>      // for string
 #include <thread>      // for sleep_for
+#include <vector>      // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -26,20 +31,33 @@
 #include <cpr/timeout.h>
 
 namespace fs = std::filesystem;
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 using namespace std::chrono_literals;
 
+namespace {
+constexpr auto kEfiPath = "/sys/firmware/efi/"sv;
+}  // namespace
+
 namespace cachyos::installer {
+
+auto ensure_efivarfs() noexcept -> std::expected<void, std::string> {
+    static constexpr auto efivars_path = "/sys/firmware/efi/efivars";
+    std::error_code ec{};
+    if (!fs::is_directory(kEfiPath, ec) || !gucc::fs::utils::get_mountpoint_source(efivars_path).empty()) {
+        return {};
+    }
+    if (mount("efivarfs", efivars_path, "efivarfs", 0, "") != 0) {
+        return std::unexpected(fmt::format(FMT_COMPILE("failed to mount efivarfs: {}"), std::strerror(errno)));
+    }
+    return {};
+}
 
 auto detect_system() noexcept -> std::expected<SystemInfo, std::string> {
     SystemInfo info{};
 
     // Apple System Detection
-    // TODO(vnepogodin): refactor later to util function to read just single line
-    std::string sys_vendor{};
-    if (std::ifstream ifs{"/sys/class/dmi/id/sys_vendor"}; ifs) {
-        std::getline(ifs, sys_vendor);
-    }
+    const auto& sys_vendor = gucc::file_utils::read_first_line("/sys/class/dmi/id/sys_vendor");
     if ((sys_vendor == "Apple Inc."sv) || (sys_vendor == "Apple Computer, Inc."sv)) {
         if (!gucc::utils::exec_checked("modprobe -r -q efivars"sv)) {
             spdlog::warn("failed to unload efivars module");
@@ -51,20 +69,15 @@ auto detect_system() noexcept -> std::expected<SystemInfo, std::string> {
     }
 
     // BIOS or UEFI Detection
-    static constexpr auto efi_path = "/sys/firmware/efi/";
-    if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
-        // Mount efivarfs if it is not already mounted
-        static constexpr auto efivars_path = "/sys/firmware/efi/efivars";
-        if (::gucc::fs::utils::get_mountpoint_source(efivars_path).empty()) {
-            if (mount("efivarfs", efivars_path, "efivarfs", 0, "") != 0) {
-                return std::unexpected(fmt::format(FMT_COMPILE("failed to mount efivarfs: {}"), std::strerror(errno)));
-            }
-        }
-        info.system_mode = InstallContext::SystemMode::UEFI;
-    } else {
+    std::error_code ec{};
+    if (!fs::is_directory(kEfiPath, ec)) {
         info.system_mode = InstallContext::SystemMode::BIOS;
+        return info;
     }
-
+    if (auto res = ensure_efivarfs(); !res) {
+        return std::unexpected(std::move(res.error()));
+    }
+    info.system_mode = InstallContext::SystemMode::UEFI;
     return info;
 }
 
