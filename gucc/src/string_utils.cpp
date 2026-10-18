@@ -12,11 +12,7 @@
 namespace gucc::utils {
 
 auto make_multiline(std::string_view str, bool reverse, char delim) noexcept -> std::vector<std::string> {
-    auto lines = utils::make_split_view(str, delim) | std::ranges::to<std::vector<std::string>>();
-    if (reverse) {
-        std::ranges::reverse(lines);
-    }
-    return lines;
+    return make_multiline_view(str, reverse, delim) | std::ranges::to<std::vector<std::string>>();
 }
 
 auto make_multiline(const std::vector<std::string>& multiline, bool reverse, std::string_view delim) noexcept -> std::string {
