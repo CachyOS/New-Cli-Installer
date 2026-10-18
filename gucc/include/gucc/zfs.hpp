@@ -76,6 +76,12 @@ auto zpool_export(std::string_view pool_name) noexcept -> Result<void>;
 
 auto zfs_mount_all() noexcept -> Result<void>;
 
+/// Mounts @p dataset at its own mountpoint property.
+auto zfs_mount(std::string_view dataset) noexcept -> Result<void>;
+
+/// Loads the encryption key of @p dataset.
+auto zfs_load_key(std::string_view dataset, std::string_view passphrase) noexcept -> Result<void>;
+
 /// @brief Copies the host's ZFS hostid into the target so the installed system
 ///        presents the same hostid the pool recorded at creation (a mismatch
 ///        makes the pool refuse to import at boot).

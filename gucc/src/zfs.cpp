@@ -148,6 +148,15 @@ auto zfs_mount_all() noexcept -> Result<void> {
     return utils::exec_or_error({"/usr/bin/zfs"s, "mount"s, "-aO"s}, "mount zfs datasets"sv);
 }
 
+auto zfs_mount(std::string_view dataset) noexcept -> Result<void> {
+    return utils::exec_or_error({"/usr/bin/zfs"s, "mount"s, std::string{dataset}}, "mount zfs dataset"sv);
+}
+
+auto zfs_load_key(std::string_view dataset, std::string_view passphrase) noexcept -> Result<void> {
+    // keyformat=passphrase reads one line from stdin
+    return utils::exec_or_error_with_input(fmt::format(FMT_COMPILE("zfs load-key {}"), dataset), fmt::format(FMT_COMPILE("{}\n"), passphrase), "load zfs encryption key"sv);
+}
+
 auto copy_hostid_to_target(std::string_view target_root, std::string_view host_hostid) noexcept -> Result<void> {
     std::error_code ec;
     if (!::fs::exists(host_hostid, ec)) {
