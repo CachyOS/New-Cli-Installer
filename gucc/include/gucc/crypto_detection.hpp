@@ -21,6 +21,9 @@ struct CryptoDetection {
     std::string luks_uuid{};
 };
 
+/// e.g. cryptdevice=UUID=xxxx:cryptroot
+auto make_cryptdevice_param(std::string_view luks_uuid, std::string_view mapper_name) noexcept -> std::string;
+
 /// @brief Detects crypto state for a given device.
 /// @param devices A vector of BlockDevice objects.
 /// @param device_name The device name to inspect.

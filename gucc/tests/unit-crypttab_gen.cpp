@@ -22,6 +22,16 @@ static constexpr auto CRYPTTAB_EMPTY_TEST = R"(# Configuration for encrypted blo
 # <name>       <device>                                     <password>              <options>
 )"sv;
 
+static constexpr auto CRYPTTAB_ENCR_BOOT_TEST = R"(# Configuration for encrypted block devices
+# See crypttab(5) for details.
+
+# NOTE: Do not list your root (/) partition here, it must be set up
+#       beforehand by the initramfs (/etc/mkinitcpio.conf).
+
+# <name>       <device>                                     <password>              <options>
+luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f     /crypto_keyfile.bin luks
+)"sv;
+
 static constexpr auto CRYPTTAB_UNENCR_BOOT_TEST = R"(# Configuration for encrypted block devices
 # See crypttab(5) for details.
 
@@ -103,6 +113,15 @@ TEST_CASE("crypttab gen test")
         };
         const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
         REQUIRE_EQ(crypttab_content, CRYPTTAB_UNENCR_BOOT_TEST);
+    }
+    SECTION("luks btrfs with /boot inside root")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p1"s, .mount_opts = btrfs_mountopts, .subvolume = "/@"s, .luks_mapper_name = "luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s, .luks_uuid = "6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"s},
+            gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot/efi"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime"s},
+        };
+        const auto& crypttab_content = gucc::fs::generate_crypttab_content(partitions, "luks"sv);
+        REQUIRE_EQ(crypttab_content, CRYPTTAB_ENCR_BOOT_TEST);
     }
     SECTION("luks btrfs with subvolumes {shuffled}")
     {

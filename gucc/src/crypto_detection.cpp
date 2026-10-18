@@ -11,7 +11,27 @@
 
 using namespace std::string_view_literals;
 
+namespace {
+
+auto luks_detection_for(const gucc::disk::BlockDevice& crypt_dev) noexcept -> gucc::disk::CryptoDetection {
+    return gucc::disk::CryptoDetection{
+        .is_luks          = true,
+        .luks_mapper_name = std::string{gucc::disk::strip_device_prefix(crypt_dev.name)},
+    };
+}
+
+void set_luks_uuid(gucc::disk::CryptoDetection& detection, std::string_view luks_uuid) noexcept {
+    detection.luks_uuid = std::string{luks_uuid};
+    detection.luks_dev  = gucc::disk::make_cryptdevice_param(luks_uuid, detection.luks_mapper_name);
+}
+
+}  // namespace
+
 namespace gucc::disk {
+
+auto make_cryptdevice_param(std::string_view luks_uuid, std::string_view mapper_name) noexcept -> std::string {
+    return fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), luks_uuid, mapper_name);
+}
 
 auto detect_crypto_for_device(const std::vector<BlockDevice>& devices, std::string_view device_name) noexcept -> std::optional<CryptoDetection> {
     const auto& device = find_device_by_name(devices, device_name);
@@ -26,17 +46,13 @@ auto detect_crypto_for_device(const std::vector<BlockDevice>& devices, std::stri
         return CryptoDetection{};
     }
 
-    CryptoDetection result{};
-    result.is_luks          = true;
-    result.luks_mapper_name = std::string{strip_device_prefix(crypt_dev->name)};
+    auto result = luks_detection_for(*crypt_dev);
 
     // Check LUKS-on-LVM: lvm device with crypto_LUKS fstype
     const auto& luks_on_lvm = find_devices_by_type_and_fstype(devices, "lvm"sv, "crypto_LUKS"sv);
     if (!luks_on_lvm.empty()) {
-        result.is_lvm = true;
-        for (const auto& cryptpart : luks_on_lvm) {
-            result.luks_dev = fmt::format(FMT_COMPILE("cryptdevice={}:{}"), cryptpart.name, result.luks_mapper_name);
-        }
+        result.is_lvm   = true;
+        result.luks_dev = fmt::format(FMT_COMPILE("cryptdevice={}:{}"), luks_on_lvm.back().name, result.luks_mapper_name);
         return result;
     }
 
@@ -47,8 +63,7 @@ auto detect_crypto_for_device(const std::vector<BlockDevice>& devices, std::stri
         // Find the underlying LUKS partition's UUID by walking ancestors
         const auto& part_ancestor = find_ancestor_of_type(devices, lvm_on_luks.front().name, "part"sv);
         if (part_ancestor) {
-            result.luks_uuid = part_ancestor->uuid;
-            result.luks_dev  = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), result.luks_uuid, result.luks_mapper_name);
+            set_luks_uuid(result, part_ancestor->uuid);
         }
         return result;
     }
@@ -56,8 +71,7 @@ auto detect_crypto_for_device(const std::vector<BlockDevice>& devices, std::stri
     // Check LUKS alone: part device with crypto_LUKS fstype
     const auto& luks_parts = find_devices_by_type_and_fstype(devices, "part"sv, "crypto_LUKS"sv);
     if (!luks_parts.empty()) {
-        result.luks_uuid = luks_parts.front().uuid;
-        result.luks_dev  = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), result.luks_uuid, result.luks_mapper_name);
+        set_luks_uuid(result, luks_parts.front().uuid);
     }
 
     return result;
@@ -85,20 +99,13 @@ auto detect_crypto_for_boot(const std::vector<BlockDevice>& devices, std::string
         return CryptoDetection{};
     }
 
-    CryptoDetection result{};
-    result.is_luks          = true;
-    result.luks_mapper_name = std::string{strip_device_prefix(crypt_dev->name)};
-
-    // Check if LVM on LUKS (boot device is on lvm)
-    if (boot_dev->type == "lvm"sv) {
-        result.is_lvm = true;
-    }
+    auto result   = luks_detection_for(*crypt_dev);
+    result.is_lvm = boot_dev->type == "lvm"sv;
 
     // Get UUID of the underlying partition
     const auto& part_ancestor = find_ancestor_of_type(devices, crypt_dev->name, "part"sv);
     if (part_ancestor) {
-        result.luks_uuid = part_ancestor->uuid;
-        result.luks_dev  = fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), result.luks_uuid, result.luks_mapper_name);
+        set_luks_uuid(result, part_ancestor->uuid);
     }
 
     return result;

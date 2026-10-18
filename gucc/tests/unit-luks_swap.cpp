@@ -21,7 +21,7 @@ using gucc::tests::TempRoot;
 
 TEST_CASE("luks_swap")
 {
-    auto sink   = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {});
+    auto sink   = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) { });
     auto logger = std::make_shared<spdlog::logger>("default", sink);
     spdlog::set_default_logger(logger);
     gucc::logger::set_logger(logger);
@@ -189,5 +189,45 @@ TEST_CASE("luks_swap")
             const auto body = gucc::file_utils::read_whole_file((root.path() / "etc" / "fstab").string());
             REQUIRE_EQ(body, "/dev/mapper/swap none swap defaults 0 0\n");
         }
+    }
+}
+
+TEST_CASE("luks_swap helpers")
+{
+    using namespace gucc::luks_swap::detail;  // NOLINT
+
+    SECTION("line_owns_name")
+    {
+        REQUIRE(line_owns_name("swap /dev/sda3 /dev/urandom swap", "swap"));
+        REQUIRE(line_owns_name("  swap\t/dev/sda3", "swap"));
+        REQUIRE(line_owns_name("swap", "swap"));
+        REQUIRE_FALSE(line_owns_name("swapfoo /dev/sda3", "swap"));
+        REQUIRE_FALSE(line_owns_name("# swap /dev/sda3", "swap"));
+        REQUIRE_FALSE(line_owns_name("#swap /dev/sda3", "swap"));
+        REQUIRE_FALSE(line_owns_name("", "swap"));
+        REQUIRE_FALSE(line_owns_name("root /dev/sda2", ""));
+    }
+    SECTION("is_swap_type_line")
+    {
+        REQUIRE(is_swap_type_line("/dev/sda2 none swap defaults 0 0"));
+        REQUIRE(is_swap_type_line("UUID=abc\tnone\tswap\tdefaults"));
+        REQUIRE_FALSE(is_swap_type_line("# /dev/sda2 none swap defaults 0 0"));
+        REQUIRE_FALSE(is_swap_type_line("/swap / ext4 defaults 0 1"));
+        REQUIRE_FALSE(is_swap_type_line("/dev/sda2 none"));
+        REQUIRE_FALSE(is_swap_type_line(""));
+    }
+    SECTION("rewrite_with_entry")
+    {
+        const auto owns_swap = [](std::string_view line) { return line_owns_name(line, "swap"); };
+        constexpr auto entry = "swap /dev/sda3 /dev/urandom swap\n"sv;
+
+        REQUIRE_EQ(rewrite_with_entry("", owns_swap, entry), entry);
+        REQUIRE_EQ(rewrite_with_entry("# c\nroot /dev/sda2 none luks\n", owns_swap, entry),
+            "# c\nroot /dev/sda2 none luks\nswap /dev/sda3 /dev/urandom swap\n");
+        REQUIRE_EQ(rewrite_with_entry("swap /dev/old x\nroot /dev/sda2\n", owns_swap, entry),
+            "root /dev/sda2\nswap /dev/sda3 /dev/urandom swap\n");
+        REQUIRE_EQ(rewrite_with_entry("a\n\n\nb", owns_swap, entry), "a\nb\nswap /dev/sda3 /dev/urandom swap\n");
+        REQUIRE_EQ(rewrite_with_entry("/dev/sda2 none swap defaults 0 0\n/dev/sda1 / ext4 rw 0 1\n", is_swap_type_line, "/dev/mapper/swap none swap defaults 0 0\n"),
+            "/dev/sda1 / ext4 rw 0 1\n/dev/mapper/swap none swap defaults 0 0\n");
     }
 }

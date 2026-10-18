@@ -2,6 +2,8 @@
 #include "gucc/error.hpp"
 #include "gucc/io_utils.hpp"
 
+#include "detail/initcpio_impl.hpp"
+
 #include <algorithm>   // for contains
 #include <filesystem>  // for exists
 #include <string>      // for string
@@ -82,10 +84,16 @@ auto luks_setup_keyfile(std::string_view dest_file, std::string_view mountpoint,
     const auto& mkinitcpio_conf = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
 
     // TODO(vnepogodin): that should gathered from dest_file and be relative to mountpoint
-    const auto& cmd = fmt::format(FMT_COMPILE("grep -q '/crypto_keyfile.bin' {0} || sed -i '/FILES/ s~)~/crypto_keyfile.bin)~' {0}"), mkinitcpio_conf);
-    if (auto res = utils::exec_or_error(cmd, "failed to add keyfile"sv); !res) {
-        spdlog::error("Failed to add keyfile to {}", mkinitcpio_conf);
-        return res;
+    static constexpr auto initcpio_keyfile = "/crypto_keyfile.bin"sv;
+    auto initcpio                          = detail::Initcpio{mkinitcpio_conf};
+    if (!initcpio.parse_file()) {
+        return make_error(ErrorCode::ParseError, FMT_COMPILE("failed to parse {}"), mkinitcpio_conf);
+    }
+    if (!std::ranges::contains(initcpio.arrays().files, initcpio_keyfile)) {
+        initcpio.arrays().files.emplace_back(initcpio_keyfile);
+        if (!initcpio.write()) {
+            return make_error(ErrorCode::FileIo, FMT_COMPILE("failed to add keyfile to {}"), mkinitcpio_conf);
+        }
     }
 
     spdlog::info("Adding keyfile to the initcpio");

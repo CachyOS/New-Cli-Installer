@@ -1,9 +1,10 @@
-#ifndef LUKS_SWAP_HPP
-#define LUKS_SWAP_HPP
+#pragma once
 
 #include "gucc/error.hpp"
 
-#include <cstdint>      // for uint32_t
+#include <cstdint>  // for uint32_t
+
+#include <functional>   // for function_ref
 #include <string>       // for string
 #include <string_view>  // for string_view
 
@@ -48,4 +49,10 @@ auto replace_swap_in_fstab(std::string_view mapper_name, std::string_view root_m
 
 }  // namespace gucc::luks_swap
 
-#endif  // LUKS_SWAP_HPP
+namespace gucc::luks_swap::detail {
+
+[[nodiscard]] auto line_owns_name(std::string_view line, std::string_view name) noexcept -> bool;
+[[nodiscard]] auto is_swap_type_line(std::string_view line) noexcept -> bool;
+[[nodiscard]] auto rewrite_with_entry(std::string_view content, std::function_ref<bool(std::string_view)> should_drop, std::string_view new_line) -> std::string;
+
+}  // namespace gucc::luks_swap::detail
