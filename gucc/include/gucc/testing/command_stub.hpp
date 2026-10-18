@@ -1,11 +1,12 @@
 #pragma once
 
 #include "gucc/process.hpp"
+#include "gucc/ranges_utils.hpp"
 
 #include <cstddef>  // for size_t
 #include <cstdint>  // for int32_t, uint8_t
 
-#include <algorithm>    // for find_if
+#include <algorithm>    // for count_if
 #include <concepts>     // for predicate
 #include <functional>   // for function
 #include <mutex>        // for mutex, scoped_lock
@@ -94,7 +95,8 @@ class [[nodiscard]] ScopedCommandStub final {
     }
 
     [[nodiscard]] auto count_prefix(std::string_view prefix) const -> std::size_t {
-        return command_lines_where([prefix](const RecordedCall& call) { return call.command_line.starts_with(prefix); }).size();
+        const std::scoped_lock lock(m_mutex);
+        return static_cast<std::size_t>(std::ranges::count_if(m_calls, [prefix](std::string_view line) { return line.starts_with(prefix); }, &RecordedCall::command_line));
     }
 
  private:
@@ -116,8 +118,7 @@ class [[nodiscard]] ScopedCommandStub final {
         std::optional<CannedReply> reply;
         {
             const std::scoped_lock lock(m_mutex);
-            const auto rule = std::ranges::find_if(m_rules, [&cmd](const Predicate& matches) { return matches(cmd); }, &Rule::matches);
-            if (rule != std::ranges::end(m_rules)) {
+            if (const auto* rule = find_if_ptr(m_rules, [&cmd](const Predicate& matches) { return matches(cmd); }, &Rule::matches)) {
                 reply = rule->reply;
             }
             m_calls.push_back(RecordedCall{
