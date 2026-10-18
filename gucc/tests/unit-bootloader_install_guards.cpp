@@ -3,6 +3,7 @@
 #include "gucc/bootloader.hpp"
 #include "gucc/error.hpp"
 #include "gucc/logger.hpp"
+#include "gucc/process.hpp"
 
 #include <spdlog/sinks/callback_sink.h>
 #include <spdlog/spdlog.h>
@@ -15,6 +16,8 @@ TEST_CASE("bootloader empty efi path")
     auto logger = std::make_shared<spdlog::logger>("default", callback_sink);
     spdlog::set_default_logger(logger);
     gucc::logger::set_logger(logger);
+
+    gucc::utils::default_runner().set_dry_run(true);
 
     SECTION("systemd-boot")
     {
