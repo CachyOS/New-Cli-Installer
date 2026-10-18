@@ -4,6 +4,7 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/logger.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <ranges>
 #include <string_view>
@@ -77,5 +78,42 @@ TEST_CASE("refind extra kern strings test")
 
         // Cleanup.
         fs::remove(file_testpath);
+    }
+}
+
+TEST_CASE("set_refind_extra_kern_strings")
+{
+    using gucc::bootloader::detail::set_refind_extra_kern_strings;
+
+    const std::vector<std::string> versions{"linux-lts", "linux", "linux-zen"};
+
+    SECTION("commented sample directive")
+    {
+        const auto sample = gucc::file_utils::read_whole_file(GUCC_TEST_DIR "/files/refind.conf-sample");
+        REQUIRE_FALSE(sample.empty());
+        const auto result = set_refind_extra_kern_strings(sample, versions);
+        REQUIRE_EQ(filtered_res(result), REFIND_CONF_TEST);
+        REQUIRE(result.contains("# (extra_kernel_version_strings \"\") or comment out"sv));
+        REQUIRE_EQ(std::ranges::count(result, '\n'), std::ranges::count(sample, '\n'));
+    }
+    SECTION("replaced directive")
+    {
+        REQUIRE_EQ(set_refind_extra_kern_strings("timeout 5\nextra_kernel_version_strings linux\n", versions),
+            "timeout 5\nextra_kernel_version_strings linux-lts,linux,linux-zen\n");
+    }
+    SECTION("single version has no separator")
+    {
+        REQUIRE_EQ(set_refind_extra_kern_strings("#extra_kernel_version_strings\n", {"linux"}), "extra_kernel_version_strings linux\n");
+    }
+    SECTION("similarly named keys are not the directive")
+    {
+        REQUIRE_EQ(set_refind_extra_kern_strings("extra_kernel_version_strings_x a\n", {"linux"}),
+            "extra_kernel_version_strings_x a\nextra_kernel_version_strings linux\n");
+    }
+    SECTION("appended missing directive")
+    {
+        REQUIRE_EQ(set_refind_extra_kern_strings("timeout 5", {"linux"}), "timeout 5\nextra_kernel_version_strings linux\n");
+        REQUIRE_EQ(set_refind_extra_kern_strings("timeout 5\n", {"linux"}), "timeout 5\nextra_kernel_version_strings linux\n");
+        REQUIRE_EQ(set_refind_extra_kern_strings("", {"linux"}), "extra_kernel_version_strings linux\n");
     }
 }

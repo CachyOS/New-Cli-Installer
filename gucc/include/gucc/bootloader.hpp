@@ -137,4 +137,10 @@ auto bootloader_to_string(BootloaderType type) noexcept -> std::string_view;
 
 }  // namespace gucc::bootloader
 
+namespace gucc::bootloader::detail {
+
+[[nodiscard]] auto set_refind_extra_kern_strings(std::string_view content, const std::vector<std::string>& extra_kernel_versions) noexcept -> std::string;
+
+}  // namespace gucc::bootloader::detail
+
 #endif  // BOOTLOADER_HPP

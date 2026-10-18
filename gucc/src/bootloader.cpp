@@ -1,14 +1,14 @@
 #include "gucc/bootloader.hpp"
 #include "detail/initcpio_impl.hpp"
+#include "gucc/conf.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/kernel_params.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>  // for any_of
-#include <ranges>     // for ranges::*
-#include <string>     // for string
+#include <ranges>  // for ranges::*
+#include <string>  // for string
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -312,28 +312,12 @@ auto gen_refind_config(const std::vector<std::string>& kernel_params) noexcept -
 }
 
 auto refind_write_extra_kern_strings(std::string_view file_path, const std::vector<std::string>& extra_kernel_versions) noexcept -> Result<void> {
-    auto&& file_content = file_utils::read_whole_file(file_path);
+    const auto& file_content = file_utils::read_whole_file(file_path);
     if (file_content.empty() || extra_kernel_versions.empty()) {
-        return make_error(ErrorCode::InvalidArgument, fmt::format("empty refind config {} or no extra kernel versions", file_path));
+        return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("empty refind config {} or no extra kernel versions"), file_path);
     }
 
-    std::string&& result = file_content | std::ranges::views::split('\n')
-        | std::ranges::views::transform([&](auto&& rng) {
-              /* clang-format off */
-              auto&& line = std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
-              if (line.starts_with("#extra_kernel_version_strings"sv) || line.starts_with("extra_kernel_version_strings"sv)) {
-                  return fmt::format(FMT_COMPILE("extra_kernel_version_strings {}"), utils::join(extra_kernel_versions, ','));
-              }
-              /* clang-format on */
-              return std::string{line.data(), line.size()};
-          })
-        | std::ranges::views::join_with('\n')
-        | std::ranges::to<std::string>();
-
-    if (!file_utils::create_file_for_overwrite(file_path, result)) {
-        return make_error(ErrorCode::FileIo, fmt::format("failed to write refind config {}", file_path));
-    }
-    return {};
+    return file_utils::write_file(file_path, detail::set_refind_extra_kern_strings(file_content, extra_kernel_versions));
 }
 
 auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -> Result<void> {
@@ -444,3 +428,12 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
 }
 
 }  // namespace gucc::bootloader
+
+namespace gucc::bootloader::detail {
+
+auto set_refind_extra_kern_strings(std::string_view content, const std::vector<std::string>& extra_kernel_versions) noexcept -> std::string {
+    static constexpr auto KEY = "extra_kernel_version_strings"sv;
+    return conf::set_directive(content, KEY, fmt::format(FMT_COMPILE("{} {}"), KEY, fmt::join(extra_kernel_versions, ",")), conf::KeyStyle::Word);
+}
+
+}  // namespace gucc::bootloader::detail
