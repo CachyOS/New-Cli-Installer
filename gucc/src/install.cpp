@@ -12,25 +12,27 @@
 #include "gucc/systemd_services.hpp"
 #include "gucc/zfs.hpp"
 
-#include <filesystem>  // for copy_file, copy_options, create_directories
-#include <string>      // for string
+#include <array>   // for array
+#include <ranges>  // for ranges::*
+#include <span>    // for span
+#include <string>  // for string
 
 #include <fmt/compile.h>
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
-namespace fs = std::filesystem;
 
 namespace {
 
 static constexpr auto kHostPacmanConf   = "/etc/pacman.conf"sv;
 static constexpr auto kTargetPacmanConf = "/tmp/cachyos-installer-pacman.conf"sv;
 
-auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> bool {
+constexpr std::array kZfsServices{"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv};
+
+auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> gucc::Result<void> {
     const auto& zfs_source = gucc::fs::utils::get_mountpoint_source(mountpoint);
     if (zfs_source.empty()) {
-        spdlog::error("Failed to get ZFS source for mountpoint '{}'", mountpoint);
-        return false;
+        return gucc::make_error(gucc::ErrorCode::NotFound, FMT_COMPILE("no ZFS source for mountpoint '{}'"), mountpoint);
     }
 
     // Extract pool name
@@ -126,29 +128,18 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
         return res;
     }
 
-    // 9. Enable required systemd services for the configuration
-    if (config.is_zfs) {
-        for (auto&& service_name : {"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv}) {
-            if (!gucc::services::enable_systemd_service(service_name, mountpoint)) {
-                return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to enable required ZFS service '{}'", service_name));
-            }
-        }
-    }
-
-    // 10. Enable additional services from config
-    for (const auto& service_name : config.services_to_enable) {
-        if (!gucc::services::enable_systemd_service(service_name, mountpoint)) {
-            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to enable service '{}'", service_name));
+    // 10. Enable required ZFS services, then the ones from config
+    const auto zfs_services = config.is_zfs ? std::span{kZfsServices} : std::span<const std::string_view>{};
+    for (const std::string_view service_name : std::ranges::views::concat(zfs_services, config.services_to_enable)) {
+        if (auto res = gucc::services::enable_systemd_service(service_name, mountpoint); !res) {
+            return res;
         }
     }
 
     // 11. ZFS-specific: copy zpool cachefile
     if (config.is_zfs) {
-        if (!copy_zfs_cachefile(mountpoint)) {
-            return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to copy ZFS zpool cachefile"));
-        }
+        return copy_zfs_cachefile(mountpoint);
     }
-
     return {};
 }
 
