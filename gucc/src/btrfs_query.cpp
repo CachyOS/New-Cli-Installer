@@ -1,8 +1,9 @@
 #include "gucc/btrfs_query.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <algorithm>  // for for_each, transform
+#include <algorithm>  // for find
 #include <ranges>     // for ranges::*
 
 #include <fmt/compile.h>
@@ -63,8 +64,7 @@ auto parse_subvolume_list(std::string_view output, std::string_view filter_prefi
 
     return utils::make_split_view(output)
         | std::ranges::views::transform(parse_line)
-        | std::ranges::views::filter(&std::optional<BtrfsSubvolumeInfo>::has_value)
-        | std::ranges::views::transform([](auto&& opt) -> BtrfsSubvolumeInfo { return std::move(*opt); })
+        | std::ranges::views::join
         | std::ranges::views::filter(matches_prefix)
         | std::ranges::to<std::vector<BtrfsSubvolumeInfo>>();
 }
@@ -75,110 +75,134 @@ namespace {
 
 using Info = gucc::fs::BtrfsFilesystemInfo;
 
-void assign_data_profile(Info& info, std::string_view val) { info.data_profile = std::string{val}; }
-void assign_metadata_profile(Info& info, std::string_view val) { info.metadata_profile = std::string{val}; }
-
-using StringSetter = void (*)(Info&, std::string_view);
-
-struct DFProfileField {
-    std::string_view marker;
-    StringSetter assign;
-};
-
-constexpr DFProfileField df_profile_fields[] = {
-    {"Data,"sv, assign_data_profile},
-    {"Metadata,"sv, assign_metadata_profile},
-};
-
-auto parse_btrfs_df_output(std::string_view output, Info& info) -> bool {
-    std::ranges::for_each(gucc::utils::make_split_view(output), [&](std::string_view line) {
-        const auto it = std::ranges::find_if(df_profile_fields,
-            [&line](const auto& desc) { return line.contains(desc.marker); });
-        if (it != std::ranges::end(df_profile_fields)) {
-            const auto start = it->marker.size();
-            if (const auto colon = line.find(':', start); colon != std::string_view::npos) {
-                it->assign(info, gucc::utils::trim(line.substr(start, colon - start)));
-            }
-        }
-    });
-    return true;
-}
-
-void assign_total_size(Info& info, std::uint64_t val) { info.total_size = val; }
-void assign_used(Info& info, std::uint64_t val) { info.used = val; }
-void assign_free(Info& info, std::uint64_t val) { info.free = val; }
-
-using U64Setter = void (*)(Info&, std::uint64_t);
+constexpr auto kLabelKey = "Label:"sv;
+constexpr auto kUuidKey  = "uuid:"sv;
 
 struct UsageField {
+    std::string_view key;
+    std::uint64_t Info::* member;
+};
+
+struct ProfileField {
     std::string_view prefix;
-    U64Setter assign;
+    std::string Info::* member;
 };
 
+// TODO(vnepogodin): such as nasty workaround
 constexpr UsageField usage_fields[] = {
-    {"Device size:"sv, assign_total_size},
-    {"    Used:"sv, assign_used},
-    {"Free (estimated):"sv, assign_free},
+    {.key = "Device size"sv, .member = &Info::total_size},
+    {.key = "Used"sv, .member = &Info::used},
+    {.key = "Free (estimated)"sv, .member = &Info::free},
 };
 
-void assign_label(Info& info, std::string_view line) {
-    const auto start = line.find('\'');
-    if (start == std::string_view::npos) {
+constexpr ProfileField profile_fields[] = {
+    {.prefix = "Data,"sv, .member = &Info::data_profile},
+    {.prefix = "Metadata,"sv, .member = &Info::metadata_profile},
+};
+
+void parse_usage_line(Info& info, std::string_view line) noexcept {
+    using gucc::utils::trim;
+
+    const auto split = gucc::utils::split_once(line, ':');
+    if (!split) {
         return;
     }
-    const auto end = line.find('\'', start + 1);
-    if (end == std::string_view::npos) {
+    const auto key   = trim(split->first);
+    const auto value = trim(split->second);
+
+    if (const auto* field = gucc::utils::find_ptr(usage_fields, key, &UsageField::key)) {
+        info.*field->member = gucc::utils::parse_uint_exact<std::uint64_t>(gucc::utils::first_field(value)).value_or(0);
         return;
     }
-    info.label = std::string{line.substr(start + 1, end - start - 1)};
-}
-
-void assign_uuid(Info& info, std::string_view line) {
-    using gucc::utils::extract_after;
-    using gucc::utils::rtrim;
-    if (auto val = extract_after(line, "uuid: "sv)) {
-        info.uuid = std::string{rtrim(*val)};
+    for (const auto& [prefix, member] : profile_fields) {
+        if (key.starts_with(prefix)) {
+            info.*member = std::string{key.substr(prefix.size())};
+            return;
+        }
     }
 }
 
-using ShowSetter = void (*)(Info&, std::string_view);
+// TODO(vnepogodin): even worse.. but let it be
+template <bool kLast>
+constexpr auto find_key(std::string_view line, std::string_view key) noexcept -> std::size_t {
+    const auto at_boundary = [line](std::size_t pos) { return pos == 0 || " \t"sv.contains(line[pos - 1]); };
+    if constexpr (kLast) {
+        for (auto pos = line.rfind(key); pos != std::string_view::npos; pos = pos == 0 ? std::string_view::npos : line.rfind(key, pos - 1)) {
+            if (at_boundary(pos)) {
+                return pos;
+            }
+        }
+    } else {
+        for (auto pos = line.find(key); pos != std::string_view::npos; pos = line.find(key, pos + 1)) {
+            if (at_boundary(pos)) {
+                return pos;
+            }
+        }
+    }
+    return std::string_view::npos;
+}
 
-struct ShowField {
-    std::string_view marker;
-    ShowSetter assign;
-};
+auto parse_show_label(std::string_view line) noexcept -> std::optional<std::string> {
+    const auto key = find_key<false>(line, kLabelKey);
+    if (key == std::string_view::npos) {
+        return std::nullopt;
+    }
+    auto value = line.substr(key + kLabelKey.size());
+    value      = gucc::utils::ltrim(value.substr(0, find_key<true>(value, kUuidKey)));
+    if (!value.starts_with('\'')) {
+        return std::nullopt;
+    }
+    value.remove_prefix(1);
+    const auto close = value.rfind('\'');
+    if (close == std::string_view::npos) {
+        return std::nullopt;
+    }
+    return std::string{value.substr(0, close)};
+}
 
-constexpr ShowField show_fields[] = {
-    {"Label:"sv, assign_label},
-    {"uuid: "sv, assign_uuid},
-};
+auto parse_show_uuid(std::string_view line) noexcept -> std::optional<std::string> {
+    const auto key = find_key<true>(line, kUuidKey);
+    if (key == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const auto uuid = gucc::utils::first_field(line.substr(key + kUuidKey.size()));
+    return uuid.empty() ? std::nullopt : std::optional{std::string{uuid}};
+}
 
 }  // namespace
 
-namespace gucc::fs {
+namespace gucc::fs::btrfs_query::detail {
 
-namespace btrfs_query_detail = btrfs_query::detail;
-
-auto list_btrfs_subvolumes(std::string_view mountpoint, std::string_view filter_prefix) noexcept -> std::vector<BtrfsSubvolume> {
-    if (mountpoint.empty()) {
-        return {};
+auto parse_btrfs_usage(std::string_view output) noexcept -> std::optional<BtrfsFilesystemInfo> {
+    BtrfsFilesystemInfo info{};
+    for (const auto line : utils::make_split_view(output)) {
+        parse_usage_line(info, line);
     }
-
-    const auto& output = utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list -o '{}' 2>/dev/null"), mountpoint));
-    if (output.empty()) {
-        return {};
+    // every btrfs filesystem has a nonzero device size??
+    if (info.total_size == 0) {
+        return std::nullopt;
     }
+    return info;
+}
 
+auto parse_btrfs_show(std::string_view output) noexcept -> BtrfsShowInfo {
+    BtrfsShowInfo show{};
+    for (const auto line : utils::make_split_view(output)) {
+        if (!show.label) {
+            show.label = parse_show_label(line);
+        }
+        if (!show.uuid) {
+            show.uuid = parse_show_uuid(line);
+        }
+    }
+    return show;
+}
+
+auto parse_subvolume_paths(std::string_view output, std::string_view filter_prefix) noexcept -> std::vector<BtrfsSubvolume> {
     constexpr auto extract_path = [](std::string_view line) -> std::optional<std::string_view> {
-        auto pos = line.find("path "sv);
-        if (pos == std::string_view::npos) {
-            return std::nullopt;
-        }
-        auto subvol_path = line.substr(pos + 5);
-        if (subvol_path.empty()) {
-            return std::nullopt;
-        }
-        return subvol_path;
+        return utils::extract_after(line, "path "sv, '\0').and_then([](std::string_view path) {
+            return path.empty() ? std::nullopt : std::optional{path};
+        });
     };
 
     const auto matches_prefix = [filter_prefix](std::string_view path) {
@@ -194,11 +218,29 @@ auto list_btrfs_subvolumes(std::string_view mountpoint, std::string_view filter_
 
     return utils::make_split_view(output)
         | std::ranges::views::transform(extract_path)
-        | std::ranges::views::filter(&std::optional<std::string_view>::has_value)
-        | std::ranges::views::transform([](auto&& opt) { return *opt; })
+        | std::ranges::views::join
         | std::ranges::views::filter(matches_prefix)
         | std::ranges::views::transform(to_subvolume)
         | std::ranges::to<std::vector<BtrfsSubvolume>>();
+}
+
+}  // namespace gucc::fs::btrfs_query::detail
+
+namespace gucc::fs {
+
+namespace btrfs_query_detail = btrfs_query::detail;
+
+auto list_btrfs_subvolumes(std::string_view mountpoint, std::string_view filter_prefix) noexcept -> std::vector<BtrfsSubvolume> {
+    if (mountpoint.empty()) {
+        return {};
+    }
+
+    const auto& output = utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list -o '{}' 2>/dev/null"), mountpoint));
+    if (output.empty()) {
+        return {};
+    }
+
+    return btrfs_query_detail::parse_subvolume_paths(output, filter_prefix);
 }
 
 auto list_btrfs_snapshots(std::string_view mountpoint, std::string_view filter_prefix) noexcept -> std::vector<BtrfsSubvolumeInfo> {
@@ -227,47 +269,27 @@ auto list_btrfs_subvolumes_detailed(std::string_view mountpoint, std::string_vie
 }
 
 auto get_btrfs_info(std::string_view mountpoint_or_device) noexcept -> std::optional<BtrfsFilesystemInfo> {
-    using utils::extract_after;
-    using utils::ltrim;
-    using utils::parse_uint;
-
     if (mountpoint_or_device.empty()) {
         return std::nullopt;
     }
 
-    BtrfsFilesystemInfo info{};
+    auto usage = utils::query_output(fmt::format(FMT_COMPILE("btrfs filesystem usage -b '{}' 2>/dev/null"), mountpoint_or_device))
+                     .and_then(btrfs_query_detail::parse_btrfs_usage);
+    if (!usage) {
+        return std::nullopt;
+    }
+    const auto show_output = utils::query_output(fmt::format(FMT_COMPILE("btrfs filesystem show '{}' 2>/dev/null"), mountpoint_or_device));
+    if (!show_output) {
+        return std::nullopt;
+    }
+
+    auto info   = std::move(*usage);
+    auto show   = btrfs_query_detail::parse_btrfs_show(*show_output);
     info.device = std::string{mountpoint_or_device};
+    info.uuid   = std::move(show.uuid);
+    info.label  = std::move(show.label);
 
-    const auto& usage_output = utils::exec(fmt::format(FMT_COMPILE("btrfs filesystem usage -b '{}' 2>/dev/null"), mountpoint_or_device));
-    if (!usage_output.empty()) {
-        std::ranges::for_each(utils::make_split_view(usage_output), [&](std::string_view line) {
-            for (const auto& field : usage_fields) {
-                if (auto val = extract_after(line, field.prefix, '\n')) {
-                    field.assign(info, parse_uint<std::uint64_t>(ltrim(*val)).value_or(0));
-                    break;
-                }
-            }
-        });
-    }
-
-    const auto& df_output = utils::exec(fmt::format(FMT_COMPILE("btrfs filesystem df '{}' 2>/dev/null"), mountpoint_or_device));
-    if (!df_output.empty()) {
-        parse_btrfs_df_output(df_output, info);
-    }
-
-    const auto& show_output = utils::exec(fmt::format(FMT_COMPILE("btrfs filesystem show '{}' 2>/dev/null"), mountpoint_or_device));
-    if (!show_output.empty()) {
-        std::ranges::for_each(utils::make_split_view(show_output), [&](std::string_view line) {
-            for (const auto& field : show_fields) {
-                if (line.contains(field.marker)) {
-                    field.assign(info, line);
-                    break;
-                }
-            }
-        });
-    }
-
-    return std::make_optional(std::move(info));
+    return info;
 }
 
 auto is_btrfs(std::string_view path) noexcept -> bool {

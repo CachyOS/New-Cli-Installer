@@ -77,7 +77,7 @@ auto list_btrfs_subvolumes_detailed(std::string_view mountpoint, std::string_vie
 
 /// @brief Gets btrfs filesystem usage information
 /// @param mountpoint_or_device Path to mounted btrfs or device path
-/// @return Optional BtrfsFilesystemInfo, std::nullopt on failure
+/// @return Optional BtrfsFilesystemInfo, std::nullopt if either btrfs query fails or usage does not parse
 auto get_btrfs_info(std::string_view mountpoint_or_device) noexcept -> std::optional<BtrfsFilesystemInfo>;
 
 /// @brief Checks if a path is a btrfs filesystem
@@ -92,6 +92,19 @@ namespace gucc::fs::btrfs_query::detail {
 /// @brief Parses output of `btrfs subvolume list`.
 auto parse_subvolume_list(std::string_view output, std::string_view filter_prefix) noexcept
     -> std::vector<BtrfsSubvolumeInfo>;
+
+/// @brief Parses output of `btrfs subvolume list -o`.
+auto parse_subvolume_paths(std::string_view output, std::string_view filter_prefix) noexcept
+    -> std::vector<BtrfsSubvolume>;
+
+auto parse_btrfs_usage(std::string_view output) noexcept -> std::optional<BtrfsFilesystemInfo>;
+
+struct BtrfsShowInfo final {
+    std::optional<std::string> uuid;
+    std::optional<std::string> label;
+};
+
+auto parse_btrfs_show(std::string_view output) noexcept -> BtrfsShowInfo;
 
 }  // namespace gucc::fs::btrfs_query::detail
 

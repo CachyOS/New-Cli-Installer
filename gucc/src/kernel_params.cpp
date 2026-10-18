@@ -1,4 +1,5 @@
 #include "gucc/kernel_params.hpp"
+#include "gucc/crypto_detection.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
@@ -14,17 +15,6 @@
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
-
-namespace {
-
-auto is_root_on_btrfs(const gucc::fs::Partition& partition) noexcept -> bool {
-    return partition.mountpoint == "/"sv && partition.fstype == "btrfs"sv;
-}
-auto is_root_on_zfs(const gucc::fs::Partition& partition) noexcept -> bool {
-    return partition.mountpoint == "/"sv && partition.fstype == "zfs"sv;
-}
-
-}  // namespace
 
 namespace gucc::fs {
 
@@ -48,12 +38,12 @@ auto get_kernel_params(const std::vector<Partition>& partitions, std::string_vie
             swap_mappername = partition.luks_mapper_name;
         }
 
-        if (partition.mountpoint == "/"sv && has_luks) {
-            cryptdevice_params = {fmt::format(FMT_COMPILE("cryptdevice=UUID={}:{}"), *partition.luks_uuid, *partition.luks_mapper_name)};
+        if (partition.is_root() && has_luks) {
+            cryptdevice_params = {disk::make_cryptdevice_param(*partition.luks_uuid, *partition.luks_mapper_name)};
             cryptdevice_params.push_back(fmt::format(FMT_COMPILE("root=/dev/mapper/{}"), *partition.luks_mapper_name));
         }
 
-        if (partition.mountpoint == "/"sv) {
+        if (partition.is_root()) {
             root_uuid = std::make_optional<std::string_view>(partition.uuid_str);
         }
 
@@ -61,11 +51,11 @@ auto get_kernel_params(const std::vector<Partition>& partitions, std::string_vie
 
         // If a btrfs root subvolume was not set, it implies that the root
         // is directly on the partition and this option is not required.
-        if (is_root_on_btrfs(partition) && partition.subvolume) {
+        if (is_root_on(partition, "btrfs"sv) && partition.subvolume) {
             kernel_params_list.push_back(fmt::format(FMT_COMPILE("rootflags=subvol={}"), *partition.subvolume));
         }
         // The root dataset's location must be specified for ZFS.
-        else if (is_root_on_zfs(partition)) {
+        else if (is_root_on(partition, "zfs"sv)) {
             if (!zfs_root_dataset) {
                 spdlog::error("kernel_params: root zfs dataset cannot be nullopt");
                 return std::nullopt;
@@ -93,7 +83,7 @@ auto get_kernel_params(const std::vector<Partition>& partitions, std::string_vie
         kernel_params_list.push_back(fmt::format(FMT_COMPILE("resume=/dev/mapper/{}"), *swap_mappername));
     }
 
-    return std::make_optional<std::vector<std::string>>(kernel_params_list);
+    return kernel_params_list;
 }
 
 }  // namespace gucc::fs
