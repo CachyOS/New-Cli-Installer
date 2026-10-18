@@ -56,7 +56,7 @@ auto set_timezone(std::string_view timezone, std::string_view mountpoint) noexce
     // Verify the timezone exists
     const auto& zoneinfo_path = fs::path{ZONEINFO_PATH} / timezone;
     if (!fs::exists(zoneinfo_path)) {
-        return make_error(ErrorCode::InvalidArgument, fmt::format("Invalid timezone '{}'", timezone));
+        return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("Invalid timezone '{}'"), timezone);
     }
 
     // Remove existing localtime symlink if it exists
@@ -65,14 +65,14 @@ auto set_timezone(std::string_view timezone, std::string_view mountpoint) noexce
     if (fs::exists(localtime_path)) {
         fs::remove(localtime_path, ec);
         if (ec) {
-            return make_error(ErrorCode::FileIo, fmt::format("Failed to remove existing localtime: {}", ec.message()));
+            return make_error(ErrorCode::FileIo, FMT_COMPILE("Failed to remove existing localtime: {}"), ec.message());
         }
     }
 
     // Create the symlink
     fs::create_symlink(zoneinfo_path, localtime_path, ec);
     if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("Failed to create timezone symlink: {}", ec.message()));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("Failed to create timezone symlink: {}"), ec.message());
     }
 
     spdlog::info("Timezone set to '{}' at {}", timezone, mountpoint);

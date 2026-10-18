@@ -142,7 +142,7 @@ auto write_connection(std::string_view filename,
     std::error_code ec;
     fs::permissions(target_path, kConnectionMode, fs::perm_options::replace, ec);
     if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("network: failed to set 0600 on {}: {}", target_path, ec.message()));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("network: failed to set 0600 on {}: {}"), target_path, ec.message());
     }
     spdlog::info("network: connection written to {}", target_path);
     return {};

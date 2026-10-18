@@ -36,7 +36,7 @@ auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int
     // Identify if mounted partition is crypto
     const auto& crypto = disk::detect_crypto_for_device(*devices, partition);
     if (!crypto || !crypto->is_luks) {
-        return make_error(ErrorCode::NotFound, fmt::format("partition {} is not LUKS", partition));
+        return make_error(ErrorCode::NotFound, FMT_COMPILE("partition {} is not LUKS"), partition);
     }
 
     is_luks   = true;
@@ -56,7 +56,7 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
 
     // Format esp part if requested
     if (format) {
-        const auto& mkfs_cmd = fs::get_mkfs_command(fs::FilesystemType::Vfat);
+        const auto& mkfs_cmd   = fs::get_mkfs_command(fs::FilesystemType::Vfat);
         const auto& format_cmd = fmt::format(FMT_COMPILE("{} {}"), mkfs_cmd, device);
         if (auto res = utils::exec_or_error(format_cmd, "format ESP"sv); !res) {
             return std::unexpected(std::move(res.error()));

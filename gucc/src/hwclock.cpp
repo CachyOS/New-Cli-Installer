@@ -17,7 +17,7 @@ auto set_hwclock(std::string_view mode, std::string_view root_mountpoint) noexce
             return {};
         }
     }
-    return gucc::make_error(gucc::ErrorCode::SubprocessFailed, fmt::format(FMT_COMPILE("hwclock: failed to set {} clock on '{}'"), mode, root_mountpoint));
+    return gucc::make_error(gucc::ErrorCode::SubprocessFailed, FMT_COMPILE("hwclock: failed to set {} clock on '{}'"), mode, root_mountpoint);
 }
 
 }  // namespace

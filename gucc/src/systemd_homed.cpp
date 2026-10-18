@@ -24,7 +24,7 @@ using namespace gucc;
 
 auto homectl(std::string_view verb, std::string_view action, std::string_view username) noexcept -> Result<void> {
     if (username.empty()) {
-        return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("Cannot {}: username is empty"), action));
+        return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("Cannot {}: username is empty"), action);
     }
     spdlog::info("homectl {} {}", verb, username);
     return utils::exec_or_error({"/usr/bin/homectl"s, std::string{verb}, std::string{username}}, action);

@@ -20,11 +20,11 @@ auto clear_existing(std::string_view root_mountpoint) noexcept -> Result<void> {
     std::error_code ec;
     fs::remove(root / "etc" / "machine-id", ec);
     if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to remove /etc/machine-id under '{}': {}", root_mountpoint, ec.message()));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("machine_id: failed to remove /etc/machine-id under '{}': {}"), root_mountpoint, ec.message());
     }
     fs::remove(root / "var" / "lib" / "dbus" / "machine-id", ec);
     if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to remove /var/lib/dbus/machine-id under '{}': {}", root_mountpoint, ec.message()));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("machine_id: failed to remove /var/lib/dbus/machine-id under '{}': {}"), root_mountpoint, ec.message());
     }
     return {};
 }
@@ -40,11 +40,11 @@ auto link_dbus_to_etc(std::string_view root_mountpoint) noexcept -> Result<void>
     std::error_code ec;
     fs::remove(dbus_path, ec);
     if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to clear {}: {}", dbus_path.string(), ec.message()));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("machine_id: failed to clear {}: {}"), dbus_path.string(), ec.message());
     }
     fs::create_symlink("/etc/machine-id", dbus_path, ec);
     if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("machine_id: failed to symlink {} -> /etc/machine-id: {}", dbus_path.string(), ec.message()));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("machine_id: failed to symlink {} -> /etc/machine-id: {}"), dbus_path.string(), ec.message());
     }
     return {};
 }

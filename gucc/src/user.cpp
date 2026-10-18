@@ -49,7 +49,7 @@ auto set_user_password(std::string_view username, std::string_view password, std
     const auto hash_output      = utils::exec_with_input("openssl passwd -6 -stdin"sv, password);
     const auto encrypted_passwd = hash_output ? std::string{utils::trim(*hash_output)} : std::string{};
     if (encrypted_passwd.empty()) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format(FMT_COMPILE("failed to hash password for user {}"), username));
+        return make_error(ErrorCode::SubprocessFailed, FMT_COMPILE("failed to hash password for user {}"), username);
     }
     logger::register_secret(encrypted_passwd);
 
@@ -59,7 +59,7 @@ auto set_user_password(std::string_view username, std::string_view password, std
 auto create_new_user(const user::UserInfo& user_info, const std::vector<std::string>& default_groups, std::string_view mountpoint) noexcept -> Result<void> {
     if (!user_info.sudoers_group.empty() && !std::ranges::contains(default_groups, user_info.sudoers_group)) {
         spdlog::error("Failed to create user {}! User default groups doesn't contain sudoers group({})", user_info.username, user_info.sudoers_group);
-        return make_error(ErrorCode::InvalidArgument, fmt::format("user default groups doesn't contain sudoers group {}", user_info.sudoers_group));
+        return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("user default groups doesn't contain sudoers group {}"), user_info.sudoers_group);
     }
 
     // Create needed groups
@@ -117,7 +117,7 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
         fs::perms::owner_read | fs::perms::group_read,  // 0440
         fs::perm_options::replace, err);
     if (err) {
-        return make_error(ErrorCode::FileIo, fmt::format(FMT_COMPILE("failed to set permissions for sudoers file: {}"), err.message()));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("failed to set permissions for sudoers file: {}"), err.message());
     }
     return {};
 }

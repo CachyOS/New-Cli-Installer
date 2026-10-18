@@ -146,7 +146,7 @@ auto create_btrfs_installation_snapshot(std::string_view root_mountpoint) noexce
     const auto snapshot_id = utils::arch_chroot_output(
         R"(snapper --no-dbus -c root create --print-number --description 'Fresh CachyOS Installation' --userdata 'important=yes')"sv, root_mountpoint);
     if (!snapshot_id) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create btrfs installation snapshot on {}", root_mountpoint));
+        return make_error(ErrorCode::SubprocessFailed, FMT_COMPILE("Failed to create btrfs installation snapshot on {}"), root_mountpoint);
     }
 
     // save the record id for easy restore

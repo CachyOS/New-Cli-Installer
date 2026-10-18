@@ -56,11 +56,11 @@ auto insert_before_first_repo(std::string_view content, std::string_view value) 
 auto push_repos_front(std::string_view file_path, std::string_view value) noexcept -> Result<void> {
     const auto& file_content = file_utils::read_whole_file(file_path);
     if (file_content.empty()) {
-        return make_error(ErrorCode::FileIo, fmt::format(FMT_COMPILE("failed to read {}"), file_path));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("failed to read {}"), file_path);
     }
     const auto& rewritten = insert_before_first_repo(file_content, value);
     if (!rewritten) {
-        return make_error(ErrorCode::ParseError, fmt::format(FMT_COMPILE("no repo section to insert before in {}"), file_path));
+        return make_error(ErrorCode::ParseError, FMT_COMPILE("no repo section to insert before in {}"), file_path);
     }
     return file_utils::write_file(file_path, *rewritten);
 }

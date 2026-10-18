@@ -61,7 +61,7 @@ auto parse_ports(const toml::array* arr) noexcept -> gucc::Result<std::vector<st
     for (const auto& node_el : *arr) {
         const auto value = node_el.value<std::int64_t>();
         if (!value || *value < 1 || *value > 65535) {
-            return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("invalid firewall port: {}"), node_el.value_or(""sv)));
+            return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("invalid firewall port: {}"), node_el.value_or(""sv));
         }
         out.emplace_back(static_cast<std::uint16_t>(*value));
     }
@@ -89,10 +89,10 @@ auto parse_services_strict(const toml::array* arr) noexcept -> gucc::Result<std:
         } else if (action_str == "disable"sv) {
             action = gucc::profile::ServiceAction::Disable;
         } else {
-            return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("unknown service action '{}' for unit '{}'"), action_str, name));
+            return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("unknown service action '{}' for unit '{}'"), action_str, name);
         }
         if (std::ranges::contains(out, name, &gucc::profile::ServiceEntry::name)) {
-            return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("duplicate unit '{}' in server profile"), name));
+            return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("duplicate unit '{}' in server profile"), name);
         }
         out.emplace_back(gucc::profile::ServiceEntry{
             .is_user_service = (*tbl)["user"].value<bool>().value_or(false),
@@ -124,7 +124,7 @@ namespace gucc::profile {
 auto parse_server_profiles(std::string_view config_content) noexcept -> Result<ServerProfiles> {
     toml::parse_result parsed = toml::parse(config_content);
     if (parsed.failed()) {
-        return make_error(ErrorCode::ParseError, fmt::format(FMT_COMPILE("failed to parse server profiles: {}"), parsed.error().description()));
+        return make_error(ErrorCode::ParseError, FMT_COMPILE("failed to parse server profiles: {}"), parsed.error().description());
     }
     const auto& root = std::move(parsed).table();
 
@@ -136,7 +136,7 @@ auto parse_server_profiles(std::string_view config_content) noexcept -> Result<S
     ServerProfiles result{};
     result.schema_version = static_cast<std::uint32_t>((*server)["schema_version"].value<std::int64_t>().value_or(0));
     if (result.schema_version != kServerSchemaVersion) {
-        return make_error(ErrorCode::Unsupported, fmt::format(FMT_COMPILE("unsupported server schema_version {} (expected {})"), result.schema_version, kServerSchemaVersion));
+        return make_error(ErrorCode::Unsupported, FMT_COMPILE("unsupported server schema_version {} (expected {})"), result.schema_version, kServerSchemaVersion);
     }
     result.default_profile = std::string{(*server)["default_profile"].value_or(""sv)};
     result.default_kernel  = std::string{(*server)["default_kernel"].value_or(""sv)};
@@ -149,7 +149,7 @@ auto parse_server_profiles(std::string_view config_content) noexcept -> Result<S
                 continue;
             }
             if (std::ranges::contains(result.profile_order, std::string{id})) {
-                return make_error(ErrorCode::InvalidArgument, fmt::format(FMT_COMPILE("duplicate profile id '{}' in profile_order"), id));
+                return make_error(ErrorCode::InvalidArgument, FMT_COMPILE("duplicate profile id '{}' in profile_order"), id);
             }
             result.profile_order.emplace_back(id);
         }
@@ -200,7 +200,7 @@ auto parse_server_profiles(std::string_view config_content) noexcept -> Result<S
 auto resolve_server_profile(const ServerProfiles& profiles, std::string_view profile_id, const ServerUserExtras& user_extras) noexcept -> Result<ResolvedServerProfile> {
     const auto* found = utils::find_ptr(profiles.profiles, profile_id, &ServerProfile::id);
     if (found == nullptr) {
-        return make_error(ErrorCode::NotFound, fmt::format(FMT_COMPILE("unknown server profile '{}'"), profile_id));
+        return make_error(ErrorCode::NotFound, FMT_COMPILE("unknown server profile '{}'"), profile_id);
     }
     const auto& profile = *found;
 

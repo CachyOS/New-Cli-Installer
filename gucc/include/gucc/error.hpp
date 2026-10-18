@@ -4,6 +4,10 @@
 
 #include <expected>  // for expected, unexpected
 #include <string>    // for string
+#include <utility>   // for forward
+
+#include <fmt/compile.h>
+#include <fmt/format.h>
 
 namespace gucc {
 
@@ -32,11 +36,18 @@ template <class T>
 using Result = std::expected<T, Error>;
 
 /// @brief Make a failed result from a code and a message.
+[[nodiscard]] auto make_error(ErrorCode code, std::string context) noexcept -> std::unexpected<Error>;
+
+/// @brief Make a failed result, formatting its message.
 ///
 /// @code
-/// return gucc::make_error(ErrorCode::FileIo, fmt::format("open {}: {}", path, err));
+/// return gucc::make_error(ErrorCode::FileIo, FMT_COMPILE("open {}: {}"), path, err);
 /// @endcode
-[[nodiscard]] auto make_error(ErrorCode code, std::string context) noexcept -> std::unexpected<Error>;
+template <class S, class... Args>
+    requires fmt::is_compiled_string<S>::value
+[[nodiscard]] auto make_error(ErrorCode code, const S& format, Args&&... args) noexcept -> std::unexpected<Error> {
+    return make_error(code, fmt::format(format, std::forward<Args>(args)...));
+}
 
 /// @brief Format an Error as "code: context", handy for logs.
 [[nodiscard]] auto to_string(const Error& error) noexcept -> std::string;

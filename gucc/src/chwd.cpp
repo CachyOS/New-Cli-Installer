@@ -89,7 +89,7 @@ auto get_available_profile_names() noexcept -> std::vector<std::string> {
 
 auto install_available_profiles(std::string_view root_mountpoint) noexcept -> Result<void> {
     if (!utils::arch_chroot_checked("chwd -a -f"sv, root_mountpoint)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to run chwd -a -f on {}", root_mountpoint));
+        return make_error(ErrorCode::SubprocessFailed, FMT_COMPILE("Failed to run chwd -a -f on {}"), root_mountpoint);
     }
     return {};
 }

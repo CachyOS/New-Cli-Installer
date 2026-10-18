@@ -60,10 +60,10 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
 
     // Validate required fields
     if (config.keymap.empty()) {
-        return make_error(ErrorCode::InvalidArgument, fmt::format("keymap must not be empty"));
+        return make_error(ErrorCode::InvalidArgument, "keymap must not be empty");
     }
     if (config.mountpoint.empty()) {
-        return make_error(ErrorCode::InvalidArgument, fmt::format("mountpoint must not be empty"));
+        return make_error(ErrorCode::InvalidArgument, "mountpoint must not be empty");
     }
 
     // 1. Create obligatory directories on target
@@ -87,7 +87,7 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
         return res;
     }
     if (!gucc::utils::run_pacstrap(mountpoint, config.packages, kTargetPacmanConf, config.hostcache)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("pacstrap failed"));
+        return make_error(ErrorCode::SubprocessFailed, "pacstrap failed");
     }
 
     // 5. Copy host files into target

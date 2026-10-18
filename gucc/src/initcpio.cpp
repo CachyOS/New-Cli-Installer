@@ -156,7 +156,7 @@ auto setup_initcpio_config(std::string_view initcpio_path,
 
     auto initcpio = detail::Initcpio{initcpio_path};
     if (!initcpio.parse_file()) {
-        return make_error(ErrorCode::ParseError, fmt::format("initcpio: failed to parse config '{}'", initcpio_path));
+        return make_error(ErrorCode::ParseError, FMT_COMPILE("initcpio: failed to parse config '{}'"), initcpio_path);
     }
 
     // don't read previous/existing hooks, and instead overwrite with the ones we expect
@@ -235,7 +235,7 @@ auto setup_initcpio_config(std::string_view initcpio_path,
     // write/flush to disk
     initcpio.arrays().hooks = std::move(hooks);
     if (!initcpio.write()) {
-        return make_error(ErrorCode::FileIo, fmt::format("initcpio: failed to write config '{}'", initcpio_path));
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("initcpio: failed to write config '{}'"), initcpio_path);
     }
     return {};
 }
