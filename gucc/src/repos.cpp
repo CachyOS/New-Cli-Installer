@@ -4,7 +4,9 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 
-#include <algorithm>    // for contains
+#include <cstddef>  // for size_t
+
+#include <algorithm>    // for any_of, contains
 #include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -16,6 +18,7 @@
 #include <spdlog/spdlog.h>
 
 using namespace std::string_view_literals;
+using namespace std::string_literals;
 
 namespace {
 
@@ -100,6 +103,14 @@ auto apply_cachyos_repos(std::string_view config_path) noexcept -> gucc::Result<
     return {};
 }
 
+auto install_keyring_package(std::string_view package) noexcept -> bool {
+    // a freshly synced mirror can lag behind for a moment
+    constexpr std::size_t kKeyringAttempts = 5;
+
+    const std::vector<std::string> argv{"/usr/bin/pacman", "-Sy", "--noconfirm", "--needed", std::string{package}};
+    return std::ranges::any_of(std::ranges::views::iota(0uz, kKeyringAttempts), [&argv](std::size_t) { return gucc::utils::exec_checked(argv); });
+}
+
 }  // namespace
 
 namespace gucc::repos {
@@ -111,6 +122,26 @@ auto install_cachyos_keyring() noexcept -> Result<void> {
         return res;
     }
     return utils::exec_or_error({"/usr/bin/pacman-key", "--lsign-key", "F3B607488DB35A47"}, "locally sign cachyos keyring"sv);
+}
+
+auto refresh_keyrings() noexcept -> Result<void> {
+    if (auto res = utils::exec_or_error({"/usr/bin/pacman-key"s, "--init"s}, "initialize pacman keyring"sv); !res) {
+        return res;
+    }
+    // sync and install all required keyrings similarly to CachyOS calamares inst
+    if (!install_keyring_package("cachyos-keyring"sv)) {
+        spdlog::warn("cachyos-keyring could not be installed, importing the CachyOS key directly");
+        if (auto res = install_cachyos_keyring(); !res) {
+            return res;
+        }
+        if (!install_keyring_package("cachyos-keyring"sv)) {
+            return make_error(ErrorCode::SubprocessFailed, "failed to install cachyos-keyring");
+        }
+    }
+    if (!install_keyring_package("archlinux-keyring"sv)) {
+        return make_error(ErrorCode::SubprocessFailed, "failed to install archlinux-keyring");
+    }
+    return utils::exec_or_error({"/usr/bin/pacman-key"s, "--populate"s}, "populate pacman keyring"sv);
 }
 
 auto create_target_pacman_config(std::string_view base_config, std::string_view output_config) noexcept -> Result<void> {
