@@ -57,16 +57,13 @@ constexpr auto join(R&& lines, Delim delim = '\n') noexcept -> std::string {
 /// @param str The string to split.
 /// @param delim The delimiter to split the string.
 /// @return A range view representing the split lines.
-constexpr auto make_split_view(std::string_view str, char delim = '\n') noexcept {
-    constexpr auto functor = [](auto&& rng) {
-        return std::string_view(&*rng.begin(), static_cast<size_t>(std::ranges::distance(rng)));
-    };
-    constexpr auto second = [](auto&& rng) { return rng != ""; };
-
+template <class Delim = char>
+    requires std::same_as<Delim, char> || std::same_as<Delim, std::string_view>
+constexpr auto make_split_view(std::string_view str, Delim delim = '\n') noexcept {
     return str
         | std::ranges::views::split(delim)
-        | std::ranges::views::transform(functor)
-        | std::ranges::views::filter(second);
+        | std::ranges::views::transform([](auto&& piece) { return std::string_view{piece.begin(), piece.end()}; })
+        | std::ranges::views::filter([](std::string_view piece) { return !piece.empty(); });
 }
 
 /// Unlike make_split_view, keeps empty lines, so joining them back restores the text.
