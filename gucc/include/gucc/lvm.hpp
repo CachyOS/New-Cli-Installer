@@ -37,4 +37,10 @@ auto parse_vgs_output(std::string_view output) noexcept -> std::vector<std::pair
 
 }  // namespace gucc::lvm
 
+namespace gucc::lvm::detail {
+
+auto parse_simple_lvm_output(std::string_view output) noexcept -> std::vector<std::string>;
+
+}  // namespace gucc::lvm::detail
+
 #endif  // LVM_HPP
