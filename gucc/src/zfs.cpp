@@ -1,16 +1,21 @@
 #include "gucc/zfs.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
+#include "gucc/zfs_query.hpp"
 
-#include <algorithm>   // for find
-#include <filesystem>  // for exists, copy_file, create_directories
+#include <filesystem>  // for exists
 #include <ranges>      // for ranges::*
+#include <string>      // for string
+#include <vector>      // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 namespace fs = std::filesystem;
 
@@ -18,18 +23,12 @@ namespace gucc::fs {
 
 // Creates a zfs volume
 auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept -> Result<void> {
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -V {}M {}"), zsize, zpath))) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs zvol {} of size {}M", zpath, zsize));
-    }
-    return {};
+    return utils::exec_or_error(fmt::format(FMT_COMPILE("zfs create -V {}M {}"), zsize, zpath), "create zfs zvol"sv);
 }
 
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
 auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> Result<void> {
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {}"), zmount, zpath))) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs dataset {} at mountpoint {}", zpath, zmount));
-    }
-    return {};
+    return utils::exec_or_error(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {}"), zmount, zpath), "create zfs dataset"sv);
 }
 
 auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> Result<void> {
@@ -43,22 +42,14 @@ auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> R
 }
 
 auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> Result<void> {
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs destroy -r {}"), zdataset))) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to destroy zfs dataset {}", zdataset));
-    }
-    return {};
-}
-
-// returns a list of imported zpools
-auto zfs_list_pools() noexcept -> std::string {
-    return utils::exec(R"(zfs list -H -o name 2>/dev/null | grep "/")"sv);
+    return utils::exec_or_error(fmt::format(FMT_COMPILE("zfs destroy -r {}"), zdataset), "destroy zfs dataset"sv);
 }
 
 // returns a list of devices containing zfs members
 auto zfs_list_devs() noexcept -> std::string {
     std::string list_of_devices{};
     // get a list of devices with zpools on them
-    auto devices = utils::make_multiline(utils::exec(R"(zpool status -PL 2>/dev/null | awk '{print $1}' | grep "^/")"sv));
+    auto devices = zfs_query::detail::parse_zpool_status_devices(utils::exec("zpool status -PL 2>/dev/null"sv));
     for (auto&& device : std::move(devices)) {
         // add the device
         list_of_devices += fmt::format(FMT_COMPILE("{}\n"), device);
@@ -72,27 +63,21 @@ auto zfs_list_datasets(std::string_view type) noexcept -> std::string {
     if (type == "zvol"sv) {
         return utils::exec("zfs list -Ht volume -o name,volsize 2>/dev/null"sv);
     } else if (type == "legacy"sv) {
-        return utils::exec(R"(zfs list -Ht filesystem -o name,mountpoint 2>/dev/null | grep "^.*/.*legacy$" | awk '{print $1}')"sv);
+        return utils::join(zfs_query::detail::child_dataset_names(list_zfs_datasets(), true));
     }
 
-    return utils::exec(R"(zfs list -H -o name 2>/dev/null | grep "/")"sv);
+    return utils::join(zfs_query::detail::child_dataset_names(list_zfs_datasets()));
 }
 
 auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> Result<void> {
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("zfs set {} {}"), property, dataset))) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to set zfs property {} on {}", property, dataset));
-    }
-    return {};
+    return utils::exec_or_error(fmt::format(FMT_COMPILE("zfs set {} {}"), property, dataset), "set zfs property"sv);
 }
 
 auto zpool_set_property(std::string_view property, std::string_view pool_name) noexcept -> Result<void> {
     const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool set {} {}"), property, pool_name);
 
     spdlog::debug("setting zfs zpool property with: {}", zfs_zpool_cmd);
-    if (!utils::exec_checked(zfs_zpool_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to set zfs zpool property with: {}", zfs_zpool_cmd));
-    }
-    return {};
+    return utils::exec_or_error(zfs_zpool_cmd, "set zpool property"sv);
 }
 
 auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase) noexcept -> Result<void> {
@@ -110,17 +95,12 @@ auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, 
             cmd += " -O encryption=aes-256-gcm -O keyformat=passphrase"sv;
         }
         cmd += fmt::format(FMT_COMPILE(" '{}' '{}'"), pool_name, device_path);
-
-        if (passphrase.has_value()) {
-            return fmt::format(FMT_COMPILE("echo '{}' | {}"), *passphrase, cmd);
-        }
         return cmd;
     }();
 
-    if (!utils::exec_checked(zfs_zpool_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to create zfs zpool '{}' on '{}'", pool_name, device_path));
-    }
-    return {};
+    // keyformat=passphrase reads a non-tty passphrase line from stdin
+    const auto input = passphrase ? fmt::format(FMT_COMPILE("{}\n"), *passphrase) : std::string{};
+    return utils::exec_or_error_with_input(zfs_zpool_cmd, input, "create zpool"sv);
 }
 
 auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConfig& zfs_config) noexcept -> Result<void> {
@@ -135,8 +115,7 @@ auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConf
     }
 
     // find rootfs in zfs datasets
-    auto rootfs = std::ranges::find(zfs_config.datasets, "/"sv, &fs::ZfsDataset::mountpoint);
-    if (rootfs != std::ranges::end(zfs_config.datasets)) {
+    if (const auto* rootfs = utils::find_ptr(zfs_config.datasets, "/"sv, &fs::ZfsDataset::mountpoint)) {
         // set bootfs flag used by zfsbootmenu
         const auto& zpool_property = fmt::format(FMT_COMPILE("bootfs={}"), rootfs->zpath);
         if (auto res = fs::zpool_set_property(zpool_property, zfs_config.zpool_name); !res) {
@@ -145,11 +124,28 @@ auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConf
     }
 
     // export zpool to import it later
-    const auto& zfs_export_cmd = fmt::format(FMT_COMPILE("zpool export {}"), zfs_config.zpool_name);
-    if (!utils::exec_checked(zfs_export_cmd)) {
-        return make_error(ErrorCode::SubprocessFailed, fmt::format("Failed to export zfs zpool with: {}", zfs_export_cmd));
+    return zpool_export(zfs_config.zpool_name);
+}
+
+auto zpool_list_importable() noexcept -> std::vector<std::string> {
+    return zfs_query::detail::parse_importable_zpools(utils::exec("zpool import 2>/dev/null"sv));
+}
+
+auto zpool_import(std::string_view pool_name, std::string_view altroot, bool mount_datasets) noexcept -> Result<void> {
+    std::vector<std::string> argv{"/usr/bin/zpool"s, "import"s};
+    if (!mount_datasets) {
+        argv.emplace_back("-N"s);
     }
-    return {};
+    argv.insert(argv.end(), {"-R"s, std::string{altroot}, std::string{pool_name}});
+    return utils::exec_or_error(argv, "import zpool"sv);
+}
+
+auto zpool_export(std::string_view pool_name) noexcept -> Result<void> {
+    return utils::exec_or_error({"/usr/bin/zpool"s, "export"s, std::string{pool_name}}, "export zpool"sv);
+}
+
+auto zfs_mount_all() noexcept -> Result<void> {
+    return utils::exec_or_error({"/usr/bin/zfs"s, "mount"s, "-aO"s}, "mount zfs datasets"sv);
 }
 
 auto copy_hostid_to_target(std::string_view target_root, std::string_view host_hostid) noexcept -> Result<void> {
@@ -160,15 +156,12 @@ auto copy_hostid_to_target(std::string_view target_root, std::string_view host_h
     }
 
     const auto etc_dir = fmt::format(FMT_COMPILE("{}/etc"), target_root);
-    ::fs::create_directories(etc_dir, ec);
-    if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("hostid: failed to create '{}': {}", etc_dir, ec.message()));
+    if (auto res = file_utils::create_directories(etc_dir); !res) {
+        return res;
     }
-
     const auto dest = fmt::format(FMT_COMPILE("{}/hostid"), etc_dir);
-    ::fs::copy_file(host_hostid, dest, ::fs::copy_options::overwrite_existing, ec);
-    if (ec) {
-        return make_error(ErrorCode::FileIo, fmt::format("hostid: failed to copy '{}' -> '{}': {}", host_hostid, dest, ec.message()));
+    if (auto res = file_utils::copy_file(host_hostid, dest); !res) {
+        return res;
     }
 
     spdlog::info("hostid: copied '{}' -> '{}'", host_hostid, dest);

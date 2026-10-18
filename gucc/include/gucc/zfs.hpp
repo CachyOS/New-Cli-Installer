@@ -33,10 +33,6 @@ auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> R
 /// @return Empty result on success, an error otherwise.
 auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> Result<void>;
 
-/// @brief Lists imported ZFS pools.
-/// @return A string containing the names of imported pools, typically one per line.
-auto zfs_list_pools() noexcept -> std::string;
-
 /// @brief Lists block devices that are part of ZFS pools.
 /// @return A string containing the device paths.
 auto zfs_list_devs() noexcept -> std::string;
@@ -71,6 +67,14 @@ auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, 
 /// @param zfs_config Configuration containing pool details and datasets to create.
 /// @return Empty result if the pool and all datasets are created successfully, an error otherwise.
 auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConfig& zfs_config) noexcept -> Result<void>;
+
+auto zpool_list_importable() noexcept -> std::vector<std::string>;
+
+auto zpool_import(std::string_view pool_name, std::string_view altroot, bool mount_datasets = true) noexcept -> Result<void>;
+
+auto zpool_export(std::string_view pool_name) noexcept -> Result<void>;
+
+auto zfs_mount_all() noexcept -> Result<void>;
 
 /// @brief Copies the host's ZFS hostid into the target so the installed system
 ///        presents the same hostid the pool recorded at creation (a mismatch

@@ -1,7 +1,10 @@
 #ifndef ZFS_QUERY_HPP
 #define ZFS_QUERY_HPP
 
-#include <cstdint>      // for uint64_t
+#include <cstdint>  // for uint64_t
+
+#include <functional>   // for less
+#include <map>          // for map
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -105,18 +108,36 @@ auto is_zfs_available() noexcept -> bool;
 
 }  // namespace gucc::fs
 
+// not a public API to use and depend on
 namespace gucc::fs::zfs_query::detail {
 
-/// @brief Parses a size string from `zpool list -Hp` / `zfs list -Hp` output.
 auto parse_zfs_size(std::string_view size_str) noexcept -> std::uint64_t;
 
-/// @brief Split a tab-separated line preserving empty cells,
 auto split_tsv(std::string_view line) noexcept -> std::vector<std::string>;
 
-/// @brief Decode a fully-tabular `zfs list -Hp` line into a
-/// ZfsDatasetInfo.
 auto parse_dataset_fields(std::vector<std::string> fields) noexcept
     -> std::optional<ZfsDatasetInfo>;
+
+auto parse_zpool_status_devices(std::string_view output) noexcept -> std::vector<std::string>;
+
+template <typename T>
+using PoolMap = std::map<std::string, T, std::less<>>;
+
+auto parse_zpool_status_pools(std::string_view output) noexcept -> PoolMap<std::vector<std::string>>;
+
+auto parse_zpool_get_values(std::string_view output) noexcept -> PoolMap<std::string>;
+
+auto parse_importable_zpools(std::string_view output) noexcept -> std::vector<std::string>;
+
+auto parse_percentage(std::string_view pct_str) noexcept -> std::uint32_t;
+
+auto parse_zpool_list_row(std::string_view line) noexcept -> std::optional<ZfsPoolInfo>;
+
+auto parse_zpool_list(std::string_view output, const PoolMap<std::vector<std::string>>& devices, const PoolMap<std::string>& bootfs) noexcept
+    -> std::vector<ZfsPoolInfo>;
+
+auto child_dataset_names(const std::vector<ZfsDatasetInfo>& datasets, bool legacy_only = false) noexcept
+    -> std::vector<std::string>;
 
 }  // namespace gucc::fs::zfs_query::detail
 
