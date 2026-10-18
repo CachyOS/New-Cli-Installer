@@ -24,6 +24,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/file_utils.cpp include/gucc/file_utils.hpp
    src/fs_utils.cpp include/gucc/fs_utils.hpp
    src/cpu.cpp include/gucc/cpu.hpp
+   src/memory.cpp include/gucc/memory.hpp
    src/pacmanconf_repo.cpp include/gucc/pacmanconf_repo.hpp
    src/repos.cpp include/gucc/repos.hpp
    src/initcpio.cpp include/gucc/initcpio.hpp

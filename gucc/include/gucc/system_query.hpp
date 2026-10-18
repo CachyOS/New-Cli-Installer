@@ -6,6 +6,7 @@
 
 #include <functional>   // for function_ref
 #include <optional>     // for optional
+#include <span>         // for span
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -96,7 +97,7 @@ auto get_partition_schema(std::string_view disk_device) noexcept -> std::vector<
 /// @brief Lists partitions/volumes suitable for mounting as "device size" display strings.
 /// @param include_types Device types to include.
 /// @return Vector of display strings.
-auto list_mountable_partitions(const std::vector<std::string>& include_types) noexcept -> std::vector<std::string>;
+auto list_mountable_partitions(std::span<const std::string_view> include_types) noexcept -> std::vector<std::string>;
 
 /// @brief Formats a size in bytes to human-readable string
 /// @param bytes Size in bytes

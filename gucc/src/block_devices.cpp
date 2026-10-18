@@ -8,8 +8,12 @@
 #include <cctype>     // for tolower
 #include <ranges>     // for ranges::*
 #include <set>        // for set
+#include <utility>    // for move
 
 #include <rapidjson/document.h>
+
+#include <fmt/compile.h>
+#include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
 
@@ -22,18 +26,21 @@ namespace json = gucc::detail::lsblk_json;
 using BlockDevice = gucc::disk::BlockDevice;
 
 auto to_block_device(const rapidjson::Value& obj) -> BlockDevice {
-    auto device     = BlockDevice{};
-    device.name     = json::string(obj, "name"sv).value_or(""sv);
-    device.type     = json::string(obj, "type"sv).value_or(""sv);
-    device.fstype   = json::string(obj, "fstype"sv).value_or(""sv);
-    device.uuid     = json::string(obj, "uuid"sv).value_or(""sv);
-    device.model    = json::owned_string(obj, "model"sv);
-    device.pkname   = json::owned_string(obj, "pkname"sv);
-    device.label    = json::owned_string(obj, "label"sv);
-    device.partuuid = json::owned_string(obj, "partuuid"sv);
-    device.size     = json::uint64(obj, "size"sv);
+    auto device      = BlockDevice{};
+    device.name      = json::string(obj, "name"sv).value_or(""sv);
+    device.type      = json::string(obj, "type"sv).value_or(""sv);
+    device.fstype    = json::string(obj, "fstype"sv).value_or(""sv);
+    device.uuid      = json::string(obj, "uuid"sv).value_or(""sv);
+    device.model     = json::owned_string(obj, "model"sv);
+    device.pkname    = json::owned_string(obj, "pkname"sv);
+    device.label     = json::owned_string(obj, "label"sv);
+    device.partuuid  = json::owned_string(obj, "partuuid"sv);
+    device.size      = json::uint64(obj, "size"sv);
+    device.pttype    = json::owned_string(obj, "pttype"sv);
+    device.transport = json::string(obj, "tran"sv).value_or(""sv);
+    device.removable = json::boolean(obj, "rm"sv).value_or(false);
 
-    // previous unil-linux provided only scalar MOUNTPOINT
+    // previous util-linux provided only scalar MOUNTPOINT
     if (json::member(obj, "mountpoints"sv) != nullptr) {
         device.mountpoints = json::mountpoints(obj);
     } else if (auto mountpoint = json::string(obj, "mountpoint"sv); mountpoint && !mountpoint->empty()) {
@@ -42,13 +49,19 @@ auto to_block_device(const rapidjson::Value& obj) -> BlockDevice {
     return device;
 }
 
-void flatten_into(std::vector<BlockDevice>& out, const rapidjson::Value& obj) {
+void flatten_into(std::vector<BlockDevice>& out, const rapidjson::Value& obj, const std::optional<std::string>& parent) {
     if (!obj.IsObject()) {
         return;
     }
-    out.emplace_back(to_block_device(obj));
+    auto device = to_block_device(obj);
+    if (!device.pkname) {
+        device.pkname = parent;
+    }
+    // children may hold copy..
+    const auto name = std::optional{device.name};
+    out.emplace_back(std::move(device));
     for (const auto& child : json::array(obj, "children"sv)) {
-        flatten_into(out, child);
+        flatten_into(out, child, name);
     }
 }
 
@@ -69,7 +82,7 @@ auto parse_lsblk_json(std::string_view json_output) noexcept -> std::optional<st
 
     std::vector<BlockDevice> block_devices{};
     for (const auto& device_json : devices_json->GetArray()) {
-        flatten_into(block_devices, device_json);
+        flatten_into(block_devices, device_json, std::nullopt);
     }
     return block_devices;
 }
@@ -133,8 +146,14 @@ auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, st
 }
 
 auto list_block_devices() -> std::optional<std::vector<BlockDevice>> {
-    return utils::query_output(R"cmd(lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd"sv)
+    return utils::query_output(fmt::format(FMT_COMPILE(R"cmd(lsblk -f -o {} -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd"), detail::kLsblkColumns))
         .and_then(detail::parse_lsblk_json);
+}
+
+auto query_block_device(std::string_view device) -> std::optional<BlockDevice> {
+    return utils::query_output(fmt::format(FMT_COMPILE("lsblk -d -o {} -b -p -J '{}'"), detail::kLsblkColumns, device))
+        .and_then(detail::parse_lsblk_json)
+        .and_then([](std::vector<BlockDevice> devices) { return devices.empty() ? std::nullopt : std::optional{std::move(devices.front())}; });
 }
 
 }  // namespace gucc::disk

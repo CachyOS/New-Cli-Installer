@@ -1,7 +1,5 @@
 #pragma once
 
-#include <functional>   // for less
-#include <map>          // for map
 #include <string>       // for string
 #include <string_view>  // for string_view
 
@@ -28,12 +26,3 @@ auto get_device_uuid(std::string_view device) noexcept -> std::string;
 auto get_device_fstype(std::string_view device) noexcept -> std::string;
 
 }  // namespace gucc::fs::utils
-
-namespace gucc::fs::utils::detail {
-
-using LsblkPairs = std::map<std::string, std::string, std::less<>>;
-
-/// Parses first lsblk -P row
-auto parse_lsblk_pairs(std::string_view output) noexcept -> LsblkPairs;
-
-}  // namespace gucc::fs::utils::detail

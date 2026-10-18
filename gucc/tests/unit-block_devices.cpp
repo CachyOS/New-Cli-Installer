@@ -1,7 +1,9 @@
 #include "doctest_compatibility.h"
 
 #include "gucc/block_devices.hpp"
+#include "gucc/logger.hpp"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -529,5 +531,61 @@ TEST_CASE("block_devices")
             REQUIRE(dev->partuuid.has_value());
             CHECK(dev->partuuid.value() == "root-partuuid"sv);
         }
+    }
+}
+
+TEST_CASE("parse_lsblk_json")
+{
+    using gucc::disk::detail::parse_lsblk_json;
+    auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) {
+        // noop
+    });
+    auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
+    spdlog::set_default_logger(logger);
+    gucc::logger::set_logger(logger);
+
+    static constexpr auto kTree = R"({"blockdevices": [
+        {"name": "/dev/nvme0n1", "type": "disk", "size": 512110190592, "pttype": "gpt", "tran": "nvme", "rm": false,
+         "children": [
+            {"name": "/dev/nvme0n1p1", "type": "part", "fstype": "vfat", "uuid": "FB54-6E42", "pkname": "/dev/nvme0n1", "mountpoints": ["/boot"]},
+            {"name": "/dev/nvme0n1p2", "type": "part", "fstype": "crypto_LUKS", "uuid": null, "pkname": "/dev/nvme0n1",
+             "children": [{"name": "/dev/mapper/root", "type": "crypt", "fstype": "btrfs", "label": "my \"disk\"", "mountpoints": ["/", "/home"]}]}
+         ]},
+        {"name": "/dev/sda", "type": "disk", "tran": "usb", "rm": true}
+    ]})"sv;
+
+    SECTION("assign pkname from the parent")
+    {
+        const auto devices = parse_lsblk_json(kTree);
+        REQUIRE(devices);
+        REQUIRE_EQ(devices->size(), 5u);
+        CHECK_EQ((*devices)[0].name, "/dev/nvme0n1"sv);
+        CHECK_FALSE((*devices)[0].pkname);
+        CHECK_EQ((*devices)[3].name, "/dev/mapper/root"sv);
+        CHECK_EQ((*devices)[3].pkname, "/dev/nvme0n1p2"sv);
+        CHECK_EQ((*devices)[3].mountpoints, std::vector{"/"s, "/home"s});
+        CHECK_EQ((*devices)[3].label, R"(my "disk")"sv);
+    }
+    SECTION("disk fields")
+    {
+        const auto devices = parse_lsblk_json(kTree);
+        REQUIRE(devices);
+        CHECK_EQ((*devices)[0].pttype, "gpt"sv);
+        CHECK_EQ((*devices)[0].transport, "nvme"sv);
+        CHECK_FALSE((*devices)[0].removable);
+        CHECK((*devices)[4].removable);
+        CHECK((*devices)[2].uuid.empty());
+    }
+    SECTION("stderr noise skipped")
+    {
+        const auto devices = parse_lsblk_json("lsblk: warning\n{\"blockdevices\": [{\"name\": \"/dev/vda\", \"type\": \"disk\"}]}"sv);
+        REQUIRE(devices);
+        CHECK_EQ(devices->front().name, "/dev/vda"sv);
+    }
+    SECTION("refuses output without valid structure")
+    {
+        CHECK_FALSE(parse_lsblk_json(""sv));
+        CHECK_FALSE(parse_lsblk_json("lsblk: /dev/nope: not a block device"sv));
+        CHECK_FALSE(parse_lsblk_json(R"({"devices": []})"sv));
     }
 }

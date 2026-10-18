@@ -32,6 +32,12 @@ struct BlockDevice {
     std::optional<std::string> partuuid;
     /// Size of the device in bytes.
     std::optional<std::uint64_t> size;
+    /// Partition table type (e.g. gpt, dos), disks only.
+    std::optional<std::string> pttype;
+    /// Transport (e.g. nvme, sata, usb), empty for virtual disks.
+    std::string transport;
+    /// Removable media.
+    bool removable{false};
 
     /// @brief Default constructor for BlockDevice.
     BlockDevice() = default;
@@ -40,6 +46,9 @@ struct BlockDevice {
 /// @brief Executes lsblk command and returns a list of block devices.
 /// @return An optional vector of BlockDevice objects, std::nullopt otherwise.
 auto list_block_devices() -> std::optional<std::vector<BlockDevice>>;
+
+/// lsblk for @p device without children, std::nullopt otherwise.
+auto query_block_device(std::string_view device) -> std::optional<BlockDevice>;
 
 /// @brief Finds a block device by its name.
 /// @param devices A vector of BlockDevice objects.
@@ -103,6 +112,9 @@ auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, st
 }  // namespace gucc::disk
 
 namespace gucc::disk::detail {
+
+/// Common lsblk parsed fields.
+inline constexpr std::string_view kLsblkColumns{"NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,RM,TRAN"};
 
 auto parse_lsblk_json(std::string_view json_output) noexcept -> std::optional<std::vector<BlockDevice>>;
 

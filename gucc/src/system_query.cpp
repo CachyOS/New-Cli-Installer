@@ -1,22 +1,18 @@
 #include "gucc/system_query.hpp"
 #include "gucc/block_devices.hpp"
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/memory.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs.hpp"
 
-#include "detail/lsblk_json.hpp"
-
 #include <algorithm>   // for find_if, transform
-#include <fstream>     // for ifstream
 #include <functional>  // for function_ref
 #include <ranges>      // for ranges::*
 
-#include <rapidjson/document.h>
-
 #include <fmt/compile.h>
 #include <fmt/format.h>
-#include <fmt/ranges.h>
 
 #include <spdlog/spdlog.h>
 
@@ -25,11 +21,10 @@ using namespace std::string_literals;
 
 static constexpr auto DEV_PATH_PREFIX  = "/dev/"sv;
 static constexpr auto TRAILING_NUMBERS = "0123456789"sv;
-static constexpr auto LSBLK_DISKS_CMD  = "lsblk -J -b -o NAME,TYPE,SIZE,MODEL,FSTYPE,LABEL,UUID,PARTUUID,MOUNTPOINTS,PTTYPE,RM,RO,TRAN -p"sv;
 
 namespace {
 
-/// lsblk leaves TRAN empty for virtual disks, so fall back to the device name.
+// lsblk leaves TRAN empty for virtual disks, so fall back to the device name.
 auto determine_transport(std::string_view device, std::string_view tran) noexcept -> gucc::disk::DiskTransport {
     using gucc::disk::DiskTransport;
 
@@ -45,43 +40,45 @@ auto determine_transport(std::string_view device, std::string_view tran) noexcep
     return DiskTransport::Unknown;
 }
 
-namespace json = gucc::detail::lsblk_json;
+using gucc::disk::BlockDevice;
 
-auto has_type(const rapidjson::Value& obj, std::string_view type) noexcept -> bool {
-    return json::string(obj, "type"sv) == type;
+auto to_partition_info(const BlockDevice& dev) -> gucc::disk::PartitionInfo {
+    return gucc::disk::PartitionInfo{
+        .device      = dev.name,
+        .fstype      = dev.fstype,
+        .label       = dev.label,
+        .uuid        = dev.uuid.empty() ? std::nullopt : std::optional{dev.uuid},
+        .partuuid    = dev.partuuid,
+        .size        = dev.size.value_or(0),
+        .mountpoints = dev.mountpoints,
+        .is_mounted  = !dev.mountpoints.empty(),
+        .part_number = gucc::disk::parse_partition_number(dev.name),
+    };
 }
 
-auto get_partition_from_json(const rapidjson::Value& obj) -> gucc::disk::PartitionInfo {
-    gucc::disk::PartitionInfo part{};
-    part.device   = json::string(obj, "name"sv).value_or(""sv);
-    part.fstype   = json::string(obj, "fstype"sv).value_or(""sv);
-    part.label    = json::owned_string(obj, "label"sv);
-    part.uuid     = json::owned_string(obj, "uuid"sv);
-    part.partuuid = json::owned_string(obj, "partuuid"sv);
-    part.size     = json::uint64(obj, "size"sv).value_or(0);
-
-    part.mountpoints = json::mountpoints(obj);
-    part.is_mounted  = !part.mountpoints.empty();
-    part.part_number = gucc::disk::parse_partition_number(part.device);
-    return part;
+auto to_disk_info(const BlockDevice& disk, const std::vector<BlockDevice>& devices, std::function_ref<bool(std::string_view)> is_ssd) -> gucc::disk::DiskInfo {
+    return gucc::disk::DiskInfo{
+        .device       = disk.name,
+        .model        = disk.model,
+        .size         = disk.size.value_or(0),
+        .transport    = determine_transport(disk.name, disk.transport),
+        .is_ssd       = is_ssd(disk.name),
+        .is_removable = disk.removable,
+        .pttype       = disk.pttype,
+        .partitions   = devices
+            | std::ranges::views::filter([&disk](const BlockDevice& dev) { return dev.type == "part"sv && dev.pkname == disk.name; })
+            | std::ranges::views::transform(to_partition_info)
+            | std::ranges::to<std::vector<gucc::disk::PartitionInfo>>(),
+    };
 }
 
-auto get_disk_from_json(const rapidjson::Value& obj, std::function_ref<bool(std::string_view)> is_ssd) -> gucc::disk::DiskInfo {
-    gucc::disk::DiskInfo disk{};
-    disk.device       = json::string(obj, "name"sv).value_or(""sv);
-    disk.model        = json::owned_string(obj, "model"sv);
-    disk.size         = json::uint64(obj, "size"sv).value_or(0);
-    disk.pttype       = json::owned_string(obj, "pttype"sv);
-    disk.is_removable = json::boolean(obj, "rm"sv).value_or(false);
-    disk.transport    = determine_transport(disk.device, json::string(obj, "tran"sv).value_or(""sv));
-    disk.is_ssd       = is_ssd(disk.device);
-
-    for (const auto& child : json::array(obj, "children"sv)) {
-        if (has_type(child, "part"sv)) {
-            disk.partitions.emplace_back(get_partition_from_json(child));
-        }
+auto query_disks(std::string_view device) noexcept -> std::optional<std::vector<gucc::disk::DiskInfo>> {
+    auto output = gucc::utils::query_output(fmt::format(FMT_COMPILE("lsblk -J -b -p -o {} {}"), gucc::disk::detail::kLsblkColumns, device));
+    if (!output) {
+        spdlog::error("lsblk failed for '{}'", device);
+        return std::nullopt;
     }
-    return disk;
+    return gucc::disk::parse_lsblk_disks_json(*output);
 }
 
 }  // namespace
@@ -178,52 +175,24 @@ auto parse_lsblk_disks_json(std::string_view json_output, std::function_ref<bool
     if (json_output.empty()) {
         return {};
     }
-
-    rapidjson::Document document;
-    if (!json::parse_or_log(document, json_output)) {
+    const auto devices = detail::parse_lsblk_json(json_output);
+    if (!devices) {
         return {};
     }
-
-    std::vector<DiskInfo> disks{};
-    for (const auto& device_json : json::array(document, "blockdevices"sv)) {
-        if (has_type(device_json, "disk"sv)) {
-            disks.emplace_back(get_disk_from_json(device_json, is_ssd));
-        }
-    }
-    return disks;
+    return *devices
+        | std::ranges::views::filter([](const BlockDevice& dev) { return dev.type == "disk"sv; })
+        | std::ranges::views::transform([&](const BlockDevice& disk) { return to_disk_info(disk, *devices, is_ssd); })
+        | std::ranges::to<std::vector<DiskInfo>>();
 }
 
 auto list_disks() noexcept -> std::optional<std::vector<DiskInfo>> {
-    // Query all disk devices with their partitions
-    const auto& lsblk_output = utils::exec(LSBLK_DISKS_CMD);
-
-    if (lsblk_output.empty()) {
-        spdlog::error("Failed to get lsblk output");
-        return std::nullopt;
-    }
-
-    auto disks = parse_lsblk_disks_json(lsblk_output);
-    if (disks.empty()) {
-        spdlog::warn("No disks found from lsblk");
-    }
-
-    return std::make_optional<std::vector<DiskInfo>>(std::move(disks));
+    return query_disks({});
 }
 
 auto get_disk_info(std::string_view device) noexcept -> std::optional<DiskInfo> {
-    const auto& lsblk_output = utils::exec(fmt::format(FMT_COMPILE("{} {}"), LSBLK_DISKS_CMD, device));
-
-    if (lsblk_output.empty()) {
-        spdlog::error("Failed to get lsblk output for device: {}", device);
-        return std::nullopt;
-    }
-
-    auto disks = parse_lsblk_disks_json(lsblk_output);
-    if (disks.empty()) {
-        return std::nullopt;
-    }
-
-    return std::make_optional<DiskInfo>(std::move(disks.front()));
+    return query_disks(device).and_then([](std::vector<DiskInfo> disks) {
+        return disks.empty() ? std::nullopt : std::optional{std::move(disks.front())};
+    });
 }
 
 auto list_partitions(std::string_view disk_device) noexcept -> std::vector<PartitionInfo> {
@@ -263,19 +232,16 @@ auto get_partition_schema(std::string_view disk_device) noexcept -> std::vector<
 }
 
 auto format_size(std::uint64_t bytes) noexcept -> std::string {
-    constexpr std::uint64_t KiB = 1024ULL;
-    constexpr std::uint64_t MiB = KiB * 1024;
-    constexpr std::uint64_t GiB = MiB * 1024;
-    constexpr std::uint64_t TiB = GiB * 1024;
+    using memory::kGiB, memory::kKiB, memory::kMiB, memory::kTiB;
 
-    if (bytes >= TiB) {
-        return fmt::format(FMT_COMPILE("{:.1f}TiB"), static_cast<double>(bytes) / TiB);
-    } else if (bytes >= GiB) {
-        return fmt::format(FMT_COMPILE("{:.1f}GiB"), static_cast<double>(bytes) / GiB);
-    } else if (bytes >= MiB) {
-        return fmt::format(FMT_COMPILE("{:.0f}MiB"), static_cast<double>(bytes) / MiB);
-    } else if (bytes >= KiB) {
-        return fmt::format(FMT_COMPILE("{:.0f}KiB"), static_cast<double>(bytes) / KiB);
+    if (bytes >= kTiB) {
+        return fmt::format(FMT_COMPILE("{:.1f}TiB"), static_cast<double>(bytes) / kTiB);
+    } else if (bytes >= kGiB) {
+        return fmt::format(FMT_COMPILE("{:.1f}GiB"), static_cast<double>(bytes) / kGiB);
+    } else if (bytes >= kMiB) {
+        return fmt::format(FMT_COMPILE("{:.0f}MiB"), static_cast<double>(bytes) / kMiB);
+    } else if (bytes >= kKiB) {
+        return fmt::format(FMT_COMPILE("{:.0f}KiB"), static_cast<double>(bytes) / kKiB);
     }
     return fmt::format(FMT_COMPILE("{}B"), bytes);
 }
@@ -284,15 +250,11 @@ auto is_device_ssd(std::string_view device) noexcept -> bool {
     const auto base_device     = get_disk_name_from_device(device);
     const auto rotational_path = fmt::format(FMT_COMPILE("/sys/block/{}/queue/rotational"), base_device);
 
-    // Note: can't use file_utils::read_whole_file because sysfs files report size 0
-    std::ifstream file(rotational_path);
-    if (!file.is_open()) {
+    const auto rotational = file_utils::read_first_line(rotational_path);
+    if (rotational.empty()) {
         return base_device.starts_with("nvme"sv) || base_device.starts_with("vd"sv);
     }
-
-    char rotational{};
-    file >> rotational;
-    return rotational == '0';
+    return rotational.starts_with('0');
 }
 
 auto format_partition_table(std::string_view disk_device) noexcept -> std::string {
@@ -301,10 +263,10 @@ auto format_partition_table(std::string_view disk_device) noexcept -> std::strin
         return {};
     }
 
-    auto result = fmt::format("{:<20} {:<8} {:<12} {}\n", "NAME", "TYPE", "FSTYPE", "SIZE");
-    result += fmt::format("{:<20} {:<8} {:<12} {}\n", disk_info->device, "disk", "", format_size(disk_info->size));
+    auto result = fmt::format(FMT_COMPILE("{:<20} {:<8} {:<12} {}\n"), "NAME", "TYPE", "FSTYPE", "SIZE");
+    result += fmt::format(FMT_COMPILE("{:<20} {:<8} {:<12} {}\n"), disk_info->device, "disk", "", format_size(disk_info->size));
     for (const auto& part : disk_info->partitions) {
-        result += fmt::format("{:<20} {:<8} {:<12} {}\n", part.device, "part", part.fstype, format_size(part.size));
+        result += fmt::format(FMT_COMPILE("{:<20} {:<8} {:<12} {}\n"), part.device, "part", part.fstype, format_size(part.size));
     }
     return result;
 }
@@ -315,25 +277,24 @@ auto format_device_table() noexcept -> std::string {
         return {};
     }
 
-    auto result = fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", "NAME", "MODEL", "TYPE", "FSTYPE", "SIZE", "MOUNTPOINTS");
+    auto result = fmt::format(FMT_COMPILE("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n"), "NAME", "MODEL", "TYPE", "FSTYPE", "SIZE", "MOUNTPOINTS");
     for (const auto& disk : *disks) {
         const auto& model = disk.model.value_or("");
-        result += fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", disk.device, model, "disk", "", format_size(disk.size), "");
+        result += fmt::format(FMT_COMPILE("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n"), disk.device, model, "disk", "", format_size(disk.size), "");
         for (const auto& part : disk.partitions) {
-            const auto& mp = part.mountpoints.empty() ? ""s : fmt::format("{}", fmt::join(part.mountpoints, ", "));
-            result += fmt::format("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n", part.device, "", "part", part.fstype, format_size(part.size), mp);
+            result += fmt::format(FMT_COMPILE("{:<20} {:<16} {:<8} {:<12} {:<10} {}\n"), part.device, "", "part", part.fstype, format_size(part.size), utils::join(part.mountpoints, ", "sv));
         }
     }
     return result;
 }
 
-auto list_mountable_partitions(const std::vector<std::string>& include_types) noexcept -> std::vector<std::string> {
+auto list_mountable_partitions(std::span<const std::string_view> include_types) noexcept -> std::vector<std::string> {
     std::vector<std::string> result{};
 
     const auto& devices = list_block_devices();
     if (devices) {
         const auto append_of_type = [&](std::string_view type) {
-            if (std::ranges::find(include_types, type) == std::ranges::end(include_types)) {
+            if (!std::ranges::contains(include_types, type)) {
                 return;
             }
             for (const auto& dev : *devices) {
@@ -363,12 +324,10 @@ auto list_mountable_partitions(const std::vector<std::string>& include_types) no
 namespace gucc::disk::detail {
 
 auto parse_zvol_list(std::string_view output) noexcept -> std::vector<ZvolEntry> {
+    // NAME<TAB>VOLSIZE
     constexpr auto to_entry = [](std::string_view line) -> ZvolEntry {
-        const auto tab_pos = line.find('\t');
-        return ZvolEntry{
-            .name    = line.substr(0, tab_pos),
-            .volsize = tab_pos == std::string_view::npos ? std::string_view{} : line.substr(tab_pos + 1),
-        };
+        const auto [name, volsize] = utils::split_once(line, '\t').value_or(std::pair{line, std::string_view{}});
+        return ZvolEntry{.name = name, .volsize = volsize};
     };
     return utils::make_split_view(output)
         | std::ranges::views::transform(to_entry)
