@@ -10,7 +10,6 @@
 #include <utility>      // for move
 #include <vector>       // for erase, vector
 
-#include <spdlog/async.h>                     // for create_async
 #include <spdlog/common.h>                    // for memory_buf_t, sink_ptr, level
 #include <spdlog/details/log_msg.h>           // for log_msg
 #include <spdlog/pattern_formatter.h>         // for pattern_formatter
@@ -21,6 +20,8 @@
 
 namespace {
 constinit std::shared_ptr<spdlog::logger> g_logger;
+// shares only the file sink with g_logger
+constinit std::shared_ptr<spdlog::logger> g_exec_logger;
 constinit spdlog::sink_ptr g_stdout_sink;
 constinit spdlog::sink_ptr g_callback_sink;
 
@@ -37,16 +38,25 @@ void remove_sink(spdlog::sink_ptr& sink) noexcept {
 namespace cachyos::installer::logging {
 
 auto init(std::string_view log_file) -> std::shared_ptr<spdlog::logger> {
-    g_logger = spdlog::create_async<spdlog::sinks::basic_file_sink_mt>("cachyos_logger", std::string{log_file});
+    // keep the order with what frontends would show otherwise
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(std::string{log_file});
+    g_logger       = std::make_shared<spdlog::logger>("cachyos_logger", file_sink);
+    g_exec_logger  = std::make_shared<spdlog::logger>("cachyos_exec", file_sink);
     spdlog::set_default_logger(g_logger);
     spdlog::set_pattern(std::string{kPattern});
-    spdlog::set_level(spdlog::level::debug);
+    for (const auto& logger : {g_logger, g_exec_logger}) {
+        logger->set_level(spdlog::level::debug);
+        logger->flush_on(spdlog::level::warn);
+    }
     spdlog::flush_every(std::chrono::seconds(5));
 
 #ifndef COS_BUILD_STATIC
     // Set gucc logger.
     gucc::logger::set_logger(g_logger);
 #endif
+    // workaround to have handle be destroyed before the runner
+    static CommandLogObserver command_log;
+    static const auto command_log_handle = gucc::utils::default_runner().add_observer(command_log);
     return g_logger;
 }
 
@@ -56,6 +66,7 @@ void attach_stdout_sink() noexcept {
     }
     auto sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     sink->set_pattern(std::string{kPattern});
+    sink->set_level(spdlog::level::info);
     g_stdout_sink = sink;
     g_logger->sinks().push_back(std::move(sink));
 }
@@ -86,6 +97,36 @@ void attach_callback_sink(std::function<void(std::string_view)> on_line) noexcep
 
 void detach_callback_sink() noexcept {
     remove_sink(g_callback_sink);
+}
+
+void CommandLogObserver::on_start(const gucc::utils::CommandInfo& cmd) noexcept {
+    if (!g_exec_logger) {
+        return;
+    }
+    if (cmd.skipped) {
+        g_exec_logger->info("[dry-run] would run: {}", cmd.display);
+        return;
+    }
+    g_exec_logger->debug("[exec] $ {}", cmd.display);
+}
+
+void CommandLogObserver::on_line([[maybe_unused]] const gucc::utils::CommandInfo& cmd, std::string_view line) noexcept {
+    if (g_exec_logger) {
+        g_exec_logger->info("{}", line);
+    }
+}
+
+void CommandLogObserver::on_finish(const gucc::utils::CommandInfo& cmd, const gucc::utils::ProcessResult& result) noexcept {
+    if (!g_exec_logger || cmd.skipped || result.ok()) {
+        return;
+    }
+    if (result.timed_out) {
+        g_exec_logger->warn("[exec] timed out: {}", cmd.display);
+    } else if (result.cancelled) {
+        g_exec_logger->warn("[exec] cancelled: {}", cmd.display);
+    } else {
+        g_exec_logger->debug("[exec] exit {}: {}", result.exit_code, cmd.display);
+    }
 }
 
 }  // namespace cachyos::installer::logging
