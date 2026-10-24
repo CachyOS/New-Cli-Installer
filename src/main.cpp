@@ -16,8 +16,9 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/process.hpp"
 
+#include "cli.hpp"
+
 #include <chrono>       // for chrono_literals
-#include <regex>        // for regex_search
 #include <string>       // for string
 #include <string_view>  // for string_view
 
@@ -27,54 +28,26 @@
 
 using namespace std::string_view_literals;
 
-// TODO(vnepogodin): refactor using argparse
-constexpr std::string_view kUsageMsg = R"(
-Usage: cachyos-installer [--config <path>] [--dry-run] [--version]\n\n"
-  --config <path>  Read installer config from <path> (default: ./settings.json).
-                   A config with \"headless_mode\": true installs unattended;
-                   otherwise the interactive TUI starts.
-  --version        Print version and exit.
-  --help           Show this help and exit.\n
-Must be run as root with an active network connection.
-)";
-
 int main(int argc, char** argv) {
-    std::string config_path{"settings.json"};
-    for (int i = 1; i < argc; ++i) {
-        const std::string_view arg{argv[i]};
-        if (arg == "--help"sv || arg == "-h"sv) {
-            fmt::print("{}", kUsageMsg);
-            return 0;
-        }
-        if (arg == "--version"sv || arg == "-v"sv) {
-            fmt::print("cachyos-installer {}\n", INSTALLER_VERSION);
-            return 0;
-        }
-        if (arg == "--config"sv) {
-            if (i + 1 >= argc) {
-                fmt::print(stderr, "--config requires a path argument\n");
-                return 1;
-            }
-            config_path = argv[++i];
-        } else if (arg.starts_with("--config=")) {
-            config_path = arg.substr(std::string_view{"--config="}.size());
-        } else {
-            fmt::print(stderr, "unknown argument '{}' (try --help)\n", arg);
-            return 1;
-        }
+    auto args = cli::parse(argc, argv);
+    if (!args) {
+        return 0;
     }
 
+    const auto& config_path = args->config_path;
     // Initialize logger.
     cachyos::installer::logging::init();
 
+    // Allow real execution via env var (legacy; --dry-run is the primary path).
 #ifndef NDEVENV
     const bool force_real_run = gucc::utils::safe_getenv("DIRTY_CMD_RUN") == "1";
-    gucc::utils::default_runner().set_dry_run(!force_real_run);
+    if (force_real_run) {
+        gucc::utils::default_runner().set_dry_run(false);
+    }
 #endif
 
-    const auto& tty = gucc::utils::exec("tty");
-    const std::regex tty_regex("/dev/tty[0-9]*");
-    if (std::regex_search(tty, tty_regex)) {
+    const auto tty = gucc::utils::exec("tty");
+    if (tty.starts_with("/dev/tty")) {
         gucc::utils::exec("setterm -blank 0 -powersave off");
     }
 

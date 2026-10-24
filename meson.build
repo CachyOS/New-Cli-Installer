@@ -67,6 +67,7 @@ tomlplusplus = dependency('tomlplusplus', version : ['>=3.4.0'], fallback : ['to
 #glibmm = dependency('glibmm-2.4', version : ['>=2.56.0'])
 cpr = dependency('cpr', version : ['>=1.10.0'], fallback : ['cpr', 'cpr_dep'])
 doctest = dependency('doctest', version : ['>=2.4.11'], fallback : ['doctest', 'doctest_dep'])
+argparse = dependency('argparse', fallback : ['argparse', 'argparse_dep'])
 
 src_files = files(
     'src/view.hpp',
@@ -162,7 +163,7 @@ endif
 
 add_project_arguments(cc.get_supported_arguments(possible_cc_flags), language : 'cpp')
 
-deps = [fmt, spdlog, ftxui, rapidjson, ctre, tomlplusplus, cpr]
+deps = [fmt, spdlog, ftxui, rapidjson, ctre, tomlplusplus, cpr, argparse]
 
 subdir('gucc')
 
