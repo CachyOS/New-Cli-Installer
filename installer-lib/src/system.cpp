@@ -112,17 +112,10 @@ auto wait_for_connection(const std::chrono::seconds& timeout_secs) noexcept -> b
 }
 
 auto install_cachyos_repo() noexcept -> std::expected<void, std::string> {
-    // Check if it's already been applied
+    // TODO(vnepogodin): why are we even printing it from the host still???
     const auto& repo_list = gucc::detail::pacmanconf::get_repo_list("/etc/pacman.conf");
     spdlog::info("install_cachyos_repo: repo_list := '{}'", repo_list);
-
-    if (auto res = gucc::repos::install_cachyos_keyring(); !res) {
-        return std::unexpected(fmt::format("failed to install cachyos keyring: {}", res.error().context));
-    }
-    if (!gucc::utils::exec_checked("yes | pacman -Sy --noconfirm"sv)) {
-        return std::unexpected("failed to refresh pacman databases");
-    }
-    return {};
+    return lift(gucc::repos::refresh_keyrings(), "failed to refresh keyrings");
 }
 
 }  // namespace cachyos::installer
