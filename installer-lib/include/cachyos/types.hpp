@@ -141,6 +141,8 @@ struct InstallContext {
     SystemMode system_mode{SystemMode::UEFI};
     bool hostcache{true};
 
+    [[nodiscard]] constexpr auto is_uefi() const noexcept -> bool { return system_mode == SystemMode::UEFI; }
+
     // Partitions
     std::vector<gucc::fs::Partition> partition_schema;
     std::string swap_device;

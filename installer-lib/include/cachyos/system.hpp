@@ -12,6 +12,9 @@ namespace cachyos::installer {
 /// Detects whether the system is UEFI or BIOS and the init system.
 [[nodiscard]] auto detect_system() noexcept -> std::expected<SystemInfo, std::string>;
 
+/// Mounts efivarfs on UEFI systems when it is not mounted yet.
+[[nodiscard]] auto ensure_efivarfs() noexcept -> std::expected<void, std::string>;
+
 /// Returns true if running as root.
 [[nodiscard]] auto check_root() noexcept -> bool;
 
@@ -23,7 +26,7 @@ namespace cachyos::installer {
 /// @return true if connected within the timeout.
 [[nodiscard]] auto wait_for_connection(const std::chrono::seconds& timeout_secs) noexcept -> bool;
 
-/// Installs CachyOS repos on the live system and refreshes pacman databases.
+/// Refreshes live system keyrings.
 [[nodiscard]] auto install_cachyos_repo() noexcept -> std::expected<void, std::string>;
 
 }  // namespace cachyos::installer

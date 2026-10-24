@@ -1,4 +1,5 @@
 #include "cachyos/disk.hpp"
+#include "cachyos/result.hpp"
 #include "cachyos/steps.hpp"
 #include "cachyos/types.hpp"
 
@@ -8,8 +9,8 @@
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
+#include "gucc/ranges_utils.hpp"
 
-#include <algorithm>    // for find
 #include <filesystem>   // for path, lexically_relative
 #include <ranges>       // for ranges::*
 #include <string>       // for string
@@ -45,7 +46,7 @@ auto mount_selections_from_schema(const std::vector<gucc::fs::Partition>& partit
 
     MountSelections mounts{};
     for (const auto& part : partitions) {
-        if (part.mountpoint == "/"sv) {
+        if (part.is_root()) {
             mounts.root = {
                 .device           = part.device,
                 .fstype           = part.fstype,
@@ -112,20 +113,17 @@ auto needs_umount(const InstallContext& ctx) noexcept -> bool {
 
 auto partition(InstallContext& ctx) noexcept
     -> std::expected<void, std::string> {
-    const auto is_efi = ctx.system_mode == InstallContext::SystemMode::UEFI;
+    const auto is_efi = ctx.is_uefi();
 
     // format+mount
     const auto record = [&ctx, is_efi](MountSelections selections) -> std::expected<void, std::string> {
         if (is_efi) {
             ctx.uefi_mount = selections.esp.device.empty() ? std::string{} : selections.esp.mountpoint;
         }
-        auto applied = apply_mount_selections(selections, ctx.mountpoint);
-        if (!applied) {
-            return std::unexpected(std::move(applied).error());
-        }
-        ctx.partition_schema = std::move(applied->partitions);
-        ctx.swap_device      = std::move(applied->swap_device);
-        return {};
+        return apply_mount_selections(selections, ctx.mountpoint).transform([&ctx](MountApplicationResult applied) {
+            ctx.partition_schema = std::move(applied.partitions);
+            ctx.swap_device      = std::move(applied.swap_device);
+        });
     };
 
     return ctx.strategy.visit(overloads{
@@ -143,21 +141,22 @@ auto partition(InstallContext& ctx) noexcept
         },
         [&](const partition_strategy::CreateLayout& layout) -> std::expected<void, std::string> {
             spdlog::info("creating {} partitions on '{}'", layout.partitions.size(), layout.device);
-            if (auto res = gucc::disk::make_clean_partschema(layout.device, layout.partitions, is_efi); !res) {
-                return std::unexpected(fmt::format("failed to write partition table on '{}': {}",
-                    layout.device, gucc::to_string(res.error())));
+            if (auto res = lift(gucc::disk::make_clean_partschema(layout.device, layout.partitions, is_efi),
+                    fmt::format(FMT_COMPILE("failed to write partition table on '{}'"), layout.device));
+                !res) {
+                return res;
             }
 
             auto selections = mount_selections_from_schema(layout.partitions, layout.btrfs_subvolumes);
 
             // zfs shits
             if (layout.zfs_setup) {
-                const auto root_it = std::ranges::find(layout.partitions, "/"sv, &gucc::fs::Partition::mountpoint);
-                if (root_it == std::ranges::end(layout.partitions)) {
+                const auto root = gucc::utils::find_if_optional(layout.partitions, &gucc::fs::Partition::is_root);
+                if (!root) {
                     return std::unexpected("zfs root requested but no partition is mounted at '/'"s);
                 }
-                if (auto res = apply_zfs_root(*layout.zfs_setup, root_it->device, ctx.mountpoint); !res) {
-                    return std::unexpected(std::move(res).error());
+                if (auto res = apply_zfs_root(*layout.zfs_setup, root->device, ctx.mountpoint); !res) {
+                    return res;
                 }
                 ctx.zfs_zpool_names.push_back(layout.zfs_setup->zpool_name);
                 ctx.zfs_encrypted = layout.zfs_setup->passphrase.has_value();
@@ -170,11 +169,9 @@ auto partition(InstallContext& ctx) noexcept
             spdlog::warn("erasing '{}' and applying the default layout", layout.device);
             // TODO(vnepogodin): refactor that later
             const auto& bios_mode = is_efi ? "UEFI"sv : "BIOS"sv;
-            auto partitions       = auto_partition(layout.device, bios_mode, ctx.bootloader);
-            if (!partitions) {
-                return std::unexpected(partitions.error());
-            }
-            return record(mount_selections_from_auto(*partitions));
+            return auto_partition(layout.device, bios_mode, ctx.bootloader).and_then([&record](const auto& partitions) {
+                return record(mount_selections_from_auto(partitions));
+            });
         },
     });
 }
