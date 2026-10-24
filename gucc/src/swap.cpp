@@ -1,6 +1,7 @@
 #include "gucc/swap.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -10,7 +11,7 @@ using namespace std::string_view_literals;
 namespace gucc::swap {
 
 auto make_swapfile(std::string_view root_mountpoint, std::string_view swap_size) noexcept -> Result<void> {
-    const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), root_mountpoint);
+    const auto& swapfile_path = utils::target_path(root_mountpoint, "/swapfile"sv);
 
     // allocate size for the file
     const auto& alloc_cmd = fmt::format(FMT_COMPILE("fallocate -l {} {}"), swap_size, swapfile_path);

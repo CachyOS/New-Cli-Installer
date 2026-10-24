@@ -1,5 +1,6 @@
 #include "gucc/systemd_services.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <filesystem>   // for exists
 #include <string>       // for string
@@ -46,7 +47,7 @@ auto systemd_unit_exists(std::string_view unit_name, std::string_view root_mount
     if (!unit_name.contains('.')) {
         full_name += ".service";
     }
-    return fs::exists(fmt::format(FMT_COMPILE("{}/usr/lib/systemd/system/{}"), root_mountpoint, full_name));
+    return fs::exists(utils::target_path(root_mountpoint, fmt::format(FMT_COMPILE("/usr/lib/systemd/system/{}"), full_name)));
 }
 
 }  // namespace gucc::services

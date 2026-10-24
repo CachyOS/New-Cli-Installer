@@ -1,7 +1,7 @@
 #include "gucc/keyboard.hpp"
 #include "gucc/file_utils.hpp"
+#include "gucc/string_utils.hpp"
 
-#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -10,7 +10,6 @@
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
-namespace fs = std::filesystem;
 using namespace std::string_view_literals;
 
 namespace {
@@ -19,11 +18,11 @@ auto as_view(const std::optional<std::string>& opt) noexcept -> std::optional<st
     return opt.transform([](const std::string& str) { return std::string_view{str}; });
 }
 
-auto write_config(const fs::path& dir, std::string_view filename, std::string_view body) noexcept -> gucc::Result<void> {
-    if (auto res = gucc::file_utils::create_directories(dir.native()); !res) {
+auto write_config(std::string_view dir, std::string_view filename, std::string_view body) noexcept -> gucc::Result<void> {
+    if (auto res = gucc::file_utils::create_directories(dir); !res) {
         return res;
     }
-    const auto path = (dir / filename).string();
+    const auto path = gucc::utils::target_path(dir, filename);
     if (auto res = gucc::file_utils::write_file(path, body); !res) {
         return res;
     }
@@ -67,10 +66,8 @@ auto make_x11_keymap_conf(std::string_view layout,
 }
 
 auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto etc_dir = fs::path{root_mountpoint} / "etc";
-
     if (cfg.console_keymap) {
-        if (auto res = write_config(etc_dir, "vconsole.conf"sv, make_vconsole_conf(*cfg.console_keymap, as_view(cfg.console_font))); !res) {
+        if (auto res = write_config(utils::target_path(root_mountpoint, "/etc"sv), "vconsole.conf"sv, make_vconsole_conf(*cfg.console_keymap, as_view(cfg.console_font))); !res) {
             return res;
         }
     }
@@ -78,7 +75,7 @@ auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> Resu
     if (cfg.x11_layout) {
         const auto body = make_x11_keymap_conf(*cfg.x11_layout,
             as_view(cfg.x11_model), as_view(cfg.x11_variant), as_view(cfg.x11_options));
-        if (auto res = write_config(etc_dir / "X11" / "xorg.conf.d", "00-keyboard.conf"sv, body); !res) {
+        if (auto res = write_config(utils::target_path(root_mountpoint, "/etc/X11/xorg.conf.d"sv), "00-keyboard.conf"sv, body); !res) {
             return res;
         }
     }

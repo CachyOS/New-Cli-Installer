@@ -1,6 +1,8 @@
 #ifndef STRING_UTILS_HPP
 #define STRING_UTILS_HPP
 
+#include "gucc/cctype_wrapper.hpp"
+
 #include <cstddef>  // for size_t
 
 #include <algorithm>    // for find_if_not
@@ -150,6 +152,76 @@ constexpr auto rtrim(std::string_view str) noexcept -> std::string_view {
 /// @return The trimmed string view.
 constexpr auto trim(std::string_view str) noexcept -> std::string_view {
     return rtrim(ltrim(str));
+}
+
+/// @brief Strip prefix from string view.
+/// @param str The string to work on.
+/// @param prefix The string prefix.
+/// @return The string view optional without prefix, std::nullopt otherwise.
+[[nodiscard]] constexpr auto strip_prefix(std::string_view str, std::string_view prefix) noexcept -> std::optional<std::string_view> {
+    return str.starts_with(prefix) ? std::optional{str.substr(prefix.size())} : std::nullopt;
+}
+
+/// @brief Strip suffix from string view.
+/// @param str The string to work on.
+/// @param suffix The string suffix.
+/// @return The string view optional without suffix, std::nullopt otherwise.
+[[nodiscard]] constexpr auto strip_suffix(std::string_view str, std::string_view suffix) noexcept -> std::optional<std::string_view> {
+    return str.ends_with(suffix) ? std::optional{str.substr(0, str.size() - suffix.size())} : std::nullopt;
+}
+
+/// @p str between @p open and @p close.
+[[nodiscard]] constexpr auto strip_enclosing(std::string_view str, std::string_view open, std::string_view close) noexcept -> std::optional<std::string_view> {
+    if (str.size() < (open.size() + close.size())) {
+        return std::nullopt;
+    }
+    return strip_prefix(str, open).and_then([close](std::string_view rest) { return strip_suffix(rest, close); });
+}
+
+/// @p str without one pair of matching single or double quotes, otherwise unchanged.
+[[nodiscard]] constexpr auto unquote(std::string_view str) noexcept -> std::string_view {
+    if (str.size() >= 2 && (str.front() == '"' || str.front() == '\'') && (str.back() == str.front())) {
+        return str.substr(1, str.size() - 2);
+    }
+    return str;
+}
+
+[[nodiscard]] constexpr auto to_lower(std::string_view str) -> std::string {
+    return str
+        | std::ranges::views::transform([](char ch) { return ::gucc::utils::to_lower(ch); })
+        | std::ranges::to<std::string>();
+}
+
+// NOTE: ASCII case-insensitive.
+[[nodiscard]] constexpr auto iequals(std::string_view lhs, std::string_view rhs) noexcept -> bool {
+    constexpr auto lower = [](char ch) { return ::gucc::utils::to_lower(ch); };
+    return std::ranges::equal(lhs, rhs, {}, lower, lower);
+}
+
+/// @p path without trailing slashes.
+[[nodiscard]] constexpr auto strip_trailing_slashes(std::string_view path) noexcept -> std::string_view {
+    const auto last = path.find_last_not_of('/');
+    return last == std::string_view::npos ? path.substr(0, std::min<std::size_t>(path.size(), 1)) : path.substr(0, last + 1);
+}
+
+/// Directory name without its trailing slashes.
+[[nodiscard]] constexpr auto dirname(std::string_view path) noexcept -> std::string_view {
+    const auto pos = path.find_last_of('/');
+    return pos == std::string_view::npos ? std::string_view{} : strip_trailing_slashes(path.substr(0, pos + 1));
+}
+
+/// Host path of @p path inside the tree at @p root.
+[[nodiscard]] constexpr auto target_path(std::string_view root, std::string_view path) -> std::string {
+    const auto root_end   = root.find_last_not_of('/');
+    const auto path_begin = path.find_first_not_of('/');
+    std::string joined{(root_end == std::string_view::npos) ? std::string_view{} : root.substr(0, root_end + 1)};
+    if (path_begin == std::string_view::npos) {
+        // keep the root itself
+        return joined.empty() ? std::string{root.empty() ? path : std::string_view{"/"}} : joined;
+    }
+    joined += '/';
+    joined += path.substr(path_begin);
+    return joined;
 }
 
 /// True when @p line starts with @p word followed by one of @p delims or the end.

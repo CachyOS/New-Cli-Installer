@@ -61,7 +61,7 @@ auto set_timezone(std::string_view timezone, std::string_view mountpoint) noexce
 
     // Remove existing localtime symlink if it exists
     std::error_code ec{};
-    const auto& localtime_path = fmt::format(FMT_COMPILE("{}/etc/localtime"), mountpoint);
+    const auto& localtime_path = utils::target_path(mountpoint, "/etc/localtime"sv);
     if (fs::exists(localtime_path)) {
         fs::remove(localtime_path, ec);
         if (ec) {

@@ -1,5 +1,6 @@
 #include "gucc/plymouth.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -21,11 +22,11 @@ namespace gucc::plymouth {
 
 auto is_installed(std::string_view root_mountpoint) noexcept -> bool {
     std::error_code ec;
-    return fs::exists(fs::path{root_mountpoint} / "usr" / "bin" / "plymouth", ec);
+    return fs::exists(utils::target_path(root_mountpoint, "/usr/bin/plymouth"sv), ec);
 }
 
 auto list_themes(std::string_view root_mountpoint) noexcept -> std::vector<std::string> {
-    const auto themes_dir = fs::path{root_mountpoint} / "usr" / "share" / "plymouth" / "themes";
+    const auto themes_dir = utils::target_path(root_mountpoint, "/usr/share/plymouth/themes"sv);
     std::error_code ec;
     if (!fs::is_directory(themes_dir, ec)) {
         return {};

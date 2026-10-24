@@ -1,4 +1,5 @@
 #include "gucc/luks_swap.hpp"
+#include "gucc/block_devices.hpp"
 #include "gucc/conf.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/string_utils.hpp"
@@ -72,20 +73,20 @@ auto make_fstab_line(std::string_view mapper_name) noexcept -> std::string {
 
 auto add_crypttab_entry(const RandomKeyConfig& cfg,
     std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto path = (fs::path{root_mountpoint} / "etc" / "crypttab").string();
+    const auto path = utils::target_path(root_mountpoint, "/etc/crypttab"sv);
     return rewrite_file_with_entry(path, [name = cfg.mapper_name](std::string_view line) { return detail::line_owns_name(line, name); }, make_crypttab_line(cfg));
 }
 
 auto add_fstab_entry(std::string_view mapper_name,
     std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto path  = (fs::path{root_mountpoint} / "etc" / "fstab").string();
-    const auto first = fmt::format(FMT_COMPILE("/dev/mapper/{}"), mapper_name);
+    const auto path  = utils::target_path(root_mountpoint, "/etc/fstab"sv);
+    const auto first = disk::mapper_path(mapper_name);
     return rewrite_file_with_entry(path, [&first](std::string_view line) { return detail::line_owns_name(line, first); }, make_fstab_line(mapper_name));
 }
 
 auto replace_swap_in_fstab(std::string_view mapper_name,
     std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto path = (fs::path{root_mountpoint} / "etc" / "fstab").string();
+    const auto path = utils::target_path(root_mountpoint, "/etc/fstab"sv);
     return rewrite_file_with_entry(path, detail::is_swap_type_line, make_fstab_line(mapper_name));
 }
 

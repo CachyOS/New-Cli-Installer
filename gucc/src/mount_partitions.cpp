@@ -52,7 +52,7 @@ auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int
 }
 
 auto setup_esp_partition(std::string_view device, std::string_view mountpoint, std::string_view base_mountpoint, bool format, bool is_ssd) noexcept -> Result<fs::Partition> {
-    const auto& full_mountpoint = fmt::format(FMT_COMPILE("{}{}"), base_mountpoint, mountpoint);
+    const auto& full_mountpoint = utils::target_path(base_mountpoint, mountpoint);
 
     // Format esp part if requested
     if (format) {

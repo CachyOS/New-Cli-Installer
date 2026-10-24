@@ -26,20 +26,17 @@ constexpr auto parse_table_row(std::string_view line) noexcept -> std::optional<
     constexpr auto kBorder    = "│"sv;
     constexpr auto kSeparator = "┆"sv;
 
-    line = gucc::utils::trim(line);
-    if ((line.size() < 2 * kBorder.size()) || !line.starts_with(kBorder) || !line.ends_with(kBorder)) {
+    const auto cells = gucc::utils::strip_enclosing(gucc::utils::trim(line), kBorder, kBorder);
+    if (!cells) {
         return std::nullopt;
     }
-    line.remove_prefix(kBorder.size());
-    line.remove_suffix(kBorder.size());
-
-    const auto separator = line.find(kSeparator);
+    const auto separator = cells->find(kSeparator);
     if (separator == std::string_view::npos) {
         return std::nullopt;
     }
     return TableRow{
-        .key   = gucc::utils::trim(line.substr(0, separator)),
-        .value = gucc::utils::trim(line.substr(separator + kSeparator.size())),
+        .key   = gucc::utils::trim(cells->substr(0, separator)),
+        .value = gucc::utils::trim(cells->substr(separator + kSeparator.size())),
     };
 }
 

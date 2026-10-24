@@ -19,7 +19,6 @@
 using namespace std::string_view_literals;
 using namespace std::string_literals;
 
-static constexpr auto DEV_PATH_PREFIX  = "/dev/"sv;
 static constexpr auto TRAILING_NUMBERS = "0123456789"sv;
 
 namespace {
@@ -81,35 +80,35 @@ auto query_disks(std::string_view device) noexcept -> std::optional<std::vector<
     return gucc::disk::parse_lsblk_disks_json(*output);
 }
 
+// {disk, partition number} of a device name, without .dev.
+constexpr auto split_partition(std::string_view device) noexcept -> std::pair<std::string_view, std::string_view> {
+    device = gucc::utils::strip_prefix(device, gucc::disk::kDevPrefix).value_or(device);
+
+    // nvme case with partition number always after 'p'
+    if (device.starts_with("nvme"sv)) {
+        return gucc::utils::split_once(device, 'p').value_or(std::pair{device, std::string_view{}});
+    }
+
+    // regular case
+    const auto pos = device.find_last_not_of(TRAILING_NUMBERS);
+    if (pos == std::string_view::npos) {
+        return {device, {}};
+    }
+    return {device.substr(0, pos + 1), device.substr(pos + 1)};
+}
+
 }  // namespace
 
 namespace gucc::disk {
 
 auto parse_partition_number(std::string_view device) noexcept -> std::uint32_t {
-    if (device.starts_with(DEV_PATH_PREFIX)) {
-        device.remove_prefix(DEV_PATH_PREFIX.size());
-    }
-
-    // nvme case with partition number always after 'p'
-    if (device.starts_with("nvme"sv)) {
-        if (auto pos = device.find_first_of('p'); pos != std::string_view::npos) {
-            return utils::parse_uint<std::uint32_t>(device.substr(pos + 1)).value_or(0);
-        }
-        return 0;
-    }
-
-    // regular case
-    auto pos = device.find_last_not_of(TRAILING_NUMBERS);
-    if (pos == std::string_view::npos || pos == device.size() - 1) {
-        return 0;
-    }
-    return utils::parse_uint<std::uint32_t>(device.substr(pos + 1)).value_or(0);
+    return utils::parse_uint<std::uint32_t>(split_partition(device).second).value_or(0);
 }
 
 auto insert_partition_number(std::string_view device, std::uint32_t part_number) noexcept -> std::string {
     // preserve device path
     const auto& device_path = [device]() {
-        bool use_full_path = device.starts_with(DEV_PATH_PREFIX);
+        bool use_full_path = device.starts_with(kDevPrefix);
         auto disk_name     = get_disk_name_from_device(device);
         return use_full_path ? fmt::format(FMT_COMPILE("/dev/{}"), disk_name) : std::string{disk_name};
     }();
@@ -123,19 +122,7 @@ auto insert_partition_number(std::string_view device, std::uint32_t part_number)
 }
 
 auto get_disk_name_from_device(std::string_view device) noexcept -> std::string_view {
-    if (device.starts_with(DEV_PATH_PREFIX)) {
-        device.remove_prefix(DEV_PATH_PREFIX.size());
-    }
-
-    if (device.starts_with("nvme"sv)) {
-        if (auto pos = device.find_first_of('p'); pos != std::string_view::npos) {
-            return device.substr(0, pos);
-        }
-        return device;
-    }
-
-    auto pos = device.find_last_not_of(TRAILING_NUMBERS);
-    return (pos != std::string_view::npos) ? device.substr(0, pos + 1) : device;
+    return split_partition(device).first;
 }
 
 auto disk_transport_to_string(DiskTransport transport) noexcept -> std::string_view {

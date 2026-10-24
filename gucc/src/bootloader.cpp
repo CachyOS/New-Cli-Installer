@@ -180,7 +180,7 @@ auto parse_grub_line(const gucc::bootloader::GrubConfig& grub_config, std::strin
 }
 
 void remove_autodetect_hook(std::string_view root_mountpoint) noexcept {
-    const auto& initcpio_filename = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), root_mountpoint);
+    const auto& initcpio_filename = gucc::utils::target_path(root_mountpoint, "/etc/mkinitcpio.conf"sv);
     auto initcpio                 = gucc::detail::Initcpio{initcpio_filename};
     if (initcpio.remove_hook("autodetect")) {
         spdlog::info("\"autodetect\" hook was removed");
@@ -247,7 +247,7 @@ auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> Re
 
 auto write_grub_config(const GrubConfig& grub_config, std::string_view root_mountpoint) noexcept -> Result<void> {
     const auto& grub_config_content = bootloader::gen_grub_config(grub_config);
-    const auto& grub_config_path    = fmt::format(FMT_COMPILE("{}/etc/default/grub"), root_mountpoint);
+    const auto& grub_config_path    = utils::target_path(root_mountpoint, "/etc/default/grub"sv);
     return file_utils::write_file(grub_config_path, grub_config_content);
 }
 
@@ -349,13 +349,13 @@ auto install_refind(const RefindInstallConfig& refind_install_config) noexcept -
     const auto& refind_config_content = bootloader::gen_refind_config(refind_install_config.kernel_params);
 
     // Write generated config to system
-    const auto& refind_config_path = fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), refind_install_config.root_mountpoint);
+    const auto& refind_config_path = utils::target_path(refind_install_config.root_mountpoint, "/boot/refind_linux.conf"sv);
     if (auto res = file_utils::write_file(refind_config_path, refind_config_content); !res) {
         return res;
     }
 
     // handle extra kernel version strings in {efi boot partition}/EFI/refind/refind.conf
-    const auto& extra_refind_config_path = fmt::format(FMT_COMPILE("{}/EFI/refind/refind.conf"), refind_install_config.boot_mountpoint);
+    const auto& extra_refind_config_path = utils::target_path(refind_install_config.boot_mountpoint, "/EFI/refind/refind.conf"sv);
     return bootloader::refind_write_extra_kern_strings(extra_refind_config_path, refind_install_config.extra_kernel_versions);
 }
 
@@ -374,13 +374,13 @@ auto gen_limine_entry_config(const std::vector<std::string>& kernel_params, std:
 
 auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -> Result<void> {
     // Write limine.conf theme/base config to the boot partition
-    const auto& limine_config_path = fmt::format(FMT_COMPILE("{}/limine.conf"), limine_install_config.boot_mountpoint);
+    const auto& limine_config_path = utils::target_path(limine_install_config.boot_mountpoint, "/limine.conf"sv);
     if (auto res = file_utils::write_file(limine_config_path, LIMINE_DEFAULT_CONFIG); !res) {
         return res;
     }
 
     // Write /etc/default/limine config
-    const auto& limine_entry_config_path = fmt::format(FMT_COMPILE("{}/etc/default/limine"), limine_install_config.root_mountpoint);
+    const auto& limine_entry_config_path = utils::target_path(limine_install_config.root_mountpoint, "/etc/default/limine"sv);
     const auto& limine_config_content    = bootloader::gen_limine_entry_config(
         limine_install_config.kernel_params, limine_install_config.efi_directory);
     if (auto res = file_utils::write_file(limine_entry_config_path, limine_config_content); !res) {
@@ -410,8 +410,8 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
         }
 
         // Copy limine-bios.sys to boot partition
-        const auto& bios_sys_src = fmt::format(FMT_COMPILE("{}/usr/share/limine/limine-bios.sys"), limine_install_config.root_mountpoint);
-        const auto& bios_sys_dst = fmt::format(FMT_COMPILE("{}/limine-bios.sys"), limine_install_config.boot_mountpoint);
+        const auto& bios_sys_src = utils::target_path(limine_install_config.root_mountpoint, "/usr/share/limine/limine-bios.sys"sv);
+        const auto& bios_sys_dst = utils::target_path(limine_install_config.boot_mountpoint, "/limine-bios.sys"sv);
 
         if (auto res = file_utils::copy_file(bios_sys_src, bios_sys_dst); !res) {
             return res;

@@ -9,6 +9,7 @@
 #include "gucc/locale.hpp"
 #include "gucc/mirrors.hpp"
 #include "gucc/repos.hpp"
+#include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
 #include "gucc/zfs.hpp"
 
@@ -48,12 +49,12 @@ auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> gucc::Result<vo
     if (auto res = gucc::utils::exec_or_error(zpool_cmd, "set zpool cachefile"sv); !res) {
         return res;
     }
-    if (auto res = gucc::file_utils::create_directories(fmt::format(FMT_COMPILE("{}/etc/zfs"), mountpoint)); !res) {
+    if (auto res = gucc::file_utils::create_directories(gucc::utils::target_path(mountpoint, "/etc/zfs"sv)); !res) {
         return res;
     }
 
     static constexpr auto cache_src = "/etc/zfs/zpool.cache"sv;
-    return gucc::file_utils::copy_file(cache_src, fmt::format(FMT_COMPILE("{}{}"), mountpoint, cache_src));
+    return gucc::file_utils::copy_file(cache_src, gucc::utils::target_path(mountpoint, cache_src));
 }
 
 }  // namespace
@@ -72,7 +73,7 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
     }
 
     // 1. Create obligatory directories on target
-    if (auto res = file_utils::create_directories(fmt::format(FMT_COMPILE("{}/etc"), mountpoint)); !res) {
+    if (auto res = file_utils::create_directories(utils::target_path(mountpoint, "/etc"sv)); !res) {
         return res;
     }
 
@@ -109,7 +110,7 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
             spdlog::info("{} not found on the host, keeping the packaged one", entry.source);
             continue;
         }
-        if (auto res = file_utils::copy_file(entry.source, fmt::format(FMT_COMPILE("{}{}"), mountpoint, entry.destination)); !res) {
+        if (auto res = file_utils::copy_file(entry.source, utils::target_path(mountpoint, entry.destination)); !res) {
             return res;
         }
     }
@@ -122,7 +123,7 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
     }
 
     // 6. Configure mkinitcpio
-    const auto initcpio_path = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+    const auto initcpio_path = utils::target_path(mountpoint, "/etc/mkinitcpio.conf"sv);
     if (auto res = gucc::initcpio::setup_initcpio_config(initcpio_path, config.initcpio_config); !res) {
         return res;
     }

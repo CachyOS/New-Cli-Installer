@@ -106,7 +106,7 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
         return {};
     }
 
-    const auto& sudoers_filepath = fmt::format(FMT_COMPILE("{}/etc/sudoers.d/10-installer"), mountpoint);
+    const auto& sudoers_filepath = utils::target_path(mountpoint, "/etc/sudoers.d/10-installer"sv);
     const auto& sudoers_line     = fmt::format(FMT_COMPILE("%{} ALL=(ALL) ALL\n"), user_info.sudoers_group);
     if (auto res = file_utils::write_file(sudoers_filepath, sudoers_line); !res) {
         return res;
@@ -123,7 +123,7 @@ auto create_new_user(const user::UserInfo& user_info, const std::vector<std::str
 }
 
 auto set_hostname(std::string_view hostname, std::string_view mountpoint) noexcept -> Result<void> {
-    const auto& hostname_filepath = fmt::format(FMT_COMPILE("{}/etc/hostname"), mountpoint);
+    const auto& hostname_filepath = utils::target_path(mountpoint, "/etc/hostname"sv);
     if (auto res = file_utils::write_file(hostname_filepath, fmt::format(FMT_COMPILE("{}\n"), hostname)); !res) {
         return res;
     }
@@ -141,7 +141,7 @@ ff02::2    ip6-allrouters
 127.0.1.1  {}
 )";
 
-    const auto& hosts_filepath = fmt::format(FMT_COMPILE("{}/etc/hosts"), mountpoint);
+    const auto& hosts_filepath = utils::target_path(mountpoint, "/etc/hosts"sv);
     const auto& hosts_text     = fmt::format(FMT_COMPILE("{}{}"), STANDARD_HOSTS, hostname.empty() ? std::string{} : fmt::format(REQUESTED_HOST, hostname));
     return file_utils::write_file(hosts_filepath, hosts_text);
 }

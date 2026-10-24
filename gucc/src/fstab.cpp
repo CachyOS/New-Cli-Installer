@@ -1,15 +1,14 @@
 #include "gucc/fstab.hpp"
+#include "gucc/block_devices.hpp"
 #include "gucc/conf.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs_query.hpp"
 
-#include <cctype>  // for tolower
-
-#include <algorithm>   // for transform
-#include <filesystem>  // for fs::path
-#include <ranges>      // for ranges::transform
+#include <algorithm>   // for contains
+#include <filesystem>  // for path
+#include <ranges>      // for ranges::*
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -53,16 +52,8 @@ constexpr auto get_mount_options(std::string_view mount_opts, std::string_view b
     return std::string{mount_opts};
 }
 
-constexpr auto string_tolower(std::string_view text) noexcept -> std::string {
-    std::string res{text};
-    std::ranges::transform(res, res.begin(),
-        [](char char_elem) { return static_cast<char>(std::tolower(static_cast<unsigned char>(char_elem))); });
-    return res;
-}
-
 constexpr auto get_converted_fs(std::string_view fstype) noexcept -> std::string {
-    auto lower_fstype = string_tolower(fstype);
-    return std::string{convert_fsname_fstab(lower_fstype)};
+    return std::string{convert_fsname_fstab(gucc::utils::to_lower(fstype))};
 }
 
 }  // namespace
@@ -88,7 +79,7 @@ auto gen_fstab_entry(const Partition& partition) noexcept -> std::optional<std::
 
     std::string device_str{partition.device};
     if (luks_mapper_name) {
-        device_str = fmt::format(FMT_COMPILE("/dev/mapper/{}"), *luks_mapper_name);
+        device_str = disk::mapper_path(*luks_mapper_name);
     } else if (!partition.uuid_str.empty()) {
         device_str = fmt::format(FMT_COMPILE("UUID={}"), partition.uuid_str);
     }
@@ -118,13 +109,13 @@ auto generate_fstab_content(const std::vector<Partition>& partitions) noexcept -
 }
 
 auto generate_fstab(const std::vector<Partition>& partitions, std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto& fstab_filepath = fmt::format(FMT_COMPILE("{}/etc/fstab"), root_mountpoint);
+    const auto& fstab_filepath = utils::target_path(root_mountpoint, "/etc/fstab"sv);
     const auto& fstab_content  = fs::generate_fstab_content(partitions);
     return file_utils::write_file(fstab_filepath, fstab_content);
 }
 
 auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto& fstab_filepath = fmt::format(FMT_COMPILE("{}/etc/fstab"), root_mountpoint);
+    const auto& fstab_filepath = utils::target_path(root_mountpoint, "/etc/fstab"sv);
 
     // run command to generate fstab
     const auto& fstab_cmd = fmt::format(FMT_COMPILE("genfstab -U -p {} > {}"), root_mountpoint, fstab_filepath);
@@ -138,7 +129,7 @@ auto run_genfstab_on_mount(std::string_view root_mountpoint) noexcept -> Result<
 
     // append swapfile in case it was detected
     auto content          = fstab_content;
-    const auto& swap_file = fmt::format(FMT_COMPILE("{}/swapfile"), root_mountpoint);
+    const auto& swap_file = utils::target_path(root_mountpoint, "/swapfile"sv);
     if (::fs::exists(swap_file) && ::fs::is_regular_file(swap_file)) {
         spdlog::info("Appending swapfile to the fstab..");
         content = detail::strip_root_prefix(content, root_mountpoint);

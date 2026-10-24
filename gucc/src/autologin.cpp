@@ -2,6 +2,7 @@
 #include "gucc/conf.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 #include "gucc/user.hpp"
 
 #include <filesystem>        // for exists
@@ -9,9 +10,6 @@
 #include <string>            // for string
 #include <system_error>      // for error_code
 #include <utility>           // for pair
-
-#include <fmt/compile.h>
-#include <fmt/format.h>
 
 using namespace std::string_view_literals;
 using namespace std::string_literals;
@@ -33,11 +31,11 @@ namespace gucc::user {
 
 auto enable_autologin(std::string_view displaymanager, std::string_view username, std::string_view root_mountpoint) noexcept -> Result<void> {
     if (displaymanager == "gdm"sv) {
-        return set_config_values(fmt::format(FMT_COMPILE("{}/etc/gdm/custom.conf"), root_mountpoint), "daemon"sv,
+        return set_config_values(utils::target_path(root_mountpoint, "/etc/gdm/custom.conf"sv), "daemon"sv,
             {{"AutomaticLoginEnable"sv, "True"sv}, {"AutomaticLogin"sv, username}});
     }
     if (displaymanager == "lightdm"sv) {
-        if (auto res = set_config_values(fmt::format(FMT_COMPILE("{}/etc/lightdm/lightdm.conf"), root_mountpoint), "Seat:*"sv,
+        if (auto res = set_config_values(utils::target_path(root_mountpoint, "/etc/lightdm/lightdm.conf"sv), "Seat:*"sv,
                 {{"autologin-user"sv, username}, {"autologin-user-timeout"sv, "0"sv}});
             !res) {
             return res;
@@ -48,13 +46,13 @@ auto enable_autologin(std::string_view displaymanager, std::string_view username
         return utils::arch_chroot_or_error({"/usr/bin/gpasswd"s, "-a"s, std::string{username}, "autologin"s}, root_mountpoint, "add user to autologin group"sv);
     }
     if (displaymanager == "plasmalogin"sv) {
-        return set_config_values(fmt::format(FMT_COMPILE("{}/etc/plasmalogin.conf"), root_mountpoint), "Autologin"sv, {{"User"sv, username}});
+        return set_config_values(utils::target_path(root_mountpoint, "/etc/plasmalogin.conf"sv), "Autologin"sv, {{"User"sv, username}});
     }
     if (displaymanager == "sddm"sv) {
-        return set_config_values(fmt::format(FMT_COMPILE("{}/etc/sddm.conf"), root_mountpoint), "Autologin"sv, {{"User"sv, username}});
+        return set_config_values(utils::target_path(root_mountpoint, "/etc/sddm.conf"sv), "Autologin"sv, {{"User"sv, username}});
     }
     if (displaymanager == "lxdm"sv) {
-        return set_config_values(fmt::format(FMT_COMPILE("{}/etc/lxdm/lxdm.conf"), root_mountpoint), "base"sv, {{"autologin"sv, username}});
+        return set_config_values(utils::target_path(root_mountpoint, "/etc/lxdm/lxdm.conf"sv), "base"sv, {{"autologin"sv, username}});
     }
     return {};
 }

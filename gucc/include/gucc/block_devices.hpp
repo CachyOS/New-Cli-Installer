@@ -1,6 +1,8 @@
 #ifndef BLOCK_DEVICES_HPP
 #define BLOCK_DEVICES_HPP
 
+#include "gucc/string_utils.hpp"
+
 #include <cstdint>      // for uint64_t
 #include <optional>     // for optional
 #include <string>       // for string
@@ -88,18 +90,21 @@ auto find_ancestor_of_type(const std::vector<BlockDevice>& devices, std::string_
 /// @return A vector of matching BlockDevice objects.
 auto find_devices_by_type(const std::vector<BlockDevice>& devices, std::string_view type) -> std::vector<BlockDevice>;
 
+inline constexpr std::string_view kDevPrefix{"/dev/"};
+inline constexpr std::string_view kDevMapperPrefix{"/dev/mapper/"};
+
 /// @brief Strips /dev/mapper/ or /dev/ prefix from a device path
 /// @param device The device path (e.g., /dev/mapper/cryptroot or /dev/sda1)
 /// @return The device name without the prefix (e.g., cryptroot or sda1)
 constexpr auto strip_device_prefix(std::string_view device) noexcept -> std::string_view {
-    constexpr std::string_view dev_mapper_prefix{"/dev/mapper/"};
-    constexpr std::string_view dev_prefix{"/dev/"};
-    if (device.starts_with(dev_mapper_prefix)) {
-        device.remove_prefix(dev_mapper_prefix.size());
-    } else if (device.starts_with(dev_prefix)) {
-        device.remove_prefix(dev_prefix.size());
-    }
-    return device;
+    return utils::strip_prefix(device, kDevMapperPrefix)
+        .or_else([device] { return utils::strip_prefix(device, kDevPrefix); })
+        .value_or(device);
+}
+
+/// Device node of the device-mapper target @p name, the inverse of strip_device_prefix.
+[[nodiscard]] constexpr auto mapper_path(std::string_view name) -> std::string {
+    return std::string{kDevMapperPrefix}.append(name);
 }
 
 /// @brief Returns all devices matching both type and fstype.

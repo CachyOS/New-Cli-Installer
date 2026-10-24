@@ -61,13 +61,6 @@ constexpr auto words(std::string_view line) noexcept {
         | std::ranges::views::take_while([](std::string_view word) { return !word.starts_with('#'); });
 }
 
-constexpr auto unquote(std::string_view word) noexcept -> std::string_view {
-    if (word.size() >= 2 && (word.front() == '"' || word.front() == '\'') && word.back() == word.front()) {
-        return word.substr(1, word.size() - 2);
-    }
-    return word;
-}
-
 auto parse_array(std::string_view value) -> std::vector<std::string> {
     const auto open = value.find('(');
     if (open == std::string_view::npos) {
@@ -77,7 +70,7 @@ auto parse_array(std::string_view value) -> std::vector<std::string> {
     for (const auto word : words(value.substr(open + 1))) {
         const auto close = word.find(')');
         if (const auto head = word.substr(0, close); !head.empty()) {
-            values.emplace_back(unquote(head));
+            values.emplace_back(gucc::utils::unquote(head));
         }
         if (close != std::string_view::npos) {
             return values;

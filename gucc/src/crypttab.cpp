@@ -1,6 +1,7 @@
 #include "gucc/crypttab.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <algorithm>  // for any_of, sort, unique_copy
 #include <ranges>     // for ranges::*
@@ -81,7 +82,7 @@ auto generate_crypttab_content(const std::vector<Partition>& partitions, std::st
 }
 
 auto generate_crypttab(const std::vector<Partition>& partitions, std::string_view root_mountpoint, std::string_view crypttab_opts) noexcept -> Result<void> {
-    const auto& crypttab_filepath = fmt::format(FMT_COMPILE("{}/etc/crypttab"), root_mountpoint);
+    const auto& crypttab_filepath = utils::target_path(root_mountpoint, "/etc/crypttab"sv);
     const auto& crypttab_content  = fs::generate_crypttab_content(partitions, crypttab_opts);
     return file_utils::write_file(crypttab_filepath, crypttab_content);
 }

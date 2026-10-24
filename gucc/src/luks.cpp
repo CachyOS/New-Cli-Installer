@@ -1,6 +1,7 @@
 #include "gucc/luks.hpp"
 #include "gucc/error.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include "detail/initcpio_impl.hpp"
 
@@ -81,7 +82,7 @@ auto luks_setup_keyfile(std::string_view dest_file, std::string_view mountpoint,
     }
 
     // 4. Add keyfile to initcpio
-    const auto& mkinitcpio_conf = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+    const auto& mkinitcpio_conf = utils::target_path(mountpoint, "/etc/mkinitcpio.conf"sv);
 
     // TODO(vnepogodin): that should gathered from dest_file and be relative to mountpoint
     static constexpr auto initcpio_keyfile = "/crypto_keyfile.bin"sv;

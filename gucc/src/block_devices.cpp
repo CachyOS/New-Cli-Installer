@@ -1,11 +1,11 @@
 #include "gucc/block_devices.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/ranges_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include "detail/lsblk_json.hpp"
 
-#include <algorithm>  // for find, find_if, equal
-#include <cctype>     // for tolower
+#include <algorithm>  // for contains
 #include <ranges>     // for ranges::*
 #include <set>        // for set
 #include <utility>    // for move
@@ -134,13 +134,8 @@ auto find_devices_by_type(const std::vector<BlockDevice>& devices, std::string_v
 }
 
 auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, std::string_view type, std::string_view fstype) -> std::vector<BlockDevice> {
-    auto ci_equal = [](std::string_view a, std::string_view b) {
-        return std::ranges::equal(a, b, [](unsigned char x, unsigned char y) {
-            return std::tolower(x) == std::tolower(y);
-        });
-    };
     auto filtered = devices | std::ranges::views::filter([&](const auto& dev) {
-        return dev.type == type && ci_equal(dev.fstype, fstype);
+        return dev.type == type && utils::iequals(dev.fstype, fstype);
     });
     return {filtered.begin(), filtered.end()};
 }

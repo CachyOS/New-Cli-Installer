@@ -33,8 +33,8 @@ auto list_localectl(std::string_view subcommand, std::string_view what) noexcept
 namespace gucc::locale {
 
 auto prepare_locale_set(std::string_view locale, std::string_view mountpoint) noexcept -> Result<void> {
-    const auto& locale_config_path = fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint);
-    const auto& locale_gen_path    = fmt::format(FMT_COMPILE("{}/etc/locale.gen"), mountpoint);
+    const auto& locale_config_path = utils::target_path(mountpoint, "/etc/locale.conf"sv);
+    const auto& locale_gen_path    = utils::target_path(mountpoint, "/etc/locale.gen"sv);
 
     static constexpr auto LOCALE_CONFIG_PART = R"(LANG="{0}"
 LC_NUMERIC="{0}"

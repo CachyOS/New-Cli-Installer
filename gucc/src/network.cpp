@@ -24,8 +24,8 @@ namespace {
 
 using namespace gucc::network;
 
-constexpr auto kSystemConnectionsRel = "etc/NetworkManager/system-connections"sv;
-constexpr auto kConnectionExtension  = ".nmconnection"sv;
+constexpr auto kSystemConnections   = "/etc/NetworkManager/system-connections"sv;
+constexpr auto kConnectionExtension = ".nmconnection"sv;
 
 /// NM-required mode for system-connections files: 0600.
 constexpr auto kConnectionMode = fs::perms::owner_read | fs::perms::owner_write;
@@ -131,20 +131,20 @@ auto make_wifi_psk_profile(std::string_view id,
 auto write_connection(std::string_view filename,
     std::string_view body,
     std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto target_dir = fs::path{root_mountpoint} / kSystemConnectionsRel;
-    if (auto res = file_utils::create_directories(target_dir.native()); !res) {
+    const auto target_dir = utils::target_path(root_mountpoint, kSystemConnections);
+    if (auto res = file_utils::create_directories(target_dir); !res) {
         return res;
     }
-    const auto target_path = (target_dir / fs::path{filename}).string();
-    if (auto res = file_utils::write_file(target_path, body); !res) {
+    const auto conn_path = utils::target_path(target_dir, filename);
+    if (auto res = file_utils::write_file(conn_path, body); !res) {
         return res;
     }
     std::error_code ec;
-    fs::permissions(target_path, kConnectionMode, fs::perm_options::replace, ec);
+    fs::permissions(conn_path, kConnectionMode, fs::perm_options::replace, ec);
     if (ec) {
-        return make_error(ErrorCode::FileIo, FMT_COMPILE("network: failed to set 0600 on {}: {}"), target_path, ec.message());
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("network: failed to set 0600 on {}: {}"), conn_path, ec.message());
     }
-    spdlog::info("network: connection written to {}", target_path);
+    spdlog::info("network: connection written to {}", conn_path);
     return {};
 }
 
@@ -155,7 +155,7 @@ auto copy_connections_from(std::string_view source_dir,
         return 0;
     }
 
-    const auto target_dir = fs::path{root_mountpoint} / kSystemConnectionsRel;
+    const fs::path target_dir{utils::target_path(root_mountpoint, kSystemConnections)};
     if (auto res = file_utils::create_directories(target_dir.native()); !res) {
         spdlog::error("network: {}", to_string(res.error()));
         return -1;

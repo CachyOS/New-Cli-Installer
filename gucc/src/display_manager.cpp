@@ -1,6 +1,7 @@
 #include "gucc/display_manager.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/ranges_utils.hpp"
+#include "gucc/string_utils.hpp"
 #include "gucc/systemd_services.hpp"
 
 #include <algorithm>
@@ -101,13 +102,13 @@ auto pick_lightdm_greeter(std::string_view xgreeters_dir) noexcept -> std::optio
 }
 
 auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto xgreeters_dir = (fs::path{root_mountpoint} / "usr" / "share" / "xgreeters").string();
+    const auto xgreeters_dir = utils::target_path(root_mountpoint, "/usr/share/xgreeters"sv);
     const auto picked        = pick_lightdm_greeter(xgreeters_dir);
     if (!picked) {
         return {};
     }
 
-    const auto conf_path = (fs::path{root_mountpoint} / "etc" / "lightdm" / "lightdm.conf").string();
+    const auto conf_path = utils::target_path(root_mountpoint, "/etc/lightdm/lightdm.conf"sv);
     std::error_code ec;
     if (!fs::exists(conf_path, ec)) {
         spdlog::debug("display_manager: {} absent, skipping greeter config", conf_path);

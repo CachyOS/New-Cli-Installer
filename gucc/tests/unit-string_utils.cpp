@@ -11,9 +11,57 @@
 
 using namespace std::string_view_literals;
 
+static_assert(gucc::utils::strip_trailing_slashes("/mnt/"sv) == "/mnt"sv);
+static_assert(gucc::utils::strip_trailing_slashes("/mnt/boot//"sv) == "/mnt/boot"sv);
+static_assert(gucc::utils::strip_trailing_slashes("/mnt"sv) == "/mnt"sv);
+static_assert(gucc::utils::strip_trailing_slashes("relative/"sv) == "relative"sv);
+static_assert(gucc::utils::strip_trailing_slashes("/"sv) == "/"sv);
+static_assert(gucc::utils::strip_trailing_slashes("///"sv) == "/"sv);
+static_assert(gucc::utils::strip_trailing_slashes(""sv).empty());
+
+namespace utils = gucc::utils;
+
+static_assert(utils::strip_prefix("--config=a"sv, "--config="sv) == "a"sv);
+static_assert(utils::strip_prefix("--config"sv, "--config="sv) == std::nullopt);
+static_assert(utils::strip_prefix("x"sv, ""sv) == "x"sv);
+static_assert(utils::strip_suffix("vmlinuz.img"sv, ".img"sv) == "vmlinuz"sv);
+static_assert(utils::strip_suffix("img"sv, ".img"sv) == std::nullopt);
+static_assert(utils::strip_enclosing("│a┆b│"sv, "│"sv, "│"sv) == "a┆b"sv);
+static_assert(utils::strip_enclosing("││"sv, "│"sv, "│"sv) == ""sv);
+static_assert(utils::strip_enclosing("│"sv, "│"sv, "│"sv) == std::nullopt);
+static_assert(utils::strip_enclosing("(a"sv, "("sv, ")"sv) == std::nullopt);
+
+static_assert(utils::unquote(R"("a b")"sv) == "a b"sv);
+static_assert(utils::unquote("'a'"sv) == "a"sv);
+static_assert(utils::unquote(R"("a')"sv) == R"("a')"sv);
+static_assert(utils::unquote(R"(")"sv) == R"(")"sv);
+static_assert(utils::unquote(R"("")"sv).empty());
+
 static_assert(utils::to_lower('Q') == 'q' && utils::to_lower('1') == '1' && utils::to_upper('k') == 'K');
 static_assert(utils::to_lower(static_cast<char>(0xC4)) == static_cast<char>(0xC4));
 static_assert(utils::to_lower("VFAT-Ünit"sv) == "vfat-Ünit");
+static_assert(utils::iequals("Vfat"sv, "VFAT"sv));
+static_assert(!utils::iequals("vfat"sv, "vfat32"sv));
+static_assert(!utils::iequals("Ä"sv, "ä"sv));
+
+static_assert(utils::dirname("/@home"sv) == "/"sv);
+static_assert(utils::dirname("/@/var/log"sv) == "/@/var"sv);
+static_assert(utils::dirname("a//b"sv) == "a"sv);
+static_assert(utils::dirname("/"sv) == "/"sv);
+static_assert(utils::dirname("@home"sv).empty());
+
+TEST_CASE("target_path joins with one slash")
+{
+    CHECK_EQ(utils::target_path("/mnt"sv, "/boot/efi"sv), "/mnt/boot/efi");
+    CHECK_EQ(utils::target_path("/mnt/"sv, "/boot/efi"sv), "/mnt/boot/efi");
+    CHECK_EQ(utils::target_path("/mnt/"sv, "etc/fstab"sv), "/mnt/etc/fstab");
+    CHECK_EQ(utils::target_path("/mnt"sv, "/"sv), "/mnt");
+    CHECK_EQ(utils::target_path("/mnt"sv, ""sv), "/mnt");
+    CHECK_EQ(utils::target_path("/"sv, "/etc"sv), "/etc");
+    CHECK_EQ(utils::target_path(""sv, "/etc"sv), "/etc");
+    CHECK_EQ(utils::target_path("/"sv, ""sv), "/");
+    CHECK_EQ(utils::target_path(""sv, ""sv), "");
+}
 
 TEST_CASE("string_utils")
 {

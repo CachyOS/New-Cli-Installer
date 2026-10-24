@@ -19,18 +19,6 @@ using namespace std::string_view_literals;
 
 namespace {
 
-// same behaviour as os.path.dirname from python
-constexpr auto get_dirname(std::string_view full_path) noexcept -> std::string_view {
-    if (full_path == "/"sv) {
-        return full_path;
-    }
-    auto pos = full_path.find_last_of('/');
-    if (pos == std::string_view::npos) {
-        return {};
-    }
-    return full_path.substr(0, pos);
-}
-
 constexpr auto find_partition(const gucc::fs::Partition& part, const gucc::fs::BtrfsSubvolume& subvol) noexcept -> bool {
     return (part.mountpoint == subvol.mountpoint) || (part.subvolume && *part.subvolume == subvol.subvolume);
 }
@@ -40,11 +28,11 @@ constexpr auto find_partition(const gucc::fs::Partition& part, const gucc::fs::B
 namespace gucc::fs {
 
 auto btrfs_create_subvol(std::string_view subvolume, std::string_view root_mountpoint) noexcept -> Result<void> {
-    const auto& subvol_dirs_path = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, get_dirname(subvolume));
+    const auto& subvol_dirs_path = utils::target_path(root_mountpoint, utils::dirname(subvolume));
     if (auto res = file_utils::create_directories(subvol_dirs_path); !res) {
         return res;
     }
-    const auto& cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}{}"), root_mountpoint, subvolume);
+    const auto& cmd = fmt::format(FMT_COMPILE("btrfs subvolume create {}"), utils::target_path(root_mountpoint, subvolume));
     return utils::exec_or_error(cmd, "create btrfs subvolume"sv);
 }
 
@@ -73,7 +61,7 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
         }
 
         // mount at the actual mountpoint where subvolume is going to be mounted after install
-        const auto& subvolume_mountpoint = fmt::format(FMT_COMPILE("{}{}"), root_mountpoint, subvol.mountpoint);
+        const auto& subvolume_mountpoint = utils::target_path(root_mountpoint, subvol.mountpoint);
 
         // TODO(vnepogodin): refactor create dir and mount into own function
         if (auto res = file_utils::create_directories(subvolume_mountpoint); !res) {
@@ -138,7 +126,7 @@ auto create_btrfs_installation_snapshot(std::string_view root_mountpoint) noexce
         return {};
     }
 
-    if (auto res = file_utils::create_directories(fmt::format(FMT_COMPILE("{}/etc/cachyos"), root_mountpoint)); !res) {
+    if (auto res = file_utils::create_directories(utils::target_path(root_mountpoint, "/etc/cachyos"sv)); !res) {
         return res;
     }
 
@@ -150,7 +138,7 @@ auto create_btrfs_installation_snapshot(std::string_view root_mountpoint) noexce
     }
 
     // save the record id for easy restore
-    const auto& snap_file = fmt::format(FMT_COMPILE("{}/etc/cachyos/installation-snapshot"), root_mountpoint);
+    const auto& snap_file = utils::target_path(root_mountpoint, "/etc/cachyos/installation-snapshot"sv);
     return file_utils::write_file(snap_file, fmt::format(FMT_COMPILE("{}\n"), utils::trim(*snapshot_id)));
 }
 

@@ -164,11 +164,11 @@ auto copy_hostid_to_target(std::string_view target_root, std::string_view host_h
         return {};
     }
 
-    const auto etc_dir = fmt::format(FMT_COMPILE("{}/etc"), target_root);
+    const auto etc_dir = utils::target_path(target_root, "/etc"sv);
     if (auto res = file_utils::create_directories(etc_dir); !res) {
         return res;
     }
-    const auto dest = fmt::format(FMT_COMPILE("{}/hostid"), etc_dir);
+    const auto dest = utils::target_path(etc_dir, "/hostid"sv);
     if (auto res = file_utils::copy_file(host_hostid, dest); !res) {
         return res;
     }

@@ -10,7 +10,7 @@
 #include <cstdio>   // for fwrite, fclose
 #include <cstdlib>  // for system
 
-#include <algorithm>           // for ranges::find
+#include <algorithm>           // for find
 #include <array>               // for array
 #include <atomic>              // for atomic_bool
 #include <condition_variable>  // for condition_variable

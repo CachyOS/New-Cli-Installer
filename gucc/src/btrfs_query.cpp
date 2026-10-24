@@ -115,8 +115,8 @@ void parse_usage_line(Info& info, std::string_view line) noexcept {
         return;
     }
     for (const auto& [prefix, member] : profile_fields) {
-        if (key.starts_with(prefix)) {
-            info.*member = std::string{key.substr(prefix.size())};
+        if (const auto profile = gucc::utils::strip_prefix(key, prefix)) {
+            info.*member = std::string{*profile};
             return;
         }
     }
@@ -147,17 +147,16 @@ auto parse_show_label(std::string_view line) noexcept -> std::optional<std::stri
     if (key == std::string_view::npos) {
         return std::nullopt;
     }
-    auto value = line.substr(key + kLabelKey.size());
-    value      = gucc::utils::ltrim(value.substr(0, find_key<true>(value, kUuidKey)));
-    if (!value.starts_with('\'')) {
+    const auto rest   = line.substr(key + kLabelKey.size());
+    const auto quoted = gucc::utils::strip_prefix(gucc::utils::ltrim(rest.substr(0, find_key<true>(rest, kUuidKey))), "'"sv);
+    if (!quoted) {
         return std::nullopt;
     }
-    value.remove_prefix(1);
-    const auto close = value.rfind('\'');
+    const auto close = quoted->rfind('\'');
     if (close == std::string_view::npos) {
         return std::nullopt;
     }
-    return std::string{value.substr(0, close)};
+    return std::string{quoted->substr(0, close)};
 }
 
 auto parse_show_uuid(std::string_view line) noexcept -> std::optional<std::string> {
