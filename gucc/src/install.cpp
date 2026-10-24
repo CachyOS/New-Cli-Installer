@@ -12,10 +12,11 @@
 #include "gucc/systemd_services.hpp"
 #include "gucc/zfs.hpp"
 
-#include <array>   // for array
-#include <ranges>  // for ranges::*
-#include <span>    // for span
-#include <string>  // for string
+#include <array>       // for array
+#include <filesystem>  // for exists
+#include <ranges>      // for ranges::*
+#include <span>        // for span
+#include <string>      // for string
 
 #include <fmt/compile.h>
 #include <spdlog/spdlog.h>
@@ -24,8 +25,10 @@ using namespace std::string_view_literals;
 
 namespace {
 
-static constexpr auto kHostPacmanConf   = "/etc/pacman.conf"sv;
 static constexpr auto kTargetPacmanConf = "/tmp/cachyos-installer-pacman.conf"sv;
+
+// pacstrap carries only the arch mirrorlist over
+constexpr std::array kRankedMirrorlists{"cachyos-mirrorlist"sv, "cachyos-v3-mirrorlist"sv, "cachyos-v4-mirrorlist"sv};
 
 constexpr std::array kZfsServices{"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv};
 
@@ -85,7 +88,7 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
     }
 
     // 4. Create pacman.conf for target pacstrap
-    if (auto res = gucc::repos::create_target_pacman_config(kHostPacmanConf, kTargetPacmanConf); !res) {
+    if (auto res = gucc::repos::create_target_pacman_config(config.pacman_conf_base, kTargetPacmanConf); !res) {
         return res;
     }
     if (!gucc::utils::run_pacstrap(mountpoint, config.packages, kTargetPacmanConf, config.hostcache)) {
@@ -93,8 +96,20 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
     }
 
     // 5. Copy host files into target
-    for (const auto& [src, dst_relative] : config.host_files_to_copy) {
-        if (auto res = file_utils::copy_file(src, fmt::format(FMT_COMPILE("{}{}"), mountpoint, dst_relative)); !res) {
+    const FileCopyEntry generated_pacman_conf{.source = std::string{kTargetPacmanConf}, .destination = "/etc/pacman.conf"};
+    const auto ranked_mirrorlists = kRankedMirrorlists | std::ranges::views::transform([&config](std::string_view name) {
+        return FileCopyEntry{
+            .source      = fmt::format(FMT_COMPILE("{}/{}"), config.mirrorlist_dir, name),
+            .destination = fmt::format(FMT_COMPILE("/etc/pacman.d/{}"), name),
+            .optional    = true,
+        };
+    });
+    for (const FileCopyEntry& entry : std::ranges::views::concat(std::ranges::views::single(generated_pacman_conf), ranked_mirrorlists, config.host_files_to_copy)) {
+        if (std::error_code ec{}; entry.optional && !std::filesystem::exists(entry.source, ec)) {
+            spdlog::info("{} not found on the host, keeping the packaged one", entry.source);
+            continue;
+        }
+        if (auto res = file_utils::copy_file(entry.source, fmt::format(FMT_COMPILE("{}{}"), mountpoint, entry.destination)); !res) {
             return res;
         }
     }

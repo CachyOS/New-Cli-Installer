@@ -1,5 +1,4 @@
-#ifndef INSTALL_HPP
-#define INSTALL_HPP
+#pragma once
 
 #include "gucc/error.hpp"
 #include "gucc/initcpio.hpp"
@@ -7,13 +6,17 @@
 
 #include <string>       // for string
 #include <string_view>  // for string_view
-#include <utility>      // for pair
 #include <vector>       // for vector
 
 namespace gucc::install {
 
-// A file to copy from host into the target: {source, destination_relative_to_mountpoint}
-using FileCopyEntry = std::pair<std::string, std::string>;
+// A file to copy from the host into the target.
+struct FileCopyEntry {
+    std::string source;
+    // relative to the mountpoint
+    std::string destination;
+    bool optional{false};
+};
 
 struct InstallConfig {
     std::string_view mountpoint;
@@ -28,10 +31,14 @@ struct InstallConfig {
 
     // Additional systemd services to enable
     std::vector<std::string> services_to_enable{};
+
+    // the generated target config starts from
+    std::string_view pacman_conf_base{"/etc/pacman.conf"};
+
+    // pacman mirrorlists to copy from the host
+    std::string_view mirrorlist_dir{"/etc/pacman.d"};
 };
 
 [[nodiscard]] auto install_base(const InstallConfig& config) noexcept -> Result<void>;
 
 }  // namespace gucc::install
-
-#endif  // INSTALL_HPP
