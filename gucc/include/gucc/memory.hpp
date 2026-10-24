@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/cctype_wrapper.hpp"
+
 #include <cstdint>      // for uint64_t
 #include <limits>       // for numeric_limits
 #include <optional>     // for optional
@@ -17,8 +19,7 @@ inline constexpr std::uint64_t kTiB = kGiB << 10U;
 
 [[nodiscard]] constexpr auto unit_multiplier(char unit) noexcept -> std::optional<std::uint64_t> {
     constexpr std::string_view kUnits{"KMGT"};
-    const auto upper = (unit >= 'a' && unit <= 'z') ? static_cast<char>(unit - 'a' + 'A') : unit;
-    const auto index = kUnits.find(upper);
+    const auto index = kUnits.find(utils::to_upper(unit));
     if (index == std::string_view::npos) {
         return std::nullopt;
     }

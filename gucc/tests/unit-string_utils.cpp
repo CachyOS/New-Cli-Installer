@@ -3,12 +3,17 @@
 #include "gucc/string_utils.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>
 
 using namespace std::string_view_literals;
+
+static_assert(utils::to_lower('Q') == 'q' && utils::to_lower('1') == '1' && utils::to_upper('k') == 'K');
+static_assert(utils::to_lower(static_cast<char>(0xC4)) == static_cast<char>(0xC4));
+static_assert(utils::to_lower("VFAT-Ünit"sv) == "vfat-Ünit");
 
 TEST_CASE("string_utils")
 {
@@ -226,7 +231,7 @@ TEST_CASE("string_utils")
       const auto result = gucc::utils::parse_uint<std::uint32_t>(input);
       REQUIRE(!result.has_value());
     }
-    SECTION("valid uint32") 
+    SECTION("valid uint32")
     {
       const auto input  = "12345"sv;
       const auto result = gucc::utils::parse_uint<std::uint32_t>(input);

@@ -1,9 +1,9 @@
 #include "gucc/timezone.hpp"
+#include "gucc/cctype_wrapper.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>   // for sort, transform
-#include <cctype>      // for isupper
 #include <filesystem>  // for exists, directory_iterator
 #include <ranges>      // for ranges::*
 #include <string>      // for string
@@ -25,7 +25,7 @@ constexpr auto is_valid_tz_entry(std::string_view name) noexcept -> bool {
     return !name.empty()
         && name != "posix"sv && name != "right"sv
         && !name.starts_with('+')
-        && std::isupper(name[0]);
+        && gucc::utils::is_upper(name.front());
 }
 
 constexpr auto is_valid_region(const fs::directory_entry& entry) noexcept -> bool {
