@@ -36,8 +36,8 @@ namespace {
         return gucc::utils::arch_chroot_query_checked("pacman -Qq limine"sv, ctx.mountpoint);
     case BootloaderType::SystemdBoot:
         // Check both common ESP mount points (loader.conf lives at ESP root).
-        return fs::exists(fmt::format(FMT_COMPILE("{}/boot/loader/loader.conf"), ctx.mountpoint))
-            || fs::exists(fmt::format(FMT_COMPILE("{}/boot/efi/loader/loader.conf"), ctx.mountpoint));
+        return fs::exists(gucc::utils::target_path(ctx.mountpoint, "/boot/loader/loader.conf"sv))
+            || fs::exists(gucc::utils::target_path(ctx.mountpoint, "/boot/efi/loader/loader.conf"sv));
     }
     return false;
 }
@@ -89,7 +89,7 @@ auto check_base_installed(std::string_view mountpoint) noexcept -> bool {
         "/etc/passwd"sv,
     };
     for (const auto& rel : kBaseMarkers) {
-        if (!fs::exists(fmt::format(FMT_COMPILE("{}{}"), mountpoint, rel))) {
+        if (!fs::exists(gucc::utils::target_path(mountpoint, rel))) {
             return false;
         }
     }
@@ -100,7 +100,7 @@ auto final_check(const InstallContext& ctx) noexcept -> ValidationResult {
     ValidationResult result{.success = true, .errors = {}, .warnings = {}};
 
     // Check if base is installed
-    const auto& base_marker = fmt::format(FMT_COMPILE("{}/.base_installed"), ctx.mountpoint);
+    const auto& base_marker = gucc::utils::target_path(ctx.mountpoint, "/.base_installed"sv);
     if (!fs::exists(base_marker)) {
         result.success = false;
         result.errors.emplace_back("Base is not installed");
@@ -114,7 +114,7 @@ auto final_check(const InstallContext& ctx) noexcept -> ValidationResult {
     }
 
     // Check if fstab is generated
-    if (!fstab_has_entries(gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/fstab"), ctx.mountpoint)))) {
+    if (!fstab_has_entries(gucc::file_utils::read_whole_file(gucc::utils::target_path(ctx.mountpoint, "/etc/fstab"sv)))) {
         result.success = false;
         result.errors.emplace_back("Fstab has not been generated");
     }
@@ -126,13 +126,13 @@ auto final_check(const InstallContext& ctx) noexcept -> ValidationResult {
     }
 
     // Check if root password has been set
-    if (shadow_password_empty(gucc::file_utils::read_whole_file(fmt::format(FMT_COMPILE("{}/etc/shadow"), ctx.mountpoint)), "root"sv)) {
+    if (shadow_password_empty(gucc::file_utils::read_whole_file(gucc::utils::target_path(ctx.mountpoint, "/etc/shadow"sv)), "root"sv)) {
         result.success = false;
         result.errors.emplace_back("Root password is not set");
     }
 
     // Check if user account has been generated
-    const auto& home_path = fmt::format(FMT_COMPILE("{}/home"), ctx.mountpoint);
+    const auto& home_path = gucc::utils::target_path(ctx.mountpoint, "/home"sv);
     if (!fs::exists(home_path)) {
         result.warnings.emplace_back("No user accounts have been generated");
     }

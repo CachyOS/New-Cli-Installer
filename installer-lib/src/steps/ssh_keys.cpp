@@ -14,6 +14,8 @@
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
+using namespace std::string_view_literals;
+
 namespace {
 
 auto write_creating_dirs(std::string_view dir, std::string_view file, std::string_view content) noexcept
@@ -40,8 +42,8 @@ auto ssh_keys(const UserSettings& user, const InstallContext& ctx) noexcept
     const auto& mountpoint = ctx.mountpoint;
 
     // write ~/.ssh/authorized_keys
-    const auto ssh_dir      = fmt::format(FMT_COMPILE("{}/home/{}/.ssh"), mountpoint, user.username);
-    const auto keys_file    = fmt::format(FMT_COMPILE("{}/authorized_keys"), ssh_dir);
+    const auto ssh_dir      = gucc::utils::target_path(mountpoint, fmt::format(FMT_COMPILE("/home/{}/.ssh"), user.username));
+    const auto keys_file    = gucc::utils::target_path(ssh_dir, "/authorized_keys"sv);
     const auto keys_content = fmt::format(FMT_COMPILE("{}\n"), gucc::utils::join(keys, '\n'));
 
     if (auto res = write_creating_dirs(ssh_dir, keys_file, keys_content); !res) {
@@ -58,8 +60,8 @@ auto ssh_keys(const UserSettings& user, const InstallContext& ctx) noexcept
 
     // drop in the hardening snippet
     const auto& ssh_snippet = gucc::profile::make_sshd_hardening_config();
-    const auto& dropin_dir  = fmt::format(FMT_COMPILE("{}/etc/ssh/sshd_config.d"), mountpoint);
-    const auto& dest_file   = fmt::format(FMT_COMPILE("{}/99-cachyos-server.conf"), dropin_dir);
+    const auto& dropin_dir  = gucc::utils::target_path(mountpoint, "/etc/ssh/sshd_config.d"sv);
+    const auto& dest_file   = gucc::utils::target_path(dropin_dir, "/99-cachyos-server.conf"sv);
     if (auto res = write_creating_dirs(dropin_dir, dest_file, ssh_snippet); !res) {
         return res;
     }

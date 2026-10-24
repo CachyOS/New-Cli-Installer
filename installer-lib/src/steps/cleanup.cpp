@@ -3,6 +3,7 @@
 
 // import gucc
 #include "gucc/file_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <filesystem>   // for exists
 #include <string_view>  // for string_view
@@ -20,7 +21,7 @@ auto cleanup(const InstallContext& ctx) noexcept -> std::vector<std::string> {
 
     constexpr auto kLogSource = "/tmp/cachyos-install.log"sv;
     if (std::filesystem::exists(kLogSource)) {
-        const auto dest = fmt::format(FMT_COMPILE("{}/cachyos-install.log"), ctx.mountpoint);
+        const auto dest = gucc::utils::target_path(ctx.mountpoint, "/cachyos-install.log"sv);
         if (auto res = gucc::file_utils::copy_file(kLogSource, dest); !res) {
             warnings.push_back(std::move(res.error().context));
         }

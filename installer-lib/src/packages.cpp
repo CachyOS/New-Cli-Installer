@@ -163,7 +163,7 @@ auto install_base(const InstallContext& ctx) noexcept
     }
 
     // Marker file
-    if (auto res = gucc::file_utils::write_file(fmt::format(FMT_COMPILE("{}/.base_installed"), mountpoint), {}); !res) {
+    if (auto res = gucc::file_utils::write_file(gucc::utils::target_path(mountpoint, "/.base_installed"sv), {}); !res) {
         spdlog::warn("{}", res.error().context);
     }
 
@@ -199,7 +199,7 @@ auto configure_desktop_extras(const InstallContext& ctx) noexcept
         }
 
         const auto initcpio_config = make_initcpio_config(ctx, gucc::fs::utils::get_mountpoint_fs(mountpoint), true);
-        const auto initcpio_path   = fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint);
+        const auto initcpio_path   = gucc::utils::target_path(mountpoint, "/etc/mkinitcpio.conf"sv);
         if (gucc::initcpio::setup_initcpio_config(initcpio_path, initcpio_config)) {
             if (!gucc::utils::arch_chroot_checked("mkinitcpio -P"sv, mountpoint)) {
                 return std::unexpected("failed to rebuild initramfs with plymouth hook");
@@ -228,7 +228,7 @@ auto install_packages(const std::vector<std::string>& packages,
     /* clang-format on */
 
     const auto& pkgs_str     = gucc::utils::join(packages, ' ');
-    const auto target_config = fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint);
+    const auto target_config = gucc::utils::target_path(mountpoint, "/etc/pacman.conf"sv);
     if (!gucc::utils::run_pacstrap(mountpoint, pkgs_str, target_config, hostcache)) {
         return std::unexpected(fmt::format("failed to install packages: {}", pkgs_str));
     }
@@ -289,7 +289,7 @@ auto enable_services(const InstallContext& ctx) noexcept
 
     // Enable the ufw firewall when installed
     if (gucc::services::systemd_unit_exists("ufw", mountpoint)) {
-        const bool has_kdeconnect = std::filesystem::exists(fmt::format(FMT_COMPILE("{}/usr/bin/kdeconnect-cli"), mountpoint));
+        const bool has_kdeconnect = std::filesystem::exists(gucc::utils::target_path(mountpoint, "/usr/bin/kdeconnect-cli"sv));
         if (auto res = gucc::firewall::enable_ufw(mountpoint, has_kdeconnect); !res) {
             spdlog::warn("Failed to enable ufw firewall: {}", res.error().context);
         }
