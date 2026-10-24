@@ -16,6 +16,7 @@ add_library(${PROJECT_NAME}
    src/headless_plan.cpp include/cachyos/headless_plan.hpp
    src/config.cpp include/cachyos/config.hpp
    src/disk.cpp include/cachyos/disk.hpp
+   src/disk_validation.cpp include/cachyos/disk_validation.hpp
    src/packages.cpp include/cachyos/packages.hpp
    src/bootloader.cpp include/cachyos/bootloader.hpp
    src/crypto.cpp include/cachyos/crypto.hpp
