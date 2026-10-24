@@ -3,7 +3,9 @@
 #include "cachyos/types.hpp"
 
 // import gucc
+#include "gucc/block_devices.hpp"
 #include "gucc/btrfs.hpp"
+#include "gucc/mtab.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/zfs_types.hpp"
 
@@ -65,8 +67,17 @@ inline constexpr std::string_view kDefaultZpoolName{"zpcachyos"};
 /// Returns available mount options for a given filesystem type.
 [[nodiscard]] auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string>;
 
-/// Returns true if the installation target volume is removable (USB, etc.).
+/// lsblk snapshot of the partition, crypt and lvm devices.
+[[nodiscard]] auto block_devices() noexcept
+    -> std::expected<std::vector<gucc::disk::BlockDevice>, std::string>;
+
+/// Top kernel mount table entry at @p path.
+[[nodiscard]] auto find_mount_at(std::string_view path) noexcept -> std::optional<gucc::mtab::MTabEntry>;
+
+/// Returns true if the installation target volume is removable.
 [[nodiscard]] auto is_volume_removable(std::string_view mountpoint) noexcept -> bool;
+[[nodiscard]] auto is_volume_removable(const std::vector<gucc::disk::BlockDevice>& devices,
+    std::string_view mountpoint) noexcept -> bool;
 
 /// Performs automatic partitioning of the device.
 [[nodiscard]] auto auto_partition(std::string_view device, std::string_view system_mode,
@@ -155,3 +166,10 @@ void load_filesystem_module(std::string_view fstype) noexcept;
 [[nodiscard]] auto list_non_crypt() noexcept -> std::string;
 
 }  // namespace cachyos::installer
+
+namespace cachyos::installer::detail {
+
+[[nodiscard]] auto blkid_devices_by_luks(std::string_view blkid_export, bool is_luks) noexcept
+    -> std::vector<std::string>;
+
+}  // namespace cachyos::installer::detail

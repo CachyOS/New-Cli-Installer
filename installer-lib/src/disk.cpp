@@ -19,11 +19,8 @@
 #include "gucc/umount_partitions.hpp"
 #include "gucc/zfs.hpp"
 
-#include <cctype>  // for tolower
-
 #include <algorithm>    // for transform, sort
 #include <expected>     // for unexpected
-#include <filesystem>   // for create_directories
 #include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -38,18 +35,18 @@ using namespace std::string_literals;
 
 namespace {
 
+using cachyos::installer::lift;
+using cachyos::installer::MountPartitionResult;
+
 /// Default ZFS pool creation options shared by all ZFS setup paths.
 constexpr auto kDefaultZpoolOptions{"-f -o ashift=12 -o autotrim=on -O mountpoint=none -O acltype=posixacl -O atime=off -O relatime=off -O xattr=sa -O normalization=formD -O dnodesize=auto"sv};
 
 /// Resolve a partition to the best stable device path for zpool creation.
 auto resolve_zfs_vdev(std::string_view device) noexcept -> std::string {
-    const auto& blk = gucc::disk::list_block_devices();
-    if (blk) {
+    if (const auto& blk = cachyos::installer::block_devices(); blk) {
         const auto& dev = gucc::disk::find_device_by_name(*blk, device);
         if (dev && dev->partuuid && !dev->partuuid->empty()) {
-            auto uuid = *dev->partuuid;
-            std::ranges::transform(uuid, uuid.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            return fmt::format(FMT_COMPILE("/dev/disk/by-partuuid/{}"), uuid);
+            return fmt::format(FMT_COMPILE("/dev/disk/by-partuuid/{}"), gucc::utils::to_lower(*dev->partuuid));
         }
     }
     return std::string(device);
@@ -66,14 +63,51 @@ constexpr auto bootloader_default_mount(gucc::bootloader::BootloaderType bootloa
     return "unknown bootloader"sv;
 }
 
-/// Transfer LUKS info from mount result into a Partition struct.
-void apply_luks_info(const cachyos::installer::MountPartitionResult& mount_res, gucc::fs::Partition& part) noexcept {
+/// Runs the selection's mkfs command when formatting was requested.
+template <class Selection>
+auto format_if_requested(const Selection& selection) noexcept -> std::expected<void, std::string> {
+    if (!selection.format_requested || selection.mkfs_command.empty()) {
+        return {};
+    }
+    const auto format_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
+    if (auto res = lift(gucc::utils::exec_or_error(format_cmd, "format partition"sv)); !res) {
+        return res;
+    }
+    spdlog::info("Formatted {} with {}", selection.device, selection.mkfs_command);
+    // let blkid see the fresh filesystem before we mount it
+    gucc::utils::settle_devices();
+    return {};
+}
+
+// "skip" keeps whatever filesystem is already on the partition
+constexpr auto fstype_or_unknown(std::string_view fstype) noexcept -> std::string {
+    return fstype == "skip"sv ? "unknown"s : std::string{fstype};
+}
+
+/// Partition entry for @p selection mounted at @p mountpoint.
+template <class Selection>
+auto mounted_partition(const Selection& selection, std::string_view mountpoint, const MountPartitionResult& mount_res) noexcept
+    -> gucc::fs::Partition {
+    auto part = gucc::fs::Partition{
+        .fstype     = !mount_res.fstype.empty() ? mount_res.fstype : fstype_or_unknown(selection.fstype),
+        .mountpoint = std::string{mountpoint},
+        .device     = selection.device,
+        .mount_opts = selection.mount_opts,
+    };
+    part.uuid_str = mount_res.uuid;
     if (mount_res.is_luks && !mount_res.luks_name.empty()) {
         part.luks_mapper_name = mount_res.luks_name;
     }
     if (mount_res.is_luks && !mount_res.luks_uuid.empty()) {
         part.luks_uuid = mount_res.luks_uuid;
     }
+    return part;
+}
+
+auto blkid_devices(bool is_luks) noexcept -> std::string {
+    return gucc::utils::query_output("blkid -o export"sv)
+        .transform([is_luks](std::string_view output) { return gucc::utils::join(cachyos::installer::detail::blkid_devices_by_luks(output, is_luks)); })
+        .value_or(std::string{});
 }
 
 }  // namespace
@@ -104,22 +138,39 @@ auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<s
     return result;
 }
 
+auto block_devices() noexcept -> std::expected<std::vector<gucc::disk::BlockDevice>, std::string> {
+    auto devices = gucc::disk::list_block_devices();
+    if (!devices) {
+        return std::unexpected("failed to find block devices");
+    }
+    return *std::move(devices);
+}
+
+auto find_mount_at(std::string_view path) noexcept -> std::optional<gucc::mtab::MTabEntry> {
+    // the kernel table never carries a trailing slash, findmnt used to normalise it for us
+    path                = gucc::utils::strip_trailing_slashes(path);
+    const auto& entries = gucc::mtab::parse_mtab(path, "/proc/self/mounts"sv);
+    return entries ? gucc::mtab::find_mount(*entries, path) : std::nullopt;
+}
+
 auto is_volume_removable(std::string_view mountpoint) noexcept -> bool {
-    // Find the block device mounted at the given mountpoint
-    const auto& devices = gucc::disk::list_block_devices();
+    const auto& devices = block_devices();
     if (!devices) {
         spdlog::error("Failed to list block devices for removable check");
         return false;
     }
+    return is_volume_removable(*devices, mountpoint);
+}
 
-    const auto& mounted_dev = gucc::disk::find_device_by_mountpoint(*devices, mountpoint);
+auto is_volume_removable(const std::vector<gucc::disk::BlockDevice>& devices, std::string_view mountpoint) noexcept -> bool {
+    const auto& mounted_dev = gucc::disk::find_device_by_mountpoint(devices, mountpoint);
     if (!mounted_dev) {
         spdlog::error("No block device found at mountpoint {}", mountpoint);
         return false;
     }
 
     // Walk the pkname chain (handles mapper → crypt → part → disk) to find the parent disk
-    const auto& disk_dev = gucc::disk::find_ancestor_of_type(*devices, mounted_dev->name, "disk"sv);
+    const auto& disk_dev = gucc::disk::find_ancestor_of_type(devices, mounted_dev->name, "disk"sv);
     if (!disk_dev) {
         spdlog::error("Could not find parent disk for {}", mounted_dev->name);
         return false;
@@ -209,50 +260,35 @@ auto zfs_auto_pres(std::string_view partition,
 auto zfs_create_zpool(std::string_view partition,
     std::string_view pool_name, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-
-    std::string device_path{partition};
-
-    // Find the PARTUUID of the partition
-    const auto& blk_devices = gucc::disk::list_block_devices();
-    if (blk_devices) {
-        const auto& dev = gucc::disk::find_device_by_name(*blk_devices, partition);
-        if (dev && dev->partuuid && !dev->partuuid->empty()) {
-            device_path = *dev->partuuid;
-        }
+    if (auto res = lift(gucc::fs::zfs_create_zpool(resolve_zfs_vdev(partition), pool_name, kDefaultZpoolOptions)); !res) {
+        return res;
     }
-
-    if (!gucc::fs::zfs_create_zpool(device_path, pool_name, kDefaultZpoolOptions)) {
-        return std::unexpected("failed to create zpool");
-    }
-
     // Since zfs manages mountpoints, export and re-import with root at mountpoint
-    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool export {}"), pool_name));
-    gucc::utils::exec_checked(fmt::format(FMT_COMPILE("zpool import -R {} {}"), mountpoint, pool_name));
-
-    return {};
+    if (auto res = lift(gucc::fs::zpool_export(pool_name)); !res) {
+        return res;
+    }
+    return lift(gucc::fs::zpool_import(pool_name, mountpoint));
 }
 
 auto apply_zfs_root(const gucc::fs::ZfsSetupConfig& zfs_setup,
     std::string_view root_device, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
     const auto& vdev = resolve_zfs_vdev(root_device);
-    if (!gucc::fs::zfs_create_with_config(vdev, zfs_setup)) {
-        return std::unexpected(fmt::format("failed to create zpool '{}' on {}", zfs_setup.zpool_name, vdev));
+    if (auto res = lift(gucc::fs::zfs_create_with_config(vdev, zfs_setup)); !res) {
+        return res;
     }
 
     // catch up exported pool before re-import
     gucc::utils::settle_devices();
 
     // re-import without encrypt key to load it separately
-    const auto& import_cmd = fmt::format(FMT_COMPILE("zpool import -N -R {} {}"), mountpoint, zfs_setup.zpool_name);
-    if (!gucc::utils::exec_checked(import_cmd)) {
-        return std::unexpected(fmt::format("failed to import zpool '{}' at {}", zfs_setup.zpool_name, mountpoint));
+    if (auto res = lift(gucc::fs::zpool_import(zfs_setup.zpool_name, mountpoint, false)); !res) {
+        return res;
     }
 
     if (zfs_setup.passphrase) {
-        const auto& loadkey_cmd = fmt::format(FMT_COMPILE("echo '{}' | zfs load-key {}"), *zfs_setup.passphrase, zfs_setup.zpool_name);
-        if (!gucc::utils::exec_checked(loadkey_cmd)) {
-            return std::unexpected(fmt::format("failed to load encryption key for zpool '{}'", zfs_setup.zpool_name));
+        if (auto res = lift(gucc::fs::zfs_load_key(zfs_setup.zpool_name, *zfs_setup.passphrase)); !res) {
+            return res;
         }
     }
 
@@ -263,7 +299,7 @@ auto apply_zfs_root(const gucc::fs::ZfsSetupConfig& zfs_setup,
 
     std::ranges::sort(mountable, {}, &gucc::fs::ZfsDataset::mountpoint);
     for (const auto& dataset : mountable) {
-        if (auto res = lift(gucc::utils::exec_or_error(fmt::format(FMT_COMPILE("zfs mount {}"), dataset.zpath), "mount zfs dataset"sv)); !res) {
+        if (auto res = lift(gucc::fs::zfs_mount(dataset.zpath)); !res) {
             return res;
         }
     }
@@ -277,36 +313,20 @@ auto apply_additional_partitions(const std::vector<AdditionalPartSelection>& add
     std::int32_t lvm_sep_boot{};
 
     for (const auto& part_select : additional) {
-        if (part_select.format_requested && !part_select.mkfs_command.empty()) {
-            const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), part_select.mkfs_command, part_select.device);
-            if (!gucc::utils::exec_checked(mkfs_cmd)) {
-                return std::unexpected(fmt::format("failed to format {} with {}", part_select.device, part_select.mkfs_command));
-            }
-            spdlog::info("Formatted {} with {}", part_select.device, part_select.mkfs_command);
-            // let blkid see the fresh filesystem before we mount it
-            gucc::utils::settle_devices();
+        if (auto res = format_if_requested(part_select); !res) {
+            return std::unexpected(std::move(res.error()));
         }
 
-        auto mount_res = mount_partition(part_select.device, mountpoint, part_select.mountpoint, part_select.mount_opts);
+        const auto mount_res = mount_partition(part_select.device, mountpoint, part_select.mountpoint, part_select.mount_opts);
         if (!mount_res) {
             return std::unexpected(mount_res.error());
         }
-
-        auto part = gucc::fs::Partition{
-            .fstype     = mount_res->fstype.empty() ? part_select.fstype : mount_res->fstype,
-            .mountpoint = part_select.mountpoint,
-            .device     = part_select.device,
-            .mount_opts = part_select.mount_opts,
-        };
-        part.uuid_str = std::move(mount_res->uuid);
-        apply_luks_info(*mount_res, part);
-        partitions.emplace_back(std::move(part));
+        partitions.emplace_back(mounted_partition(part_select, part_select.mountpoint, *mount_res));
 
         // Detect separate /boot for grub configuration
         if (part_select.mountpoint == "/boot"sv) {
-            lvm_sep_boot             = 1;
-            const auto& boot_devices = gucc::disk::list_block_devices();
-            if (boot_devices) {
+            lvm_sep_boot = 1;
+            if (const auto& boot_devices = block_devices(); boot_devices) {
                 const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, part_select.device);
                 if (boot_dev && boot_dev->type == "lvm"sv) {
                     lvm_sep_boot = 2;
@@ -398,31 +418,21 @@ auto umount_partitions(std::string_view mountpoint,
         spdlog::error("Failed to disable swap on {}", swap_device);
     }
 
-    // Unmount all detected partitions on mountpoint
-    if (!gucc::umount::umount_partitions(mountpoint, zfs_pools)) {
-        return std::unexpected("failed to umount partitions");
-    }
-    return {};
+    return lift(gucc::umount::umount_partitions(mountpoint, zfs_pools));
 }
 
 auto generate_fstab(std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
     spdlog::info("Generating fstab on {}", mountpoint);
-    if (!gucc::fs::run_genfstab_on_mount(mountpoint)) {
-        return std::unexpected("failed to generate fstab");
-    }
-    return {};
+    return lift(gucc::fs::run_genfstab_on_mount(mountpoint));
 }
 
 auto mount_partition(std::string_view partition, std::string_view mountpoint,
     std::string_view mount_dev, std::string_view mount_opts, std::string_view fstype) noexcept
     -> std::expected<MountPartitionResult, std::string> {
-    const auto& mount_dir = fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev);
-
-    std::error_code ec{};
-    std::filesystem::create_directories(mount_dir, ec);
-    if (ec) {
-        return std::unexpected(fmt::format("failed to create directory {}: {}", mount_dir, ec.message()));
+    const auto& mount_dir = gucc::utils::target_path(mountpoint, mount_dev);
+    if (auto res = lift(gucc::file_utils::create_directories(mount_dir)); !res) {
+        return std::unexpected(std::move(res.error()));
     }
 
     // resolve the gucc fs-name to the kernel mount type
@@ -432,21 +442,35 @@ auto mount_partition(std::string_view partition, std::string_view mountpoint,
 
     // TODO(vnepogodin): use libmount instead.
     // see https://github.com/util-linux/util-linux/blob/master/sys-utils/mount.c#L734
-    if (auto res = gucc::mount::mount_partition(partition, mount_dir, mount_opts, fs_kernel); !res) {
-        return std::unexpected(fmt::format("failed to mount partition {} at {} with opts '{}': {}", partition, mount_dir, mount_opts, gucc::to_string(res.error())));
+    if (auto res = lift(gucc::mount::mount_partition(partition, mount_dir, mount_opts, fs_kernel),
+            fmt::format(FMT_COMPILE("failed to mount partition {} at {} with opts '{}'"), partition, mount_dir, mount_opts));
+        !res) {
+        return std::unexpected(std::move(res.error()));
+    }
+
+    // one kernel mount table read + one lsblk snapshot answer every query below
+    const auto& mount   = find_mount_at(mount_dir);
+    const auto& devices = block_devices();
+
+    MountPartitionResult result{};
+    if (mount) {
+        result.fstype = mount->fstype;
     }
 
     // Actual mounted device may differ from partition (e.g. for mapper devices)
-    const auto& mounted_device = gucc::fs::utils::get_mountpoint_source(mount_dir);
-    const auto& query_device   = mounted_device.empty() ? partition : mounted_device;
+    const std::string_view query_device = mount ? std::string_view{mount->device} : partition;
+    const auto& crypto                  = devices ? gucc::disk::detect_crypto_for_device(*devices, query_device) : std::nullopt;
+    if (crypto && crypto->is_luks) {
+        result.is_luks   = 1;
+        result.is_lvm    = crypto->is_lvm ? 1 : 0;
+        result.luks_name = crypto->luks_mapper_name;
+        result.luks_dev  = crypto->luks_dev;
+        result.luks_uuid = crypto->luks_uuid;
+    }
 
-    MountPartitionResult result{};
-    // returns negative for non-LUKS. ignore
-    gucc::mount::query_partition(query_device, result.is_luks, result.is_lvm,
-        result.luks_name, result.luks_dev, result.luks_uuid);
-
-    result.fstype = gucc::fs::utils::get_mountpoint_fs(mount_dir);
-    result.uuid   = gucc::fs::utils::get_device_uuid(partition);
+    // lsblk filters out whole disks and loop devices
+    const auto& part_dev = devices ? gucc::disk::find_device_by_name(*devices, partition) : std::nullopt;
+    result.uuid          = part_dev ? part_dev->uuid : gucc::fs::utils::get_device_uuid(partition);
 
     spdlog::debug("mounted '{}' at '{}': is_luks={};is_lvm={};luks_name='{}';fstype='{}';uuid='{}'",
         partition, mount_dir, result.is_luks, result.is_lvm, result.luks_name, result.fstype, result.uuid);
@@ -460,7 +484,7 @@ auto apply_swap(const SwapSelection& swap,
 
     switch (swap.type) {
     case SwapSelection::Type::Swapfile: {
-        const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint);
+        const auto& swapfile_path = gucc::utils::target_path(mountpoint, "/swapfile"sv);
         if (auto res = lift(gucc::swap::make_swapfile(mountpoint, swap.swapfile_size)); !res) {
             return std::unexpected(std::move(res.error()));
         }
@@ -497,47 +521,20 @@ auto apply_root_partition(const RootPartitionSelection& selection,
         return RootPartitionResult{};
     }
 
-    // 1. Format if requested
-    if (selection.format_requested && !selection.mkfs_command.empty()) {
-        const auto& mkfs_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
-        if (!gucc::utils::exec_checked(mkfs_cmd)) {
-            return std::unexpected(fmt::format("failed to format root partition {} with {}", selection.device, selection.mkfs_command));
-        }
-        spdlog::info("Formatted {} with {}", selection.device, selection.mkfs_command);
-        // let blkid see the fresh filesystem before we mount it
-        gucc::utils::settle_devices();
+    if (auto res = format_if_requested(selection); !res) {
+        return std::unexpected(fmt::format(FMT_COMPILE("root partition: {}"), res.error()));
     }
 
-    // 2. Mount root partition
     auto mount_res = mount_partition(selection.device, mountpoint, "/"sv, selection.mount_opts, selection.fstype);
     if (!mount_res) {
-        return std::unexpected(fmt::format("failed to mount root partition {}: {}", selection.device, mount_res.error()));
+        return std::unexpected(fmt::format(FMT_COMPILE("failed to mount root partition {}: {}"), selection.device, mount_res.error()));
     }
-
-    // 3. Build root partition struct
-    std::string part_fs;
-    if (!mount_res->fstype.empty()) {
-        part_fs = mount_res->fstype;
-    } else if (selection.fstype == "skip"sv) {
-        part_fs = "unknown"s;
-    } else {
-        part_fs = selection.fstype;
-    }
-
-    auto root_part = gucc::fs::Partition{
-        .fstype     = std::move(part_fs),
-        .mountpoint = "/"s,
-        .device     = selection.device,
-        .mount_opts = selection.mount_opts,
-    };
-    root_part.uuid_str = mount_res->uuid;
-    apply_luks_info(*mount_res, root_part);
 
     RootPartitionResult result{};
-    result.mount_info = std::move(*mount_res);
-    result.partitions.emplace_back(std::move(root_part));
+    result.partitions.emplace_back(mounted_partition(selection, "/"sv, *mount_res));
+    result.mount_info = *std::move(mount_res);
 
-    // 4. Handle BTRFS subvolumes
+    // Handle BTRFS subvolumes
     if (!btrfs_subvols.empty()) {
         auto btrfs_res = apply_btrfs_subvolumes(btrfs_subvols, selection, mountpoint, result.partitions);
         if (!btrfs_res) {
@@ -562,9 +559,9 @@ void load_filesystem_module(std::string_view fstype) noexcept {
 }
 
 auto list_mounted_devices(std::string_view mountpoint) noexcept -> std::string {
-    const auto& devices = gucc::disk::list_block_devices();
+    const auto& devices = block_devices();
     if (!devices) {
-        spdlog::error("failed to find block devices");
+        spdlog::error("{}", devices.error());
         return {};
     }
     const auto& mounted_names = gucc::disk::list_mounted_devices(*devices, mountpoint);
@@ -572,11 +569,33 @@ auto list_mounted_devices(std::string_view mountpoint) noexcept -> std::string {
 }
 
 auto list_containing_crypt() noexcept -> std::string {
-    return gucc::utils::exec("blkid | awk '/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
+    return blkid_devices(true);
 }
 
 auto list_non_crypt() noexcept -> std::string {
-    return gucc::utils::exec("blkid | awk '!/TYPE=\"crypto_LUKS\"/{print $1}' | sed 's/.$//'");
+    return blkid_devices(false);
 }
 
 }  // namespace cachyos::installer
+
+namespace cachyos::installer::detail {
+
+auto blkid_devices_by_luks(std::string_view blkid_export, bool is_luks) noexcept -> std::vector<std::string> {
+    // TODO(vnepogodin): shouldn't be also JSON'ed???
+
+    // one block of `KEY=value` lines per device, blocks separated by an empty line
+    const auto matching_device = [is_luks](std::string_view block) -> std::optional<std::string> {
+        auto lines         = gucc::utils::make_split_view(block);
+        const auto devname = gucc::utils::value_of(lines, "DEVNAME"sv);
+        if (!devname || (gucc::utils::value_of(lines, "TYPE"sv) == "crypto_LUKS"sv) != is_luks) {
+            return std::nullopt;
+        }
+        return std::string{*devname};
+    };
+    return gucc::utils::make_split_view(blkid_export, "\n\n"sv)
+        | std::ranges::views::transform(matching_device)
+        | std::ranges::views::join
+        | std::ranges::to<std::vector<std::string>>();
+}
+
+}  // namespace cachyos::installer::detail
