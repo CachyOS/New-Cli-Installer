@@ -16,6 +16,9 @@ auto disable_systemd_service(std::string_view service_name, std::string_view roo
 // Enables a user-level systemd service globally (--global)
 auto enable_user_systemd_service(std::string_view service_name, std::string_view root_mountpoint) noexcept -> Result<void>;
 
+/// Whether unit is active on the host.
+auto is_active(std::string_view unit) noexcept -> bool;
+
 // Checks if a systemd unit file exists on the target system
 auto systemd_unit_exists(std::string_view unit_name, std::string_view root_mountpoint) noexcept -> bool;
 
