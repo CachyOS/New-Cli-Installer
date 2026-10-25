@@ -70,6 +70,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/firewall.cpp include/gucc/firewall.hpp
    src/mirrors.cpp include/gucc/mirrors.hpp
    src/process.cpp include/gucc/process.hpp
+   src/kmod.cpp include/gucc/kmod.hpp
    ${GUCC_LOGGER_FILES}
    #src/disk.cpp src/disk.hpp
    )

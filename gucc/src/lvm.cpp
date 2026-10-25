@@ -1,5 +1,6 @@
 #include "gucc/lvm.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/kmod.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <array>        // for array
@@ -50,8 +51,10 @@ auto detect_lvm() noexcept -> LvmInfo {
 }
 
 auto activate_lvm() noexcept -> Result<void> {
+    if (auto res = kmod::load({"dm-mod"sv}); !res) {
+        return res;
+    }
     static constexpr std::array steps{
-        std::pair{"modprobe -v dm-mod"sv, "load dm-mod kernel module"sv},
         std::pair{"vgscan -v"sv, "scan for volume groups"sv},
         std::pair{"vgchange -ay -v"sv, "activate logical volumes"sv},
     };
