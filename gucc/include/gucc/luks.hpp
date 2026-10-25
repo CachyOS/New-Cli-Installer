@@ -2,7 +2,9 @@
 
 #include "gucc/error.hpp"
 
-#include <cstdint>      // for uint8_t
+#include <cstddef>  // for size_t
+#include <cstdint>  // for uint8_t
+
 #include <string_view>  // for string_view
 
 namespace gucc::crypto {
@@ -17,5 +19,13 @@ auto luks_format(LuksVersion version, std::string_view luks_pass, std::string_vi
 auto luks_add_key(std::string_view dest_file, std::string_view partition, std::string_view additional_flags = {}) noexcept -> Result<void>;
 /// Generates @p dest_file if missing, adds it as a key of @p partition and embeds it in the initramfs.
 auto luks_setup_keyfile(std::string_view dest_file, std::string_view mountpoint, std::string_view partition, std::string_view additional_flags = {}) noexcept -> Result<void>;
+/// Enabled keyslots of @p partition.
+auto luks_keyslot_count(std::string_view partition) noexcept -> Result<std::size_t>;
 
 }  // namespace gucc::crypto
+
+namespace gucc::crypto::detail {
+
+[[nodiscard]] auto count_enabled_luks_keyslots(std::string_view luks_dump) noexcept -> std::size_t;
+
+}  // namespace gucc::crypto::detail
