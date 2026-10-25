@@ -1,5 +1,6 @@
 #include "gucc/firewall.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/systemd_services.hpp"
 
 #include <cstdint>  // for uint16_t
 
@@ -20,6 +21,9 @@ using namespace std::string_literals;
 namespace {
 
 auto run_ufw_commands(std::string_view root_mountpoint, const std::vector<std::string>& commands) noexcept -> gucc::Result<void> {
+    if (auto res = gucc::services::enable_systemd_service("ufw"sv, root_mountpoint); !res) {
+        return res;
+    }
     for (const auto& command : commands) {
         if (auto res = gucc::utils::arch_chroot_or_error(command, root_mountpoint, "configure ufw"sv); !res) {
             return res;
@@ -52,8 +56,9 @@ auto make_ufw_rules(const std::vector<std::uint16_t>& tcp_ports, const std::vect
 }
 
 auto configure_server_firewall(std::string_view root_mountpoint, const std::vector<std::uint16_t>& tcp_ports, const std::vector<std::uint16_t>& udp_ports) noexcept -> Result<void> {
-    std::vector<std::string> commands{"systemctl enable ufw"s};
     const auto rules = make_ufw_rules(tcp_ports, udp_ports);
+    std::vector<std::string> commands;
+    commands.reserve(rules.size() + 1);
     std::ranges::transform(rules, std::back_inserter(commands), [](auto&& rule) {
         return fmt::format(FMT_COMPILE("ufw {}"), rule);
     });
@@ -68,7 +73,6 @@ auto configure_server_firewall(std::string_view root_mountpoint, const std::vect
 
 auto enable_ufw(std::string_view root_mountpoint, bool allow_kdeconnect) noexcept -> Result<void> {
     std::vector commands{
-        "systemctl enable ufw"s,
         "ufw default deny incoming"s,
         "ufw default allow outgoing"s,
         "ufw enable"s,
