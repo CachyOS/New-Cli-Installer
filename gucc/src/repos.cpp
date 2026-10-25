@@ -144,6 +144,20 @@ auto refresh_keyrings() noexcept -> Result<void> {
     return utils::exec_or_error({"/usr/bin/pacman-key"s, "--populate"s}, "populate pacman keyring"sv);
 }
 
+auto reset_target_keyring(std::string_view root) noexcept -> Result<void> {
+    if (auto res = utils::arch_chroot_or_error({"/usr/bin/pacman-key"s, "--init"s}, root, "initialize target pacman keyring"sv); !res) {
+        return res;
+    }
+    if (auto res = utils::arch_chroot_or_error({"/usr/bin/pacman-key"s, "--populate"s, "archlinux"s, "cachyos"s}, root, "populate target pacman keyring"sv); !res) {
+        return res;
+    }
+    // keyservers are flaky, populated keys should be enough to verify
+    if (auto res = utils::arch_chroot_or_error({"/usr/bin/pacman-key"s, "--refresh-keys"s}, root, "refresh target pacman keys"sv); !res) {
+        spdlog::warn("{}", res.error().context);
+    }
+    return {};
+}
+
 auto create_target_pacman_config(std::string_view base_config, std::string_view output_config) noexcept -> Result<void> {
     if (auto res = file_utils::copy_file(base_config, output_config); !res) {
         return res;

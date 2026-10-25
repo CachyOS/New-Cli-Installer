@@ -15,4 +15,7 @@ auto refresh_keyrings() noexcept -> Result<void>;
 // Creates pacman.conf for target.
 auto create_target_pacman_config(std::string_view base_config, std::string_view output_config) noexcept -> Result<void>;
 
+/// Re-initializes and populates the pacman keyrings.
+auto reset_target_keyring(std::string_view root) noexcept -> Result<void>;
+
 }  // namespace gucc::repos
