@@ -14,6 +14,9 @@ namespace gucc::disk {
 // Erases disk
 auto erase_disk(std::string_view device) noexcept -> Result<void>;
 
+/// Securely overwrite every block of device.
+auto secure_wipe(std::string_view device) noexcept -> Result<void>;
+
 // Generates sfdisk commands from Partition scheme
 auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> std::string;
 

@@ -11,6 +11,7 @@
 #include <ranges>       // for ranges::*
 #include <string_view>  // for string_view
 #include <utility>      // for pair
+#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -124,8 +125,7 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
 }
 
 auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcept -> Result<void> {
-    const auto& sfdisk_cmd = fmt::format(FMT_COMPILE("echo -e '{}' | sfdisk -w always '{}'"), commands, device);
-    if (auto res = utils::exec_or_error(sfdisk_cmd, "partition disk"sv); !res) {
+    if (auto res = utils::exec_or_error_with_input({"/usr/bin/sfdisk"s, "-w"s, "always"s, std::string{device}}, commands, "partition disk"sv); !res) {
         return res;
     }
     // let the new partition nodes/links appear before anyone formats them
@@ -134,20 +134,25 @@ auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcep
 }
 
 auto erase_disk(std::string_view device) noexcept -> Result<void> {
+    const auto dev = std::string{device};
     const std::array steps{
-        // 1. write zeros
-        fmt::format(FMT_COMPILE("dd if=/dev/zero of='{}' bs=512 count=1"), device),
-        // 2. run wipefs on disk
-        fmt::format(FMT_COMPILE("wipefs -af '{}'"), device),
-        // 3. clear all data and destroy GPT data structures
-        fmt::format(FMT_COMPILE("sgdisk -Zo '{}'"), device),
+        // 1. zero the first sector
+        std::vector{"/usr/bin/dd"s, "if=/dev/zero"s, fmt::format(FMT_COMPILE("of={}"), device), "bs=512"s, "count=1"s},
+        // 2. drop every filesystem/raid/partition-table signature
+        std::vector{"/usr/bin/wipefs"s, "-af"s, dev},
+        // 3. destroy GPT and MBR data structures
+        std::vector{"/usr/bin/sgdisk"s, "-Zo"s, dev},
     };
-    for (const auto& cmd : steps) {
-        if (auto res = utils::exec_or_error(cmd, "erase disk"sv); !res) {
+    for (const auto& argv : steps) {
+        if (auto res = utils::exec_or_error(argv, "erase disk"sv); !res) {
             return res;
         }
     }
     return {};
+}
+
+auto secure_wipe(std::string_view device) noexcept -> Result<void> {
+    return utils::exec_or_error(std::vector{"/usr/bin/wipe"s, "-Ifre"s, std::string{device}}, "wipe device"sv);
 }
 
 auto generate_default_partition_schema(std::string_view device, std::string_view boot_mountpoint, bool is_efi) noexcept -> std::vector<fs::Partition> {
