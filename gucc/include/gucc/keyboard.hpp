@@ -50,6 +50,9 @@ struct Config {
 /// Returns an error on any filesystem error.
 auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> Result<void>;
 
+/// Set the host system console keymap.
+auto set_host_keymap(std::string_view keymap) noexcept -> Result<void>;
+
 }  // namespace gucc::keyboard
 
 #endif  // KEYBOARD_HPP

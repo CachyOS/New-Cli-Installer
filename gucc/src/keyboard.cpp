@@ -1,15 +1,18 @@
 #include "gucc/keyboard.hpp"
 #include "gucc/file_utils.hpp"
+#include "gucc/io_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace {
@@ -81,6 +84,10 @@ auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> Resu
     }
 
     return {};
+}
+
+auto set_host_keymap(std::string_view keymap) noexcept -> Result<void> {
+    return utils::exec_or_error(std::vector{"/usr/bin/localectl"s, "set-keymap"s, std::string{keymap}}, "set host keymap"sv);
 }
 
 }  // namespace gucc::keyboard
