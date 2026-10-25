@@ -1,6 +1,8 @@
 #ifndef PARTITION_CONFIG_HPP
 #define PARTITION_CONFIG_HPP
 
+#include "gucc/error.hpp"
+
 #include <cstdint>      // for uint8_t
 #include <optional>     // for optional
 #include <string>       // for string
@@ -90,6 +92,9 @@ auto get_default_mount_opts(FilesystemType fs_type, bool is_ssd) noexcept -> std
 /// @param fs_type The filesystem type
 /// @return The mkfs command string (e.g., "mkfs.btrfs -f")
 auto get_mkfs_command(FilesystemType fs_type) noexcept -> std::string_view;
+
+/// Formats @p device with mkfs.
+auto format_partition(std::string_view device, FilesystemType fs_type) noexcept -> Result<void>;
 
 /// @brief Get the sfdisk partition type alias for a filesystem
 /// @param fs_type The filesystem type

@@ -1,7 +1,14 @@
 #include "gucc/partition_config.hpp"
+#include "gucc/io_utils.hpp"
+#include "gucc/string_utils.hpp"
 
+#include <ranges>       // for ranges::*
 #include <string>       // for string_literals
 #include <string_view>  // for string_view_literals
+#include <vector>       // for vector
+
+#include <fmt/compile.h>
+#include <fmt/format.h>
 
 using namespace std::string_view_literals;
 using namespace std::string_literals;
@@ -167,6 +174,16 @@ auto get_mkfs_command(FilesystemType fs_type) noexcept -> std::string_view {
     default:
         return ""sv;
     }
+}
+
+auto format_partition(std::string_view device, FilesystemType fs_type) noexcept -> Result<void> {
+    const auto mkfs_cmd = get_mkfs_command(fs_type);
+    if (mkfs_cmd.empty()) {
+        return make_error(ErrorCode::Unsupported, FMT_COMPILE("no mkfs command for {} ({})"), filesystem_type_to_string(fs_type), device);
+    }
+    auto argv = utils::words(mkfs_cmd) | std::ranges::to<std::vector<std::string>>();
+    argv.emplace_back(device);
+    return utils::exec_or_error(argv, fmt::format(FMT_COMPILE("format {}"), device));
 }
 
 auto get_sfdisk_type_alias(FilesystemType fs_type) noexcept -> std::string_view {
