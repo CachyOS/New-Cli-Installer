@@ -11,6 +11,9 @@ namespace gucc::swap {
 // Creates swapfile on mountpoint
 auto make_swapfile(std::string_view root_mountpoint, std::string_view swap_size) noexcept -> Result<void>;
 
+/// Deactivates swap on device
+auto swapoff(std::string_view device) noexcept -> Result<void>;
+
 // Creates swap file from existing parition
 auto make_swap_partition(const fs::Partition& swap_partition) noexcept -> Result<void>;
 
