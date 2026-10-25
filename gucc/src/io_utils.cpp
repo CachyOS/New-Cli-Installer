@@ -119,6 +119,18 @@ auto query(const std::vector<std::string>& argv) noexcept -> std::string {
     return std::move(default_runner().run(argv, kQuery).output);
 }
 
+auto query_checked(const std::vector<std::string>& argv) noexcept -> bool {
+    return default_runner().run(argv, kQuery).ok();
+}
+
+auto query_output(const std::vector<std::string>& argv) noexcept -> std::optional<std::string> {
+    auto res = default_runner().run(argv, kQuery);
+    if (!res.ok()) {
+        return std::nullopt;
+    }
+    return std::move(res.output);
+}
+
 void exec(const std::vector<std::string>& argv) noexcept {
     default_runner().run(argv, kMutate);
 }
@@ -161,6 +173,10 @@ auto arch_chroot_query_checked(std::string_view command, std::string_view mountp
     return default_runner().run_shell(command, in_target(kQuery, mountpoint)).ok();
 }
 
+auto arch_chroot_query_checked(const std::vector<std::string>& argv, std::string_view mountpoint) noexcept -> bool {
+    return default_runner().run(argv, in_target(kQuery, mountpoint)).ok();
+}
+
 auto exec_or_error(std::string_view command, std::string_view what) noexcept -> Result<void> {
     return or_error(default_runner().run_shell(command, kMutate), what, command);
 }
@@ -179,6 +195,12 @@ auto exec_or_error_with_input(std::string_view command, std::string_view input, 
     auto opts  = kMutate;
     opts.input = input;
     return or_error(default_runner().run_shell(command, opts), what, command);
+}
+
+auto exec_or_error_with_input(const std::vector<std::string>& argv, std::string_view input, std::string_view what) noexcept -> Result<void> {
+    auto opts  = kMutate;
+    opts.input = input;
+    return or_error(default_runner().run(argv, opts), what, argv);
 }
 
 auto arch_chroot_or_error(std::string_view command, std::string_view mountpoint, std::string_view what) noexcept -> Result<void> {

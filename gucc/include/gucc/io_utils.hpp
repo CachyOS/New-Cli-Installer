@@ -23,6 +23,8 @@ auto exec_with_input(std::string_view command, std::string_view input) noexcept 
 
 void exec(const std::vector<std::string>& argv) noexcept;
 auto query(const std::vector<std::string>& argv) noexcept -> std::string;
+auto query_checked(const std::vector<std::string>& argv) noexcept -> bool;
+auto query_output(const std::vector<std::string>& argv) noexcept -> std::optional<std::string>;
 auto exec_checked(const std::vector<std::string>& argv) noexcept -> bool;
 auto exec_checked(const std::vector<std::string>& argv, std::span<const std::string> env) noexcept -> bool;
 
@@ -33,12 +35,14 @@ auto arch_chroot_checked(const std::vector<std::string>& argv, std::string_view 
 auto arch_chroot_output(std::string_view command, std::string_view mountpoint) noexcept -> std::optional<std::string>;
 auto arch_chroot_query(std::string_view command, std::string_view mountpoint) noexcept -> std::string;
 auto arch_chroot_query_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool;
+auto arch_chroot_query_checked(const std::vector<std::string>& argv, std::string_view mountpoint) noexcept -> bool;
 
 /// @brief Run a command, returning SubprocessFailed on failure.
 auto exec_or_error(std::string_view command, std::string_view what = {}) noexcept -> Result<void>;
 auto exec_or_error(const std::vector<std::string>& argv, std::string_view what = {}) noexcept -> Result<void>;
 auto exec_or_error(const std::vector<std::string>& argv, std::span<const std::string> envs, std::string_view what = {}) noexcept -> Result<void>;
 auto exec_or_error_with_input(std::string_view command, std::string_view input, std::string_view what = {}) noexcept -> Result<void>;
+auto exec_or_error_with_input(const std::vector<std::string>& argv, std::string_view input, std::string_view what = {}) noexcept -> Result<void>;
 auto arch_chroot_or_error(std::string_view command, std::string_view mountpoint, std::string_view what = {}) noexcept -> Result<void>;
 auto arch_chroot_or_error(const std::vector<std::string>& argv, std::string_view mountpoint, std::string_view what = {}) noexcept -> Result<void>;
 
