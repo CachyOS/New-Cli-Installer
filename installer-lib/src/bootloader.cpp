@@ -522,7 +522,7 @@ auto grub_mkconfig(std::string_view mountpoint) noexcept
 
 auto arch_chroot(std::string_view command, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    if (!gucc::utils::arch_chroot_follow(command, mountpoint)) {
+    if (!gucc::utils::arch_chroot_checked(command, mountpoint)) {
         return std::unexpected(fmt::format("failed to run in arch-chroot: {}", command));
     }
     return {};
