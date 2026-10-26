@@ -135,6 +135,8 @@ auto bootloader_from_string(std::string_view name) noexcept -> std::optional<Boo
 // Convert BootloaderType to string
 auto bootloader_to_string(BootloaderType type) noexcept -> std::string_view;
 
+auto clear_bios_boot(std::string_view device) noexcept -> Result<void>;
+
 }  // namespace gucc::bootloader
 
 namespace gucc::bootloader::detail {

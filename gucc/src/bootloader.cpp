@@ -16,6 +16,7 @@
 
 #include <spdlog/spdlog.h>
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 #define CONV_REQ_F(needle, f)               \
@@ -425,6 +426,10 @@ auto install_limine(const LimineInstallConfig& limine_install_config) noexcept -
 
     // Add kernel entries via limine-mkinitcpio
     return utils::arch_chroot_or_error("limine-mkinitcpio"sv, limine_install_config.root_mountpoint, "add limine kernel entries"sv);
+}
+
+auto clear_bios_boot(std::string_view device) noexcept -> Result<void> {
+    return utils::exec_or_error({"/usr/bin/dd"s, "if=/dev/zero"s, fmt::format(FMT_COMPILE("of={}"), device), "seek=1"s, "count=2047"s}, "clear bios boot"sv);
 }
 
 }  // namespace gucc::bootloader
