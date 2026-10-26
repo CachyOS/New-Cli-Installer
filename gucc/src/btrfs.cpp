@@ -1,6 +1,7 @@
 #include "gucc/btrfs.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/mount_partitions.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
@@ -46,7 +47,7 @@ auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::strin
             return res;
         }
     }
-    if (!utils::exec_checked(fmt::format(FMT_COMPILE("umount -v {}"), root_mountpoint))) {
+    if (!mount::umount(root_mountpoint)) {
         spdlog::warn("Failed to umount {} before mounting btrfs subvolumes", root_mountpoint);
     }
 
@@ -69,10 +70,8 @@ auto btrfs_mount_subvols(const std::vector<BtrfsSubvolume>& subvols, std::string
         }
 
         // now mount subvolume
-        const auto& mount_cmd = fmt::format(FMT_COMPILE("mount -o {} \"{}\" {}"), mount_option, device, subvolume_mountpoint);
-
-        spdlog::debug("mounting..: {}", mount_cmd);
-        if (auto res = utils::exec_or_error(mount_cmd, "mount btrfs subvolume"sv); !res) {
+        spdlog::debug("mounting {} ({}) at {}", device, mount_option, subvolume_mountpoint);
+        if (auto res = mount::mount_partition(device, subvolume_mountpoint, mount_option); !res) {
             return res;
         }
     }

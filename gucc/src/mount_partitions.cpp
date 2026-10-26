@@ -7,6 +7,10 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/string_utils.hpp"
 
+#include <memory>  // for unique_ptr
+#include <string>  // for string
+#include <vector>  // for vector
+
 #include <fmt/compile.h>
 #include <fmt/format.h>
 
@@ -17,14 +21,33 @@ using namespace std::string_literals;
 
 namespace gucc::mount {
 
-auto build_mount_command(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype) noexcept -> std::string {
-    const auto& type_flag = fstype.empty() ? std::string{} : fmt::format(FMT_COMPILE("-t {} "), fstype);
-    const auto& opts_flag = mount_opts.empty() ? std::string{} : fmt::format(FMT_COMPILE("-o {} "), mount_opts);
-    return fmt::format(FMT_COMPILE("mount {}{}{} {}"), type_flag, opts_flag, partition, mount_dir);
+auto build_mount_argv(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype) noexcept -> std::vector<std::string> {
+    std::vector<std::string> argv{"/usr/bin/mount"s};
+    if (!fstype.empty()) {
+        argv.insert(argv.end(), {"-t"s, std::string{fstype}});
+    }
+    if (!mount_opts.empty()) {
+        argv.insert(argv.end(), {"-o"s, std::string{mount_opts}});
+    }
+    argv.insert(argv.end(), {std::string{partition}, std::string{mount_dir}});
+    return argv;
 }
 
 auto mount_partition(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype) noexcept -> Result<void> {
-    return utils::exec_or_error(build_mount_command(partition, mount_dir, mount_opts, fstype), "mount partition"sv);
+    return utils::exec_or_error(build_mount_argv(partition, mount_dir, mount_opts, fstype), "mount partition"sv);
+}
+
+auto umount(std::string_view mountpoint, bool lazy) noexcept -> Result<void> {
+    std::vector<std::string> argv{"/usr/bin/umount"s, "-v"s};
+    if (lazy) {
+        argv.emplace_back("-l"s);
+    }
+    argv.emplace_back(mountpoint);
+    return utils::exec_or_error(argv, "unmount"sv);
+}
+
+auto bind_mount(std::string_view source, std::string_view target) noexcept -> Result<void> {
+    return utils::exec_or_error({"/usr/bin/mount"s, "--bind"s, std::string{source}, std::string{target}}, "bind mount"sv);
 }
 
 auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int32_t& is_lvm, std::string& luks_name, std::string& luks_dev, std::string& luks_uuid) noexcept -> Result<void> {
@@ -56,12 +79,10 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
 
     // Format esp part if requested
     if (format) {
-        const auto& mkfs_cmd   = fs::get_mkfs_command(fs::FilesystemType::Vfat);
-        const auto& format_cmd = fmt::format(FMT_COMPILE("{} {}"), mkfs_cmd, device);
-        if (auto res = utils::exec_or_error(format_cmd, "format ESP"sv); !res) {
+        if (auto res = fs::format_partition(device, fs::FilesystemType::Vfat); !res) {
             return std::unexpected(std::move(res.error()));
         }
-        spdlog::info("Formatted ESP partition {} with {}", device, mkfs_cmd);
+        spdlog::info("Formatted ESP partition {} with {}", device, fs::get_mkfs_command(fs::FilesystemType::Vfat));
         // let blkid see the fresh vfat before we mount it
         utils::settle_devices();
     }
@@ -84,6 +105,22 @@ auto setup_esp_partition(std::string_view device, std::string_view mountpoint, s
         .device     = std::string{device},
         .mount_opts = boot_opts,
     };
+}
+
+auto ScopedMount::mount(std::string_view partition, std::string_view mount_dir, std::string_view mount_opts, std::string_view fstype) noexcept -> Result<ScopedMount> {
+    return mount_partition(partition, mount_dir, mount_opts, fstype).transform([mount_dir] { return ScopedMount{mount_dir}; });
+}
+
+auto ScopedMount::bind(std::string_view source, std::string_view target) noexcept -> Result<ScopedMount> {
+    return bind_mount(source, target).transform([target] { return ScopedMount{target}; });
+}
+
+void ScopedMount::Unmount::operator()(std::string* path) const noexcept {
+    // well well well
+    const std::unique_ptr<std::string> owned{path};
+    if (auto res = umount(*owned); !res) {
+        spdlog::warn("Failed to unmount {}: {}", *owned, to_string(res.error()));
+    }
 }
 
 }  // namespace gucc::mount

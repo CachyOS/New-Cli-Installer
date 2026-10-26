@@ -1,15 +1,13 @@
 #include "gucc/umount_partitions.hpp"
 #include "gucc/file_utils.hpp"
-#include "gucc/io_utils.hpp"
+#include "gucc/mount_partitions.hpp"
 #include "gucc/mtab.hpp"
+#include "gucc/zfs.hpp"
 
 #include <unistd.h>  // for sync
 
 #include <algorithm>  // for sort
 #include <ranges>     // for ranges::*
-
-#include <fmt/compile.h>
-#include <fmt/format.h>
 
 #include <spdlog/spdlog.h>
 
@@ -31,18 +29,16 @@ auto umount_partitions(std::string_view root_mountpoint, const std::vector<std::
 
     spdlog::debug("Got {} entries from mountpoint {}", mtab_entries->size(), root_mountpoint);
     for (auto&& mtab_entry : std::move(*mtab_entries)) {
-        const auto& umount_cmd = fmt::format(FMT_COMPILE("umount -v {}"), mtab_entry.mountpoint);
-        if (!utils::exec_checked(umount_cmd)) {
+        if (!mount::umount(mtab_entry.mountpoint)) {
             spdlog::warn("Direct umount failed for {} {}, trying lazy umount", mtab_entry.device, mtab_entry.mountpoint);
-            const auto& lazy_cmd = fmt::format(FMT_COMPILE("umount -lv {}"), mtab_entry.mountpoint);
-            if (auto res = utils::exec_or_error(lazy_cmd, "unmount partition"sv); !res) {
+            if (auto res = mount::umount(mtab_entry.mountpoint, true); !res) {
                 return res;
             }
         }
     }
 
     for (auto&& zfs_poolname : zfs_poolnames) {
-        if (auto res = utils::exec_or_error(fmt::format(FMT_COMPILE("zpool export {}"), zfs_poolname), "export zpool"sv); !res) {
+        if (auto res = fs::zpool_export(zfs_poolname); !res) {
             return res;
         }
     }
