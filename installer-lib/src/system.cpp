@@ -1,9 +1,10 @@
 #include "cachyos/system.hpp"
 #include "cachyos/result.hpp"
 
+// import gucc
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
-#include "gucc/io_utils.hpp"
+#include "gucc/kmod.hpp"
 #include "gucc/pacmanconf_repo.hpp"
 #include "gucc/repos.hpp"
 
@@ -59,13 +60,11 @@ auto detect_system() noexcept -> std::expected<SystemInfo, std::string> {
     // Apple System Detection
     const auto& sys_vendor = gucc::file_utils::read_first_line("/sys/class/dmi/id/sys_vendor");
     if ((sys_vendor == "Apple Inc."sv) || (sys_vendor == "Apple Computer, Inc."sv)) {
-        if (!gucc::utils::exec_checked("modprobe -r -q efivars"sv)) {
+        if (!gucc::kmod::unload({"efivars"sv})) {
             spdlog::warn("failed to unload efivars module");
         }
-    } else {
-        if (!gucc::utils::exec_checked("modprobe -q efivarfs"sv)) {
-            spdlog::warn("failed to load efivarfs module");
-        }
+    } else if (!gucc::kmod::load({"efivarfs"sv})) {
+        spdlog::warn("failed to load efivarfs module");
     }
 
     // BIOS or UEFI Detection
