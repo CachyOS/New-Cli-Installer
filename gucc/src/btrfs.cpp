@@ -2,6 +2,7 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/mount_partitions.hpp"
+#include "gucc/pacman.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
@@ -120,7 +121,7 @@ auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vect
 }
 
 auto create_btrfs_installation_snapshot(std::string_view root_mountpoint) noexcept -> Result<void> {
-    if (!utils::arch_chroot_query_checked("pacman -Q cachyos-snapper-support"sv, root_mountpoint)) {
+    if (!pacman::is_installed("cachyos-snapper-support"sv, root_mountpoint)) {
         spdlog::info("cachyos-snapper-support not installed, skipping");
         return {};
     }

@@ -71,6 +71,7 @@ add_library(${PROJECT_NAME} #SHARED
    src/mirrors.cpp include/gucc/mirrors.hpp
    src/process.cpp include/gucc/process.hpp
    src/kmod.cpp include/gucc/kmod.hpp
+   src/pacman.cpp include/gucc/pacman.hpp
    ${GUCC_LOGGER_FILES}
    #src/disk.cpp src/disk.hpp
    )
