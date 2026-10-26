@@ -366,13 +366,11 @@ TEST_CASE("zfs queries")
         stub.on_exact("zpool import 2>/dev/null"s, {.exit_code = 1});
         CHECK(gucc::fs::zpool_list_importable().empty());
     }
-    SECTION("zfs_list_devs expands every vdev")
+    SECTION("zfs_list_devs lists every vdev")
     {
-        stub.on_exact("zpool status -PL 2>/dev/null"s, {.output = std::string{kZpoolStatus}})
-            .on_exact("find -L /dev/ -xtype l -samefile /dev/vdb1 2>/dev/null"s, {.output = "/dev/disk/by-id/virtio-b-part1\n"s})
-            .on_prefix("find -L /dev/ "s, {.exit_code = 1});
-        CHECK_EQ(gucc::fs::zfs_list_devs(), "/dev/vdb1\n/dev/disk/by-id/virtio-b-part1/dev/vdc1\n"sv);
-        CHECK_EQ(stub.count_prefix("find "sv), 2);
+        stub.on_exact("/usr/bin/zpool status -PL"s, {.output = std::string{kZpoolStatus}});
+        CHECK_EQ(gucc::fs::zfs_list_devs(), "/dev/vdb1\n/dev/vdc1\n"sv);
+        CHECK_EQ(stub.command_lines(), std::vector{"/usr/bin/zpool status -PL"s});
     }
 }
 

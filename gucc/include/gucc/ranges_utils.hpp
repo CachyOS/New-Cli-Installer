@@ -7,6 +7,8 @@
 #include <memory>       // for addressof
 #include <optional>     // for optional
 #include <ranges>       // for ranges::*
+#include <string>       // for string
+#include <string_view>  // for string_view
 #include <type_traits>  // for is_lvalue_reference_v, remove_reference_t
 #include <utility>      // for move
 
@@ -64,5 +66,8 @@ template <std::ranges::forward_range R, class T, class Proj = std::identity>
 constexpr auto find_ptr(R& range, const T& value, Proj proj = {}) -> std::remove_reference_t<std::ranges::range_reference_t<R>>* {
     return find_if_ptr(range, [&value](const auto& elem) { return elem == value; }, std::move(proj));
 }
+
+// smth smth Rust inspired overload for owned view
+inline constexpr auto to_owned = std::ranges::views::transform([](std::string_view str) { return std::string{str}; });
 
 }  // namespace gucc::utils

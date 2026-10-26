@@ -5,10 +5,13 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/zfs_query.hpp"
 
-#include <filesystem>  // for exists
-#include <ranges>      // for ranges::*
-#include <string>      // for string
-#include <vector>      // for vector
+#include <algorithm>    // for sort
+#include <array>        // for array
+#include <filesystem>   // for exists, equivalent
+#include <ranges>       // for ranges::*
+#include <string>       // for string
+#include <string_view>  // for string_view
+#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -23,12 +26,12 @@ namespace gucc::fs {
 
 // Creates a zfs volume
 auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept -> Result<void> {
-    return utils::exec_or_error(fmt::format(FMT_COMPILE("zfs create -V {}M {}"), zsize, zpath), "create zfs zvol"sv);
+    return utils::exec_or_error({"/usr/bin/zfs"s, "create"s, "-V"s, fmt::format(FMT_COMPILE("{}M"), zsize), std::string{zpath}}, "create zfs zvol"sv);
 }
 
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
 auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> Result<void> {
-    return utils::exec_or_error(fmt::format(FMT_COMPILE("zfs create -o mountpoint={} {}"), zmount, zpath), "create zfs dataset"sv);
+    return utils::exec_or_error({"/usr/bin/zfs"s, "create"s, "-o"s, fmt::format(FMT_COMPILE("mountpoint={}"), zmount), std::string{zpath}}, "create zfs dataset"sv);
 }
 
 auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> Result<void> {
@@ -42,19 +45,19 @@ auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> R
 }
 
 auto zfs_destroy_dataset(std::string_view zdataset) noexcept -> Result<void> {
-    return utils::exec_or_error(fmt::format(FMT_COMPILE("zfs destroy -r {}"), zdataset), "destroy zfs dataset"sv);
+    return utils::exec_or_error({"/usr/bin/zfs"s, "destroy"s, "-r"s, std::string{zdataset}}, "destroy zfs dataset"sv);
 }
 
 // returns a list of devices containing zfs members
 auto zfs_list_devs() noexcept -> std::string {
     std::string list_of_devices{};
     // get a list of devices with zpools on them
-    auto devices = zfs_query::detail::parse_zpool_status_devices(utils::exec("zpool status -PL 2>/dev/null"sv));
-    for (auto&& device : std::move(devices)) {
-        // add the device
+    const auto devices = zfs_query::detail::parse_zpool_status_devices(utils::query({"/usr/bin/zpool"s, "status"s, "-PL"s}));
+    for (const auto& device : devices) {
         list_of_devices += fmt::format(FMT_COMPILE("{}\n"), device);
-        // now let's add any other forms of those devices
-        list_of_devices += utils::exec(fmt::format(FMT_COMPILE("find -L /dev/ -xtype l -samefile {} 2>/dev/null"), device));
+        for (const auto& link : detail::find_symlinks_to(device, "/dev"sv)) {
+            list_of_devices += fmt::format(FMT_COMPILE("{}\n"), link);
+        }
     }
     return list_of_devices;
 }
@@ -70,37 +73,30 @@ auto zfs_list_datasets(std::string_view type) noexcept -> std::string {
 }
 
 auto zfs_set_property(std::string_view property, std::string_view dataset) noexcept -> Result<void> {
-    return utils::exec_or_error(fmt::format(FMT_COMPILE("zfs set {} {}"), property, dataset), "set zfs property"sv);
+    return utils::exec_or_error({"/usr/bin/zfs"s, "set"s, std::string{property}, std::string{dataset}}, "set zfs property"sv);
 }
 
 auto zpool_set_property(std::string_view property, std::string_view pool_name) noexcept -> Result<void> {
-    const auto& zfs_zpool_cmd = fmt::format(FMT_COMPILE("zpool set {} {}"), property, pool_name);
-
-    spdlog::debug("setting zfs zpool property with: {}", zfs_zpool_cmd);
-    return utils::exec_or_error(zfs_zpool_cmd, "set zpool property"sv);
+    return utils::exec_or_error({"/usr/bin/zpool"s, "set"s, std::string{property}, std::string{pool_name}}, "set zpool property"sv);
 }
 
 auto zfs_create_zpool(std::string_view device_path, std::string_view pool_name, std::string_view pool_options, std::optional<std::string_view> passphrase) noexcept -> Result<void> {
     // ensure hostid exists before pool creation
-    {
-        std::error_code ec;
-        if (!::fs::exists("/etc/hostid"sv, ec) && !utils::exec_checked("zgenhostid"sv)) {
-            spdlog::warn("cannot generate hostid with zgenhostid");
-        }
+    std::error_code ec;
+    if (!::fs::exists("/etc/hostid"sv, ec) && !utils::exec_checked(std::vector{"/usr/bin/zgenhostid"s})) {
+        spdlog::warn("cannot generate hostid with zgenhostid");
     }
 
-    const auto& zfs_zpool_cmd = [&]() {
-        auto cmd = fmt::format(FMT_COMPILE("zpool create {}"), pool_options);
-        if (passphrase.has_value()) {
-            cmd += " -O encryption=aes-256-gcm -O keyformat=passphrase"sv;
-        }
-        cmd += fmt::format(FMT_COMPILE(" '{}' '{}'"), pool_name, device_path);
-        return cmd;
-    }();
+    std::vector<std::string> argv{"/usr/bin/zpool"s, "create"s};
+    argv.append_range(utils::words(pool_options) | utils::to_owned);
+    if (passphrase.has_value()) {
+        argv.append_range(std::array{"-O"s, "encryption=aes-256-gcm"s, "-O"s, "keyformat=passphrase"s});
+    }
+    argv.append_range(std::array{std::string{pool_name}, std::string{device_path}});
 
     // keyformat=passphrase reads a non-tty passphrase line from stdin
     const auto input = passphrase ? fmt::format(FMT_COMPILE("{}\n"), *passphrase) : std::string{};
-    return utils::exec_or_error_with_input(zfs_zpool_cmd, input, "create zpool"sv);
+    return utils::exec_or_error_with_input(argv, input, "create zpool"sv);
 }
 
 auto zfs_create_with_config(std::string_view device_path, const fs::ZfsSetupConfig& zfs_config) noexcept -> Result<void> {
@@ -154,7 +150,7 @@ auto zfs_mount(std::string_view dataset) noexcept -> Result<void> {
 
 auto zfs_load_key(std::string_view dataset, std::string_view passphrase) noexcept -> Result<void> {
     // keyformat=passphrase reads one line from stdin
-    return utils::exec_or_error_with_input(fmt::format(FMT_COMPILE("zfs load-key {}"), dataset), fmt::format(FMT_COMPILE("{}\n"), passphrase), "load zfs encryption key"sv);
+    return utils::exec_or_error_with_input({"/usr/bin/zfs"s, "load-key"s, std::string{dataset}}, fmt::format(FMT_COMPILE("{}\n"), passphrase), "load zfs encryption key"sv);
 }
 
 auto copy_hostid_to_target(std::string_view target_root, std::string_view host_hostid) noexcept -> Result<void> {
@@ -178,3 +174,30 @@ auto copy_hostid_to_target(std::string_view target_root, std::string_view host_h
 }
 
 }  // namespace gucc::fs
+
+namespace gucc::fs::detail {
+
+auto find_symlinks_to(std::string_view device, std::string_view search_root) noexcept -> std::vector<std::string> {
+    std::error_code ec;
+    // symlinked dirs are not followed
+    auto it = ::fs::recursive_directory_iterator(search_root, ::fs::directory_options::skip_permission_denied, ec);
+    if (ec) {
+        return {};
+    }
+
+    std::vector<std::string> links;
+    for (const auto end = ::fs::recursive_directory_iterator{}; it != end; it.increment(ec)) {
+        // ugly shit, but not throwing
+        if (ec) {
+            break;
+        }
+        std::error_code entry_ec;
+        if (it->is_symlink(entry_ec) && ::fs::equivalent(it->path(), device, entry_ec)) {
+            links.emplace_back(it->path().string());
+        }
+    }
+    std::ranges::sort(links);
+    return links;
+}
+
+}  // namespace gucc::fs::detail

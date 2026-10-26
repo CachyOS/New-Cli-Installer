@@ -1,5 +1,4 @@
-#ifndef ZFS_HPP
-#define ZFS_HPP
+#pragma once
 
 #include "gucc/error.hpp"
 #include "gucc/zfs_types.hpp"
@@ -92,4 +91,8 @@ auto copy_hostid_to_target(std::string_view target_root, std::string_view host_h
 
 }  // namespace gucc::fs
 
-#endif  // ZFS_HPP
+namespace gucc::fs::detail {
+
+[[nodiscard]] auto find_symlinks_to(std::string_view device, std::string_view search_root) noexcept -> std::vector<std::string>;
+
+}  // namespace gucc::fs::detail

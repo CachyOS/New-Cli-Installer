@@ -45,8 +45,7 @@ auto copy_zfs_cachefile(std::string_view mountpoint) noexcept -> gucc::Result<vo
         ? zfs_source.substr(0, slash_pos)
         : zfs_source;
 
-    const auto& zpool_cmd = fmt::format(FMT_COMPILE("zpool set cachefile=/etc/zfs/zpool.cache {}"), pool_name);
-    if (auto res = gucc::utils::exec_or_error(zpool_cmd, "set zpool cachefile"sv); !res) {
+    if (auto res = gucc::fs::zpool_set_property("cachefile=/etc/zfs/zpool.cache"sv, pool_name); !res) {
         return res;
     }
     if (auto res = gucc::file_utils::create_directories(gucc::utils::target_path(mountpoint, "/etc/zfs"sv)); !res) {

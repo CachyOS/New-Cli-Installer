@@ -1,8 +1,10 @@
 #include "doctest_compatibility.h"
 
 #include "gucc/ranges_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 #include <array>
+#include <concepts>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -50,4 +52,12 @@ TEST_CASE("ranges utils")
         CHECK_EQ(utils::index_of(items, "b"sv, &Item::name), 1U);
         CHECK_FALSE(utils::index_of(items, "zz"sv, &Item::name));
     }
+}
+
+TEST_CASE("to_owned")
+{
+    std::vector<std::string> argv{"zpool"};
+    argv.append_range(utils::words("-f  -o ashift=12"sv) | utils::to_owned);
+    CHECK_EQ(argv, std::vector<std::string>{"zpool", "-f", "-o", "ashift=12"});
+    static_assert(std::same_as<std::ranges::range_value_t<decltype(utils::words(""sv) | utils::to_owned)>, std::string>);
 }
