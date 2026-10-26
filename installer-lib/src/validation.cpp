@@ -6,6 +6,7 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/pacman.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <cstddef>  // for size_t
@@ -29,11 +30,11 @@ namespace {
     using gucc::bootloader::BootloaderType;
     switch (ctx.bootloader) {
     case BootloaderType::Grub:
-        return gucc::utils::arch_chroot_query_checked("pacman -Qq grub"sv, ctx.mountpoint);
+        return gucc::pacman::is_installed("grub"sv, ctx.mountpoint);
     case BootloaderType::Refind:
-        return gucc::utils::arch_chroot_query_checked("pacman -Qq refind"sv, ctx.mountpoint);
+        return gucc::pacman::is_installed("refind"sv, ctx.mountpoint);
     case BootloaderType::Limine:
-        return gucc::utils::arch_chroot_query_checked("pacman -Qq limine"sv, ctx.mountpoint);
+        return gucc::pacman::is_installed("limine"sv, ctx.mountpoint);
     case BootloaderType::SystemdBoot:
         // Check both common ESP mount points (loader.conf lives at ESP root).
         return fs::exists(gucc::utils::target_path(ctx.mountpoint, "/boot/loader/loader.conf"sv))
