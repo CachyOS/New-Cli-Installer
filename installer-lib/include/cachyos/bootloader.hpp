@@ -4,6 +4,7 @@
 #include "cachyos/types.hpp"
 
 #include <expected>     // for expected
+#include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
