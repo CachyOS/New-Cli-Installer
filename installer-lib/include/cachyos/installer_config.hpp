@@ -35,6 +35,8 @@ struct PartitionConfig {
     std::string size;
     std::string fs_name;
     PartitionType type{PartitionType::Additional};
+
+    friend auto operator==(const PartitionConfig&, const PartitionConfig&) -> bool = default;
 };
 
 /// Configuration for a single btrfs subvolume.
@@ -110,6 +112,9 @@ struct InstallerConfig {
     std::optional<std::string> post_install{};
 };
 
+// fs_name of the root partition, or the global 'fs_name'.
+[[nodiscard]] auto root_fs_name(const InstallerConfig& config) noexcept -> std::string_view;
+
 /// Parses installer configuration from JSON string content.
 /// @param json_content The JSON configuration content.
 /// @return InstallerConfig on success, or error string on failure.
@@ -118,9 +123,9 @@ struct InstallerConfig {
 
 /// Validates that all required fields are present for headless mode.
 /// @param config The configuration to validate.
-/// @return void on success, or error string describing missing fields.
+/// @return void on success, or one entry for the missing fields.
 [[nodiscard]] auto validate_headless_config(const InstallerConfig& config) noexcept
-    -> std::expected<void, std::string>;
+    -> std::expected<void, std::vector<std::string>>;
 
 /// Returns default InstallerConfig with sensible defaults.
 [[nodiscard]] auto get_default_config() noexcept -> InstallerConfig;

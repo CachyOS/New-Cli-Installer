@@ -6,6 +6,7 @@
 
 // import gucc
 #include "gucc/bootloader.hpp"
+#include "gucc/ranges_utils.hpp"
 
 #include <cstdint>  // for uint16_t
 
@@ -15,6 +16,7 @@
 #include <initializer_list>  // for initializer_list
 #include <optional>          // for optional
 #include <ranges>            // for ranges::*
+#include <string>            // for string
 #include <string_view>       // for string_view
 #include <tuple>             // for tuple
 #include <utility>           // for pair, move
@@ -469,14 +471,7 @@ auto parse_installer_config(std::string_view json_content) noexcept
     }
 
     // zfs handling
-    const auto root_fs = [&config]() -> std::string_view {
-        for (const auto& part : config.partitions) {
-            if (part.type == PartitionType::Root) {
-                return part.fs_name;
-            }
-        }
-        return config.fs_name ? std::string_view{*config.fs_name} : std::string_view{};
-    }();
+    const auto root_fs     = root_fs_name(config);
     const bool root_is_zfs = root_fs == "zfs"sv;
     if (config.zfs_passphrase && !root_is_zfs) {
         return std::unexpected(fmt::format(FMT_COMPILE("'zfs_passphrase' requires a zfs root filesystem, but root is '{}'"), root_fs));
@@ -512,8 +507,15 @@ auto parse_installer_config(std::string_view json_content) noexcept
     return config;
 }
 
+auto root_fs_name(const InstallerConfig& config) noexcept -> std::string_view {
+    if (const auto* root = gucc::utils::find_ptr(config.partitions, PartitionType::Root, &PartitionConfig::type)) {
+        return root->fs_name;
+    }
+    return config.fs_name ? std::string_view{*config.fs_name} : std::string_view{};
+}
+
 auto validate_headless_config(const InstallerConfig& config) noexcept
-    -> std::expected<void, std::string> {
+    -> std::expected<void, std::vector<std::string>> {
     if (!config.headless_mode) {
         return {};
     }
@@ -541,10 +543,14 @@ auto validate_headless_config(const InstallerConfig& config) noexcept
         | std::ranges::views::keys
         | std::ranges::to<std::vector<std::string_view>>();
 
+    std::vector<std::string> problems{};
     if (!missing_fields.empty()) {
-        return std::unexpected(fmt::format(FMT_COMPILE("HEADLESS mode requires: {}"), fmt::join(missing_fields, ", ")));
+        problems.emplace_back(fmt::format(FMT_COMPILE("HEADLESS mode requires: {}"), fmt::join(missing_fields, ", ")));
     }
 
+    if (!problems.empty()) {
+        return std::unexpected(std::move(problems));
+    }
     return {};
 }
 
@@ -558,8 +564,7 @@ auto installer_config_to_inputs(const InstallerConfig& cfg) noexcept
     }
     inputs.ctx.system_mode = sysinfo->system_mode;
 
-    const auto is_efi = sysinfo->system_mode == InstallContext::SystemMode::UEFI;
-    auto strategy     = headless_strategy_from_config(cfg, is_efi);
+    auto strategy = headless_strategy_from_config(cfg, inputs.ctx.is_uefi());
     if (!strategy) {
         return std::unexpected(fmt::format(FMT_COMPILE("invalid partition configuration:\n  - {}"),
             fmt::join(strategy.error(), "\n  - ")));

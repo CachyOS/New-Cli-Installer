@@ -52,10 +52,6 @@ namespace cachyos::installer {
 [[nodiscard]] auto init_server_profile(InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
-/// Ensures a package is installed on the live system (not the target).
-[[nodiscard]] auto install_needed(std::string_view pkg) noexcept
-    -> std::expected<void, std::string>;
-
 }  // namespace cachyos::installer
 
 #endif  // CACHYOS_INSTALLER_PACKAGES_HPP

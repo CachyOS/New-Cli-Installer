@@ -34,20 +34,23 @@ auto server_ctx(std::string profile_id) -> InstallContext {
 
 }  // namespace
 
-TEST_CASE("init_server_profile") {
+TEST_CASE("init_server_profile")
+{
     auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>([](const spdlog::details::log_msg&) { });
     auto logger        = std::make_shared<spdlog::logger>("default", callback_sink);
     spdlog::set_default_logger(logger);
     gucc::logger::set_logger(logger);
 
-    SECTION("desktop leaves the profile empty") {
+    SECTION("desktop leaves the profile empty")
+    {
         InstallContext ctx{};
         const auto res = init_server_profile(ctx);
 
         CHECK(res.has_value());
         CHECK(!ctx.resolved_server.has_value());
     }
-    SECTION("web profile resolves additively") {
+    SECTION("web profile resolves additively")
+    {
         auto ctx                   = server_ctx("web"s);
         ctx.server_extra_packages  = {"htop"s};
         ctx.server_extra_tcp_ports = {8080};
@@ -74,7 +77,8 @@ TEST_CASE("init_server_profile") {
 
         CHECK_EQ(resolved.ssh_authorized_keys.size(), 1);
     }
-    SECTION("unknown id aborts") {
+    SECTION("unknown id aborts")
+    {
         auto ctx       = server_ctx("does-not-exist"s);
         const auto res = init_server_profile(ctx);
 

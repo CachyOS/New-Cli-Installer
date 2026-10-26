@@ -116,7 +116,7 @@ void validate_layout(const std::vector<NumberedPartition>& sorted, bool is_efi,
 
         // reject percentages
         if (const auto size = gucc::utils::trim(part.size); gucc::utils::contains(size, "%"sv) && size != "100%"sv) {
-            errors.push_back(fmt::format(FMT_COMPILE("partition '{}': size '{}' is not supported; use a byte size (e.g. '512M', '100G') or '100\%' for the rest of the disk"), part.name, part.size));
+            errors.push_back(fmt::format(FMT_COMPILE("partition '{}': size '{}' is not supported; use a byte size (e.g. '512M', '100G') or '100%' for the rest of the disk"), part.name, part.size));
         }
 
         // a duplicate mountpoint means one gets shadowed by the other at mount
@@ -132,23 +132,6 @@ void validate_layout(const std::vector<NumberedPartition>& sorted, bool is_efi,
                 earlier->config->name, part.name, part.mountpoint));
         }
     }
-}
-
-template <typename T>
-concept BtrfsSubvolHolder = requires(const T& v) {
-    gucc::fs::BtrfsSubvolume{.subvolume = v.subvolume, .mountpoint = v.mountpoint};
-};
-
-// convert any range of subvolume-like into gucc BtrfsSubvolumes.
-template <std::ranges::input_range R>
-    requires BtrfsSubvolHolder<std::ranges::range_value_t<R>>
-[[nodiscard]] auto conv_to_btrfs_subvols(R&& subvols) noexcept
-    -> std::vector<gucc::fs::BtrfsSubvolume> {
-    return std::forward<R>(subvols)
-        | std::ranges::views::transform([](const BtrfsSubvolHolder auto& subvol) {
-              return gucc::fs::BtrfsSubvolume{.subvolume = subvol.subvolume, .mountpoint = subvol.mountpoint};
-          })
-        | std::ranges::to<std::vector<gucc::fs::BtrfsSubvolume>>();
 }
 
 }  // namespace
@@ -188,21 +171,19 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
         | std::ranges::to<std::vector<gucc::fs::Partition>>();
 
     // the root filesystem volume layout
-    const auto root_entry    = std::ranges::find(numbered, PartitionType::Root,
-        [](const NumberedPartition& entry) { return entry.config->type; });
-    const auto root_fs_name  = (root_entry != std::ranges::end(numbered)) ? std::string_view{root_entry->config->fs_name} : ""sv;
-    const bool root_is_btrfs = root_fs_name == "btrfs"sv;
-    const bool root_is_zfs   = root_fs_name == "zfs"sv;
+    const auto root_fs       = root_fs_name(cfg);
+    const bool root_is_btrfs = root_fs == "btrfs"sv;
+    const bool root_is_zfs   = root_fs == "zfs"sv;
 
     std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes{};
     if (!cfg.subvolumes.empty()) {
         if (!root_is_btrfs) {
-            errors.push_back(fmt::format(FMT_COMPILE("'subvolumes' requires a btrfs root filesystem, but root is '{}'"), root_fs_name));
+            errors.push_back(fmt::format(FMT_COMPILE("'subvolumes' requires a btrfs root filesystem, but root is '{}'"), root_fs));
         } else {
-            btrfs_subvolumes = conv_to_btrfs_subvols(cfg.subvolumes);
+            btrfs_subvolumes = partition_planner::convert_subvolumes<gucc::fs::BtrfsSubvolume>(cfg.subvolumes);
         }
     } else if (root_is_btrfs && cfg.use_default_subvolumes) {
-        btrfs_subvolumes = conv_to_btrfs_subvols(partition_planner::default_btrfs_layout());
+        btrfs_subvolumes = cachyos::installer::default_btrfs_subvolumes();
     }
 
     // zfs special handling
@@ -210,7 +191,7 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
     if (root_is_zfs) {
         zfs_setup = default_zfs_setup(kDefaultZpoolName, cfg.zfs_passphrase);
     } else if (cfg.zfs_passphrase) {
-        errors.push_back(fmt::format(FMT_COMPILE("'zfs_passphrase' requires a zfs root filesystem, but root is '{}'"), root_fs_name));
+        errors.push_back(fmt::format(FMT_COMPILE("'zfs_passphrase' requires a zfs root filesystem, but root is '{}'"), root_fs));
     }
 
     // only errors block the install

@@ -13,6 +13,7 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/package_list.hpp"
 #include "gucc/package_profiles.hpp"
+#include "gucc/pacman.hpp"
 #include "gucc/plymouth.hpp"
 #include "gucc/server_profiles.hpp"
 #include "gucc/string_utils.hpp"
@@ -238,16 +239,7 @@ auto install_packages(const std::vector<std::string>& packages,
 auto remove_packages(const std::vector<std::string>& packages,
     std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    /* clang-format off */
-    if (packages.empty()) { return {}; }
-    /* clang-format on */
-
-    const auto& pkgs_str       = gucc::utils::join(packages, ' ');
-    const auto& chroot_command = fmt::format(FMT_COMPILE("pacman -Rsn {}"), pkgs_str);
-    if (!gucc::utils::arch_chroot_checked(chroot_command, mountpoint)) {
-        return std::unexpected(fmt::format("failed to remove packages: {}", pkgs_str));
-    }
-    return {};
+    return lift(gucc::pacman::remove(packages, mountpoint), "failed to remove packages"sv);
 }
 
 auto enable_services(const InstallContext& ctx) noexcept
@@ -326,21 +318,6 @@ auto init_server_profile(InstallContext& ctx) noexcept
     return lift(gucc::profile::resolve_server_profile(*profiles, ctx.server_profile, extras),
         fmt::format(FMT_COMPILE("cannot resolve server profile '{}'"), ctx.server_profile))
         .transform([&ctx](gucc::profile::ResolvedServerProfile&& resolved) { ctx.resolved_server = std::move(resolved); });
-}
-
-auto install_needed(std::string_view pkg) noexcept
-    -> std::expected<void, std::string> {
-    // Check if already installed
-    if (gucc::utils::exec_checked(fmt::format(FMT_COMPILE("pacman -Qq {} &>/dev/null"), pkg))) {
-        return {};
-    }
-
-    // Install it
-    const auto& cmd = fmt::format(FMT_COMPILE("pacman -Sy --noconfirm {}"), pkg);
-    if (!gucc::utils::exec_checked(cmd)) {
-        return std::unexpected(fmt::format("failed to install needed package: {}", pkg));
-    }
-    return {};
 }
 
 }  // namespace cachyos::installer

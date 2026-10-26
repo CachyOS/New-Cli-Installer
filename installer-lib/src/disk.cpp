@@ -1,5 +1,4 @@
 #include "cachyos/disk.hpp"
-#include "cachyos/packages.hpp"
 #include "cachyos/result.hpp"
 
 // import gucc
@@ -10,7 +9,9 @@
 #include "gucc/fs_utils.hpp"
 #include "gucc/fstab.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/kmod.hpp"
 #include "gucc/mount_partitions.hpp"
+#include "gucc/pacman.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/string_utils.hpp"
@@ -63,17 +64,20 @@ constexpr auto bootloader_default_mount(gucc::bootloader::BootloaderType bootloa
     return "unknown bootloader"sv;
 }
 
-/// Runs the selection's mkfs command when formatting was requested.
 template <class Selection>
 auto format_if_requested(const Selection& selection) noexcept -> std::expected<void, std::string> {
-    if (!selection.format_requested || selection.mkfs_command.empty()) {
+    if (!selection.format_requested) {
         return {};
     }
-    const auto format_cmd = fmt::format(FMT_COMPILE("{} {}"), selection.mkfs_command, selection.device);
-    if (auto res = lift(gucc::utils::exec_or_error(format_cmd, "format partition"sv)); !res) {
+    // ZFS on root in its own path
+    const auto fs_type = gucc::fs::string_to_filesystem_type(selection.fstype);
+    if (fs_type == gucc::fs::FilesystemType::Zfs) {
+        return {};
+    }
+    if (auto res = lift(gucc::fs::format_partition(selection.device, fs_type)); !res) {
         return res;
     }
-    spdlog::info("Formatted {} with {}", selection.device, selection.mkfs_command);
+    spdlog::info("Formatted {} as {}", selection.device, selection.fstype);
     // let blkid see the fresh filesystem before we mount it
     gucc::utils::settle_devices();
     return {};
@@ -209,11 +213,10 @@ auto auto_partition(std::string_view device, std::string_view system_mode,
 
 auto secure_wipe(std::string_view device) noexcept
     -> std::expected<void, std::string> {
-    // Ensure wipe tool is installed
-    if (auto res = install_needed("wipe"); !res) {
+    if (auto res = lift(gucc::pacman::ensure_installed("wipe"sv)); !res) {
         return res;
     }
-    return lift(gucc::utils::exec_or_error(fmt::format(FMT_COMPILE("wipe -Ifre {}"), device), "wipe device"sv));
+    return lift(gucc::disk::secure_wipe(device));
 }
 
 auto default_zfs_datasets(std::string_view zpool_name) noexcept
@@ -413,9 +416,10 @@ auto umount_partitions(std::string_view mountpoint,
     std::string_view swap_device) noexcept
     -> std::expected<void, std::string> {
     // Disable swap if it was created
-    const auto& swapoff_cmd = fmt::format(FMT_COMPILE("swapoff {}"), swap_device);
-    if (!swap_device.empty() && !gucc::utils::exec_checked(swapoff_cmd)) {
-        spdlog::error("Failed to disable swap on {}", swap_device);
+    if (!swap_device.empty()) {
+        if (auto res = gucc::swap::swapoff(swap_device); !res) {
+            spdlog::error("Failed to disable swap on {}: {}", swap_device, res.error().context);
+        }
     }
 
     return lift(gucc::umount::umount_partitions(mountpoint, zfs_pools));
@@ -547,14 +551,12 @@ auto apply_root_partition(const RootPartitionSelection& selection,
 
 void load_filesystem_module(std::string_view fstype) noexcept {
     const auto fs_type = gucc::fs::string_to_filesystem_type(fstype);
-    if (fs_type == gucc::fs::FilesystemType::Btrfs) {
-        if (!gucc::utils::exec_checked("modprobe btrfs"sv)) {
-            spdlog::warn("failed to load btrfs kernel module");
-        }
-    } else if (fs_type == gucc::fs::FilesystemType::F2fs) {
-        if (!gucc::utils::exec_checked("modprobe f2fs"sv)) {
-            spdlog::warn("failed to load f2fs kernel module");
-        }
+    if (fs_type != gucc::fs::FilesystemType::Btrfs && fs_type != gucc::fs::FilesystemType::F2fs) {
+        return;
+    }
+    const auto module = gucc::fs::filesystem_type_to_string(fs_type);
+    if (!gucc::kmod::load({module})) {
+        spdlog::warn("failed to load {} kernel module", module);
     }
 }
 

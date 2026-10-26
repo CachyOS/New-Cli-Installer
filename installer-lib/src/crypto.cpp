@@ -1,15 +1,17 @@
 #include "cachyos/crypto.hpp"
+#include "cachyos/disk.hpp"
+#include "cachyos/result.hpp"
 
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/crypto_detection.hpp"
-#include "gucc/io_utils.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/string_utils.hpp"
 
-#include <cstdint>      // for uint32_t
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <utility>      // for move
+#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
@@ -17,13 +19,52 @@
 
 using namespace std::string_view_literals;
 
+namespace {
+
+using cachyos::installer::block_devices;
+using cachyos::installer::lift;
+
+struct BootProbe final {
+    std::vector<gucc::disk::BlockDevice> devices;
+    std::string boot_mount;
+};
+
+auto probe_boot(std::string_view mountpoint, std::string_view uefi_mount) noexcept
+    -> std::expected<BootProbe, std::string> {
+    return block_devices().transform([&](std::vector<gucc::disk::BlockDevice>&& devices) {
+        return BootProbe{
+            .devices    = std::move(devices),
+            .boot_mount = uefi_mount.empty() ? std::string{} : gucc::utils::target_path(mountpoint, uefi_mount),
+        };
+    });
+}
+
+auto setup_luks_keyfile(const std::vector<gucc::disk::BlockDevice>& devices, std::string_view mountpoint) noexcept
+    -> std::expected<void, std::string> {
+    const auto& part_dev = gucc::disk::find_underlying_partition(devices, mountpoint);
+    if (!part_dev) {
+        return std::unexpected("failed to find underlying partition for root device");
+    }
+
+    const auto& partition = part_dev->name;
+    const auto& slots     = gucc::crypto::luks_keyslot_count(partition);
+    if (!slots) {
+        spdlog::warn("Failed to count LUKS keyslots of {}: {}", partition, slots.error().context);
+    } else if (*slots >= 4) {
+        return {};
+    }
+    return lift(gucc::crypto::luks_setup_keyfile(gucc::utils::target_path(mountpoint, "/crypto_keyfile.bin"sv), mountpoint, partition, "--pbkdf-force-iterations 200000"));
+}
+
+}  // namespace
+
 namespace cachyos::installer {
 
 auto detect_crypto_root(std::string_view mountpoint) noexcept
     -> std::expected<CryptoState, std::string> {
-    const auto& devices = gucc::disk::list_block_devices();
+    const auto& devices = block_devices();
     if (!devices) {
-        return std::unexpected("failed to find block devices");
+        return std::unexpected(devices.error());
     }
 
     const auto& crypto = gucc::disk::detect_crypto_for_mountpoint(*devices, mountpoint);
@@ -51,13 +92,12 @@ auto detect_crypto_root(std::string_view mountpoint) noexcept
 
 auto detect_crypto_boot(std::string_view mountpoint, std::string_view uefi_mount) noexcept
     -> std::expected<CryptoState, std::string> {
-    const auto& devices = gucc::disk::list_block_devices();
+    const auto& devices = block_devices();
     if (!devices) {
-        return std::unexpected("failed to find block devices");
+        return std::unexpected(devices.error());
     }
 
-    const auto boot_mount = fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount);
-    const auto& crypto    = gucc::disk::detect_crypto_for_boot(*devices, boot_mount);
+    const auto& crypto = gucc::disk::detect_crypto_for_boot(*devices, gucc::utils::target_path(mountpoint, uefi_mount));
     if (!crypto) {
         return std::unexpected("failed to find boot device on mountpoint");
     }
@@ -81,61 +121,33 @@ auto detect_crypto_boot(std::string_view mountpoint, std::string_view uefi_mount
 
 auto recheck_luks(std::string_view mountpoint, std::string_view uefi_mount) noexcept
     -> std::expected<bool, std::string> {
-    const auto& devices = gucc::disk::list_block_devices();
-    if (!devices) {
-        return std::unexpected("failed to find block devices");
-    }
-
-    const auto boot_mount = !uefi_mount.empty()
-        ? fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount)
-        : std::string{};
-
-    return gucc::disk::is_encrypted(*devices, mountpoint, boot_mount);
+    return probe_boot(mountpoint, uefi_mount).transform([mountpoint](const BootProbe& probe) {
+        return gucc::disk::is_encrypted(probe.devices, mountpoint, probe.boot_mount);
+    });
 }
 
 auto boot_encrypted_setting(std::string_view mountpoint, std::string_view uefi_mount, bool is_luks) noexcept
     -> std::expected<bool, std::string> {
-    const auto& devices = gucc::disk::list_block_devices();
-    if (!devices) {
-        return std::unexpected("failed to find block devices");
+    const auto& probe = probe_boot(mountpoint, uefi_mount);
+    if (!probe) {
+        return std::unexpected(probe.error());
     }
-
-    const auto boot_mount = !uefi_mount.empty()
-        ? fmt::format(FMT_COMPILE("{}{}"), mountpoint, uefi_mount)
-        : std::string{};
-
-    if (gucc::disk::is_fde(*devices, mountpoint, boot_mount, is_luks)) {
-        auto result = setup_luks_keyfile(mountpoint);
-        if (!result) {
-            return std::unexpected(fmt::format("failed to setup luks keyfile: {}", result.error()));
-        }
-        return true;
+    if (!gucc::disk::is_fde(probe->devices, mountpoint, probe->boot_mount, is_luks)) {
+        return false;
     }
-    return false;
+    if (auto res = ::setup_luks_keyfile(probe->devices, mountpoint); !res) {
+        return std::unexpected(fmt::format(FMT_COMPILE("failed to setup luks keyfile: {}"), res.error()));
+    }
+    return true;
 }
 
 auto setup_luks_keyfile(std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    const auto& devices = gucc::disk::list_block_devices();
+    const auto& devices = block_devices();
     if (!devices) {
-        return std::unexpected("failed to find block devices");
+        return std::unexpected(devices.error());
     }
-
-    const auto& part_dev = gucc::disk::find_underlying_partition(*devices, mountpoint);
-    if (!part_dev) {
-        return std::unexpected("failed to find underlying partition for root device");
-    }
-
-    const auto& partition    = part_dev->name;
-    const auto& lukskeys_str = gucc::utils::exec(
-        fmt::format(FMT_COMPILE("cryptsetup luksDump '{}' | grep 'ENABLED' | wc -l"), partition));
-    if (gucc::utils::parse_uint<std::uint32_t>(lukskeys_str).value_or(0) < 4) {
-        const auto keyfile_path = fmt::format(FMT_COMPILE("{}/crypto_keyfile.bin"), mountpoint);
-        if (auto res = gucc::crypto::luks1_setup_keyfile(keyfile_path, mountpoint, partition, "--pbkdf-force-iterations 200000"); !res) {
-            return std::unexpected(gucc::to_string(res.error()));
-        }
-    }
-    return {};
+    return ::setup_luks_keyfile(*devices, mountpoint);
 }
 
 }  // namespace cachyos::installer

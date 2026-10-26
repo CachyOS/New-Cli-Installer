@@ -5,7 +5,7 @@
 // import gucc
 #include "gucc/autologin.hpp"
 #include "gucc/hwclock.hpp"
-#include "gucc/io_utils.hpp"
+#include "gucc/keyboard.hpp"
 #include "gucc/locale.hpp"
 #include "gucc/timezone.hpp"
 #include "gucc/user.hpp"
@@ -67,9 +67,9 @@ auto apply_system_settings(const SystemSettings& settings, std::string_view moun
     // Keymap (live session only)
     if (!settings.keymap.empty()) {
         spdlog::info("Setting keymap: {}", settings.keymap);
-        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("localectl set-keymap {}"), settings.keymap))) {
-            spdlog::error("Failed to set live session keymap: {}", settings.keymap);
-            // non-fatal: live session keymap failure shouldn't block install?
+        // non-fatal: only the live session is affected
+        if (auto res = gucc::keyboard::set_host_keymap(settings.keymap); !res) {
+            spdlog::error("Failed to set live session keymap {}: {}", settings.keymap, res.error().context);
         }
     }
 
@@ -98,10 +98,8 @@ auto create_user(const UserSettings& settings, std::string_view mountpoint,
     const bool is_fish = settings.shell.ends_with("fish");
     if (is_zsh || is_fish) {
         const auto shell_name = is_zsh ? "zsh"sv : "fish"sv;
-        auto pkg              = fmt::format(FMT_COMPILE("cachyos-{}-config"), shell_name);
-        auto pkg_result       = install_packages({std::move(pkg)}, mountpoint, hostcache);
-        if (!pkg_result) {
-            spdlog::error("Failed to install shell config: {}", pkg_result.error());
+        if (auto res = install_packages({fmt::format(FMT_COMPILE("cachyos-{}-config"), shell_name)}, mountpoint, hostcache); !res) {
+            return res;
         }
     }
 

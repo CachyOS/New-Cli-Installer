@@ -1,5 +1,4 @@
-#ifndef CACHYOS_INSTALLER_CRYPTO_HPP
-#define CACHYOS_INSTALLER_CRYPTO_HPP
+#pragma once
 
 #include "cachyos/types.hpp"
 
@@ -32,5 +31,3 @@ namespace cachyos::installer {
     -> std::expected<void, std::string>;
 
 }  // namespace cachyos::installer
-
-#endif  // CACHYOS_INSTALLER_CRYPTO_HPP

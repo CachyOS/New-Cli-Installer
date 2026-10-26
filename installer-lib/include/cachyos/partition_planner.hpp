@@ -7,8 +7,10 @@
 
 #include <cstdint>      // for uint64_t
 #include <expected>     // for expected
+#include <ranges>       // for ranges::*
 #include <string>       // for string
 #include <string_view>  // for string_view
+#include <utility>      // for forward, forward_like
 #include <vector>       // for vector
 
 /// @file partition_planner.hpp
@@ -59,6 +61,21 @@ struct BtrfsSubvolumeChoice {
     std::string subvolume;   ///< subvolume path, e.g. `@` or `@home`
     std::string mountpoint;  ///< where it gets mounted in the target
 };
+
+/// @brief Convert between subvolume-row types.
+///
+/// Moves the strings out when @p subvols is an rvalue.
+template <class Out, std::ranges::input_range R>
+    requires requires(std::ranges::range_reference_t<R> subvol) {
+        Out{.subvolume = subvol.subvolume, .mountpoint = subvol.mountpoint};
+    }
+[[nodiscard]] auto convert_subvolumes(R&& subvols) -> std::vector<Out> {
+    return std::forward<R>(subvols)
+        | std::ranges::views::transform([](auto&& subvol) {
+              return Out{.subvolume = std::forward_like<R>(subvol.subvolume), .mountpoint = std::forward_like<R>(subvol.mountpoint)};
+          })
+        | std::ranges::to<std::vector<Out>>();
+}
 
 /// @brief Everything we found out about the disks.
 ///

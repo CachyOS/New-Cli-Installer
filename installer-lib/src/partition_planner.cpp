@@ -1,5 +1,6 @@
 #include "cachyos/partition_planner.hpp"
 #include "cachyos/disk.hpp"
+#include "cachyos/result.hpp"
 
 // import gucc
 #include "gucc/block_devices.hpp"
@@ -7,11 +8,14 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/lvm.hpp"
+#include "gucc/mount_partitions.hpp"
+#include "gucc/string_utils.hpp"
 #include "gucc/zfs_query.hpp"
 
 #include <array>
 #include <filesystem>
 #include <random>
+#include <ranges>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -34,63 +38,55 @@ auto block_devices_inventory() noexcept -> std::vector<DeviceEntry> {
         return {};
     }
 
-    std::vector<DeviceEntry> out;
-    out.reserve(devs->size());
-    for (auto& d : *devs) {
-        out.push_back(DeviceEntry{
-            .name        = std::move(d.name),
-            .type        = std::move(d.type),
-            .fstype      = std::move(d.fstype),
-            .label       = d.label.value_or(""),
-            .model       = d.model.value_or(""),
-            .size_bytes  = d.size.value_or(0),
-            .parent      = d.pkname.value_or(""),
-            .mountpoints = std::move(d.mountpoints),
-            .uuid        = std::move(d.uuid),
-            .partuuid    = d.partuuid.value_or(""),
-        });
-    }
-    return out;
+    return std::move(*devs)
+        | std::ranges::views::as_rvalue
+        | std::ranges::views::transform([](gucc::disk::BlockDevice dev) {
+              // TODO(vnepogodin): can be just std::vector<DeviceEntry>
+              return DeviceEntry{
+                  .name        = std::move(dev.name),
+                  .type        = std::move(dev.type),
+                  .fstype      = std::move(dev.fstype),
+                  .label       = std::move(dev.label).value_or(""),
+                  .model       = std::move(dev.model).value_or(""),
+                  .size_bytes  = dev.size.value_or(0),
+                  .parent      = std::move(dev.pkname).value_or(""),
+                  .mountpoints = std::move(dev.mountpoints),
+                  .uuid        = std::move(dev.uuid),
+                  .partuuid    = std::move(dev.partuuid).value_or(""),
+              };
+          })
+        | std::ranges::to<std::vector<DeviceEntry>>();
 }
 
 auto btrfs_subvolumes_inventory(const std::vector<DeviceEntry>& devices) noexcept
     -> std::vector<ExistingBtrfsSubvolume> {
     std::vector<ExistingBtrfsSubvolume> out;
-    for (const auto& dev : devices) {
-        if (dev.fstype != "btrfs"sv) {
-            continue;
-        }
-        for (const auto& mp : dev.mountpoints) {
-            for (auto& subvol : gucc::fs::list_btrfs_subvolumes(mp, ""sv)) {
-                out.push_back(ExistingBtrfsSubvolume{
-                    .device    = dev.name,
-                    .subvolume = std::move(subvol.subvolume),
-                });
-            }
+    for (const auto& dev : devices | std::ranges::views::filter([](const DeviceEntry& entry) { return entry.fstype == "btrfs"sv; })) {
+        for (const auto& mountpoint : dev.mountpoints) {
+            out.append_range(gucc::fs::list_btrfs_subvolumes(mountpoint, ""sv)
+                | std::ranges::views::as_rvalue
+                | std::ranges::views::transform([&dev](gucc::fs::BtrfsSubvolume subvol) {
+                      return ExistingBtrfsSubvolume{.device = dev.name, .subvolume = std::move(subvol.subvolume)};
+                  }));
         }
     }
     return out;
 }
 
 auto zfs_pools_inventory() noexcept -> std::vector<ExistingZfsPool> {
-    std::vector<ExistingZfsPool> out;
-    for (auto& pool : gucc::fs::list_zfs_pools()) {
-        out.push_back(ExistingZfsPool{
-            .name = std::move(pool.name),
-        });
-    }
-    return out;
+    return gucc::fs::list_zfs_pools()
+        | std::ranges::views::as_rvalue
+        | std::ranges::views::transform([](gucc::fs::ZfsPoolInfo pool) { return ExistingZfsPool{.name = std::move(pool.name)}; })
+        | std::ranges::to<std::vector<ExistingZfsPool>>();
 }
 
 auto lvm_groups_inventory() noexcept -> std::vector<ExistingLvmGroup> {
-    std::vector<ExistingLvmGroup> out;
-    for (auto& [name, size] : gucc::lvm::show_volume_groups()) {
-        out.push_back(ExistingLvmGroup{
-            .name = std::move(name),
-            .size = std::move(size),
-        });
-    }
-    return out;
+    return gucc::lvm::show_volume_groups()
+        | std::ranges::views::as_rvalue
+        | std::ranges::views::transform([](std::pair<std::string, std::string> group) {
+              return ExistingLvmGroup{.name = std::move(group.first), .size = std::move(group.second)};
+          })
+        | std::ranges::to<std::vector<ExistingLvmGroup>>();
 }
 
 [[nodiscard]] auto validate_luks_inputs(std::string_view device,
@@ -109,6 +105,12 @@ auto lvm_groups_inventory() noexcept -> std::vector<ExistingLvmGroup> {
     return {};
 }
 
+auto open_luks(LuksVersion version, std::string_view passphrase, std::string_view device, std::string_view mapper_name) noexcept
+    -> std::expected<void, std::string> {
+    return cachyos::installer::lift(gucc::crypto::luks_open(version, passphrase, device, mapper_name),
+        fmt::format(FMT_COMPILE("failed to open LUKS partition {} as {}"), device, mapper_name));
+}
+
 }  // namespace
 
 namespace cachyos::installer::partition_planner {
@@ -123,20 +125,11 @@ auto discover() noexcept -> DiskInventory {
 }
 
 auto default_btrfs_layout() noexcept -> std::vector<BtrfsSubvolumeChoice> {
-    auto src = cachyos::installer::default_btrfs_subvolumes();
-    std::vector<BtrfsSubvolumeChoice> out;
-    out.reserve(src.size());
-    for (auto& subvol : src) {
-        out.push_back(BtrfsSubvolumeChoice{
-            .subvolume  = std::move(subvol.subvolume),
-            .mountpoint = std::move(subvol.mountpoint),
-        });
-    }
-    return out;
+    return convert_subvolumes<BtrfsSubvolumeChoice>(cachyos::installer::default_btrfs_subvolumes());
 }
 
 auto suggest_mountpoint_for_subvolume(std::string_view subvol_path) noexcept -> std::string {
-    const auto name = subvol_path.starts_with('/') ? subvol_path.substr(1) : subvol_path;
+    const auto name = gucc::utils::strip_prefix(subvol_path, "/"sv).value_or(subvol_path);
     if (name.empty()) {
         return {};
     }
@@ -158,7 +151,7 @@ auto suggest_mountpoint_for_subvolume(std::string_view subvol_path) noexcept -> 
     }
 
     // Unknown subvolume. /@
-    const auto stem = name.starts_with('@') ? name.substr(1) : name;
+    const auto stem = gucc::utils::strip_prefix(name, "@"sv).value_or(name);
     std::string out{"/"};
     out.append(stem);
     return out;
@@ -179,54 +172,39 @@ auto inspect_existing_btrfs(std::string_view device) noexcept
         return std::unexpected(fmt::format("failed to create scratch dir: {}", ec.message()));
     }
 
-    // discovery only, never modify the source FS.
-    const auto mount_cmd = fmt::format(FMT_COMPILE("mount -t btrfs -o ro '{}' '{}' 2>/dev/null"),
-        device, scratch.string());
-    if (!gucc::utils::exec_checked(mount_cmd)) {
-        fs::remove_all(scratch, ec);
-        return std::unexpected(fmt::format("failed to mount {} for inspection", device));
-    }
-
-    auto subvols = gucc::fs::list_btrfs_subvolumes(scratch.string(), ""sv);
-
-    // a left-over mount is recoverable
-    const auto umount_cmd = fmt::format(FMT_COMPILE("umount '{}' 2>/dev/null"), scratch.string());
-    if (!gucc::utils::exec_checked(umount_cmd)) {
-        spdlog::warn("inspect_existing_btrfs: failed to unmount scratch at {}", scratch.string());
+    std::vector<gucc::fs::BtrfsSubvolume> subvols;
+    {
+        // discovery only, never modify the source FS
+        auto mount = gucc::mount::ScopedMount::mount(device, scratch.string(), "ro"sv, "btrfs"sv);
+        if (!mount) {
+            fs::remove_all(scratch, ec);
+            return std::unexpected(fmt::format(FMT_COMPILE("failed to mount {} for inspection: {}"), device, mount.error().context));
+        }
+        subvols = gucc::fs::list_btrfs_subvolumes(scratch.string(), ""sv);
     }
     fs::remove_all(scratch, ec);
 
-    std::vector<std::string> paths;
-    paths.reserve(subvols.size());
-    for (auto& subvol : subvols) {
-        paths.push_back(std::move(subvol.subvolume));
-    }
-    return paths;
+    return std::move(subvols)
+        | std::ranges::views::as_rvalue
+        | std::ranges::views::transform(&gucc::fs::BtrfsSubvolume::subvolume)
+        | std::ranges::to<std::vector<std::string>>();
 }
 
 auto default_zfs_layout(std::string_view zpool_name) noexcept
     -> std::vector<ZfsDatasetChoice> {
-    auto src = cachyos::installer::default_zfs_datasets(zpool_name);
-    std::vector<ZfsDatasetChoice> out;
-    out.reserve(src.size());
-    for (auto& dataset : src) {
-        out.push_back(ZfsDatasetChoice{
-            .dataset    = std::move(dataset.zpath),
-            .mountpoint = std::move(dataset.mountpoint),
-        });
-    }
-    return out;
+    return cachyos::installer::default_zfs_datasets(zpool_name)
+        | std::ranges::views::as_rvalue
+        | std::ranges::views::transform([](gucc::fs::ZfsDataset dataset) {
+              return ZfsDatasetChoice{.dataset = std::move(dataset.zpath), .mountpoint = std::move(dataset.mountpoint)};
+          })
+        | std::ranges::to<std::vector<ZfsDatasetChoice>>();
 }
 
 auto prepare_default_zpool(std::string_view partition,
     std::string_view zpool_name,
     std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    auto res = cachyos::installer::zfs_auto_pres(partition, zpool_name, mountpoint);
-    if (!res) {
-        return std::unexpected(std::move(res).error());
-    }
-    return {};
+    return cachyos::installer::zfs_auto_pres(partition, zpool_name, mountpoint).transform([](auto&&) { });
 }
 
 auto encrypt_partition(const LuksFormatRequest& req) noexcept
@@ -234,20 +212,12 @@ auto encrypt_partition(const LuksFormatRequest& req) noexcept
     if (auto v = validate_luks_inputs(req.device, req.mapper_name, req.passphrase); !v) {
         return v;
     }
-    const auto format_ok = req.version == LuksVersion::Luks2
-        ? gucc::crypto::luks2_format(req.passphrase, req.device, req.extra_flags)
-        : gucc::crypto::luks1_format(req.passphrase, req.device, req.extra_flags);
-    if (!format_ok) {
-        return std::unexpected(fmt::format("failed to format LUKS partition {}: {}", req.device, format_ok.error().context));
+    if (auto res = lift(gucc::crypto::luks_format(req.version, req.passphrase, req.device, req.extra_flags),
+            fmt::format(FMT_COMPILE("failed to format LUKS partition {}"), req.device));
+        !res) {
+        return res;
     }
-    const auto open_ok = req.version == LuksVersion::Luks2
-        ? gucc::crypto::luks2_open(req.passphrase, req.device, req.mapper_name)
-        : gucc::crypto::luks1_open(req.passphrase, req.device, req.mapper_name);
-    if (!open_ok) {
-        return std::unexpected(fmt::format("failed to open LUKS partition {} as {}: {}",
-            req.device, req.mapper_name, open_ok.error().context));
-    }
-    return {};
+    return open_luks(req.version, req.passphrase, req.device, req.mapper_name);
 }
 
 auto open_encrypted_partition(const LuksOpenRequest& req) noexcept
@@ -255,14 +225,7 @@ auto open_encrypted_partition(const LuksOpenRequest& req) noexcept
     if (auto v = validate_luks_inputs(req.device, req.mapper_name, req.passphrase); !v) {
         return v;
     }
-    const auto res = req.version == LuksVersion::Luks2
-        ? gucc::crypto::luks2_open(req.passphrase, req.device, req.mapper_name)
-        : gucc::crypto::luks1_open(req.passphrase, req.device, req.mapper_name);
-    if (!res) {
-        return std::unexpected(fmt::format("failed to open LUKS partition {} as {}: {}",
-            req.device, req.mapper_name, res.error().context));
-    }
-    return {};
+    return open_luks(req.version, req.passphrase, req.device, req.mapper_name);
 }
 
 auto finalize_plan(PartitionPlan plan) noexcept
@@ -283,14 +246,7 @@ auto finalize_plan(PartitionPlan plan) noexcept
     out.esp        = std::move(plan.esp);
     out.additional = std::move(plan.additional);
 
-    out.btrfs_subvolumes.reserve(plan.btrfs_subvolumes.size());
-    for (auto& choice : plan.btrfs_subvolumes) {
-        out.btrfs_subvolumes.push_back(gucc::fs::BtrfsSubvolume{
-            .subvolume  = std::move(choice.subvolume),
-            .mountpoint = std::move(choice.mountpoint),
-        });
-    }
-
+    out.btrfs_subvolumes = convert_subvolumes<gucc::fs::BtrfsSubvolume>(std::move(plan.btrfs_subvolumes));
     return out;
 }
 
