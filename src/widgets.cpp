@@ -7,7 +7,9 @@
 #include <cstddef>    // for size_t
 #include <iterator>   // for back_insert_iterator
 #include <memory>     // for shared_ptr, __shar...
+#include <optional>   // for optional
 #include <string>     // for string, allocator
+#include <thread>     // for sleep_for
 #include <utility>    // for move
 
 #include <ftxui/component/captured_mouse.hpp>      // for ftxui
@@ -122,17 +124,6 @@ std::string from_checklist_string(const std::vector<std::string>& opts, const bo
     return res;
 }
 
-std::vector<std::string> from_checklist_vector(const std::vector<std::string>& opts, const bool* const opts_state) noexcept {
-    std::vector<std::string> res{};
-
-    for (size_t i = 0; i < opts.size(); ++i) {
-        if (opts_state[i]) {
-            res.push_back(opts[i]);
-        }
-    }
-    return res;
-}
-
 void msgbox_widget(const std::string_view& content, Decorator boxsize) noexcept {
     auto screen = ScreenInteractive::Fullscreen();
     /* clang-format off */
@@ -154,7 +145,9 @@ bool inputbox_widget(std::string& value, const std::string_view& content, Decora
         success = true;
         screen.ExitLoopClosure()();
     };
-    const InputOption input_option{.password = password, .on_enter = ok_callback};
+    InputOption input_option{};
+    input_option.password  = password;
+    input_option.on_enter  = ok_callback;
     auto input_value       = Input(&value, "", input_option);
     auto content_container = Renderer([&] {
         return multiline_text(gucc::utils::make_multiline(content)) | hcenter | boxsize;
@@ -182,6 +175,21 @@ bool inputbox_widget(std::string& value, const std::string_view& content, Decora
     return success;
 }
 
+auto password_prompt(std::string_view content, std::string_view confirm_content) noexcept -> std::optional<std::string> {
+    const auto boxsize = size(HEIGHT, GREATER_THAN, 1);
+    while (true) {
+        std::string pass{};
+        std::string confirm{};
+        if (!detail::inputbox_widget(pass, content, boxsize, true) || !detail::inputbox_widget(confirm, confirm_content, boxsize, true)) {
+            return std::nullopt;
+        }
+        if (gucc::utils::trim(pass) == gucc::utils::trim(confirm)) {
+            return std::string{gucc::utils::trim(pass)};
+        }
+        detail::msgbox_widget("\nThe passwords entered do not match.\nPlease try again.\n");
+    }
+}
+
 void infobox_widget(const std::string_view& content, Decorator boxsize) noexcept {
     auto screen = Screen::Create(
         Dimension::Full(),  // Width
@@ -191,6 +199,25 @@ void infobox_widget(const std::string_view& content, Decorator boxsize) noexcept
     auto element = detail::centered_widget_nocontrols("New CLI Installer", detail::multiline_text(gucc::utils::make_multiline(content)) | vcenter | boxsize);
     Render(screen, element);
     screen.Print();
+}
+
+void infobox_for(std::string_view content, std::chrono::seconds delay) noexcept {
+    detail::infobox_widget(content);
+    std::this_thread::sleep_for(delay);
+}
+
+auto prompt_validated(std::string_view content, std::string_view error_content, std::function_ref<bool(std::string_view)> is_valid, std::string initial) noexcept -> std::optional<std::string> {
+    std::string value{std::move(initial)};
+    for (auto body = content;; body = error_content) {
+        if (!detail::inputbox_widget(value, body, size(HEIGHT, GREATER_THAN, 1))) {
+            return std::nullopt;
+        }
+        value = std::string{gucc::utils::trim(value)};
+        if (is_valid(value)) {
+            return value;
+        }
+        value.clear();
+    }
 }
 
 bool yesno_widget(const std::string_view& content, Decorator boxsize) noexcept {
@@ -249,6 +276,26 @@ bool yesno_widget(ftxui::Component& container, Decorator boxsize) noexcept {
 
     screen.Loop(renderer);
     return success;
+}
+
+auto select_from_menu(const std::vector<std::string>& entries, std::string_view text, WidgetBoxSize widget_sizes, std::size_t initial) noexcept -> std::optional<std::size_t> {
+    auto screen   = ScreenInteractive::Fullscreen();
+    auto selected = static_cast<std::int32_t>(initial);
+    bool confirmed{};
+
+    auto ok_callback = [&] {
+        confirmed = true;
+        screen.ExitLoopClosure()();
+    };
+    detail::menu_widget(entries, ok_callback, &selected, &screen, text, std::move(widget_sizes));
+    if (!confirmed) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(selected);
+}
+
+auto select_value(const std::vector<std::string>& entries, std::string_view text, WidgetBoxSize widget_sizes, std::size_t initial) noexcept -> std::optional<std::string> {
+    return detail::select_from_menu(entries, text, std::move(widget_sizes), initial).transform([&entries](std::size_t idx) { return entries.at(idx); });
 }
 
 void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ScreenInteractive* screen, const std::string_view& text, const WidgetBoxSize widget_sizes) noexcept {

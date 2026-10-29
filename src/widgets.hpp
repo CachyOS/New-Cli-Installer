@@ -1,9 +1,11 @@
-#ifndef WIDGETS_HPP
-#define WIDGETS_HPP
+#pragma once
 
 #include <array>        // for array
+#include <chrono>       // for seconds
+#include <cstddef>      // for size_t
 #include <cstdint>      // for int32_t
 #include <functional>   // for function
+#include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -33,12 +35,20 @@ namespace detail {
     auto multiline_text(std::vector<std::string>&& lines) noexcept -> ftxui::Element;
     auto from_vector_checklist(const std::vector<std::string>& opts, bool* const opts_state) noexcept -> ftxui::Components;
     auto from_checklist_string(const std::vector<std::string>& opts, const bool* const opts_state) noexcept -> std::string;
-    auto from_checklist_vector(const std::vector<std::string>& opts, const bool* const opts_state) noexcept -> std::vector<std::string>;
     void msgbox_widget(const std::string_view& content, ftxui::Decorator boxsize = ftxui::hcenter | size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     bool inputbox_widget(std::string& value, const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5), bool password = false) noexcept;
+    auto password_prompt(std::string_view content, std::string_view confirm_content) noexcept -> std::optional<std::string>;
     void infobox_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
+    /// Shows content and blocks for the delay.
+    void infobox_for(std::string_view content, std::chrono::seconds delay) noexcept;
+    /// Asks until is_valid accepts the trimmed input, or std::nullopt when cancelled.
+    auto prompt_validated(std::string_view content, std::string_view error_content, std::function_ref<bool(std::string_view)> is_valid, std::string initial = {}) noexcept -> std::optional<std::string>;
     bool yesno_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
     bool yesno_widget(ftxui::Component& container, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
+    /// Index of the picked entry, or std::nullopt when cancelled.
+    auto select_from_menu(const std::vector<std::string>& entries, std::string_view text = {}, WidgetBoxSize widget_sizes = {}, std::size_t initial = 0) noexcept -> std::optional<std::size_t>;
+    /// The picked entry itself, or std::nullopt when cancelled.
+    auto select_value(const std::vector<std::string>& entries, std::string_view text = {}, WidgetBoxSize widget_sizes = {}, std::size_t initial = 0) noexcept -> std::optional<std::string>;
     void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const WidgetBoxSize widget_sizes = {}) noexcept;
     void radiolist_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const WidgetBoxRes& widget_res = {}, const WidgetBoxSize widget_sizes = {}) noexcept;
     void checklist_widget(const std::vector<std::string>& opts, const std::function<void()>&& ok_callback, bool* opts_state, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const std::string_view& title = "New CLI Installer", const WidgetBoxSize widget_sizes = {}) noexcept;
@@ -51,5 +61,3 @@ namespace detail {
         std::function<void()> on_enter) noexcept -> ftxui::Component;
 }  // namespace detail
 }  // namespace tui
-
-#endif  // WIDGETS_HPP
