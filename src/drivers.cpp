@@ -5,10 +5,10 @@
 
 // import gucc
 #include "gucc/chwd.hpp"
+#include "gucc/file_utils.hpp"
+#include "gucc/string_utils.hpp"
 
 /* clang-format off */
-#include <fstream>                                 // for ofstream
-#include <variant>                                 // for get
 #include <ftxui/component/screen_interactive.hpp>  // for ScreenInteractive
 #include <ftxui/dom/elements.hpp>                  // for nothing
 /* clang-format on */
@@ -24,6 +24,14 @@ using namespace std::string_view_literals;
 #endif
 
 namespace {
+
+#ifdef NDEVENV
+void mark_video_installed(std::string_view mountpoint) noexcept {
+    if (!gucc::file_utils::create_file_for_overwrite(gucc::utils::target_path(mountpoint, "/.video_installed"sv), {})) {
+        spdlog::error("Failed to create {}/.video_installed", mountpoint);
+    }
+}
+#endif
 
 void setup_graphics_card() noexcept {
     std::string driver{};
@@ -50,29 +58,25 @@ void setup_graphics_card() noexcept {
     if (driver.empty()) { return; }
     /* clang-format on */
 
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto mountpoint = utils::get_mountpoint();
 
     // setup hostcache path
-    const bool hostcache = std::get<std::int32_t>(config_data["hostcache"]) != 0;
+    const bool hostcache = config::get<std::int32_t>("hostcache") != 0;
     const auto cachepath = hostcache
         ? std::string{"/var/cache/pacman/pkg/"}
-        : fmt::format(FMT_COMPILE("{}/var/cache/pacman/pkg/"), mountpoint);
+        : gucc::utils::target_path(mountpoint, "/var/cache/pacman/pkg/"sv);
 
 #ifdef NDEVENV
     const auto& cmd_formatted = fmt::format(FMT_COMPILE("chwd --pmcachedir '{}' --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
     tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
-    std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};
+    mark_video_installed(mountpoint);
 #else
     spdlog::debug("chwd --pmcachedir \"{}\" --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1", cachepath, mountpoint, driver);
 #endif
 }
 
 void auto_install_drivers() noexcept {
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto mountpoint = utils::get_mountpoint();
 
 #ifdef NDEVENV
     if (!tui::detail::follow_process_log_task([&]() -> bool {
@@ -81,17 +85,13 @@ void auto_install_drivers() noexcept {
         spdlog::error("Failed to install drivers");
         return;
     }
-    std::ofstream{fmt::format(FMT_COMPILE("{}/.video_installed"), mountpoint)};  // NOLINT
+    mark_video_installed(mountpoint);
 #else
     spdlog::debug("arch-chroot {} chwd -f -i &>>/tmp/cachyos-install.log", mountpoint);
 #endif
 }
 
 void install_graphics_menu() noexcept {
-    [[maybe_unused]] auto* config_instance  = Config::instance();
-    [[maybe_unused]] auto& config_data      = config_instance->data();
-    [[maybe_unused]] const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
     const std::vector<std::string> menu_entries = {
         "Auto-install drivers",
         "Select Display Driver",
