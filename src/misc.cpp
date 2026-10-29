@@ -76,55 +76,38 @@ namespace tui {
 // Revised to deal with partition sizes now being displayed to the user
 bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quite) {
 #ifdef NDEVENV
-    const auto& is_mounted = gucc::utils::exec_checked(fmt::format(FMT_COMPILE("mount | grep -q {}"), part_user));
+    const auto& mounts    = gucc::mtab::parse_mtab(part_user);
+    const bool is_mounted = mounts && !mounts->empty();
     if (!quite && !is_mounted) {
-        detail::infobox_widget("\nMount Failed!\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        detail::infobox_for("\nMount Failed!\n"sv, std::chrono::seconds(2));
         return false;
     }
 #endif
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& partition   = std::get<std::string>(config_data["PARTITION"]);
-    auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-    auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
-
     if (!quite) {
-        detail::infobox_widget("\nMount Successful!\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        detail::infobox_for("\nMount Successful!\n"sv, std::chrono::seconds(2));
     }
-
-    // remove current mount from all partitions list
-    std::erase_if(partitions, [partition](std::string_view x) { return gucc::utils::contains(x, partition); });
-    number_partitions -= 1;
+    utils::remove_from_partition_list(config::get<std::string>("PARTITION"));
     return true;
 }
 
 // Fsck hook
 void set_fsck_hook() noexcept {
-    auto* config_instance    = Config::instance();
-    auto& config_data        = config_instance->data();
-    const auto& do_sethook   = detail::yesno_widget("\nDo you want to use fsck hook?\n"sv, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    config_data["FSCK_HOOK"] = do_sethook;
+    const bool do_sethook                  = detail::yesno_widget("\nDo you want to use fsck hook?\n"sv, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    config::get<std::int32_t>("FSCK_HOOK") = do_sethook ? 1 : 0;
 }
 
 // Choose pacman cache
 void set_cache() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    static constexpr auto content = "\nDo you want to use the pacman cache of the running system instead\nof the installation target?\nThis can reduce the size of the required downloads in the installation.\n"sv;
-    config_data["hostcache"]      = detail::yesno_widget(content, size(HEIGHT, GREATER_THAN, 3)) ? 1 : 0;
+    static constexpr auto content          = "\nDo you want to use the pacman cache of the running system instead\nof the installation target?\nThis can reduce the size of the required downloads in the installation.\n"sv;
+    config::get<std::int32_t>("hostcache") = detail::yesno_widget(content, size(HEIGHT, GREATER_THAN, 3)) ? 1 : 0;
 }
 
 void edit_configs() noexcept {
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& uefi_mount = std::get<std::string>(config_data["UEFI_MOUNT"]);
+    const auto& uefi_mount = config::get<std::string>("UEFI_MOUNT");
 #ifdef NDEVENV
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto mountpoint = utils::get_mountpoint();
 #else
-    const std::string& mountpoint = "/";
+    const auto mountpoint = "/"sv;
 #endif
 
     // Clear the file variables
