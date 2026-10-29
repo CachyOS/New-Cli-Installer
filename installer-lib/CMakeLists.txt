@@ -23,6 +23,7 @@ add_library(${PROJECT_NAME}
    src/validators.cpp include/cachyos/validators.hpp
    src/installer_data.cpp include/cachyos/installer_data.hpp
    src/session.cpp include/cachyos/session.hpp
+   src/run_from_config.cpp include/cachyos/run_from_config.hpp
    src/orchestrator.cpp include/cachyos/orchestrator.hpp
    src/partition_planner.cpp include/cachyos/partition_planner.hpp
    include/cachyos/steps.hpp

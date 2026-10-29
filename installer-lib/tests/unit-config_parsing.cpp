@@ -4,10 +4,12 @@
 
 #include "cachyos/installer_config.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <spdlog/sinks/callback_sink.h>
 #include <spdlog/spdlog.h>
@@ -20,6 +22,10 @@ using cachyos::installer::parse_installer_config;
 using cachyos::installer::validate_headless_config;
 
 namespace {
+
+[[nodiscard]] auto mentions(const std::vector<std::string>& problems, std::string_view needle) -> bool {
+    return std::ranges::any_of(problems, [needle](std::string_view problem) { return problem.contains(needle); });
+}
 
 auto valid_server_config() -> InstallerConfig {
     InstallerConfig cfg{};
@@ -296,7 +302,7 @@ TEST_CASE("config parsing")
             cfg.desktop = "kde"s;
             auto result = validate_headless_config(cfg);
             REQUIRE(!result.has_value());
-            CHECK(result.error().contains("desktop"));
+            CHECK(mentions(result.error(), "desktop"));
         }
         SECTION("server without ssh keys")
         {
@@ -304,7 +310,7 @@ TEST_CASE("config parsing")
             cfg.ssh_authorized_keys = {};
             auto result             = validate_headless_config(cfg);
             REQUIRE(!result.has_value());
-            CHECK(result.error().contains("ssh_authorized_keys"));
+            CHECK(mentions(result.error(), "ssh_authorized_keys"));
         }
         SECTION("desktop needs desktop")
         {
@@ -314,7 +320,20 @@ TEST_CASE("config parsing")
             cfg.desktop        = std::nullopt;
             auto result        = validate_headless_config(cfg);
             REQUIRE(!result.has_value());
-            CHECK(result.error().contains("desktop"));
+            CHECK(mentions(result.error(), "desktop"));
+        }
+        SECTION("bad hostname and user_name")
+        {
+            auto cfg                = valid_server_config();
+            cfg.hostname            = "-srv"s;
+            cfg.user_name           = "Admin"s;
+            cfg.ssh_authorized_keys = {};
+            auto result             = validate_headless_config(cfg);
+            REQUIRE(!result.has_value());
+            CHECK_EQ(result.error().size(), 3);
+            CHECK(mentions(result.error(), "ssh_authorized_keys"));
+            CHECK(mentions(result.error(), "'hostname'"));
+            CHECK(mentions(result.error(), "'user_name'"));
         }
     }
 }
