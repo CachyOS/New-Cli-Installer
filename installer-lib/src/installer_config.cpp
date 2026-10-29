@@ -3,6 +3,7 @@
 #include "cachyos/headless_plan.hpp"
 #include "cachyos/packages.hpp"
 #include "cachyos/system.hpp"
+#include "cachyos/validators.hpp"
 
 // import gucc
 #include "gucc/bootloader.hpp"
@@ -546,6 +547,18 @@ auto validate_headless_config(const InstallerConfig& config) noexcept
     std::vector<std::string> problems{};
     if (!missing_fields.empty()) {
         problems.emplace_back(fmt::format(FMT_COMPILE("HEADLESS mode requires: {}"), fmt::join(missing_fields, ", ")));
+    }
+
+    // NOTE: checked here rather than at useradd/hostnamectl time.
+    if (config.hostname) {
+        if (auto res = validate_hostname(*config.hostname); !res) {
+            problems.emplace_back(fmt::format(FMT_COMPILE("invalid 'hostname': {}"), res.error()));
+        }
+    }
+    if (config.user_name) {
+        if (auto res = validate_username(*config.user_name); !res) {
+            problems.emplace_back(fmt::format(FMT_COMPILE("invalid 'user_name': {}"), res.error()));
+        }
     }
 
     if (!problems.empty()) {
