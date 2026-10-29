@@ -5,6 +5,8 @@
 
 // import gucc
 #include "gucc/io_utils.hpp"
+#include "gucc/mtab.hpp"
+#include "gucc/process.hpp"
 #include "gucc/string_utils.hpp"
 
 /* clang-format off */
@@ -34,15 +36,13 @@ namespace fs = std::filesystem;
 namespace {
 void edit_mkinitcpio(ScreenInteractive& screen) noexcept {
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto mountpoint = utils::get_mountpoint();
 #else
-    const std::string& mountpoint = "/";
+    const auto mountpoint = "/"sv;
 #endif
 
     screen.WithRestoredIO([&]() {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint), true);
+        gucc::utils::run_interactive(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint));
     })();
 
     static constexpr auto content = "\nRun mkinitcpio?\n"sv;
@@ -54,15 +54,13 @@ void edit_mkinitcpio(ScreenInteractive& screen) noexcept {
 
 void edit_grub(ScreenInteractive& screen) noexcept {
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto mountpoint = utils::get_mountpoint();
 #else
-    const std::string& mountpoint = "/";
+    const auto mountpoint = "/"sv;
 #endif
 
     screen.WithRestoredIO([&]() {
-        gucc::utils::exec(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint), true);
+        gucc::utils::run_interactive(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint));
     })();
 
     static constexpr auto content = "\nUpdate GRUB?\n"sv;
@@ -139,7 +137,7 @@ void edit_configs() noexcept {
                                     bool is_custom = false, std::function<void()>&& cust_func = []() { }) {
         const auto& append_function = [&functions](const std::string& filename) {
             /* clang-format off */
-            functions.emplace_back([filename]{ gucc::utils::exec(fmt::format(FMT_COMPILE("vim {}"), filename), true); });
+            functions.emplace_back([filename]{ gucc::utils::run_interactive(fmt::format(FMT_COMPILE("vim {}"), filename)); });
             /* clang-format on */
         };
         /* clang-format off */
@@ -153,7 +151,7 @@ void edit_configs() noexcept {
     };
 
     {
-        const auto& home_entry = fmt::format(FMT_COMPILE("{}/home"), mountpoint);
+        const auto& home_entry = gucc::utils::target_path(mountpoint, "/home"sv);
         if (fs::exists(home_entry)) {
             for (auto&& dir_entry : fs::directory_iterator{home_entry}) {
                 const auto& dir_entry_path    = dir_entry.path();
@@ -170,28 +168,28 @@ void edit_configs() noexcept {
     }
 
     const std::array local_paths{
-        fmt::format(FMT_COMPILE("{}/etc/crypttab"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/fstab"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/boot/refind_linux.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}{}/EFI/refind/refind_linux.conf"), mountpoint, uefi_mount),
-        fmt::format(FMT_COMPILE("{}{}/loader/loader.conf"), mountpoint, uefi_mount),
-        fmt::format(FMT_COMPILE("{}/etc/hostname"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/hosts"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/systemd/journald.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/conf.d/keymaps"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/locale.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/lightdm/lightdm.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/lxdm/lxdm.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/rc.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/pacman.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/makepkg.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/plasmalogin.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/sddm.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/sudoers.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/boot/syslinux/syslinux.cfg"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/vconsole.conf"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/default/grub"), mountpoint),
-        fmt::format(FMT_COMPILE("{}/etc/mkinitcpio.conf"), mountpoint)};
+        gucc::utils::target_path(mountpoint, "/etc/crypttab"sv),
+        gucc::utils::target_path(mountpoint, "/etc/fstab"sv),
+        gucc::utils::target_path(mountpoint, "/boot/refind_linux.conf"sv),
+        gucc::utils::target_path(mountpoint, fmt::format(FMT_COMPILE("{}/EFI/refind/refind_linux.conf"), uefi_mount)),
+        gucc::utils::target_path(mountpoint, fmt::format(FMT_COMPILE("{}/loader/loader.conf"), uefi_mount)),
+        gucc::utils::target_path(mountpoint, "/etc/hostname"sv),
+        gucc::utils::target_path(mountpoint, "/etc/hosts"sv),
+        gucc::utils::target_path(mountpoint, "/etc/systemd/journald.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/conf.d/keymaps"sv),
+        gucc::utils::target_path(mountpoint, "/etc/locale.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/lightdm/lightdm.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/lxdm/lxdm.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/rc.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/pacman.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/makepkg.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/plasmalogin.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/sddm.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/sudoers.conf"sv),
+        gucc::utils::target_path(mountpoint, "/boot/syslinux/syslinux.cfg"sv),
+        gucc::utils::target_path(mountpoint, "/etc/vconsole.conf"sv),
+        gucc::utils::target_path(mountpoint, "/etc/default/grub"sv),
+        gucc::utils::target_path(mountpoint, "/etc/mkinitcpio.conf"sv)};
 
     for (std::size_t i = 0; i < local_paths.size() - 2; ++i) {
         check_and_add(local_paths[i]);
@@ -213,22 +211,20 @@ void edit_configs() noexcept {
 }
 
 void edit_pacman_conf() noexcept {
-    gucc::utils::exec("vim /etc/pacman.conf"sv, true);
+    gucc::utils::run_interactive("vim /etc/pacman.conf"sv);
 
 #ifdef NDEVENV
     // NOTE: don't care now, Will change in future..
     detail::infobox_widget("\nUpdating database ...\n"sv);
-    gucc::utils::exec("pacman -Syy"sv, true);
+    gucc::utils::run_interactive("pacman -Syy"sv);
 #endif
 }
 
 void logs_menu() noexcept {
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto mountpoint = utils::get_mountpoint();
 #else
-    const std::string& mountpoint = "/";
+    const auto mountpoint = "/"sv;
 #endif
 
     const std::vector<std::string> menu_entries = {
@@ -245,16 +241,16 @@ void logs_menu() noexcept {
         screen.WithRestoredIO([&]() {
             switch (selected) {
             case 0:
-                gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} dmesg | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
+                gucc::utils::run_interactive(fmt::format(FMT_COMPILE("arch-chroot {} dmesg | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint));
                 break;
             case 1:
-                gucc::utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/pacman.log"), mountpoint), true);
+                gucc::utils::run_interactive(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/pacman.log"), mountpoint));
                 break;
             case 2:
-                gucc::utils::exec(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/Xorg.0.log"), mountpoint), true);
+                gucc::utils::run_interactive(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/Xorg.0.log"), mountpoint));
                 break;
             case 3:
-                gucc::utils::exec(fmt::format(FMT_COMPILE("arch-chroot {} journalctl | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint), true);
+                gucc::utils::run_interactive(fmt::format(FMT_COMPILE("arch-chroot {} journalctl | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint));
                 break;
             default:
                 screen.ExitLoopClosure()();
