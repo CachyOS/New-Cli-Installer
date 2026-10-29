@@ -1,12 +1,12 @@
-#ifndef GLOBAL_STORAGE_HPP
-#define GLOBAL_STORAGE_HPP
+#pragma once
 
 // import gucc types
 #include "gucc/btrfs.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/zfs_types.hpp"
 
-#include <cstdint>        // for int32_t
+#include <cstdint>  // for int32_t
+
 #include <string>         // for string
 #include <string_view>    // for string_view, hash
 #include <unordered_map>  // for unordered_map
@@ -39,4 +39,12 @@ class Config final {
     value_type m_data{};
 };
 
-#endif  // GLOBAL_STORAGE_HPP
+namespace config {
+
+/// The value stored under key, which must hold a T.
+template <typename T>
+[[nodiscard]] auto get(std::string_view key) -> T& {
+    return std::get<T>(Config::instance()->data()[key]);
+}
+
+}  // namespace config
