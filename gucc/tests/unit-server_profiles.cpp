@@ -18,7 +18,7 @@ using namespace std::string_view_literals;
 namespace {
 
 auto read_vendored() -> std::string {
-    std::ifstream in{"server-profiles.toml"};
+    std::ifstream in{GUCC_TOP_DIR "/server-profiles.toml"};
     std::stringstream buffer;
     buffer << in.rdbuf();
     return buffer.str();
