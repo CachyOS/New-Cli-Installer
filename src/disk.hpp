@@ -1,6 +1,8 @@
-#ifndef DISK_HPP
-#define DISK_HPP
+#pragma once
 
+#include "cachyos/types.hpp"
+
+// import gucc
 #include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
 #include "gucc/partition.hpp"
@@ -14,65 +16,16 @@
 
 namespace utils {
 
-// Structure to hold user selections for the root partition
-struct RootPartitionSelection {
-    std::string device;
-    // Filesystem type
-    std::string fstype;
-    // Full mkfs command
-    std::string mkfs_command;
-    // Comma-separated mount options
-    std::string mount_opts;
-    // Flag indicating if formatting was chosen
-    bool format_requested{};
-};
-
-// User selections for swap
-struct SwapSelection {
-    enum class Type : std::uint8_t {
-        None,
-        Swapfile,
-        Partition
-    };
-
-    Type type{Type::None};
-    std::string device;
-    std::string swapfile_size;
-    bool needs_mkswap{};
-};
-
-// User selections for the EFI/boot partition
-struct EspSelection {
-    std::string device;
-    std::string mountpoint;
-    bool format_requested{};
-};
-
-// User selections for additional partitions
-struct AdditionalPartSelection {
-    std::string device;
-    std::string mountpoint;
-    std::string fstype;
-    std::string mkfs_command;
-    std::string mount_opts;
-    bool format_requested{};
-};
-
-// Struct with all partition selections
-struct MountSelections {
-    RootPartitionSelection root;
-    SwapSelection swap;
-    EspSelection esp;
-    std::vector<AdditionalPartSelection> additional;
-    std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
-};
+// re-export instlib
+using cachyos::installer::AdditionalPartSelection;
+using cachyos::installer::EspSelection;
+using cachyos::installer::MountSelections;
+using cachyos::installer::RootPartitionSelection;
+using cachyos::installer::SwapSelection;
 
 auto default_btrfs_subvolumes() noexcept -> std::vector<gucc::fs::BtrfsSubvolume>;
 auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::vector<gucc::fs::BtrfsSubvolume>;
 [[nodiscard]] auto mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexcept -> bool;
-
-// Creates btrfs subvolumes
-[[nodiscard]] auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvols, const RootPartitionSelection& selection, std::string_view mountpoint_info, std::vector<gucc::fs::Partition>& partition_schema) noexcept -> bool;
 
 // Creates swapfile or swap partition
 [[nodiscard]] auto apply_swap_selection(const SwapSelection& swap, std::vector<gucc::fs::Partition>& partitions) noexcept -> bool;
@@ -94,9 +47,8 @@ auto make_esp_headless(std::vector<gucc::fs::Partition>& partitions, std::string
     gucc::bootloader::BootloaderType bootloader_type, bool reformat_part = true,
     std::string_view boot_part_mountpoint = {}) noexcept -> void;
 
-// Build a Partition struct with UUID and LUKS info populated from config state.
-auto build_partition_with_luks(std::string_view device, std::string_view mountpoint,
-    std::string_view fstype, std::string_view mount_opts) noexcept -> gucc::fs::Partition;
+/// Partition with the LUKS mapper/UUID of the last mount.
+[[nodiscard]] auto attach_luks_info(gucc::fs::Partition partition) noexcept -> gucc::fs::Partition;
 
 auto lvm_show_vg() noexcept -> std::vector<std::pair<std::string, std::string>>;
 
@@ -105,9 +57,11 @@ auto lvm_show_vg() noexcept -> std::vector<std::pair<std::string, std::string>>;
 
 void select_filesystem(std::string_view file_sys) noexcept;
 auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string>;
+
+/// Defaults for fstype, with specific device options.
+[[nodiscard]] auto default_mount_opts(std::string_view device, std::string_view fstype) noexcept -> std::string;
+
 auto mount_partition(std::string_view partition, std::string_view mountpoint, std::string_view mount_dev, std::string_view mount_opts) noexcept -> bool;
 auto is_volume_removable() noexcept -> bool;
 
 }  // namespace utils
-
-#endif  // DISK_HPP
