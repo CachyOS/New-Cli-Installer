@@ -483,13 +483,7 @@ auto mount_partition_headless() noexcept -> bool {
         spdlog::error("Failed to mount current partition {}", partition);
         return false;
     }
-
-    // Remove from partition list
-    auto& partitions        = config::get<std::vector<std::string>>("PARTITIONS");
-    auto& number_partitions = config::get<std::int32_t>("NUMBER_PARTITIONS");
-    std::erase_if(partitions, [&partition](std::string_view x) { return gucc::utils::contains(x, partition); });
-    number_partitions -= 1;
-
+    utils::remove_from_partition_list(partition);
     return true;
 }
 
