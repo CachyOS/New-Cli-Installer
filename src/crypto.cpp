@@ -5,6 +5,7 @@
 
 // import gucc
 #include "gucc/io_utils.hpp"
+#include "gucc/kmod.hpp"
 #include "gucc/luks.hpp"
 #include "gucc/string_utils.hpp"
 
@@ -17,6 +18,8 @@
 /* clang-format on */
 
 using namespace ftxui;
+using namespace std::string_literals;
+using namespace std::string_view_literals;
 
 #ifdef NDEVENV
 #include "follow_process_log.hpp"
@@ -29,24 +32,14 @@ static constexpr auto luks_menu_body2 = "A seperate boot partition without encry
 static constexpr auto luks_menu_body3 = "The Automatic option uses default encryption settings,\nand is recommended for beginners.\nOtherwise, it is possible to specify cypher and key size parameters manually.";
 
 bool select_crypt_partition(const std::string_view& text) noexcept {
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    bool success{};
-    auto ok_callback = [&] {
-        const auto& src          = partitions[static_cast<std::size_t>(selected)];
-        const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
-        config_data["PARTITION"] = lines[0];
-        success                  = true;
-        screen.ExitLoopClosure()();
-    };
-    const auto& content = fmt::format(FMT_COMPILE("\n{}\n"), text);
-    detail::menu_widget(partitions, ok_callback, &selected, &screen, content, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-
-    return success;
+    const auto& partitions = config::get<std::vector<std::string>>("PARTITIONS");
+    const auto& content    = fmt::format(FMT_COMPILE("\n{}\n"), text);
+    const auto selected    = detail::select_from_menu(partitions, content, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+    if (!selected) {
+        return false;
+    }
+    config::get<std::string>("PARTITION") = std::string{gucc::utils::first_field(partitions.at(*selected))};
+    return true;
 }
 
 bool get_cryptname(std::string& cryptname) noexcept {
@@ -70,13 +63,9 @@ bool get_crypt_password(std::string& password) noexcept {
 }
 
 bool luks_open() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    config_data["LUKS_ROOT_NAME"] = "";
-    config_data["INCLUDE_PART"]   = "part\\|crypt\\|lvm";
+    config::get<std::string>("LUKS_ROOT_NAME").clear();
     utils::umount_partitions();
-    utils::find_partitions();
+    utils::find_partitions(utils::PartitionPurpose::OpenLuks);
 
     // Filter out partitions that don't contain crypt device
     /*const auto& ignore_part = utils::list_non_crypt();
@@ -87,8 +76,7 @@ bool luks_open() noexcept {
     }*/
 
     // stop if no encrypted partition found
-    const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-    if (partitions.empty()) {
+    if (config::get<std::vector<std::string>>("PARTITIONS").empty()) {
         detail::msgbox_widget("\nNo LUKS-encrypted partition found.\n");
         return false;
     }
@@ -99,9 +87,9 @@ bool luks_open() noexcept {
     /* clang-format on */
 
     // Enter name of the Luks partition and get password to open it
-    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
-    auto& luks_root_name  = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
-    auto& luks_password   = std::get<std::string>(config_data["PASSWD"]);
+    const auto& partition = config::get<std::string>("PARTITION");
+    auto& luks_root_name  = config::get<std::string>("LUKS_ROOT_NAME");
+    auto& luks_password   = config::get<std::string>("PASSWD");
     /* clang-format off */
     if (!tui::get_cryptname(luks_root_name)) { return false; }
     if (!tui::get_crypt_password(luks_password)) { return false; }
@@ -111,29 +99,27 @@ bool luks_open() noexcept {
     // show the error
     detail::infobox_widget("\nPlease wait...\n");
 #ifdef NDEVENV
-    if (!gucc::crypto::luks1_open(luks_password, partition, luks_root_name)) {
+    if (!gucc::crypto::luks_open(gucc::crypto::LuksVersion::Luks1, luks_password, partition, luks_root_name)) {
         spdlog::error("Failed to open luks1 partition {} with name {}", partition, luks_root_name);
         detail::msgbox_widget("\nFailed to open luks1 partition\n");
         return false;
     }
 #endif
 
-    const auto& devlist = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT {} | grep \"crypt\\|NAME\\|MODEL\\|TYPE\\|FSTYPE\\|SIZE\""), partition));
+    const auto devlist = gucc::utils::query_output(fmt::format(FMT_COMPILE(R"(lsblk -o NAME,TYPE,FSTYPE,SIZE,MOUNTPOINT -Q "type=='crypt' || fstype=='crypto_LUKS'" {})"), partition)).value_or("\nFailed to list block devices\n"s);
     detail::msgbox_widget(devlist);
 
     return true;
 }
 
 bool luks_setup() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
 #ifdef NDEVENV
-    gucc::utils::exec("modprobe -a dm-mod dm_crypt");
+    if (!gucc::kmod::load({"dm-mod"sv, "dm_crypt"sv})) {
+        spdlog::error("Failed to load dm-mod/dm_crypt kernel modules");
+    }
 #endif
-    config_data["INCLUDE_PART"] = "part\\|lvm";
     utils::umount_partitions();
-    utils::find_partitions();
+    utils::find_partitions(utils::PartitionPurpose::Encrypt);
 
     // Select partition to encrypt
     /* clang-format off */
@@ -142,34 +128,25 @@ bool luks_setup() noexcept {
     /* clang-format on */
 
     // Enter name of the Luks partition and get password to create it
-    auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
-    auto& luks_password  = std::get<std::string>(config_data["PASSWD"]);
-    /* clang-format off */
-    if (!tui::get_cryptname(luks_root_name)) { return false; }
-    if (!tui::get_crypt_password(luks_password)) { return false; }
-    /* clang-format on */
-
-    return true;
+    return tui::get_cryptname(config::get<std::string>("LUKS_ROOT_NAME"))
+        && tui::get_crypt_password(config::get<std::string>("PASSWD"));
 }
 
 void luks_encrypt([[maybe_unused]] const std::string_view& command) noexcept {
     // Encrypt selected partition or LV with credentials given
-    detail::infobox_widget("\nPlease wait...\n");
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    detail::infobox_for("\nPlease wait...\n", std::chrono::seconds(2));
 #ifdef NDEVENV
-    auto* config_instance      = Config::instance();
-    auto& config_data          = config_instance->data();
-    const auto& partition      = std::get<std::string>(config_data["PARTITION"]);
-    const auto& luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
-    const auto& luks_password  = std::get<std::string>(config_data["PASSWD"]);
+    const auto& partition      = config::get<std::string>("PARTITION");
+    const auto& luks_root_name = config::get<std::string>("LUKS_ROOT_NAME");
+    const auto& luks_password  = config::get<std::string>("PASSWD");
 
-    if (!gucc::crypto::luks1_format(luks_password, partition, command)) {
+    if (!gucc::crypto::luks_format(gucc::crypto::LuksVersion::Luks1, luks_password, partition, command)) {
         spdlog::error("Failed to format luks1 partition {} with additional flags {}", partition, command);
         detail::msgbox_widget("\nFailed to format luks1 partition\n");
     }
 
     // Now open the encrypted partition or LV
-    if (!gucc::crypto::luks1_open(luks_password, partition, luks_root_name)) {
+    if (!gucc::crypto::luks_open(gucc::crypto::LuksVersion::Luks1, luks_password, partition, luks_root_name)) {
         spdlog::error("Failed to open luks1 partition {} with name {}", partition, luks_root_name);
         detail::msgbox_widget("\nFailed to open luks1 partition\n");
     }
@@ -198,7 +175,7 @@ void luks_express() noexcept {
 
 void luks_show() noexcept {
     static constexpr auto luks_success = "Done!";
-    const auto& lsblk                  = gucc::utils::exec(R"(lsblk -o NAME,TYPE,FSTYPE,SIZE -Q "type=='part' || type=='crypt'")");
+    const auto lsblk                   = gucc::utils::query_output(R"(lsblk -o NAME,TYPE,FSTYPE,SIZE -Q "type=='part' || type=='crypt'")"sv).value_or("\nFailed to list block devices\n"s);
     const auto& content                = fmt::format(FMT_COMPILE("\n{}\n \n{}"), luks_success, lsblk);
     detail::msgbox_widget(content, size(HEIGHT, GREATER_THAN, 5));
 }
@@ -212,21 +189,13 @@ void luks_menu_advanced() noexcept {
         "Back",
     };
 
-    auto screen = ScreenInteractive::Fullscreen();
-    bool success{};
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        success = true;
-        screen.ExitLoopClosure()();
-    };
-
     const auto& content      = fmt::format(FMT_COMPILE("\n{}\n \n{}\n \n{}\n"), luks_menu_body, luks_menu_body2, luks_menu_body3);
     const auto& content_size = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, content, {.content_size = content_size});
+    const auto selected      = detail::select_from_menu(menu_entries, content, {.content_size = content_size});
     /* clang-format off */
-    if (!success) { return; }
+    if (!selected) { return; }
 
-    switch (selected) {
+    switch (*selected) {
     case 0:
         tui::luks_open();
         break;
