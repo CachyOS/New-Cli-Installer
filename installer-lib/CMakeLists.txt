@@ -20,6 +20,7 @@ add_library(${PROJECT_NAME}
    src/bootloader.cpp include/cachyos/bootloader.hpp
    src/crypto.cpp include/cachyos/crypto.hpp
    src/validation.cpp include/cachyos/validation.hpp
+   src/validators.cpp include/cachyos/validators.hpp
    src/installer_data.cpp include/cachyos/installer_data.hpp
    src/session.cpp include/cachyos/session.hpp
    src/orchestrator.cpp include/cachyos/orchestrator.hpp
@@ -55,7 +56,7 @@ add_library(${PROJECT_NAME}
 add_library(cachyos::installer-lib ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(${PROJECT_NAME} PUBLIC gucc::gucc)
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt cpr::cpr)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt cpr::cpr ctre::ctre)
 
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
