@@ -1,5 +1,4 @@
-#ifndef UTILS_HPP
-#define UTILS_HPP
+#pragma once
 
 #include "definitions.hpp"
 
@@ -7,7 +6,10 @@
 #include "gucc/bootloader.hpp"
 #include "gucc/partition.hpp"
 
+#include <cstdint>  // for uint64_t
+
 #include <charconv>     // for from_chars
+#include <expected>     // for expected
 #include <functional>   // for function
 #include <optional>     // for optional
 #include <string>       // for string
@@ -17,7 +19,18 @@
 // forward-declare
 namespace cachyos::installer {
 struct InstallContext;
-}
+struct PartitionConfig;
+}  // namespace cachyos::installer
+
+namespace utils::detail {
+
+[[nodiscard]] auto kernel_from_initramfs_name(std::string_view filename) noexcept -> std::optional<std::string>;
+
+// NOTE: legacy
+[[nodiscard]] auto encode_ready_partition(const cachyos::installer::PartitionConfig& part) noexcept -> std::expected<std::string, std::string>;
+[[nodiscard]] auto decode_ready_partition(std::string_view entry) noexcept -> std::optional<cachyos::installer::PartitionConfig>;
+
+}  // namespace utils::detail
 
 namespace utils {
 
@@ -26,7 +39,6 @@ namespace utils {
 [[nodiscard]] bool is_connected() noexcept;
 bool prompt_char(const char* prompt, const char* color = RESET, char* read = nullptr) noexcept;
 void clear_screen() noexcept;
-void inst_needed(const std::string_view& pkg) noexcept;
 void secure_wipe() noexcept;
 auto auto_partition() noexcept -> std::vector<gucc::fs::Partition>;
 void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept;
@@ -37,7 +49,26 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
 [[nodiscard]] auto list_non_crypt() noexcept -> std::string;
 void lvm_detect(std::optional<std::function<void()>> func_callback = std::nullopt) noexcept;
 void umount_partitions() noexcept;
-void find_partitions() noexcept;
+
+/// Partition list filter.
+enum class PartitionPurpose : std::uint8_t {
+    Mount,     // part, lvm, crypt, root, ESP on UEFI
+    OpenLuks,  // part, lvm, crypt
+    LvmPv,     // part, crypt
+    Encrypt,   // part, lvm
+};
+void find_partitions(PartitionPurpose purpose = PartitionPurpose::Mount) noexcept;
+
+/// Activates LVM, unmounts the target,
+/// remounts ZFS datasets and re-lists the partitions for mounting.
+void refresh_partition_list(std::optional<std::function<void()>> on_lvm_active = std::nullopt) noexcept;
+
+/// Drops device from PARTITIONS once it has been taken.
+/// NOTE: legacy
+void remove_from_partition_list(std::string_view device) noexcept;
+
+/// The partition layout from settings
+[[nodiscard]] auto configured_partitions() noexcept -> std::vector<cachyos::installer::PartitionConfig>;
 
 auto install_from_pkglist(const std::string_view& packages) noexcept -> bool;
 void install_base(const std::string_view& packages) noexcept;
@@ -52,9 +83,7 @@ auto get_cryptboot() noexcept -> bool;
 auto boot_encrypted_setting() noexcept -> bool;
 auto recheck_luks() noexcept -> bool;
 
-void arch_chroot(const std::string_view& command, bool follow = true) noexcept;
-void dump_to_log(const std::string& data) noexcept;
-void dump_settings_to_log() noexcept;
+void arch_chroot(const std::string_view& command) noexcept;
 void dump_partition_to_log(const gucc::fs::Partition& partition) noexcept;
 void dump_partitions_to_log(const std::vector<gucc::fs::Partition>& partitions) noexcept;
 [[nodiscard]] bool check_root() noexcept;
@@ -66,6 +95,10 @@ void enable_autologin(const std::string_view& dm, const std::string_view& userna
 auto parse_config(std::string_view config_path = "settings.json") noexcept -> bool;
 auto setup_luks_keyfile() noexcept -> bool;
 void grub_mkconfig() noexcept;
+
+[[nodiscard]] auto list_installed_kernels(std::string_view boot_dir) noexcept -> std::vector<std::string>;
+[[nodiscard]] auto enabled_display_manager(std::string_view root_mountpoint) noexcept -> std::string;
+[[nodiscard]] auto list_home_users(std::string_view root_mountpoint) noexcept -> std::vector<std::string>;
 
 template <typename T = std::int32_t>
     requires std::numeric_limits<T>::is_integer
@@ -144,5 +177,3 @@ constexpr inline auto available_bootloaders(std::string_view bios_mode) noexcept
 }
 
 }  // namespace utils
-
-#endif  // UTILS_HPP
