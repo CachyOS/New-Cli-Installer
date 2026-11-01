@@ -1,21 +1,25 @@
 #include "simple_tui.hpp"
 #include "disk.hpp"
 #include "global_storage.hpp"
+#include "install_observers.hpp"
 #include "installer_data.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 
 // instlib
+#include "cachyos/installer_config.hpp"
 #include "cachyos/logging.hpp"
 #include "cachyos/orchestrator.hpp"
 #include "cachyos/session.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/types.hpp"
+#include "cachyos/validators.hpp"
 
 // import gucc
 #include "gucc/block_devices.hpp"
 #include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
+#include "gucc/btrfs_query.hpp"
 #include "gucc/chwd.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
@@ -23,6 +27,7 @@
 #include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/process.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/timezone.hpp"
@@ -452,8 +457,8 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
             }
             break;
         case 4:  // Hostname
-            if (inp_hostname.empty()) {
-                error_msg = "Hostname cannot be empty!";
+            if (auto valid = cachyos::installer::validate_hostname(inp_hostname); !valid) {
+                error_msg = valid.error();
                 return false;
             }
             break;
@@ -468,8 +473,8 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
             }
             break;
         case 8:  // User Account
-            if (inp_user_name.empty()) {
-                error_msg = "Username cannot be empty!";
+            if (auto valid = cachyos::installer::validate_username(inp_user_name); !valid) {
+                error_msg = valid.error();
                 return false;
             }
             if (inp_user_pass.empty()) {
