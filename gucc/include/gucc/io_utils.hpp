@@ -34,6 +34,7 @@ auto arch_chroot_checked(const std::vector<std::string>& argv, std::string_view 
 /// Output is empty in dry-run mode.
 auto arch_chroot_output(std::string_view command, std::string_view mountpoint) noexcept -> std::optional<std::string>;
 auto arch_chroot_query(std::string_view command, std::string_view mountpoint) noexcept -> std::string;
+auto arch_chroot_query(const std::vector<std::string>& argv, std::string_view mountpoint) noexcept -> std::string;
 auto arch_chroot_query_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool;
 auto arch_chroot_query_checked(const std::vector<std::string>& argv, std::string_view mountpoint) noexcept -> bool;
 

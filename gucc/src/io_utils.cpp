@@ -169,6 +169,10 @@ auto arch_chroot_query(std::string_view command, std::string_view mountpoint) no
     return std::move(default_runner().run_shell(command, in_target(kQuery, mountpoint)).output);
 }
 
+auto arch_chroot_query(const std::vector<std::string>& argv, std::string_view mountpoint) noexcept -> std::string {
+    return std::move(default_runner().run(argv, in_target(kQuery, mountpoint)).output);
+}
+
 auto arch_chroot_query_checked(std::string_view command, std::string_view mountpoint) noexcept -> bool {
     return default_runner().run_shell(command, in_target(kQuery, mountpoint)).ok();
 }
