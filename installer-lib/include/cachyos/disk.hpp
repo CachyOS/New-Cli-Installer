@@ -79,8 +79,24 @@ inline constexpr std::string_view kDefaultZpoolName{"zpcachyos"};
 [[nodiscard]] auto is_volume_removable(const std::vector<gucc::disk::BlockDevice>& devices,
     std::string_view mountpoint) noexcept -> bool;
 
+/// Default ESP/boot mountpoint for bootloader.
+[[nodiscard]] constexpr auto bootloader_default_mount(
+    gucc::bootloader::BootloaderType bootloader, InstallContext::SystemMode mode) noexcept -> std::string_view {
+
+    using gucc::bootloader::BootloaderType;
+    if (bootloader == BootloaderType::SystemdBoot
+        || bootloader == BootloaderType::Limine
+        || mode == InstallContext::SystemMode::BIOS) {
+        return "/boot";
+    }
+    if (bootloader == BootloaderType::Grub || bootloader == BootloaderType::Refind) {
+        return "/boot/efi";
+    }
+    return "unknown bootloader";
+}
+
 /// Performs automatic partitioning of the device.
-[[nodiscard]] auto auto_partition(std::string_view device, std::string_view system_mode,
+[[nodiscard]] auto auto_partition(std::string_view device, InstallContext::SystemMode mode,
     gucc::bootloader::BootloaderType bootloader) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string>;
 

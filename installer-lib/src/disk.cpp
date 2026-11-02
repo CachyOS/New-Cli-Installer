@@ -53,17 +53,6 @@ auto resolve_zfs_vdev(std::string_view device) noexcept -> std::string {
     return std::string(device);
 }
 
-/// Get appropriate default mountpoint for bootloader.
-constexpr auto bootloader_default_mount(gucc::bootloader::BootloaderType bootloader, std::string_view system_mode) noexcept -> std::string_view {
-    using gucc::bootloader::BootloaderType;
-    if (bootloader == BootloaderType::SystemdBoot || bootloader == BootloaderType::Limine || system_mode == "BIOS"sv) {
-        return "/boot"sv;
-    } else if (bootloader == BootloaderType::Grub || bootloader == BootloaderType::Refind) {
-        return "/boot/efi"sv;
-    }
-    return "unknown bootloader"sv;
-}
-
 template <class Selection>
 auto format_if_requested(const Selection& selection) noexcept -> std::expected<void, std::string> {
     if (!selection.format_requested) {
@@ -191,13 +180,13 @@ auto is_volume_removable(const std::vector<gucc::disk::BlockDevice>& devices, st
     return disk_info->is_removable;
 }
 
-auto auto_partition(std::string_view device, std::string_view system_mode,
+auto auto_partition(std::string_view device, InstallContext::SystemMode mode,
     gucc::bootloader::BootloaderType bootloader) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string> {
     spdlog::info("Running automatic partitioning");
 
-    const auto& boot_mountpoint = bootloader_default_mount(bootloader, system_mode);
-    const bool is_system_efi    = (system_mode == "UEFI"sv);
+    const auto boot_mountpoint = bootloader_default_mount(bootloader, mode);
+    const bool is_system_efi   = (mode == InstallContext::SystemMode::UEFI);
 
     auto partitions = gucc::disk::generate_default_partition_schema(device, boot_mountpoint, is_system_efi);
     if (partitions.empty()) {

@@ -167,9 +167,7 @@ auto partition(InstallContext& ctx) noexcept
         },
         [&](const partition_strategy::EraseAndAuto& layout) -> std::expected<void, std::string> {
             spdlog::warn("erasing '{}' and applying the default layout", layout.device);
-            // TODO(vnepogodin): refactor that later
-            const auto& bios_mode = is_efi ? "UEFI"sv : "BIOS"sv;
-            return auto_partition(layout.device, bios_mode, ctx.bootloader).and_then([&record](const auto& partitions) {
+            return auto_partition(layout.device, ctx.system_mode, ctx.bootloader).and_then([&record](const auto& partitions) {
                 return record(mount_selections_from_auto(partitions));
             });
         },
