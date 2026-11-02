@@ -105,6 +105,7 @@ add_executable(${PROJECT_NAME}
    src/view.hpp
    src/definitions.hpp
    src/global_storage.cpp src/global_storage.hpp
+   src/installer_state.cpp src/installer_state.hpp
    src/install_observers.cpp src/install_observers.hpp
    src/utils.cpp src/utils.hpp
    src/disk.cpp src/disk.hpp
