@@ -235,6 +235,13 @@ auto install_systemd_boot(const SystemdBootInstallConfig& config) noexcept -> Re
         return res;
     }
 
+    // Write /etc/kernel/cmdline
+    const auto& cmdline_path  = utils::target_path(config.root_mountpoint, "/etc/kernel/cmdline"sv);
+    const auto& cmdline       = fmt::format(FMT_COMPILE("{}\n"), utils::join(config.kernel_params, ' '));
+    if (auto res = file_utils::write_file(cmdline_path, cmdline); !res) {
+        return res;
+    }
+
     // Generate systemd-boot configuration entries with sdboot-manage
     if (auto res = utils::arch_chroot_or_error("sdboot-manage gen"sv, config.root_mountpoint, "generate systemd-boot entries"sv); !res) {
         return res;

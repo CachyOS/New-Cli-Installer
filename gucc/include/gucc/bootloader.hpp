@@ -80,6 +80,7 @@ struct SystemdBootInstallConfig final {
     bool is_removable{};
     std::string root_mountpoint;
     std::string efi_directory;
+    std::vector<std::string> kernel_params;
 };
 
 struct LimineInstallConfig final {
