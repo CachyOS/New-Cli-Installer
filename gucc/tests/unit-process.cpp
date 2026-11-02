@@ -368,3 +368,29 @@ TEST_CASE("process")
         gucc::logger::clear_secrets();
     }
 }
+
+TEST_CASE("run_interactive")
+{
+    install_noop_logger();
+
+    SECTION("exit code")
+    {
+        CHECK_EQ(gucc::utils::run_interactive(std::vector<std::string>{"/bin/sh", "-c", "exit 3"}), 3);
+    }
+    SECTION("stdin")
+    {
+        const std::vector<std::string> argv{"/bin/sh", "-c", R"(read -r first && test "$first" = "hello")"};
+        CHECK_EQ(gucc::utils::run_interactive(argv, "hello\nworld\n"sv), 0);
+        CHECK_NE(gucc::utils::run_interactive(argv, "bye\n"sv), 0);
+    }
+    SECTION("input does not block")
+    {
+        const std::string big(1U << 20U, 'x');
+        CHECK_EQ(gucc::utils::run_interactive(std::vector<std::string>{"/bin/true"}, big), 0);
+    }
+    SECTION("unlaunchable")
+    {
+        CHECK_EQ(gucc::utils::run_interactive({}), -1);
+        CHECK_EQ(gucc::utils::run_interactive(std::vector<std::string>{"/nonexistent/gucc-tool"}), -1);
+    }
+}

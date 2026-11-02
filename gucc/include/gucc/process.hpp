@@ -11,6 +11,7 @@
 #include <string>            // for string
 #include <string_view>       // for string_view
 #include <utility>           // for exchange, move
+#include <vector>            // for vector
 
 namespace gucc::utils {
 
@@ -179,7 +180,7 @@ class ProcessRunner final {
 /// The process-global runner.
 [[nodiscard]] auto default_runner() noexcept -> ProcessRunner&;
 
-/// Runs on the caller's tty, bypassing the runner.
-auto run_interactive(std::string_view cmdline) noexcept -> std::int32_t;
+/// Runs on the caller's tty, bypassing the runner..
+auto run_interactive(const std::vector<std::string>& argv, std::string_view input = {}) noexcept -> std::int32_t;
 
 }  // namespace gucc::utils

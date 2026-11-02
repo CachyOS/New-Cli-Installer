@@ -3,12 +3,16 @@
 #include "gucc/string_utils.hpp"
 #include "third_party/subprocess.h"
 
-#include <unistd.h>  // for environ
+#include <spawn.h>     // for posix_spawnp
+#include <sys/mman.h>  // for memfd_create
+#include <sys/wait.h>  // for waitpid
+#include <unistd.h>    // for environ, write, close
 
+#include <cerrno>   // for errno, EINTR
 #include <cstddef>  // for size_t
 #include <cstdint>  // for uint32_t
 #include <cstdio>   // for fwrite, fclose
-#include <cstdlib>  // for system
+#include <cstring>  // for strerror
 
 #include <algorithm>           // for find
 #include <array>               // for array
@@ -69,7 +73,7 @@ constexpr auto build_environment(ProcessLocation proc_location) -> std::vector<s
     return filtered_env;
 }
 
-auto env_ptrs_from(const std::vector<std::string>& storage) -> std::vector<const char*> {
+auto c_string_array(const std::vector<std::string>& storage) -> std::vector<const char*> {
     auto ptrs = storage
         | std::ranges::views::transform(&std::string::c_str)
         | std::ranges::to<std::vector<const char*>>();
@@ -93,8 +97,8 @@ auto display_command(const std::vector<std::string>& argv) -> std::string {
 
     static const std::vector<std::string> host_storage   = build_environment(ProcessLocation::Host);
     static const std::vector<std::string> target_storage = build_environment(ProcessLocation::Target);
-    static const std::vector<const char*> host_ptrs      = env_ptrs_from(host_storage);
-    static const std::vector<const char*> target_ptrs    = env_ptrs_from(target_storage);
+    static const std::vector<const char*> host_ptrs      = c_string_array(host_storage);
+    static const std::vector<const char*> target_ptrs    = c_string_array(target_storage);
     return for_target ? target_ptrs : host_ptrs;
 }
 }  // namespace
@@ -249,7 +253,7 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, std::string_view
         return conclude();
     }
 
-    auto argv_ptrs = env_ptrs_from(argv);
+    auto argv_ptrs = c_string_array(argv);
 
     const auto& base_env = child_environment(opts.location);
     std::vector<const char*> extended_env;
@@ -400,9 +404,55 @@ auto default_runner() noexcept -> ProcessRunner& {
     return runner;
 }
 
-auto run_interactive(std::string_view cmdline) noexcept -> std::int32_t {
-    // NOTE: subprocess.h can't hand the child our TTY, so this stays on system()
-    return std::system(std::string{cmdline}.c_str());  // NOLINT(bugprone-command-processor,cert-env33-c)
+auto run_interactive(const std::vector<std::string>& argv, std::string_view input) noexcept -> std::int32_t {
+    // NOTE: subprocess.h can't hand the child our TTY, so this spawns directly
+    if (argv.empty()) {
+        return -1;
+    }
+    posix_spawn_file_actions_t actions{};
+    posix_spawn_file_actions_init(&actions);
+
+    // memfd can't block or SIGPIPE when the child quits before reading it all
+    std::int32_t input_fd{-1};
+    if (!input.empty()) {
+        input_fd = ::memfd_create("gucc-interactive-input", MFD_CLOEXEC);
+        if (input_fd < 0
+            || ::write(input_fd, input.data(), input.size()) != static_cast<ssize_t>(input.size())
+            || ::lseek(input_fd, 0, SEEK_SET) != 0) {
+
+            // bail-oujt
+            spdlog::error("Failed to stage stdin for '{}'", argv.front());
+            if (input_fd >= 0) {
+                ::close(input_fd);
+            }
+            posix_spawn_file_actions_destroy(&actions);
+            return -1;
+        }
+        posix_spawn_file_actions_adddup2(&actions, input_fd, STDIN_FILENO);
+    }
+
+    // posix_spawnp never writes to argv
+    const auto c_argv = c_string_array(argv);
+    auto* const spawn_argv = const_cast<char* const*>(c_argv.data());  // NOLINT(cppcoreguidelines-pro-type-const-cast)
+
+    pid_t pid{};
+    const auto spawn_err = ::posix_spawnp(&pid, c_argv.front(), &actions, nullptr, spawn_argv, environ);
+    posix_spawn_file_actions_destroy(&actions);
+    if (input_fd >= 0) {
+        ::close(input_fd);
+    }
+    if (spawn_err != 0) {
+        spdlog::error("Failed to launch '{}': {}", argv.front(), std::strerror(spawn_err));
+        return -1;
+    }
+
+    std::int32_t status{};
+    while (::waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) {
+            return -1;
+        }
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
 }  // namespace gucc::utils
