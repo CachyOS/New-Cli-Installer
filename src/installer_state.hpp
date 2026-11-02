@@ -9,9 +9,9 @@
 
 #include <cstdint>  // for uint8_t
 
-#include <optional>     // for optional
-#include <string>       // for string
-#include <vector>       // for vector
+#include <optional>  // for optional
+#include <string>    // for string
+#include <vector>    // for vector
 
 namespace tui {
 

@@ -19,41 +19,47 @@ jobs:
   cpp-linter:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
+    env:
+      AR: llvm-ar
+      CC: clang
+      CXX: clang++
+      NM: llvm-nm
+      RANLIB: llvm-ranlib
     steps:
       - uses: actions/checkout@v7
 
       - name: install deps
         run: |
-          pacman -Syu --noconfirm cmake pkg-config ninja clang mold llvm git python-pip
+          pacman -Syu --noconfirm cmake pkg-config ninja clang mold llvm git
         shell: bash
 
       - name: Configure CMake
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug
 
-      - uses: cpp-linter/cpp-linter-action@v2.24.0
-        id: linter
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          style: file
-          version: '23'
-          database: ${{github.workspace}}/build
-
-      - name: Fail fast?!
-        if: steps.linter.outputs.checks-failed > 0
+      - name: Run clang-tidy
+        # non-blocking until the baseline is clean
+        continue-on-error: true
         run: |
-          echo "Some files failed the linting checks!"
-        # for actual deployment
-        # run: exit 1
+          clang-tidy --version
+          git ls-files 'src/*.cpp' 'gucc/*.cpp' 'installer-lib/*.cpp' \
+            | xargs -r run-clang-tidy -p ${{github.workspace}}/build -quiet
+        shell: bash
 
   check_clang_format:
     name: "Check C++ style"
     runs-on: ubuntu-latest
+    container: archlinux:base-devel
     steps:
-    - uses: actions/checkout@v7
-    - name: Run clang-format style check for C/C++/Protobuf programs.
-      uses: jidicula/clang-format-action@v4.18.0
-      with:
-        clang-format-version: '22'
-        check-path: 'src'
-        exclude-regex: 'src/subprocess.h'
+      - uses: actions/checkout@v7
+
+      - name: install deps
+        run: |
+          pacman -Syu --noconfirm clang git
+        shell: bash
+
+      - name: Run clang-format
+        run: |
+          clang-format --version
+          git ls-files 'src/*.cpp' 'src/*.hpp' 'src/*.h' ':!src/subprocess.h' \
+            | xargs -r clang-format --dry-run --Werror
+        shell: bash
