@@ -1,8 +1,8 @@
 #include "simple_tui.hpp"
 #include "disk.hpp"
-#include "global_storage.hpp"
 #include "install_observers.hpp"
 #include "installer_data.hpp"
+#include "installer_state.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 
@@ -63,13 +63,16 @@ using namespace std::string_view_literals;
 
 namespace {
 
+using cachyos::installer::PartitionConfig;
+using cachyos::installer::PartitionType;
+
 // Structure to hold all user selections
 struct UserSelections {
     bool server_mode{};
 
     std::string device;
     std::string filesystem;
-    std::string bootloader;
+    gucc::bootloader::BootloaderType bootloader{};
     std::string hostname;
     std::string locale;
     std::string xkbmap;
@@ -80,182 +83,123 @@ struct UserSelections {
     std::string root_pass;
     std::string kernel;
     std::string desktop;
-    std::string post_install;
-    std::string mount_options;
-    std::vector<std::string> ready_partitions;
 };
 
-auto make_partitions_prepared(std::string_view bootloader_str, std::string_view root_fs, std::string_view mount_opts_info, const auto& ready_parts)
-    -> std::optional<std::vector<gucc::fs::Partition>> {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
+template <class Entries>
+auto entry_at(const Entries& entries, std::int32_t idx) noexcept -> const auto& {
+    return entries.at(static_cast<std::size_t>(idx));
+}
 
+// TODO(vnepogodin): that should be common path from instlib/gucc rather than being here
+auto make_partitions_prepared(gucc::bootloader::BootloaderType bootloader, std::string_view root_fs, std::string_view mount_opts_info, const std::vector<PartitionConfig>& ready_parts)
+    -> std::optional<std::vector<gucc::fs::Partition>> {
     /* clang-format off */
     if (ready_parts.empty()) { spdlog::error("Invalid use! ready parts empty."); return std::nullopt; }
     /* clang-format on */
 
-    const auto& bootloader_opt = gucc::bootloader::bootloader_from_string(bootloader_str);
-    if (!bootloader_opt) {
-        spdlog::error("Unknown bootloader: {}", bootloader_str);
-        return std::nullopt;
-    }
+    const auto mountpoint_info = utils::get_mountpoint();
+    // nothing below reformats root/additional partitions
+    const auto block_devices = gucc::disk::list_block_devices().value_or(std::vector<gucc::disk::BlockDevice>{});
+    const auto find_device   = [&block_devices](std::string_view name) { return gucc::disk::find_device_by_name(block_devices, name); };
 
-    const auto& mountpoint_info = utils::get_mountpoint();
+    // mount and save the schema
+    auto& ctx  = tui::state().inputs.ctx;
+    auto& disk = tui::state().disk;
 
     std::vector<gucc::fs::Partition> partitions{};
+    const auto mount_and_add = [&](const PartitionConfig& part, std::string_view fstype) {
+        utils::select_filesystem(fstype);
+        utils::mount_partition_headless();
 
-    std::string root_part{};
-    for (auto&& ready_part : ready_parts) {
-        auto part_info = gucc::utils::make_multiline(ready_part, false, '\t');
+        auto part_struct = utils::attach_luks_info(gucc::fs::Partition{
+            .fstype     = part.fs_name,
+            .mountpoint = part.mountpoint,
+            .uuid_str   = find_device(part.name).transform([](const gucc::disk::BlockDevice& dev) { return dev.uuid; }).value_or(std::string{}),
+            .device     = part.name,
+            .mount_opts = std::string{mount_opts_info},
+        });
+        utils::dump_partition_to_log(part_struct);
+        partitions.emplace_back(std::move(part_struct));
+    };
 
-        auto part_name       = part_info[0];
-        auto part_mountpoint = part_info[1];
-        auto part_size       = part_info[2];
-        auto part_fs         = part_info[3];
-        auto part_type       = part_info[4];
-
+    for (const auto& part : ready_parts) {
         spdlog::debug("\n========\npart name := '{}'\npart mountpoint := '{}'\npart size := '{}'\npart fs := '{}'\npart type := '{}'\n========\n",
-            part_name, part_mountpoint, part_size, part_fs, part_type);
+            part.name, part.mountpoint, part.size, part.fs_name, cachyos::installer::partition_type_to_string(part.type));
 
-        if (part_type == "boot"sv) {
-            config_data["UEFI_MOUNT"] = part_mountpoint;
-            config_data["UEFI_PART"]  = part_name;
-            utils::make_esp_headless(partitions, part_name, *bootloader_opt, true, part_mountpoint);
+        switch (part.type) {
+        case PartitionType::Boot:
+            ctx.uefi_mount = part.mountpoint;
+            utils::make_esp_headless(partitions, part.name, bootloader, true, part.mountpoint);
             utils::get_cryptroot();
             utils::get_cryptboot();
-            spdlog::info("boot partition: name={}", part_name);
-            continue;
-        } else if (part_type == "root"sv) {
-            config_data["PARTITION"] = part_name;
-            config_data["ROOT_PART"] = part_name;
-            config_data["MOUNT"]     = part_mountpoint;
-            root_part                = part_name;
-            spdlog::info("root partition: {}", part_name);
+            spdlog::info("boot partition: name={}", part.name);
+            break;
+        case PartitionType::Root: {
+            disk.partition = part.name;
+            disk.mount     = part.mountpoint;
+            spdlog::info("root partition: {}", part.name);
+            mount_and_add(part, root_fs);
 
-            utils::select_filesystem(root_fs);
-            utils::mount_partition_headless();
-
-            auto part_struct = utils::build_partition_with_luks(root_part, part_mountpoint, part_fs, mount_opts_info);
-            utils::dump_partition_to_log(part_struct);
-            partitions.emplace_back(std::move(part_struct));
-
-            // If the root partition is btrfs, offer to create subvolumes
-            if (root_fs == "btrfs"sv) {
-                // Check if there are subvolumes already on the btrfs partition
-                const auto& mount_dir  = fmt::format(FMT_COMPILE("{}{}"), mountpoint_info, part_mountpoint);
-                const auto& subvolumes = gucc::utils::exec(fmt::format(FMT_COMPILE("btrfs subvolume list '{}' 2>/dev/null | cut -d' ' -f9"), mount_dir));
-                if (!subvolumes.empty()) {
-                    // Pre-existing subvolumes and user wants to mount them
-                    if (!utils::mount_existing_subvols(partitions)) {
-                        spdlog::error("Failed to mount existing btrfs subvolumes");
-                    }
-                    continue;
+            if (root_fs != "btrfs"sv) {
+                break;
+            }
+            // pre-existing subvolumes are mounted as they are
+            const auto& mount_dir = gucc::utils::target_path(mountpoint_info, part.mountpoint);
+            if (!gucc::fs::list_btrfs_subvolumes_detailed(mount_dir, ""sv).empty()) {
+                if (!utils::mount_existing_subvols(partitions)) {
+                    spdlog::error("Failed to mount existing btrfs subvolumes");
                 }
-                // Get subvolumes from config or use defaults
-                const auto& use_default    = std::get<std::int32_t>(config_data["USE_DEFAULT_SUBVOLS"]);
-                const auto& config_subvols = std::get<std::vector<gucc::fs::BtrfsSubvolume>>(config_data["BTRFS_SUBVOLUMES"]);
-                const auto& btrfs_subvols  = (!config_subvols.empty()) ? config_subvols
-                    : (use_default)                                    ? utils::default_btrfs_subvolumes()
-                                                                       : std::vector<gucc::fs::BtrfsSubvolume>{};
-
-                if (btrfs_subvols.empty()) {
-                    continue;
-                }
+                break;
+            }
+            auto btrfs_subvols = disk.btrfs_subvolumes;
+            if (btrfs_subvols.empty() && disk.use_default_subvolumes) {
+                btrfs_subvols = utils::default_btrfs_subvolumes();
+            }
+            if (btrfs_subvols.empty()) {
+                break;
+            }
 #ifdef NDEVENV
-                gucc::utils::exec(R"(mount | grep 'on /mnt ' | grep -Po '(?<=\().*(?=\))' > /tmp/.root_mount_options)"sv);
-                if (!gucc::fs::btrfs_create_subvols(btrfs_subvols, root_part, mountpoint_info, mount_opts_info)) {
-                    spdlog::error("Failed to create subvolumes automatically");
-                }
+            if (!gucc::fs::btrfs_create_subvols(btrfs_subvols, part.name, mountpoint_info, mount_opts_info)) {
+                spdlog::error("Failed to create subvolumes automatically");
+            }
 #endif
-                if (!gucc::fs::btrfs_append_subvolumes(partitions, btrfs_subvols)) {
-                    spdlog::error("Failed to append btrfs subvolumes into partition scheme");
-                }
+            if (!gucc::fs::btrfs_append_subvolumes(partitions, btrfs_subvols)) {
+                spdlog::error("Failed to append btrfs subvolumes into partition scheme");
             }
-            continue;
-        } else if (part_type == "additional"sv) {
-            config_data["MOUNT"]     = part_mountpoint;
-            config_data["PARTITION"] = part_name;
-            spdlog::info("additional partition: {}", part_name);
+            break;
+        }
+        case PartitionType::Additional:
+            disk.mount     = part.mountpoint;
+            disk.partition = part.name;
+            spdlog::info("additional partition: {}", part.name);
+            mount_and_add(part, part.fs_name);
 
-            utils::select_filesystem(part_fs);
-            utils::mount_partition_headless();
+            // TODO(vnepogodin): these should also be handled by GUCC directly,
+            // there is no reason to have the logic in frontend code
 
-            auto part_struct = utils::build_partition_with_luks(part_name, part_mountpoint, part_fs, mount_opts_info);
-            utils::dump_partition_to_log(part_struct);
-            partitions.emplace_back(std::move(part_struct));
-
-            // Determine if a separate /boot is used.
-            // 0 = no separate boot,
-            // 1 = separate non-lvm boot,
-            // 2 = separate lvm boot. For Grub configuration
-            if (part_mountpoint == "/boot"sv) {
-                config_data["LVM_SEP_BOOT"] = 1;
-
-                const auto& boot_devices = gucc::disk::list_block_devices();
-                if (boot_devices) {
-                    const auto& boot_dev = gucc::disk::find_device_by_name(*boot_devices, part_name);
-                    if (boot_dev && boot_dev->type == "lvm"sv) {
-                        config_data["LVM_SEP_BOOT"] = 2;
-                    }
-                }
+            // 0 = no separate boot, 1 = separate non-lvm boot, 2 = separate lvm boot
+            if (part.mountpoint == "/boot"sv) {
+                const auto boot_dev     = find_device(part.name);
+                ctx.crypto.lvm_sep_boot = (boot_dev && boot_dev->type == "lvm"sv) ? 2 : 1;
             }
-            continue;
+            break;
         }
     }
 
     utils::dump_partitions_to_log(partitions);
-    const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
-    const auto& sys_info    = std::get<std::string>(config_data["SYSTEM"]);
-    spdlog::info("{}\n", gucc::disk::preview_partition_schema(partitions, device_info, sys_info == "UEFI"sv));
+    spdlog::info("{}\n", gucc::disk::preview_partition_schema(partitions, ctx.device, ctx.is_uefi()));
     return partitions;
 }
 
-// Load all selections from config (headless mode)
-auto load_selections_from_config() noexcept -> UserSelections {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    UserSelections sel{};
-    sel.device           = std::get<std::string>(config_data["DEVICE"]);
-    sel.filesystem       = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
-    sel.bootloader       = std::get<std::string>(config_data["BOOTLOADER"]);
-    sel.hostname         = std::get<std::string>(config_data["HOSTNAME"]);
-    sel.locale           = std::get<std::string>(config_data["LOCALE"]);
-    sel.xkbmap           = std::get<std::string>(config_data["XKBMAP"]);
-    sel.timezone         = std::get<std::string>(config_data["TIMEZONE"]);
-    sel.user_name        = std::get<std::string>(config_data["USER_NAME"]);
-    sel.user_pass        = std::get<std::string>(config_data["USER_PASS"]);
-    sel.user_shell       = std::get<std::string>(config_data["USER_SHELL"]);
-    sel.root_pass        = std::get<std::string>(config_data["ROOT_PASS"]);
-    sel.kernel           = std::get<std::string>(config_data["KERNEL"]);
-    sel.desktop          = std::get<std::string>(config_data["DE"]);
-    sel.post_install     = std::get<std::string>(config_data["POST_INSTALL"]);
-    sel.mount_options    = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    sel.ready_partitions = std::get<std::vector<std::string>>(config_data["READY_PARTITIONS"]);
-    sel.server_mode      = std::get<std::int32_t>(config_data["SERVER_MODE"]) != 0;
-
-    return sel;
-}
-
-void apply_user_selections(const UserSelections& selections) noexcept {
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+void apply_user_selections(const UserSelections& selections, const std::vector<PartitionConfig>& ready_parts) noexcept {
+    const auto mountpoint = utils::get_mountpoint();
+    const auto& st        = tui::state();
 
     // Prepare disk partitions
-    config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
     utils::umount_partitions();
 
-    auto partitions = make_partitions_prepared(selections.bootloader, selections.filesystem, selections.mount_options, selections.ready_partitions);
+    auto partitions = make_partitions_prepared(selections.bootloader, selections.filesystem, st.disk.mount_opts, ready_parts);
     if (!partitions) {
-        utils::umount_partitions();
-        return;
-    }
-
-    // Build the orchestrator context from the wizard's collected selections.
-    const auto& bootloader_type = gucc::bootloader::bootloader_from_string(selections.bootloader);
-    if (!bootloader_type) {
-        spdlog::error("Unknown bootloader: {}", selections.bootloader);
         utils::umount_partitions();
         return;
     }
@@ -270,8 +214,8 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     cachyos::installer::InstallContext ctx{};
     ctx.system_mode           = sysinfo->system_mode;
     ctx.mountpoint            = mountpoint;
-    ctx.hostcache             = std::get<std::int32_t>(config_data["hostcache"]) != 0;
-    ctx.bootloader            = *bootloader_type;
+    ctx.hostcache             = st.inputs.ctx.hostcache;
+    ctx.bootloader            = selections.bootloader;
     ctx.kernel                = selections.kernel;
     ctx.desktop               = selections.desktop;
     ctx.filesystem_name       = selections.filesystem;
@@ -298,16 +242,9 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     user.password = selections.user_pass;
     user.shell    = selections.user_shell;
 
-    std::string last_progress_msg;
-    const cachyos::installer::InstallSession session{
-        .runner      = gucc::utils::default_runner(),
-        .on_progress = [&last_progress_msg](const cachyos::installer::ProgressEvent& ev) {
-            if (ev.type == cachyos::installer::ProgressEventType::Running && ev.message != last_progress_msg) {
-                spdlog::info("[install] {}", ev.message);
-                last_progress_msg = ev.message;
-            }
-        },
-    };
+    cachyos::installer::InstallSession session{gucc::utils::default_runner()};
+    tui::detail::ScriptStdoutObserver script_output;
+    const auto output_handle = session.add_observer(script_output);
 
     const auto result = cachyos::installer::run(ctx, sys, user, selections.root_pass, session);
     if (!result.success) {
@@ -320,11 +257,11 @@ void apply_user_selections(const UserSelections& selections) noexcept {
     }
 
     // Post-install script
-    if (!selections.post_install.empty()) {
+    if (!st.post_install.empty()) {
         spdlog::info("Running post-install script...");
-        auto logger = spdlog::get("cachyos_logger");
-        logger->flush();
-        gucc::utils::exec(fmt::format(FMT_COMPILE("{} &>>/tmp/cachyos-install.log"), selections.post_install), true);
+        if (!gucc::utils::exec_checked(st.post_install)) {
+            spdlog::error("post-install script failed: {}", st.post_install);
+        }
     }
 
     // The orchestrators steps already validate the install,
@@ -342,7 +279,7 @@ void apply_user_selections(const UserSelections& selections) noexcept {
         fmt::format(FMT_COMPILE("Mountpoint: {}"), mountpoint),
         fmt::format(FMT_COMPILE("Your device: {}"), selections.device),
         fmt::format(FMT_COMPILE("Filesystem: {}"), selections.filesystem),
-        fmt::format(FMT_COMPILE("Filesystem opts: {}"), selections.mount_options), 80);
+        fmt::format(FMT_COMPILE("Filesystem opts: {}"), st.disk.mount_opts), 80);
 
     fmt::print("┌{0:─^{4}}┐\n"
                "│{1: ^{4}}│\n"
@@ -352,7 +289,7 @@ void apply_user_selections(const UserSelections& selections) noexcept {
         "",
         fmt::format(FMT_COMPILE("Kernel: {}"), selections.kernel),
         fmt::format(FMT_COMPILE("Desktop: {}"), (!selections.server_mode) ? selections.desktop : "---"),
-        fmt::format(FMT_COMPILE("Bootloader: {}"), selections.bootloader), 80);
+        fmt::format(FMT_COMPILE("Bootloader: {}"), gucc::bootloader::bootloader_to_string(selections.bootloader)), 80);
 
     fmt::print("\nInstallation complete!\n");
 }
@@ -376,18 +313,13 @@ constexpr std::int32_t total_steps = static_cast<std::int32_t>(step_names.size()
 
 // Run the interactive wizard and return user selections (or nullopt if cancelled)
 auto run_wizard() noexcept -> std::optional<UserSelections> {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
     // Pre-load data sources
     auto device_list = installer::data::get_device_list();
 
-    const auto& sys_info      = std::get<std::string>(config_data["SYSTEM"]);
-    const auto& available_bls = cachyos::installer::data::available_bootloaders(sys_info);
-    std::vector<std::string> bootloader_list{};
-    bootloader_list.reserve(available_bls.size());
-    std::ranges::transform(available_bls, std::back_inserter(bootloader_list),
-        [](gucc::bootloader::BootloaderType bl) { return std::string{gucc::bootloader::bootloader_to_string(bl)}; });
+    const auto bootloaders = cachyos::installer::data::available_bootloaders(tui::state().inputs.ctx.system_mode);
+    auto bootloader_list   = bootloaders
+        | std::ranges::views::transform([](gucc::bootloader::BootloaderType bl) { return std::string{gucc::bootloader::bootloader_to_string(bl)}; })
+        | std::ranges::to<std::vector<std::string>>();
 
     auto filesystem_list = installer::data::to_vec(installer::data::available_filesystems);
 
@@ -399,7 +331,7 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
     auto desktop_list = installer::data::to_vec(installer::data::available_desktops);
     auto shell_list   = installer::data::to_vec(installer::data::available_shells);
 
-    const auto& server_mode = std::get<std::int32_t>(config_data["SERVER_MODE"]);
+    const bool server_mode = tui::state().inputs.ctx.server_mode;
 
     // Wizard state
     std::int32_t current_step{0};
@@ -425,20 +357,12 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
     std::int32_t sel_kernel{0};
     std::int32_t sel_desktop{0};
 
-    // Set locale default to en_US.UTF-8 if available
-    for (std::size_t i = 0; i < locale_list.size(); ++i) {
-        if (locale_list[i].contains("en_US.UTF-8")) {
-            sel_locale = static_cast<std::int32_t>(i);
-            break;
-        }
-    }
-    // Set keymap default to "us" if available
-    for (std::size_t i = 0; i < keymap_list.size(); ++i) {
-        if (keymap_list[i] == "us") {
-            sel_keymap = static_cast<std::int32_t>(i);
-            break;
-        }
-    }
+    // first match preselected, else the first entry
+    const auto index_of = [](const std::vector<std::string>& list, auto&& pred) {
+        return static_cast<std::int32_t>(gucc::utils::index_if(list, pred).value_or(0));
+    };
+    sel_locale = index_of(locale_list, [](std::string_view locale) { return locale.contains("en_US.UTF-8"sv); });
+    sel_keymap = index_of(keymap_list, [](std::string_view keymap) { return keymap == "us"sv; });
 
     // Timezone zone list (depends on selected region)
     std::vector<std::string> tz_zones;
@@ -492,16 +416,19 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
         return true;
     };
 
-    // Navigation callbacks (defined early so menu on_enter can use go_next)
+    // nav calls
     auto go_next = [&] {
-        if (!validate_current_step())
+        if (!validate_current_step()) {
             return;
-        if (current_step < total_steps - 1)
+        }
+        if (current_step < total_steps - 1) {
             ++current_step;
+        }
     };
     auto go_back = [&] {
-        if (current_step > 0)
+        if (current_step > 0) {
             --current_step;
+        }
     };
     auto go_cancel = [&] {
         cancelled = true;
@@ -584,7 +511,7 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
         // Update zones when region changes
         if (sel_tz_region != last_tz_region && !tz_regions.empty()) {
             last_tz_region = sel_tz_region;
-            tz_zones       = gucc::timezone::get_timezone_zones(tz_regions[static_cast<std::size_t>(sel_tz_region)]);
+            tz_zones       = gucc::timezone::get_timezone_zones(entry_at(tz_regions, sel_tz_region));
             sel_tz_zone    = 0;
         }
         return vbox({
@@ -662,44 +589,40 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
         if (device_list.empty()) {
             return "";
         }
-        return installer::data::parse_device_name(device_list[static_cast<std::size_t>(sel_device)]);
+        return installer::data::parse_device_name(entry_at(device_list, sel_device));
     };
-    auto get_selected_bootloader = [&]() -> std::string {
-        if (bootloader_list.empty()) {
-            return "";
-        }
-        return bootloader_list[static_cast<std::size_t>(sel_bootloader)];
-    };
+    // every mode offers some bootloader
+    auto get_selected_bootloader = [&] { return entry_at(bootloaders, sel_bootloader); };
     auto get_selected_filesystem = [&]() -> std::string {
-        return filesystem_list[static_cast<std::size_t>(sel_filesystem)];
+        return entry_at(filesystem_list, sel_filesystem);
     };
     auto get_selected_locale = [&]() -> std::string {
         if (locale_list.empty()) {
             return "";
         }
-        return locale_list[static_cast<std::size_t>(sel_locale)];
+        return entry_at(locale_list, sel_locale);
     };
     auto get_selected_keymap = [&]() -> std::string {
         if (keymap_list.empty()) {
             return "";
         }
-        return keymap_list[static_cast<std::size_t>(sel_keymap)];
+        return entry_at(keymap_list, sel_keymap);
     };
     auto get_selected_timezone = [&]() -> std::string {
         if (tz_regions.empty() || tz_zones.empty()) {
             return "";
         }
-        return fmt::format("{}/{}", tz_regions[static_cast<std::size_t>(sel_tz_region)],
-            tz_zones[static_cast<std::size_t>(sel_tz_zone)]);
+        return fmt::format(FMT_COMPILE("{}/{}"), entry_at(tz_regions, sel_tz_region),
+            entry_at(tz_zones, sel_tz_zone));
     };
     auto get_selected_kernel = [&]() -> std::string {
-        return kernel_list[static_cast<std::size_t>(sel_kernel)];
+        return entry_at(kernel_list, sel_kernel);
     };
     auto get_selected_desktop = [&]() -> std::string {
         if (server_mode) {
             return "---";
         }
-        return desktop_list[static_cast<std::size_t>(sel_desktop)];
+        return entry_at(desktop_list, sel_desktop);
     };
 
     // Step 12: Summary
@@ -708,7 +631,7 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
         lines.push_back(text("Review your selections:") | bold);
         lines.push_back(separator());
         lines.push_back(hbox({text("Device:      ") | bold, text(get_selected_device())}));
-        lines.push_back(hbox({text("Bootloader:  ") | bold, text(get_selected_bootloader())}));
+        lines.push_back(hbox({text("Bootloader:  ") | bold, text(std::string{gucc::bootloader::bootloader_to_string(get_selected_bootloader())})}));
         lines.push_back(hbox({text("Filesystem:  ") | bold, text(get_selected_filesystem())}));
         lines.push_back(hbox({text("Hostname:    ") | bold, text(inp_hostname)}));
         lines.push_back(hbox({text("Locale:      ") | bold, text(get_selected_locale())}));
@@ -716,7 +639,7 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
         lines.push_back(hbox({text("Timezone:    ") | bold, text(get_selected_timezone())}));
         lines.push_back(hbox({text("Root pass:   ") | bold, text("(set)")}));
         lines.push_back(hbox({text("User:        ") | bold, text(inp_user_name)}));
-        lines.push_back(hbox({text("User shell:  ") | bold, text(shell_list[static_cast<std::size_t>(sel_user_shell)])}));
+        lines.push_back(hbox({text("User shell:  ") | bold, text(entry_at(shell_list, sel_user_shell))}));
         lines.push_back(hbox({text("Kernel:      ") | bold, text(get_selected_kernel())}));
         lines.push_back(hbox({text("Desktop:     ") | bold, text(get_selected_desktop())}));
         lines.push_back(separator());
@@ -797,7 +720,7 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
         Elements content;
         content.push_back(text("  CachyOS Installer  ") | bold | center);
         content.push_back(separator());
-        content.push_back(text(fmt::format("  Step {}/{}:  {}", current_step + 1, total_steps,
+        content.push_back(text(fmt::format(FMT_COMPILE("  Step {}/{}:  {}"), current_step + 1, total_steps,
                               step_names[static_cast<std::size_t>(current_step)]))
             | bold);
         content.push_back(separator());
@@ -833,72 +756,45 @@ auto run_wizard() noexcept -> std::optional<UserSelections> {
     sel.root_pass   = inp_root_pass;
     sel.user_name   = inp_user_name;
     sel.user_pass   = inp_user_pass;
-    sel.user_shell  = shell_list[static_cast<std::size_t>(sel_user_shell)];
+    sel.user_shell  = entry_at(shell_list, sel_user_shell);
     sel.kernel      = get_selected_kernel();
     sel.desktop     = (server_mode) ? "" : get_selected_desktop();
-    sel.server_mode = server_mode != 0;
-
-    // Transfer config values that were loaded from settings.json
-    sel.post_install     = std::get<std::string>(config_data["POST_INSTALL"]);
-    sel.mount_options    = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    sel.ready_partitions = std::get<std::vector<std::string>>(config_data["READY_PARTITIONS"]);
-
+    sel.server_mode = server_mode;
     return sel;
 }
 
-// Prepare disk state before applying selections (common for wizard and headless)
-void prepare_disk_state(const UserSelections& selections) noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
+auto prepare_disk_state(const UserSelections& selections) noexcept -> std::vector<PartitionConfig> {
+    auto& st                      = tui::state();
+    st.inputs.ctx.device          = selections.device;
+    st.inputs.ctx.filesystem_name = selections.filesystem;
+    st.bootloader                 = selections.bootloader;
 
-    // Set device
-    config_data["DEVICE"]          = selections.device;
-    config_data["BOOTLOADER"]      = selections.bootloader;
-    config_data["FILESYSTEM_NAME"] = selections.filesystem;
-
-    // Generate and apply partition schema
-    auto auto_partitions = utils::auto_partition();
-    utils::lvm_detect();
-
-    config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
-    utils::umount_partitions();
-
-    gucc::utils::exec("zfs mount -aO &>/dev/null");
-    utils::find_partitions();
-
-    auto ignore_part = utils::list_mounted();
-    ignore_part += gucc::fs::zfs_list_devs();
-    ignore_part += utils::list_containing_crypt();
-
-    auto& fs_name = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
-    if (fs_name.empty()) {
-        fs_name = selections.filesystem;
+    // configured layout names partitions that already exist
+    if (!st.disk.ready_partitions.empty()) {
+        utils::refresh_partition_list();
+        return st.disk.ready_partitions;
     }
 
-    auto& ready_parts = std::get<std::vector<std::string>>(config_data["READY_PARTITIONS"]);
-    if (ready_parts.empty() && !auto_partitions.empty()) {
-        config_data["PARTITION_SCHEMA"] = auto_partitions;
-        spdlog::info("Auto-partition schema stored with {} entries", auto_partitions.size());
-
-        // Convert auto-partition output into ready_parts format:
-        // "{device}\t{mountpoint}\t{size}\t{fstype}\t{type}"
-        // where type is "boot" for /boot or /boot/efi, "root" for /, else "additional".
-        std::vector<std::string> built_ready_parts{};
-        built_ready_parts.reserve(auto_partitions.size());
-        for (const auto& part : auto_partitions) {
-            const auto part_type = (part.mountpoint == "/boot"sv || part.mountpoint == "/boot/efi"sv)
-                ? "boot"sv
-                : (part.mountpoint == "/"sv ? "root"sv : "additional"sv);
-            built_ready_parts.emplace_back(fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"),
-                part.device, part.mountpoint, part.size, part.fstype, part_type));
-        }
-        ready_parts = std::move(built_ready_parts);
-        spdlog::info("Auto-partition produced {} ready_parts entries", ready_parts.size());
-    }
-
-    if (ready_parts.empty()) {
+    const auto auto_partitions = utils::auto_partition();
+    utils::refresh_partition_list();
+    if (auto_partitions.empty()) {
         utils::select_filesystem(selections.filesystem);
+        return {};
     }
+
+    st.inputs.ctx.partition_schema = auto_partitions;
+    spdlog::info("Auto-partition schema stored with {} entries", auto_partitions.size());
+
+    const auto type_of = [](const gucc::fs::Partition& part) {
+        if (part.mountpoint == "/boot"sv || part.mountpoint == "/boot/efi"sv) {
+            return PartitionType::Boot;
+        }
+        return part.is_root() ? PartitionType::Root : PartitionType::Additional;
+    };
+    const auto to_ready_part = [&type_of](const gucc::fs::Partition& part) {
+        return PartitionConfig{.name = part.device, .mountpoint = part.mountpoint, .size = part.size, .fs_name = part.fstype, .type = type_of(part)};
+    };
+    return auto_partitions | std::ranges::views::transform(to_ready_part) | std::ranges::to<std::vector<PartitionConfig>>();
 }
 
 }  // namespace
@@ -906,32 +802,16 @@ void prepare_disk_state(const UserSelections& selections) noexcept {
 namespace tui {
 
 void menu_simple() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& headless  = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
+    tui::state().plain_progress = true;
 
-    // Set simple mode flag for utils functions
-    config_data["SIMPLE_MODE"] = 1;
-
-    if (headless) {
-        // in headless we don't ask for wizzard input
-        cachyos::installer::logging::attach_stdout_sink();
-        auto selections = load_selections_from_config();
-        prepare_disk_state(selections);
-        apply_user_selections(selections);
-        return;
-    }
-
-    // Run wizard
-    auto selections = run_wizard();
+    const auto selections = run_wizard();
     if (!selections) {
         return;
     }
 
-    // Apply selections
     cachyos::installer::logging::attach_stdout_sink();
-    prepare_disk_state(*selections);
-    apply_user_selections(*selections);
+    const auto ready_parts = prepare_disk_state(*selections);
+    apply_user_selections(*selections, ready_parts);
 }
 
 }  // namespace tui
