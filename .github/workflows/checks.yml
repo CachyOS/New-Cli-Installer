@@ -37,10 +37,9 @@ jobs:
         run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug
 
       - name: Run clang-tidy
-        # non-blocking until the baseline is clean
-        continue-on-error: true
         run: |
           clang-tidy --version
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git ls-files 'src/*.cpp' 'gucc/*.cpp' 'installer-lib/*.cpp' \
             | xargs -r run-clang-tidy -p ${{github.workspace}}/build -quiet
         shell: bash
@@ -60,6 +59,7 @@ jobs:
       - name: Run clang-format
         run: |
           clang-format --version
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git ls-files 'src/*.cpp' 'src/*.hpp' 'src/*.h' ':!src/subprocess.h' \
             | xargs -r clang-format --dry-run --Werror
         shell: bash
