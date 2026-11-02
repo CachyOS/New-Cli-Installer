@@ -332,10 +332,16 @@ auto install_systemd_boot(const InstallContext& ctx, const TargetRoot& root) noe
         return std::unexpected(fmt::format(FMT_COMPILE("failed to install systemd-boot-manager: {}"), res.error()));
     }
 
+    auto params = kernel_params(ctx, root);
+    if (!params) {
+        return std::unexpected(std::move(params.error()));
+    }
+
     const gucc::bootloader::SystemdBootInstallConfig sdboot_config{
         .is_removable    = root.is_removable,
         .root_mountpoint = mountpoint,
         .efi_directory   = ctx.uefi_mount,
+        .kernel_params   = *std::move(params),
     };
     if (auto res = lift(gucc::bootloader::install_systemd_boot(sdboot_config)); !res) {
         return res;
