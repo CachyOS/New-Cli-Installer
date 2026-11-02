@@ -207,7 +207,7 @@ en_US.UTF-8 UTF-8
         }
         SECTION("fail on invalid path")
         {
-            REQUIRE_FALSE(gucc::locale::set_keymap("us"sv, "/nonexistent/path/test-keymap"sv));
+            REQUIRE_FALSE(gucc::locale::set_keymap("us"sv, "/dev/null"sv));
         }
     }
 }

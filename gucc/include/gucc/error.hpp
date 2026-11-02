@@ -44,9 +44,13 @@ using Result = std::expected<T, Error>;
 /// return gucc::make_error(ErrorCode::FileIo, FMT_COMPILE("open {}: {}"), path, err);
 /// @endcode
 template <class S, class... Args>
-    requires fmt::is_compiled_string<S>::value
+    requires(fmt::is_compiled_string<S>::value || bool{FMT_CLANG_ANALYZER})
 [[nodiscard]] auto make_error(ErrorCode code, const S& format, Args&&... args) noexcept -> std::unexpected<Error> {
-    return make_error(code, fmt::format(format, std::forward<Args>(args)...));
+    if constexpr (fmt::is_compiled_string<S>::value) {
+        return make_error(code, fmt::format(format, std::forward<Args>(args)...));
+    } else {
+        return make_error(code, fmt::format(fmt::runtime(format), std::forward<Args>(args)...));
+    }
 }
 
 /// @brief Format an Error as "code: context", handy for logs.

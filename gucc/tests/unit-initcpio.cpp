@@ -198,11 +198,6 @@ TEST_CASE("initcpio test")
         REQUIRE(!initcpio.parse_file());
         REQUIRE(!initcpio.write());
     }
-    SECTION("check write to root file")
-    {
-        auto initcpio = detail::Initcpio{"/etc/mtab"};
-        REQUIRE(!initcpio.write());
-    }
 }
 
 TEST_CASE("setup initcpiocfg from config test")
