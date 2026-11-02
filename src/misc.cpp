@@ -1,71 +1,61 @@
 #include "misc.hpp"
-#include "global_storage.hpp"
+#include "installer_state.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 
 // import gucc
+#include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/mtab.hpp"
-#include "gucc/process.hpp"
 #include "gucc/string_utils.hpp"
 
 /* clang-format off */
 #include <filesystem>                              // for exists, is_directory
-#include <ftxui/component/component.hpp>           // for Renderer, Button
-#include <ftxui/component/component_options.hpp>   // for ButtonOption
-#include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
-#include <ftxui/dom/elements.hpp>                  // for operator|, size
+#include <functional>                              // for function
+#include <ranges>                                  // for ranges::*
+#include <string>                                  // for string
+#include <vector>                                  // for vector
 /* clang-format on */
 
 #include <fmt/compile.h>
 #include <fmt/core.h>
 
-using ftxui::flex;
-using ftxui::GREATER_THAN;
-using ftxui::HEIGHT;
-using ftxui::LESS_THAN;
-using ftxui::ScreenInteractive;
-using ftxui::size;
-using ftxui::vscroll_indicator;
-using ftxui::WIDTH;
-using ftxui::yframe;
-// using namespace ftxui;
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 namespace fs = std::filesystem;
 
 namespace {
-void edit_mkinitcpio(ScreenInteractive& screen) noexcept {
+
+void edit_file(std::string_view path) noexcept {
+    tui::detail::run_in_terminal({"/usr/bin/vim"s, std::string{path}});
+}
+
+void view_log(std::string_view content) noexcept {
+    tui::detail::run_in_terminal({"/usr/bin/fzf"s, "--reverse"s, "--header=Exit by pressing esc"s, "--prompt=Type to filter log entries > "s}, content);
+}
+
+void edit_mkinitcpio() noexcept {
 #ifdef NDEVENV
     const auto mountpoint = utils::get_mountpoint();
 #else
     const auto mountpoint = "/"sv;
 #endif
 
-    screen.WithRestoredIO([&]() {
-        gucc::utils::run_interactive(fmt::format(FMT_COMPILE("vim \"{}/etc/mkinitcpio.conf\""), mountpoint));
-    })();
-
-    static constexpr auto content = "\nRun mkinitcpio?\n"sv;
-    const auto& do_run            = tui::detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
-    if (do_run) {
-        utils::arch_chroot("mkinitcpio -P"sv);
+    edit_file(gucc::utils::target_path(mountpoint, "/etc/mkinitcpio.conf"sv));
+    if (tui::detail::yesno_widget("Run mkinitcpio?"sv)) {
+        utils::arch_chroot({"/usr/bin/mkinitcpio"s, "-P"s});
     }
 }
 
-void edit_grub(ScreenInteractive& screen) noexcept {
+void edit_grub() noexcept {
 #ifdef NDEVENV
     const auto mountpoint = utils::get_mountpoint();
 #else
     const auto mountpoint = "/"sv;
 #endif
 
-    screen.WithRestoredIO([&]() {
-        gucc::utils::run_interactive(fmt::format(FMT_COMPILE("vim \"{}/etc/default/grub\""), mountpoint));
-    })();
-
-    static constexpr auto content = "\nUpdate GRUB?\n"sv;
-    const auto& do_update         = tui::detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 2) | size(WIDTH, LESS_THAN, 40));
-    if (do_update) {
+    edit_file(gucc::utils::target_path(mountpoint, "/etc/default/grub"sv));
+    if (tui::detail::yesno_widget("Update GRUB?"sv)) {
         utils::grub_mkconfig();
     }
 }
@@ -74,132 +64,99 @@ void edit_grub(ScreenInteractive& screen) noexcept {
 namespace tui {
 
 // Revised to deal with partition sizes now being displayed to the user
-bool confirm_mount([[maybe_unused]] const std::string_view& part_user, bool quite) {
+bool confirm_mount([[maybe_unused]] std::string_view part_user, bool quite) {
 #ifdef NDEVENV
     const auto& mounts    = gucc::mtab::parse_mtab(part_user);
     const bool is_mounted = mounts && !mounts->empty();
     if (!quite && !is_mounted) {
-        detail::infobox_for("\nMount Failed!\n"sv, std::chrono::seconds(2));
+        detail::infobox_for("Mount Failed!"sv, std::chrono::seconds(2));
         return false;
     }
 #endif
     if (!quite) {
-        detail::infobox_for("\nMount Successful!\n"sv, std::chrono::seconds(2));
+        detail::infobox_for("Mount Successful!"sv, std::chrono::seconds(2));
     }
-    utils::remove_from_partition_list(config::get<std::string>("PARTITION"));
+    utils::remove_from_partition_list(tui::state().disk.partition);
     return true;
-}
-
-// Fsck hook
-void set_fsck_hook() noexcept {
-    const bool do_sethook                  = detail::yesno_widget("\nDo you want to use fsck hook?\n"sv, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    config::get<std::int32_t>("FSCK_HOOK") = do_sethook ? 1 : 0;
 }
 
 // Choose pacman cache
 void set_cache() noexcept {
-    static constexpr auto content          = "\nDo you want to use the pacman cache of the running system instead\nof the installation target?\nThis can reduce the size of the required downloads in the installation.\n"sv;
-    config::get<std::int32_t>("hostcache") = detail::yesno_widget(content, size(HEIGHT, GREATER_THAN, 3)) ? 1 : 0;
+    static constexpr auto content     = "Do you want to use the pacman cache of the running system instead of the installation target? This can reduce the size of the required downloads in the installation."sv;
+    tui::state().inputs.ctx.hostcache = detail::yesno_widget(content);
 }
 
 void edit_configs() noexcept {
-    const auto& uefi_mount = config::get<std::string>("UEFI_MOUNT");
+    const auto& uefi_mount = tui::state().inputs.ctx.uefi_mount;
 #ifdef NDEVENV
     const auto mountpoint = utils::get_mountpoint();
 #else
     const auto mountpoint = "/"sv;
 #endif
 
-    // Clear the file variables
-    std::vector<std::string> menu_entries{};
-    std::vector<std::function<void()>> functions{};
-    menu_entries.reserve(24);
-    functions.reserve(24);
-    const auto& check_and_add = [&](
-                                    const std::string& file_path, const std::string& dir = "",
-                                    bool is_custom = false, std::function<void()>&& cust_func = []() { }) {
-        const auto& append_function = [&functions](const std::string& filename) {
-            /* clang-format off */
-            functions.emplace_back([filename]{ gucc::utils::run_interactive(fmt::format(FMT_COMPILE("vim {}"), filename)); });
-            /* clang-format on */
-        };
-        /* clang-format off */
-        if (!fs::exists(file_path)) { return; }
-        if (dir.empty()) { menu_entries.push_back(fmt::format(FMT_COMPILE("{}"), fs::path{file_path}.filename().c_str())); }
-        else { menu_entries.push_back(fmt::format(FMT_COMPILE("{} {}"), fs::path{file_path}.filename().c_str(), dir.data())); }
-
-        if (!is_custom) { append_function(file_path); }
-        else { functions.emplace_back([cust_func = std::move(cust_func)]{ cust_func(); }); }
-        /* clang-format on */
+    std::vector<detail::MenuEntry> entries{};
+    const auto add_entry = [&entries](const std::string& path, std::string label, std::function<void()> edit) {
+        if (!fs::exists(path)) {
+            return;
+        }
+        entries.push_back({std::move(label), [edit = std::move(edit)] { edit(); return true; }});
+    };
+    const auto add_file = [&add_entry](const std::string& path, std::string_view owner = {}) {
+        auto name  = fs::path{path}.filename().string();
+        auto label = owner.empty() ? std::move(name) : fmt::format(FMT_COMPILE("{} {}"), name, owner);
+        add_entry(path, std::move(label), [path] { edit_file(path); });
     };
 
-    {
-        const auto& home_entry = gucc::utils::target_path(mountpoint, "/home"sv);
-        if (fs::exists(home_entry)) {
-            for (auto&& dir_entry : fs::directory_iterator{home_entry}) {
-                const auto& dir_entry_path    = dir_entry.path();
-                const auto& extend_xinit_conf = fmt::format(FMT_COMPILE("{}/.extend.xinitrc"), dir_entry_path.c_str());
-                const auto& extend_xres_conf  = fmt::format(FMT_COMPILE("{}/.extend.Xresources"), dir_entry_path.c_str());
-                const auto& xinit_conf        = fmt::format(FMT_COMPILE("{}/.xinitrc"), dir_entry_path.c_str());
-                const auto& xres_conf         = fmt::format(FMT_COMPILE("{}/.Xresources"), dir_entry_path.c_str());
-                check_and_add(extend_xinit_conf, dir_entry_path.filename());
-                check_and_add(xinit_conf, dir_entry_path.filename());
-                check_and_add(extend_xres_conf, dir_entry_path.filename());
-                check_and_add(xres_conf, dir_entry_path.filename());
+    if (const auto& home = gucc::utils::target_path(mountpoint, "/home"sv); fs::exists(home)) {
+        for (auto&& dir_entry : fs::directory_iterator{home}) {
+            const auto& user_dir = dir_entry.path();
+            for (const auto* name : {".extend.xinitrc", ".xinitrc", ".extend.Xresources", ".Xresources"}) {
+                add_file((user_dir / name).string(), user_dir.filename().string());
             }
         }
     }
 
-    const std::array local_paths{
-        gucc::utils::target_path(mountpoint, "/etc/crypttab"sv),
-        gucc::utils::target_path(mountpoint, "/etc/fstab"sv),
-        gucc::utils::target_path(mountpoint, "/boot/refind_linux.conf"sv),
-        gucc::utils::target_path(mountpoint, fmt::format(FMT_COMPILE("{}/EFI/refind/refind_linux.conf"), uefi_mount)),
-        gucc::utils::target_path(mountpoint, fmt::format(FMT_COMPILE("{}/loader/loader.conf"), uefi_mount)),
-        gucc::utils::target_path(mountpoint, "/etc/hostname"sv),
-        gucc::utils::target_path(mountpoint, "/etc/hosts"sv),
-        gucc::utils::target_path(mountpoint, "/etc/systemd/journald.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/conf.d/keymaps"sv),
-        gucc::utils::target_path(mountpoint, "/etc/locale.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/lightdm/lightdm.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/lxdm/lxdm.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/rc.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/pacman.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/makepkg.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/plasmalogin.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/sddm.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/sudoers.conf"sv),
-        gucc::utils::target_path(mountpoint, "/boot/syslinux/syslinux.cfg"sv),
-        gucc::utils::target_path(mountpoint, "/etc/vconsole.conf"sv),
-        gucc::utils::target_path(mountpoint, "/etc/default/grub"sv),
-        gucc::utils::target_path(mountpoint, "/etc/mkinitcpio.conf"sv)};
-
-    for (std::size_t i = 0; i < local_paths.size() - 2; ++i) {
-        check_and_add(local_paths[i]);
+    const std::vector<std::string> plain_files{
+        "/etc/crypttab"s,
+        "/etc/fstab"s,
+        "/boot/refind_linux.conf"s,
+        fmt::format(FMT_COMPILE("{}/EFI/refind/refind_linux.conf"), uefi_mount),
+        fmt::format(FMT_COMPILE("{}/loader/loader.conf"), uefi_mount),
+        "/etc/hostname"s,
+        "/etc/hosts"s,
+        "/etc/systemd/journald.conf"s,
+        "/etc/conf.d/keymaps"s,
+        "/etc/locale.conf"s,
+        "/etc/lightdm/lightdm.conf"s,
+        "/etc/lxdm/lxdm.conf"s,
+        "/etc/rc.conf"s,
+        "/etc/pacman.conf"s,
+        "/etc/makepkg.conf"s,
+        "/etc/plasmalogin.conf"s,
+        "/etc/sddm.conf"s,
+        "/etc/sudoers.conf"s,
+        "/boot/syslinux/syslinux.cfg"s,
+        "/etc/vconsole.conf"s,
+    };
+    for (const auto& file : plain_files) {
+        add_file(gucc::utils::target_path(mountpoint, file));
     }
 
-    auto screen = ScreenInteractive::Fullscreen();
-    check_and_add(local_paths[20], "", true, [&screen] { edit_grub(screen); });
-    check_and_add(local_paths[21], "", true, [&screen] { edit_mkinitcpio(screen); });
+    // run additional configuration action once edited
+    add_entry(gucc::utils::target_path(mountpoint, "/etc/default/grub"sv), "grub"s, edit_grub);
+    add_entry(gucc::utils::target_path(mountpoint, "/etc/mkinitcpio.conf"sv), "mkinitcpio.conf"s, edit_mkinitcpio);
 
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        screen.WithRestoredIO([&]() {
-            functions[static_cast<std::size_t>(selected)]();
-        })();
-    };
-    static constexpr auto seeconf_body = "\nSelect any file listed below to be reviewed or amended.\n"sv;
-    const auto& content_size           = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, seeconf_body, {content_size, size(HEIGHT, GREATER_THAN, 1)});
+    static constexpr auto seeconf_body = "Select any file listed below to be reviewed or amended."sv;
+    detail::menu_loop(seeconf_body, entries);
 }
 
 void edit_pacman_conf() noexcept {
-    gucc::utils::run_interactive("vim /etc/pacman.conf"sv);
+    edit_file("/etc/pacman.conf"sv);
 
 #ifdef NDEVENV
     // NOTE: don't care now, Will change in future..
-    detail::infobox_widget("\nUpdating database ...\n"sv);
-    gucc::utils::run_interactive("pacman -Syy"sv);
+    detail::infobox_widget("Updating database ..."sv);
+    detail::run_in_terminal({"/usr/bin/pacman"s, "-Syy"s});
 #endif
 }
 
@@ -210,38 +167,24 @@ void logs_menu() noexcept {
     const auto mountpoint = "/"sv;
 #endif
 
-    const std::vector<std::string> menu_entries = {
-        "Dmesg",
-        "Pacman log",
-        "Xorg log",
-        "Journalctl",
-        "Back",
+    struct LogSource {
+        std::string_view label;
+        std::function<std::string()> read;
+    };
+    const std::vector<LogSource> logs{
+        {"Dmesg"sv, [mountpoint] { return gucc::utils::arch_chroot_query(std::vector{"/usr/bin/dmesg"s}, mountpoint); }},
+        {"Pacman log"sv, [mountpoint] { return gucc::file_utils::read_whole_file(gucc::utils::target_path(mountpoint, "/var/log/pacman.log"sv)); }},
+        {"Xorg log"sv, [mountpoint] { return gucc::file_utils::read_whole_file(gucc::utils::target_path(mountpoint, "/var/log/Xorg.0.log"sv)); }},
+        {"Journalctl"sv, [mountpoint] { return gucc::utils::arch_chroot_query(std::vector{"/usr/bin/journalctl"s}, mountpoint); }},
     };
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        screen.WithRestoredIO([&]() {
-            switch (selected) {
-            case 0:
-                gucc::utils::run_interactive(fmt::format(FMT_COMPILE("arch-chroot {} dmesg | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint));
-                break;
-            case 1:
-                gucc::utils::run_interactive(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/pacman.log"), mountpoint));
-                break;
-            case 2:
-                gucc::utils::run_interactive(fmt::format(FMT_COMPILE("fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \" < {}/var/log/Xorg.0.log"), mountpoint));
-                break;
-            case 3:
-                gucc::utils::run_interactive(fmt::format(FMT_COMPILE("arch-chroot {} journalctl | fzf --reverse --header=\"Exit by pressing esc\" --prompt=\"Type to filter log entries > \""), mountpoint));
-                break;
-            default:
-                screen.ExitLoopClosure()();
-                return;
-            }
-        })();
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    auto entries = logs
+        | std::ranges::views::transform([](const LogSource& log) {
+              return detail::MenuEntry{std::string{log.label}, [&log] { view_log(log.read()); return true; }};
+          })
+        | std::ranges::to<std::vector<detail::MenuEntry>>();
+    entries.push_back({"Back"s, detail::kLeaveMenu});
+    detail::menu_loop({}, entries);
 }
 
 }  // namespace tui
