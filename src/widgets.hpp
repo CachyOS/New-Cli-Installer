@@ -1,63 +1,55 @@
 #pragma once
 
-#include <array>        // for array
+#include <cstddef>  // for size_t
+#include <cstdint>  // for int32_t
+
 #include <chrono>       // for seconds
-#include <cstddef>      // for size_t
-#include <cstdint>      // for int32_t
-#include <functional>   // for function
+#include <functional>   // for function, function_ref
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
 
-#include <ftxui/component/component_base.hpp>      // for Components
-#include <ftxui/component/screen_interactive.hpp>  // for Component
-#include <ftxui/dom/elements.hpp>                  // for size, GREATER_THAN
+#include <ftxui/component/component_base.hpp>      // for Component
+#include <ftxui/component/screen_interactive.hpp>  // for ScreenInteractive
+#include <ftxui/dom/elements.hpp>                  // for Element
 
-/* clang-format off */
-namespace ftxui { struct ButtonOption; }
-/* clang-format on */
+namespace tui::detail {
 
-namespace tui {
-namespace detail {
-    struct WidgetBoxSize {
-        ftxui::Decorator content_size = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 10) | size(ftxui::WIDTH, ftxui::GREATER_THAN, 40);
-        ftxui::Decorator text_size    = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5);
-    };
-    struct WidgetBoxRes {
-        const std::string_view text{};
-        const std::string_view title{"New CLI Installer"};
-    };
+inline constexpr std::string_view kDefaultTitle{"New CLI Installer"};
 
-    auto centered_widget(ftxui::Component& container, const std::string_view& title, const ftxui::Element& widget) noexcept -> ftxui::Element;
-    auto controls_widget(const std::array<std::string_view, 2>&& titles, const std::array<std::function<void()>, 2>&& callbacks, ftxui::ButtonOption* button_option) noexcept -> ftxui::Component;
-    auto centered_interative_multi(const std::string_view& title, ftxui::Component& widgets) noexcept -> ftxui::Element;
-    auto multiline_text(std::vector<std::string>&& lines) noexcept -> ftxui::Element;
-    auto from_vector_checklist(const std::vector<std::string>& opts, bool* const opts_state) noexcept -> ftxui::Components;
-    auto from_checklist_string(const std::vector<std::string>& opts, const bool* const opts_state) noexcept -> std::string;
-    void msgbox_widget(const std::string_view& content, ftxui::Decorator boxsize = ftxui::hcenter | size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
-    bool inputbox_widget(std::string& value, const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5), bool password = false) noexcept;
-    auto password_prompt(std::string_view content, std::string_view confirm_content) noexcept -> std::optional<std::string>;
-    void infobox_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
-    /// Shows content and blocks for the delay.
-    void infobox_for(std::string_view content, std::chrono::seconds delay) noexcept;
-    /// Asks until is_valid accepts the trimmed input, or std::nullopt when cancelled.
-    auto prompt_validated(std::string_view content, std::string_view error_content, std::function_ref<bool(std::string_view)> is_valid, std::string initial = {}) noexcept -> std::optional<std::string>;
-    bool yesno_widget(const std::string_view& content, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
-    bool yesno_widget(ftxui::Component& container, ftxui::Decorator boxsize = size(ftxui::HEIGHT, ftxui::GREATER_THAN, 5)) noexcept;
-    /// Index of the picked entry, or std::nullopt when cancelled.
-    auto select_from_menu(const std::vector<std::string>& entries, std::string_view text = {}, WidgetBoxSize widget_sizes = {}, std::size_t initial = 0) noexcept -> std::optional<std::size_t>;
-    /// The picked entry itself, or std::nullopt when cancelled.
-    auto select_value(const std::vector<std::string>& entries, std::string_view text = {}, WidgetBoxSize widget_sizes = {}, std::size_t initial = 0) noexcept -> std::optional<std::string>;
-    void menu_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const WidgetBoxSize widget_sizes = {}) noexcept;
-    void radiolist_widget(const std::vector<std::string>& entries, const std::function<void()>&& ok_callback, std::int32_t* selected, ftxui::ScreenInteractive* screen, const WidgetBoxRes& widget_res = {}, const WidgetBoxSize widget_sizes = {}) noexcept;
-    void checklist_widget(const std::vector<std::string>& opts, const std::function<void()>&& ok_callback, bool* opts_state, ftxui::ScreenInteractive* screen, const std::string_view& text = "", const std::string_view& title = "New CLI Installer", const WidgetBoxSize widget_sizes = {}) noexcept;
+struct MenuEntry {
+    std::string label;
+    std::function<bool()> action;
+};
+inline constexpr auto kLeaveMenu = [] { return false; };
 
-    // Wizard step builders
-    auto wizard_menu_step(std::string_view label, const std::vector<std::string>& entries,
-        std::int32_t* selected, std::function<void()> on_enter) noexcept -> ftxui::Component;
-    auto wizard_input_step(std::string_view label, std::string* value,
-        std::string_view placeholder, bool password,
-        std::function<void()> on_enter) noexcept -> ftxui::Component;
-}  // namespace detail
-}  // namespace tui
+auto centered_widget(ftxui::Component& container, std::string_view title, const ftxui::Element& widget) noexcept -> ftxui::Element;
+auto multiline_text(std::string_view content) noexcept -> ftxui::Element;
+auto multiline_text(const std::vector<std::string>& lines) noexcept -> ftxui::Element;
+
+void msgbox_widget(std::string_view content) noexcept;
+bool yesno_widget(std::string_view content) noexcept;
+bool inputbox_widget(std::string& value, std::string_view content, bool password = false) noexcept;
+auto password_prompt(std::string_view content, std::string_view confirm_content) noexcept -> std::optional<std::string>;
+void infobox_widget(std::string_view content) noexcept;
+void infobox_for(std::string_view content, std::chrono::seconds delay) noexcept;
+auto prompt_validated(std::string_view content, std::string_view error_content, std::function_ref<bool(std::string_view)> is_valid, std::string initial = {}) noexcept -> std::optional<std::string>;
+
+auto select_from_menu(const std::vector<std::string>& entries, std::string_view text = {}, std::size_t initial = 0) noexcept -> std::optional<std::size_t>;
+auto select_value(const std::vector<std::string>& entries, std::string_view text = {}, std::size_t initial = 0) noexcept -> std::optional<std::string>;
+auto select_radio(const std::vector<std::string>& entries, std::string_view text = {}, std::string_view title = kDefaultTitle) noexcept -> std::optional<std::string>;
+auto select_many(const std::vector<std::string>& entries, std::string_view text = {}, std::string_view title = kDefaultTitle,
+    std::function<bool(const std::vector<std::string>&)> accept = {}) noexcept -> std::optional<std::vector<std::string>>;
+auto run_in_terminal(const std::vector<std::string>& argv, std::string_view input = {}) noexcept -> std::int32_t;
+
+void menu_loop(std::string_view text, const std::vector<MenuEntry>& entries) noexcept;
+
+// Wizard step builders
+auto wizard_menu_step(std::string_view label, const std::vector<std::string>& entries,
+    std::int32_t* selected, std::function<void()> on_enter) noexcept -> ftxui::Component;
+auto wizard_input_step(std::string_view label, std::string* value,
+    std::string_view placeholder, bool password,
+    std::function<void()> on_enter) noexcept -> ftxui::Component;
+
+}  // namespace tui::detail
