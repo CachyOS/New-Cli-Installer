@@ -1,5 +1,6 @@
 #include "doctest_compatibility.h"
 
+#include "gucc/partition.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/partition_config.hpp"
 #include "gucc/logger.hpp"
@@ -16,7 +17,7 @@ using namespace std::string_view_literals;
 
 static constexpr auto PART_TEST = R"(label: gpt
 type=U,size=2G,bootable
-type=L
+type=4f68bce3-e8cd-4db1-96e7-fbcaf984b709
 )"sv;
 
 static constexpr auto PART_BIOS_TEST = R"(label: dos
@@ -27,12 +28,12 @@ type=L
 static constexpr auto PART_SWAP_TEST = R"(label: gpt
 type=S,size=16G
 type=U,size=2G,bootable
-type=L
+type=4f68bce3-e8cd-4db1-96e7-fbcaf984b709
 )"sv;
 
 static constexpr auto PART_DEFAULT_TEST = R"(label: gpt
 type=U,size=4GiB,bootable
-type=L
+type=4f68bce3-e8cd-4db1-96e7-fbcaf984b709
 )"sv;
 
 static constexpr auto PART_DEFAULT_BIOS_TEST = R"(label: dos
@@ -42,22 +43,22 @@ type=L
 static constexpr auto PART_CONFIG_SWAP_TEST = R"(label: gpt
 type=U,size=1GiB,bootable
 type=S,size=8GiB
-type=L
+type=4f68bce3-e8cd-4db1-96e7-fbcaf984b709
 )"sv;
 
 static constexpr auto PART_EMM_SIZED_TEST = R"(label: gpt
 type=U,size=512M,bootable
-type=L,size=900G
+type=4f68bce3-e8cd-4db1-96e7-fbcaf984b709,size=900G
 )"sv;
 
 static constexpr auto PART_EMM_UNSIZED_TEST = R"(label: gpt
 type=U,size=512M,bootable
-type=L
+type=4f68bce3-e8cd-4db1-96e7-fbcaf984b709
 )"sv;
 
 static constexpr auto PART_FILL_PERCENT_TEST = R"(label: gpt
 type=U,size=4G,bootable
-type=L
+type=4f68bce3-e8cd-4db1-96e7-fbcaf984b709
 )"sv;
 
 TEST_CASE("partitioning_gen")

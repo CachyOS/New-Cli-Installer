@@ -46,12 +46,14 @@ constexpr auto is_fill_size(std::string_view size) noexcept -> bool {
 }
 
 // single sfdisk command line
-constexpr auto to_sfdisk_line(const gucc::fs::Partition& part) noexcept -> std::string {
+constexpr auto to_sfdisk_line(const gucc::fs::Partition& part, bool is_efi) noexcept -> std::string {
     const auto fs_type = gucc::fs::string_to_filesystem_type(part.fstype);
+    static constexpr auto SD_GPT_ROOT_X86_64 = "4f68bce3-e8cd-4db1-96e7-fbcaf984b709"sv;
 
     // L - alias 'linux'. Linux
     // U - alias 'uefi'. EFI System partition
-    auto line = fmt::format(FMT_COMPILE("type={}"), gucc::fs::get_sfdisk_type_alias(fs_type));
+    auto line = fmt::format(FMT_COMPILE("type={}"), (part.is_root() && is_efi) ?
+        SD_GPT_ROOT_X86_64 : gucc::fs::get_sfdisk_type_alias(fs_type));
 
     // The field size= support '+' and '-' in the same way as Unnamed-fields
     // format. The default value of size indicates "as much as possible";
@@ -76,6 +78,7 @@ constexpr auto to_sfdisk_line(const gucc::fs::Partition& part) noexcept -> std::
         // - but it might play a role for certain boot loaders and for other operating systems.
         line += ",bootable"s;
     }
+
     line += "\n"s;
     return line;
 }
@@ -118,7 +121,7 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
     // sfdisk does not create partition table without partitions by default. The lines with partitions are expected in the script by default.
     auto sfdisk_commands = fmt::format(FMT_COMPILE("label: {}\n"), is_efi ? "gpt"sv : "dos"sv);
     sfdisk_commands += partitions_filtered
-        | std::ranges::views::transform(to_sfdisk_line)
+        | std::ranges::views::transform([&is_efi](fs::Partition part) -> std::string { return to_sfdisk_line(part, is_efi); })
         | std::ranges::views::join
         | std::ranges::to<std::string>();
     return sfdisk_commands;
