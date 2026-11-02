@@ -52,6 +52,8 @@ Checks: '-*,
 FormatStyle: 'file'
 
 WarningsAsErrors: '*'
+HeaderFilterRegex: '.*'
+ExcludeHeaderFilterRegex: '/(_deps|CPM|third_party|tests)/'
 
 CheckOptions:
   - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic

@@ -40,7 +40,7 @@ jobs:
         run: |
           clang-tidy --version
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git ls-files 'src/*.cpp' 'gucc/*.cpp' 'installer-lib/*.cpp' \
+          git ls-files 'src/*.cpp' 'gucc/*.cpp' 'installer-lib/*.cpp' ':!:*/tests/*' ':!:*/third_party/*' \
             | xargs -r run-clang-tidy -p ${{github.workspace}}/build -quiet
         shell: bash
 
