@@ -44,8 +44,8 @@ namespace cachyos::installer {
 [[nodiscard]] auto grub_mkconfig(std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
 
-/// Runs a command inside the target chroot.
-[[nodiscard]] auto arch_chroot(std::string_view command, std::string_view mountpoint) noexcept
+/// Runs argv inside the target chroot.
+[[nodiscard]] auto arch_chroot(const std::vector<std::string>& argv, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
 
 }  // namespace cachyos::installer

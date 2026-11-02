@@ -180,7 +180,7 @@ auto install_grub_with(const InstallContext& ctx, const TargetRoot& root,
     }
     {
         const HostLvmBind host_lvm{};
-        if (auto res = cachyos::installer::arch_chroot("grub_installer.sh", ctx.mountpoint); !res) {
+        if (auto res = cachyos::installer::arch_chroot({"/usr/bin/grub_installer.sh"s}, ctx.mountpoint); !res) {
             spdlog::warn("grub_installer.sh: {}", res.error());
         }
     }
@@ -482,15 +482,12 @@ auto get_kernel_params(const InstallContext& ctx) noexcept
 
 auto grub_mkconfig(std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    return arch_chroot("grub-mkconfig -o /boot/grub/grub.cfg", mountpoint);
+    return arch_chroot({"/usr/bin/grub-mkconfig"s, "-o"s, "/boot/grub/grub.cfg"s}, mountpoint);
 }
 
-auto arch_chroot(std::string_view command, std::string_view mountpoint) noexcept
+auto arch_chroot(const std::vector<std::string>& argv, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string> {
-    if (!gucc::utils::arch_chroot_checked(command, mountpoint)) {
-        return std::unexpected(fmt::format("failed to run in arch-chroot: {}", command));
-    }
-    return {};
+    return lift(gucc::utils::arch_chroot_or_error(argv, mountpoint));
 }
 
 }  // namespace cachyos::installer
