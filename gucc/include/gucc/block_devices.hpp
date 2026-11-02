@@ -52,6 +52,9 @@ auto list_block_devices() -> std::optional<std::vector<BlockDevice>>;
 /// lsblk for @p device without children, std::nullopt otherwise.
 auto query_block_device(std::string_view device) -> std::optional<BlockDevice>;
 
+/// lsblk's printable tree of @p columns for devices matching @p filter, optionally under @p device.
+auto lsblk_table(std::string_view columns, std::string_view filter, std::string_view device = {}) -> std::optional<std::string>;
+
 /// @brief Finds a block device by its name.
 /// @param devices A vector of BlockDevice objects.
 /// @param device_name A string view containing the name of the device to find.

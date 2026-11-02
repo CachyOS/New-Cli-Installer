@@ -8,7 +8,9 @@
 #include <algorithm>  // for contains
 #include <ranges>     // for ranges::*
 #include <set>        // for set
+#include <string>     // for string
 #include <utility>    // for move
+#include <vector>     // for vector
 
 #include <rapidjson/document.h>
 
@@ -17,6 +19,7 @@
 
 #include <spdlog/spdlog.h>
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace {
@@ -149,6 +152,14 @@ auto query_block_device(std::string_view device) -> std::optional<BlockDevice> {
     return utils::query_output(fmt::format(FMT_COMPILE("lsblk -d -o {} -b -p -J '{}'"), detail::kLsblkColumns, device))
         .and_then(detail::parse_lsblk_json)
         .and_then([](std::vector<BlockDevice> devices) { return devices.empty() ? std::nullopt : std::optional{std::move(devices.front())}; });
+}
+
+auto lsblk_table(std::string_view columns, std::string_view filter, std::string_view device) -> std::optional<std::string> {
+    std::vector<std::string> argv{"/usr/bin/lsblk"s, "-o"s, std::string{columns}, "-Q"s, std::string{filter}};
+    if (!device.empty()) {
+        argv.emplace_back(device);
+    }
+    return utils::query_output(argv);
 }
 
 }  // namespace gucc::disk
