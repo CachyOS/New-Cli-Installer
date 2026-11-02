@@ -39,7 +39,7 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
 // Mounts partitions
 [[nodiscard]] auto apply_mount_selections(const MountSelections& selections) noexcept -> bool;
 
-// Mount the "current" partition from config state using auto-detected defaults.
+// Mount the "current" partition from state using auto-detected defaults.
 auto mount_partition_headless() noexcept -> bool;
 
 // Setup ESP partition in headless mode (no TUI interaction).
@@ -52,11 +52,10 @@ auto make_esp_headless(std::vector<gucc::fs::Partition>& partitions, std::string
 
 auto lvm_show_vg() noexcept -> std::vector<std::pair<std::string, std::string>>;
 
-[[nodiscard]] bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zfs_zpool_name) noexcept;
-[[nodiscard]] bool zfs_create_zpool(const std::string_view& partition, const std::string_view& pool_name) noexcept;
+[[nodiscard]] bool zfs_auto_pres(std::string_view partition, std::string_view zfs_zpool_name) noexcept;
+[[nodiscard]] bool zfs_create_zpool(std::string_view partition, std::string_view pool_name) noexcept;
 
 void select_filesystem(std::string_view file_sys) noexcept;
-auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string>;
 
 /// Defaults for fstype, with specific device options.
 [[nodiscard]] auto default_mount_opts(std::string_view device, std::string_view fstype) noexcept -> std::string;

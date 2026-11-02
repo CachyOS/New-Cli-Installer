@@ -1,5 +1,5 @@
 #include "disk.hpp"
-#include "global_storage.hpp"
+#include "installer_state.hpp"
 #include "misc.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
@@ -23,11 +23,7 @@
 #include <functional>  // for bind_back
 #include <ranges>      // for ranges::*
 
-#include <ftxui/component/component.hpp>           // for Renderer, Button
-#include <ftxui/component/component_options.hpp>   // for ButtonOption
-#include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
-#include <ftxui/dom/elements.hpp>                  // for operator|, size
-#include <sys/mount.h>                             // for umount
+#include <sys/mount.h>  // for umount
 
 #include <fmt/compile.h>
 #include <fmt/core.h>
@@ -44,17 +40,21 @@ constexpr auto find_root_btrfs_part(std::vector<gucc::fs::Partition>& parts) noe
 
 #ifdef NDEVENV
 void store_luks_config(const cachyos::installer::MountPartitionResult& mount_result) noexcept {
-    config::get<std::int32_t>("LUKS")     = mount_result.is_luks;
-    config::get<std::int32_t>("LVM")      = mount_result.is_lvm;
-    config::get<std::string>("LUKS_NAME") = mount_result.luks_name;
-    config::get<std::string>("LUKS_DEV")  = mount_result.luks_dev;
-    config::get<std::string>("LUKS_UUID") = mount_result.luks_uuid;
+    auto& crypto     = tui::state().inputs.ctx.crypto;
+    crypto.is_luks   = mount_result.is_luks;
+    crypto.is_lvm    = mount_result.is_lvm;
+    crypto.luks_name = mount_result.luks_name;
+    crypto.luks_dev  = mount_result.luks_dev;
+    crypto.luks_uuid = mount_result.luks_uuid;
 }
 #endif
 
 void register_zpool(std::string_view pool_name) noexcept {
-    config::get<std::int32_t>("ZFS") = 1;
-    config::get<std::vector<std::string>>("ZFS_ZPOOL_NAMES").emplace_back(pool_name);
+    tui::state().inputs.ctx.zfs_zpool_names.emplace_back(pool_name);
+}
+
+auto subvol_mountpoint_prompt(std::string_view subvol, std::string_view root_mountpoint) noexcept -> std::string {
+    return fmt::format(FMT_COMPILE("Input mountpoint of the subvolume {} as it would appear in installed system (without prepending {})."), subvol, root_mountpoint);
 }
 
 }  // namespace
@@ -70,7 +70,7 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
         "automatic",
         "manual",
     };
-    static constexpr auto btrfsvols_body = "\nAutomatic mode\nis designed to allow integration\nwith snapper, non-recursive snapshots,\nseparating system and user data and\nrestoring snapshots without losing data.\n"sv;
+    static constexpr auto btrfsvols_body = "Automatic mode is designed to allow integration with snapper, non-recursive snapshots, separating system and user data and restoring snapshots without losing data."sv;
     const auto mode                      = tui::detail::select_from_menu(menu_entries, btrfsvols_body);
     if (!mode) {
         return {};
@@ -81,8 +81,8 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
 
     // Ask user for subvolume names and their mountpoints
     std::string subvols{"/@ /@home /@cache"};
-    static constexpr auto subvols_body = "\nInput names of the subvolumes separated by spaces.\nThe first one will be used for mounting /.\n"sv;
-    if (!tui::detail::inputbox_widget(subvols, subvols_body, size(ftxui::HEIGHT, ftxui::GREATER_THAN, 4))) {
+    static constexpr auto subvols_body = "Input names of the subvolumes separated by spaces. The first one will be used for mounting /."sv;
+    if (!tui::detail::inputbox_widget(subvols, subvols_body)) {
         return {};
     }
     subvols = std::string{gucc::utils::trim(subvols)};
@@ -102,9 +102,9 @@ auto select_btrfs_subvolumes(std::string_view root_mountpoint) noexcept -> std::
 
     // Ask mountpoint for each remaining subvolume
     for (auto&& subvol : subvol_list) {
-        const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending {}).\n"), subvol, root_mountpoint);
+        const auto& content = subvol_mountpoint_prompt(subvol, root_mountpoint);
         std::string mountpoint{"/home"};
-        if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+        if (!tui::detail::inputbox_widget(mountpoint, content)) {
             return {};
         }
         mountpoint = std::string{gucc::utils::trim(mountpoint)};
@@ -137,9 +137,9 @@ auto mount_existing_subvols(std::vector<gucc::fs::Partition>& partitions) noexce
     std::vector<gucc::fs::BtrfsSubvolume> subvolumes{};
     for (const auto& exist_subvol : exist_subvols) {
         // Ask for mountpoint
-        const auto& content = fmt::format(FMT_COMPILE("\nInput mountpoint of\nthe subvolume {}\nas it would appear\nin installed system\n(without prepending {}).\n"), exist_subvol.subvolume, root_mountpoint);
+        const auto& content = subvol_mountpoint_prompt(exist_subvol.subvolume, root_mountpoint);
         std::string mountpoint{"/"};
-        if (!tui::detail::inputbox_widget(mountpoint, content, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+        if (!tui::detail::inputbox_widget(mountpoint, content)) {
             return true;
         }
         mountpoint = std::string{gucc::utils::trim(mountpoint)};
@@ -176,14 +176,12 @@ auto lvm_show_vg() noexcept -> std::vector<std::pair<std::string, std::string>> 
 }
 
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
-bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zfs_zpool_name) noexcept {
+bool zfs_auto_pres(std::string_view partition, std::string_view zfs_zpool_name) noexcept {
 #ifdef NDEVENV
-    auto result = cachyos::installer::zfs_auto_pres(partition, zfs_zpool_name, utils::get_mountpoint());
-    if (!result) {
+    if (auto result = cachyos::installer::zfs_auto_pres(partition, zfs_zpool_name, utils::get_mountpoint()); !result) {
         spdlog::error("{}", result.error());
         return false;
     }
-    config::get<gucc::fs::ZfsSetupConfig>("ZFS_SETUP_CONFIG") = std::move(*result);
 #else
     spdlog::info("[DRY-RUN] Would create ZFS automatically on {} with pool {}", partition, zfs_zpool_name);
 #endif
@@ -192,7 +190,7 @@ bool zfs_auto_pres(const std::string_view& partition, const std::string_view& zf
 }
 
 // creates a new zpool on an existing partition
-bool zfs_create_zpool(const std::string_view& partition, const std::string_view& pool_name) noexcept {
+bool zfs_create_zpool(std::string_view partition, std::string_view pool_name) noexcept {
 #ifdef NDEVENV
     if (auto result = cachyos::installer::zfs_create_zpool(partition, pool_name, utils::get_mountpoint()); !result) {
         spdlog::error("{}", result.error());
@@ -207,7 +205,8 @@ bool zfs_create_zpool(const std::string_view& partition, const std::string_view&
 
 // Other filesystems
 void select_filesystem(std::string_view file_sys) noexcept {
-    config::get<std::string>("FILESYSTEM_NAME") = std::string{file_sys};
+    auto& st                      = tui::state();
+    st.inputs.ctx.filesystem_name = std::string{file_sys};
 
     const auto fs_type = gucc::fs::string_to_filesystem_type(file_sys);
     if (fs_type == gucc::fs::FilesystemType::Unknown && file_sys != "zfs"sv) {
@@ -218,19 +217,13 @@ void select_filesystem(std::string_view file_sys) noexcept {
     // Get mkfs command
     const auto mkfs_cmd = gucc::fs::get_mkfs_command(fs_type);
     if (!mkfs_cmd.empty()) {
-        config::get<std::string>("FILESYSTEM") = std::string{mkfs_cmd};
+        st.disk.mkfs_command = std::string{mkfs_cmd};
     }
-
-    config::get<std::vector<std::string>>("fs_opts") = utils::get_available_mount_opts(file_sys);
 
     // Load kernel modules for specific filesystems
 #ifdef NDEVENV
     cachyos::installer::load_filesystem_module(file_sys);
 #endif
-}
-
-auto get_available_mount_opts(std::string_view fstype) noexcept -> std::vector<std::string> {
-    return cachyos::installer::get_available_mount_opts(fstype);
 }
 
 auto default_mount_opts(std::string_view device, std::string_view fstype) noexcept -> std::string {
@@ -258,7 +251,7 @@ auto is_volume_removable() noexcept -> bool {
 
 auto apply_swap_selection(const SwapSelection& swap, std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
     const auto mountpoint_info = utils::get_mountpoint();
-    auto& swap_device          = config::get<std::string>("SWAP_DEVICE");
+    auto& swap_device          = tui::state().inputs.ctx.swap_device;
 
 #ifdef NDEVENV
     auto result = cachyos::installer::apply_swap(swap, mountpoint_info);
@@ -296,8 +289,7 @@ auto apply_esp_selection(const EspSelection& esp, std::vector<gucc::fs::Partitio
         return false;
     }
 
-    config::get<std::string>("UEFI_PART")  = esp.device;
-    config::get<std::string>("UEFI_MOUNT") = esp.mountpoint;
+    tui::state().inputs.ctx.uefi_mount = esp.mountpoint;
 
     auto esp_partition = utils::setup_esp_partition(esp.device, esp.mountpoint, esp.format_requested);
     if (!esp_partition) {
@@ -377,7 +369,7 @@ auto apply_mount_selections_interactive(const MountSelections& selections) noexc
 
     // 3. Apply additional partitions
     const auto mountpoint_info = utils::get_mountpoint();
-    auto& lvm_sep_boot         = config::get<std::int32_t>("LVM_SEP_BOOT");
+    auto& lvm_sep_boot         = tui::state().inputs.ctx.crypto.lvm_sep_boot;
 #ifdef NDEVENV
     {
         auto additional_res = cachyos::installer::apply_additional_partitions(selections.additional, mountpoint_info, partitions);
@@ -420,7 +412,7 @@ auto apply_mount_selections_interactive(const MountSelections& selections) noexc
     // 6. Dump and store partition schema globally
     utils::dump_partitions_to_log(partitions);
     spdlog::info("Partition schema stored with {} entries", partitions.size());
-    config::get<std::vector<gucc::fs::Partition>>("PARTITION_SCHEMA") = std::move(partitions);
+    tui::state().inputs.ctx.partition_schema = std::move(partitions);
 
     return true;
 }
@@ -436,7 +428,8 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
     }
 
 #ifdef NDEVENV
-    auto& config_data          = Config::instance()->data();
+    auto& st                   = tui::state();
+    auto& ctx                  = st.inputs.ctx;
     const auto mountpoint_info = utils::get_mountpoint();
 
     auto result = cachyos::installer::apply_mount_selections(selections, mountpoint_info);
@@ -447,14 +440,12 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
 
     auto& [partitions, swap_device, lvm_sep_boot] = *result;
 
-    // Store results in Config
     if (!swap_device.empty()) {
-        config_data["SWAP_DEVICE"] = std::move(swap_device);
+        ctx.swap_device = std::move(swap_device);
     }
-    config_data["LVM_SEP_BOOT"] = lvm_sep_boot;
+    ctx.crypto.lvm_sep_boot = lvm_sep_boot;
     if (!selections.esp.device.empty()) {
-        config_data["UEFI_PART"]    = selections.esp.device;
-        config_data["UEFI_MOUNT"]   = selections.esp.mountpoint;
+        ctx.uefi_mount              = selections.esp.mountpoint;
         const auto& part_mountpoint = gucc::utils::target_path(mountpoint_info, selections.esp.mountpoint);
         tui::confirm_mount(part_mountpoint, false);
     }
@@ -469,15 +460,16 @@ auto apply_mount_selections(const MountSelections& selections) noexcept -> bool 
     };
 #endif
     utils::dump_partitions_to_log(partitions);
-    config::get<std::vector<gucc::fs::Partition>>("PARTITION_SCHEMA") = std::move(partitions);
+    tui::state().inputs.ctx.partition_schema = std::move(partitions);
     return true;
 }
 
 auto mount_partition_headless() noexcept -> bool {
-    const auto& partition = config::get<std::string>("PARTITION");
-    const auto& mount_dev = config::get<std::string>("MOUNT");
-    auto& mount_opts      = config::get<std::string>("MOUNT_OPTS");
-    mount_opts            = utils::default_mount_opts(partition, config::get<std::string>("FILESYSTEM_NAME"));
+    auto& st              = tui::state();
+    const auto& partition = st.disk.partition;
+    const auto& mount_dev = st.disk.mount;
+    auto& mount_opts      = st.disk.mount_opts;
+    mount_opts            = utils::default_mount_opts(partition, st.inputs.ctx.filesystem_name);
 
     if (!utils::mount_partition(partition, utils::get_mountpoint(), mount_dev, mount_opts)) {
         spdlog::error("Failed to mount current partition {}", partition);
@@ -492,17 +484,15 @@ void make_esp_headless(std::vector<gucc::fs::Partition>& partitions,
     gucc::bootloader::BootloaderType bootloader_type,
     bool reformat_part,
     std::string_view boot_part_mountpoint) noexcept {
-    const auto& sys_info = config::get<std::string>("SYSTEM");
-
     /* clang-format off */
-    if (sys_info != "UEFI"sv) { return; }
+    if (!tui::state().inputs.ctx.is_uefi()) { return; }
     /* clang-format on */
 
-    auto& partition = config::get<std::string>("PARTITION");
+    auto& partition = tui::state().disk.partition;
     partition       = std::string{part_name};
 
     const auto& uefi_mount = boot_part_mountpoint.empty()
-        ? utils::bootloader_default_mount(bootloader_type, sys_info)
+        ? cachyos::installer::bootloader_default_mount(bootloader_type, tui::state().inputs.ctx.system_mode)
         : boot_part_mountpoint;
 
     // If it is already a fat/vfat partition, skip formatting
@@ -521,10 +511,11 @@ void make_esp_headless(std::vector<gucc::fs::Partition>& partitions,
 }
 
 auto attach_luks_info(gucc::fs::Partition partition) noexcept -> gucc::fs::Partition {
-    if (const auto& luks_name = config::get<std::string>("LUKS_NAME"); !luks_name.empty()) {
+    const auto& crypto = tui::state().inputs.ctx.crypto;
+    if (const auto& luks_name = crypto.luks_name; !luks_name.empty()) {
         partition.luks_mapper_name = luks_name;
     }
-    if (const auto& luks_uuid = config::get<std::string>("LUKS_UUID"); !luks_uuid.empty()) {
+    if (const auto& luks_uuid = crypto.luks_uuid; !luks_uuid.empty()) {
         partition.luks_uuid = luks_uuid;
     }
     return partition;
