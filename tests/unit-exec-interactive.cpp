@@ -2,10 +2,13 @@
 #include "utils.hpp"
 
 // import gucc
-#include "gucc/io_utils.hpp"
+#include "gucc/process.hpp"
+
+#include <string>  // for string
 
 int main() {
+    using namespace std::string_literals;
     output_inter("\n\n------ TEST BASH LAUNCH BEGIN ------\n\n");
-    gucc::utils::exec("bash", true);
+    gucc::utils::run_interactive({"/usr/bin/bash"s});
     output_inter("\n\n------ TEST BASH LAUNCH END ------\n\n");
 }

@@ -3,6 +3,7 @@
 
 #include "cachyos/installer_config.hpp"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -12,6 +13,12 @@
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
+
+namespace {
+[[nodiscard]] auto mentions(const std::vector<std::string>& problems, std::string_view needle) -> bool {
+    return std::ranges::any_of(problems, [needle](std::string_view problem) { return problem.contains(needle); });
+}
+}  // namespace
 
 TEST_CASE("installer config parsing")
 {
@@ -265,7 +272,7 @@ TEST_CASE("headless config validation")
 
         auto result = cachyos::installer::validate_headless_config(config);
         REQUIRE(!result.has_value());
-        REQUIRE(result.error().contains("device"sv));
+        REQUIRE(mentions(result.error(), "device"sv));
     }
     SECTION("headless mode missing user fields fails")
     {
@@ -285,7 +292,7 @@ TEST_CASE("headless config validation")
 
         auto result = cachyos::installer::validate_headless_config(config);
         REQUIRE(!result.has_value());
-        REQUIRE(result.error().contains("user_name"sv));
+        REQUIRE(mentions(result.error(), "user_name"sv));
     }
     SECTION("headless mode empty partitions fails")
     {
@@ -307,7 +314,7 @@ TEST_CASE("headless config validation")
 
         auto result = cachyos::installer::validate_headless_config(config);
         REQUIRE(!result.has_value());
-        REQUIRE(result.error().contains("partitions"sv));
+        REQUIRE(mentions(result.error(), "partitions"sv));
     }
 }
 

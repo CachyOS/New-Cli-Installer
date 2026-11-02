@@ -69,9 +69,8 @@ cpr = dependency('cpr', version : ['>=1.10.0'], fallback : ['cpr', 'cpr_dep'])
 doctest = dependency('doctest', version : ['>=2.4.11'], fallback : ['doctest', 'doctest_dep'])
 
 src_files = files(
-    'src/view.hpp',
     'src/definitions.hpp',
-    'src/global_storage.cpp', 'src/global_storage.hpp',
+    'src/installer_state.cpp', 'src/installer_state.hpp',
     'src/utils.cpp', 'src/utils.hpp',
     'src/disk.cpp', 'src/disk.hpp',
     'src/drivers.cpp', 'src/drivers.hpp',

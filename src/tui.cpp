@@ -3,8 +3,8 @@
 #include "definitions.hpp"
 #include "disk.hpp"
 #include "drivers.hpp"
-#include "global_storage.hpp"
 #include "installer_data.hpp"
+#include "installer_state.hpp"
 #include "misc.hpp"
 #include "simple_tui.hpp"
 #include "utils.hpp"
@@ -16,97 +16,155 @@
 #include "cachyos/packages.hpp"
 #include "cachyos/types.hpp"
 #include "cachyos/validation.hpp"
+#include "cachyos/validators.hpp"
 
 // import gucc
 #include "gucc/block_devices.hpp"
+#include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
+#include "gucc/error.hpp"
 #include "gucc/fs_utils.hpp"
 #include "gucc/io_utils.hpp"
+#include "gucc/kmod.hpp"
 #include "gucc/locale.hpp"
+#include "gucc/memory.hpp"
+#include "gucc/mirrors.hpp"
 #include "gucc/mount_partitions.hpp"
+#include "gucc/mtab.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
+#include "gucc/ranges_utils.hpp"
+#include "gucc/repos.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/swap.hpp"
 #include "gucc/system_query.hpp"
 #include "gucc/timezone.hpp"
 #include "gucc/zfs.hpp"
+#include "gucc/zfs_query.hpp"
 
-#include <algorithm>    // for copy, transform
+#include <sys/mount.h>  // for mount
+
+#include <cstdlib>      // for exit
+
+#include <algorithm>    // for any_of, find
 #include <array>        // for array
-#include <cstdlib>      // for setenv
+#include <chrono>       // for seconds
 #include <filesystem>   // for exists, is_directory
-#include <fstream>      // for ofstream
+#include <functional>   // for function
+#include <optional>     // for optional
 #include <ranges>       // for ranges::*
 #include <string>       // for basic_string
-#include <sys/mount.h>  // for mount
+#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <spdlog/spdlog.h>
-
-/* clang-format off */
-#include <ctre.hpp>                                // for ctre::match
-#include <ftxui/component/component.hpp>           // for Renderer, Button
-#include <ftxui/component/screen_interactive.hpp>  // for Component, ScreenI...
-#include <ftxui/dom/elements.hpp>                  // for operator|, size
-/* clang-format on */
-
-using namespace ftxui;
-namespace fs = std::filesystem;
-
-#include <ranges>
 
 #ifdef NDEVENV
 #include "follow_process_log.hpp"
 #endif
 
+namespace fs = std::filesystem;
+
 using namespace std::string_literals;
 using namespace std::string_view_literals;
+using namespace std::chrono_literals;
+
+namespace {
+
+using gucc::bootloader::BootloaderType;
+
+// re-export
+constexpr std::array uefi_bootloaders{
+    BootloaderType::Grub,
+    BootloaderType::Refind,
+    BootloaderType::SystemdBoot,
+    BootloaderType::Limine,
+};
+
+auto index_of(const std::vector<std::string>& entries, std::string_view value) noexcept -> std::size_t {
+    return gucc::utils::index_of(entries, value).value_or(0);
+}
+
+auto select_partition(const std::vector<std::string>& entries, std::string_view body) noexcept -> std::optional<std::string> {
+    return tui::detail::select_value(entries, body).transform(installer::data::parse_device_name);
+}
+
+auto select_uefi_bootloader(std::string_view body) noexcept -> std::optional<BootloaderType> {
+    const auto entries = uefi_bootloaders
+        | std::ranges::views::transform([](BootloaderType type) { return std::string{gucc::bootloader::bootloader_to_string(type)}; })
+        | std::ranges::to<std::vector<std::string>>();
+    return tui::detail::select_from_menu(entries, body).transform([](std::size_t idx) { return uefi_bootloaders.at(idx); });
+}
+
+template <auto Field, typename T>
+void apply_setting(T&& value, [[maybe_unused]] std::string_view what) noexcept {
+    cachyos::installer::SystemSettings settings{};
+    settings.*Field = std::forward<T>(value);
+#ifdef NDEVENV
+    if (auto res = cachyos::installer::apply_system_settings(settings, utils::get_mountpoint()); !res) {
+        spdlog::error("Failed to set {}: {}", what, res.error());
+    }
+#endif
+}
+
+// Menu action that leaves the menu.
+template <typename Ready, typename Action>
+auto guarded(Ready ready, Action action) noexcept -> std::function<bool()> {
+    return [ready, action] {
+        if (!ready()) {
+            return false;
+        }
+        action();
+        return true;
+    };
+}
+
+auto base_installed_marker() noexcept -> std::string {
+    return gucc::utils::target_path(utils::get_mountpoint(), "/.base_installed"sv);
+}
+
+auto zfs_child_datasets() noexcept -> std::vector<std::string> {
+    return gucc::fs::zfs_query::detail::child_dataset_names(gucc::fs::list_zfs_datasets());
+}
+
+void announce_lvm_activation() noexcept {
+    tui::detail::infobox_for("Existing Logical Volume Management (LVM) detected. Activating. Please Wait..."sv, 2s);
+}
+
+}  // namespace
 
 namespace tui {
 
 bool exit_done() noexcept {
 #ifdef NDEVENV
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
     static constexpr auto close_inst_body = "\nClose installer?\n"sv;
-    const auto& mountpoint                = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& target_mnt                = fmt::format(FMT_COMPILE("findmnt --list -o TARGET | grep {} 2>/dev/null"), mountpoint);
-    if (!target_mnt.empty()) {
-        const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-        cachyos::installer::InstallContext check_ctx{};
-        check_ctx.mountpoint  = mountpoint;
-        check_ctx.system_mode = (system_info == "UEFI"sv)
-            ? cachyos::installer::InstallContext::SystemMode::UEFI
-            : cachyos::installer::InstallContext::SystemMode::BIOS;
-        const auto check      = cachyos::installer::final_check(check_ctx);
+    const auto mountpoint                 = utils::get_mountpoint();
+    const auto& target_mounts             = gucc::mtab::parse_mtab(mountpoint);
+    if (target_mounts && !target_mounts->empty()) {
+        const auto check = cachyos::installer::final_check(utils::build_install_context());
         std::string checklist;
-        for (const auto& err : check.errors) {
-            checklist += fmt::format(FMT_COMPILE("- {}\n"), err);
+        for (const auto& item : std::ranges::views::concat(check.errors, check.warnings)) {
+            checklist += fmt::format(FMT_COMPILE("- {}\n"), item);
         }
-        for (const auto& warn : check.warnings) {
-            checklist += fmt::format(FMT_COMPILE("- {}\n"), warn);
-        }
-        config_data["CHECKLIST"] = checklist;
-        const auto& do_close     = detail::yesno_widget(fmt::format(FMT_COMPILE("{}{}\n"), close_inst_body, checklist), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
+        const auto& do_close = detail::yesno_widget(fmt::format(FMT_COMPILE("{}{}\n"), close_inst_body, checklist));
         /* clang-format off */
         if (!do_close) { return false; }
         /* clang-format on */
 
         spdlog::info("exit installer.");
 
-        static constexpr auto LogInfo = "Would you like to save\nthe installation-log\nto the installed system?\nIt will be copied to\n"sv;
-        const auto& do_save_log       = detail::yesno_widget(fmt::format(FMT_COMPILE("\n{} {}/cachyos-install.log\n"), LogInfo, mountpoint), size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 40));
+        static constexpr auto LogInfo = "Would you like to save\nthe installation-log\nto the installed system? It will be copied to"sv;
+        const auto& do_save_log       = detail::yesno_widget(fmt::format(FMT_COMPILE("{} {}/cachyos-install.log"), LogInfo, mountpoint));
         if (do_save_log) {
-            fs::copy_file("/tmp/cachyos-install.log", fmt::format(FMT_COMPILE("{}/cachyos-install.log"), mountpoint), fs::copy_options::overwrite_existing);
+            fs::copy_file("/tmp/cachyos-install.log", gucc::utils::target_path(mountpoint, "/cachyos-install.log"sv), fs::copy_options::overwrite_existing);
         }
         utils::umount_partitions();
         utils::clear_screen();
         return true;
     }
-    const auto& do_close = detail::yesno_widget(close_inst_body, size(HEIGHT, LESS_THAN, 10) | size(WIDTH, LESS_THAN, 40));
+    const auto& do_close = detail::yesno_widget(close_inst_body);
     /* clang-format off */
     if (!do_close) { return false; }
     /* clang-format on */
@@ -119,10 +177,9 @@ bool exit_done() noexcept {
 
 // Function will not allow incorrect UUID type for installed system.
 void generate_fstab() noexcept {
-    static constexpr auto fstab_body = "\nThe FSTAB file (File System TABle) sets what storage devices\nand partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) used.\n"sv;
-    const auto& do_set_fstab         = detail::yesno_widget(fstab_body, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    static constexpr auto fstab_body = "The FSTAB file (File System TABle) sets what storage devices and partitions are to be mounted, and how they are to be used.\n\nUUID (Universally Unique IDentifier) used."sv;
     /* clang-format off */
-    if (!do_set_fstab) { return; }
+    if (!detail::yesno_widget(fstab_body)) { return; }
     /* clang-format on */
 
 #ifdef NDEVENV
@@ -137,283 +194,136 @@ void generate_fstab() noexcept {
 // Set system hostname
 void set_hostname() noexcept {
     std::string hostname{"cachyos"};
-    static constexpr auto hostname_body = "\nThe hostname is used to identify the system on a network.\n \nIt is restricted to alphanumeric characters, can contain a hyphen\n(-) - but not at the start or end - and must be no longer than 63 characters.\n"sv;
-    if (!detail::inputbox_widget(hostname, hostname_body, size(HEIGHT, GREATER_THAN, 4))) {
+    static constexpr auto hostname_body = "The hostname is used to identify the system on a network.\n\nIt is restricted to alphanumeric characters, can contain a hyphen (-) - but not at the start or end - and must be no longer than 63 characters."sv;
+    if (!detail::inputbox_widget(hostname, hostname_body)) {
         return;
     }
     hostname = std::string{gucc::utils::trim(hostname)};
-    // If at least one package, install.
-    /* clang-format off */
-    if (hostname.empty()) { return; }
-    /* clang-format on */
+    if (auto valid = cachyos::installer::validate_hostname(hostname); !valid) {
+        detail::msgbox_widget(fmt::format(FMT_COMPILE("Invalid hostname: {}"), valid.error()));
+        return;
+    }
 
     spdlog::info("Setting hostname {}", hostname);
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings hostname_settings{.hostname = hostname};
-    if (auto res = cachyos::installer::apply_system_settings(hostname_settings, utils::get_mountpoint()); !res) {
-        spdlog::error("Failed to set hostname: {}", res.error());
-    }
-#endif
+    apply_setting<&cachyos::installer::SystemSettings::hostname>(hostname, "hostname"sv);
 }
 
 // Set system language
 void set_locale() noexcept {
     const auto& locales = gucc::locale::get_possible_locales();
 
-    std::int32_t selected{};
-    for (std::size_t i = 0; i < locales.size(); ++i) {
-        if (locales[i] == "en_US.UTF-8"sv) {
-            selected = static_cast<std::int32_t>(i);
-            break;
-        }
-    }
-
-    // System language
-    std::string locale{};
-    {
-        auto screen      = ScreenInteractive::Fullscreen();
-        auto ok_callback = [&] {
-            locale = locales[static_cast<std::size_t>(selected)];
-            screen.ExitLoopClosure()();
-        };
-
-        static constexpr auto langBody = "\nChoose the system language.\n\nThe format is language_COUNTRY (e.g. en_US is english, United States;\nen_GB is english, Great Britain).\n"sv;
-        auto content_size              = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-        detail::menu_widget(locales, ok_callback, &selected, &screen, langBody, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
-    }
+    static constexpr auto langBody = "Choose the system language.\n\nThe format is language_COUNTRY (e.g. en_US is english, United States; en_GB is english, Great Britain)."sv;
+    const auto locale              = detail::select_value(locales, langBody, index_of(locales, "en_US.UTF-8"sv));
     /* clang-format off */
-    if (locale.empty()) { return; }
+    if (!locale) { return; }
     /* clang-format on */
 
-    spdlog::info("Selected locale: {}", locale);
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings locale_settings{.locale = locale};
-    if (auto res = cachyos::installer::apply_system_settings(locale_settings, utils::get_mountpoint()); !res) {
-        spdlog::error("Failed to set locale: {}", res.error());
-    }
-#endif
+    spdlog::info("Selected locale: {}", *locale);
+    apply_setting<&cachyos::installer::SystemSettings::locale>(*locale, "locale"sv);
 }
 
 // Set keymap for X11
 void set_xkbmap() noexcept {
     const auto& xkbmap_list = gucc::locale::get_x11_keymap_layouts();
     if (xkbmap_list.empty()) {
-        detail::msgbox_widget("\nUnable to get X11 keymap layouts.\n"sv);
+        detail::msgbox_widget("Unable to get X11 keymap layouts."sv);
         return;
     }
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    for (std::size_t i = 0; i < xkbmap_list.size(); ++i) {
-        if (xkbmap_list[i] == "us"sv) {
-            selected = static_cast<std::int32_t>(i);
-            break;
-        }
-    }
-    bool success{};
-    std::string xkbmap_choice{};
-    auto ok_callback = [&] {
-        xkbmap_choice = xkbmap_list[static_cast<std::size_t>(selected)];
-        success       = true;
-        screen.ExitLoopClosure()();
-    };
-
-    static constexpr auto xkbmap_body = "\nSelect Desktop Environment Keymap.\n"sv;
-    auto content_size                 = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    detail::menu_widget(xkbmap_list, ok_callback, &selected, &screen, xkbmap_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
-
+    static constexpr auto xkbmap_body = "Select Desktop Environment Keymap."sv;
+    const auto xkbmap                 = detail::select_value(xkbmap_list, xkbmap_body, index_of(xkbmap_list, "us"sv));
     /* clang-format off */
-    if (!success) { return; }
+    if (!xkbmap) { return; }
     /* clang-format on */
 
-    spdlog::info("Selected xkbmap: {}", xkbmap_choice);
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings xkb_settings{.xkbmap = xkbmap_choice};
-    if (auto res = cachyos::installer::apply_system_settings(xkb_settings, utils::get_mountpoint()); !res) {
-        spdlog::error("Failed to set xkbmap: {}", res.error());
-    }
-#endif
+    spdlog::info("Selected xkbmap: {}", *xkbmap);
+    apply_setting<&cachyos::installer::SystemSettings::xkbmap>(*xkbmap, "xkbmap"sv);
 }
 
 auto select_vconsole_keymap(std::string_view body_text) noexcept -> std::string {
     const auto& keymaps = gucc::locale::get_vconsole_keymap_list();
     if (keymaps.empty()) {
-        detail::msgbox_widget("\nUnable to get console keymap list.\n"sv);
+        detail::msgbox_widget("Unable to get console keymap list."sv);
         return {};
     }
 
-    auto* config_instance      = Config::instance();
-    auto& config_data          = config_instance->data();
-    const auto& current_keymap = std::get<std::string>(config_data["KEYMAP"]);
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    for (std::size_t i = 0; i < keymaps.size(); ++i) {
-        if (keymaps[i] == current_keymap || (current_keymap.empty() && keymaps[i] == "us"sv)) {
-            selected = static_cast<std::int32_t>(i);
-            break;
-        }
-    }
-    bool success{};
-    std::string keymap_choice{};
-    auto ok_callback = [&] {
-        keymap_choice = keymaps[static_cast<std::size_t>(selected)];
-        success       = true;
-        screen.ExitLoopClosure()();
-    };
-    auto content_size = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-    detail::menu_widget(keymaps, ok_callback, &selected, &screen, body_text, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
-
-    /* clang-format off */
-    if (!success) { return {}; }
-    /* clang-format on */
-
-    return keymap_choice;
+    const auto& current_keymap = tui::state().inputs.ctx.keymap;
+    const auto initial         = index_of(keymaps, current_keymap.empty() ? "us"sv : std::string_view{current_keymap});
+    return detail::select_value(keymaps, body_text, initial).value_or(std::string{});
 }
 
 void select_keymap() noexcept {
-    auto* config_instance      = Config::instance();
-    auto& config_data          = config_instance->data();
-    const auto& current_keymap = std::get<std::string>(config_data["KEYMAP"]);
+    auto& current_keymap = tui::state().inputs.ctx.keymap;
 
     // does user want to change the default settings?
     static constexpr auto default_keymap_msg = "Currently configured keymap setting is:"sv;
-    const auto& content                      = fmt::format(FMT_COMPILE("\n {}\n \n[ {} ]\n"), default_keymap_msg, current_keymap);
-    const auto& keep_default                 = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    const auto& content                      = fmt::format(FMT_COMPILE(" {}\n\n[ {} ]"), default_keymap_msg, current_keymap);
     /* clang-format off */
-    if (!keep_default) { return; }
+    if (!detail::yesno_widget(content)) { return; }
     /* clang-format on */
 
-    static constexpr auto vc_keymap_body = "\nSelect the keymap for the current session.\nThis sets the keyboard layout for typing in the current session.\n"sv;
-    const auto& keymap_choice            = select_vconsole_keymap(vc_keymap_body);
+    static constexpr auto vc_keymap_body = "Select the keymap for the current session. This sets the keyboard layout for typing in the current session."sv;
+    auto keymap_choice                   = select_vconsole_keymap(vc_keymap_body);
     /* clang-format off */
     if (keymap_choice.empty()) { return; }
     /* clang-format on */
 
     spdlog::info("Selected keymap: {}", keymap_choice);
-    {
-        auto* config_instance = Config::instance();
-        auto& config_data     = config_instance->data();
-        config_data["KEYMAP"] = std::string{keymap_choice};
-    }
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings keymap_settings{.keymap = std::string{keymap_choice}};
-    if (auto res = cachyos::installer::apply_system_settings(keymap_settings, utils::get_mountpoint()); !res) {
-        spdlog::error("Failed to set keymap: {}", res.error());
-    }
-#endif
+    current_keymap = keymap_choice;
+    apply_setting<&cachyos::installer::SystemSettings::keymap>(std::move(keymap_choice), "keymap"sv);
 }
 
 // Set Zone and Sub-Zone
 bool set_timezone() noexcept {
-    std::string zone{};
-    {
-        auto screen           = ScreenInteractive::Fullscreen();
-        const auto& zone_list = gucc::timezone::get_timezone_regions();
-
-        std::int32_t selected{};
-        auto ok_callback = [&] {
-            zone = zone_list[static_cast<std::size_t>(selected)];
-            screen.ExitLoopClosure()();
-        };
-
-        static constexpr auto timezone_body = "The time zone is used to correctly set your system clock."sv;
-        auto content_size                   = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zone_list, ok_callback, &selected, &screen, timezone_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
-    }
+    const auto& zone_list               = gucc::timezone::get_timezone_regions();
+    static constexpr auto timezone_body = "The time zone is used to correctly set your system clock."sv;
+    const auto zone                     = detail::select_value(zone_list, timezone_body);
     /* clang-format off */
-    if (zone.empty()) { return false; }
+    if (!zone) { return false; }
     /* clang-format on */
 
-    std::string subzone{};
-    {
-        auto screen           = ScreenInteractive::Fullscreen();
-        const auto& city_list = gucc::timezone::get_timezone_zones(zone);
-
-        std::int32_t selected{};
-        auto ok_callback = [&] {
-            subzone = city_list[static_cast<std::size_t>(selected)];
-            screen.ExitLoopClosure()();
-        };
-
-        static constexpr auto sub_timezone_body = "Select the city nearest to you."sv;
-        auto content_size                       = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40) | vscroll_indicator | yframe | flex;
-        detail::menu_widget(city_list, ok_callback, &selected, &screen, sub_timezone_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
-    }
-
+    const auto& city_list                   = gucc::timezone::get_timezone_zones(*zone);
+    static constexpr auto sub_timezone_body = "Select the city nearest to you."sv;
+    const auto city                         = detail::select_value(city_list, sub_timezone_body);
     /* clang-format off */
-    if (subzone.empty()) { return false; }
+    if (!city) { return false; }
     /* clang-format on */
 
-    const auto& timezone        = fmt::format(FMT_COMPILE("{}/{}"), zone, subzone);
-    const auto& content         = fmt::format(FMT_COMPILE("\nSet Time Zone: {}?\n"), timezone);
-    const auto& do_set_timezone = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+    const auto& timezone = fmt::format(FMT_COMPILE("{}/{}"), *zone, *city);
+    const auto& content  = fmt::format(FMT_COMPILE("Set Time Zone: {}?"), timezone);
     /* clang-format off */
-    if (!do_set_timezone) { return false; }
+    if (!detail::yesno_widget(content)) { return false; }
     /* clang-format on */
 
     spdlog::info("Timezone is set to {}", timezone);
-#ifdef NDEVENV
-    const cachyos::installer::SystemSettings tz_settings{.timezone = timezone};
-    if (auto res = cachyos::installer::apply_system_settings(tz_settings, utils::get_mountpoint()); !res) {
-        spdlog::error("Failed to set timezone: {}", res.error());
-    }
-#endif
-
+    apply_setting<&cachyos::installer::SystemSettings::timezone>(timezone, "timezone"sv);
     return true;
 }
 
 // Set system clock type
 void set_hw_clock() noexcept {
-    auto screen = ScreenInteractive::Fullscreen();
+    using HwClock = cachyos::installer::SystemSettings::HwClock;
+    static constexpr std::array clock_types{HwClock::UTC, HwClock::Localtime};
     const std::vector<std::string> menu_entries{"utc", "localtime"};
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        const auto& clock_type = menu_entries[static_cast<std::size_t>(selected)];
-        spdlog::info("Clock type is: {}", clock_type);
-#ifdef NDEVENV
-        cachyos::installer::SystemSettings hw_settings{};
-        if (clock_type == "utc"sv) {
-            hw_settings.hw_clock = cachyos::installer::SystemSettings::HwClock::UTC;
-        } else if (clock_type == "localtime"sv) {
-            hw_settings.hw_clock = cachyos::installer::SystemSettings::HwClock::Localtime;
-        }
-        if (hw_settings.hw_clock.has_value()) {
-            if (auto res = cachyos::installer::apply_system_settings(hw_settings, utils::get_mountpoint()); !res) {
-                spdlog::error("Failed to set hw clock: {}", res.error());
-            }
-        }
-#endif
-        screen.ExitLoopClosure()();
-    };
 
-    static constexpr auto hw_clock_body = "UTC is the universal time standard,\nand is recommended unless dual-booting with Windows."sv;
-    auto content_size                   = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, hw_clock_body, {std::move(content_size), size(HEIGHT, GREATER_THAN, 1)});
+    static constexpr auto hw_clock_body = "UTC is the universal time standard, and is recommended unless dual-booting with Windows."sv;
+    const auto idx                      = detail::select_from_menu(menu_entries, hw_clock_body);
+    /* clang-format off */
+    if (!idx) { return; }
+    /* clang-format on */
+
+    spdlog::info("Clock type is: {}", menu_entries.at(*idx));
+    apply_setting<&cachyos::installer::SystemSettings::hw_clock>(clock_types.at(*idx), "hw clock"sv);
 }
 
 // Set password for root user
 void set_root_password() noexcept {
-    std::string pass{};
-    static constexpr auto root_pass_body = "Enter Root password"sv;
-    if (!detail::inputbox_widget(pass, root_pass_body, size(HEIGHT, GREATER_THAN, 1), true)) {
+    const auto pass = detail::password_prompt("Enter Root password"sv, "Re-enter Root password"sv);
+    if (!pass) {
         return;
-    }
-    std::string confirm{};
-    static constexpr auto root_confirm_body = "Re-enter Root password"sv;
-    if (!detail::inputbox_widget(confirm, root_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
-        return;
-    }
-
-    pass    = std::string{gucc::utils::trim(pass)};
-    confirm = std::string{gucc::utils::trim(confirm)};
-    if (pass != confirm) {
-        static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n"sv;
-        detail::msgbox_widget(PassErrBody);
-        tui::set_root_password();
     }
 #ifdef NDEVENV
-    if (auto res = cachyos::installer::set_root_password(pass, utils::get_mountpoint()); !res) {
+    if (auto res = cachyos::installer::set_root_password(*pass, utils::get_mountpoint()); !res) {
         spdlog::error("Failed to set root password: {}", res.error());
     }
 #endif
@@ -421,96 +331,44 @@ void set_root_password() noexcept {
 
 // Create user on the system
 void create_new_user() noexcept {
-    std::string user{};
-    static constexpr auto user_body = "Enter the user name. Letters MUST be lower case."sv;
-    if (!detail::inputbox_widget(user, user_body, size(HEIGHT, GREATER_THAN, 1))) {
-        return;
-    }
-
-    // Loop while username is blank, has spaces, or has capital letters in it.
-    user = std::string{gucc::utils::trim(user)};
-    while (user.empty() || gucc::utils::contains(user, " ") || std::ranges::any_of(user, [](char ch) { return std::isupper(ch); })) {
-        user.clear();
-        static constexpr auto user_err_body = "An incorrect user name was entered. Please try again."sv;
-        if (!detail::inputbox_widget(user, user_err_body, size(HEIGHT, GREATER_THAN, 1))) {
-            return;
-        }
-        user = std::string{gucc::utils::trim(user)};
-    }
+    static constexpr auto user_body     = "Enter the user name. Letters MUST be lower case."sv;
+    static constexpr auto user_err_body = "An incorrect user name was entered. Please try again. Use up to 32 of a-z, 0-9, '_' and '-', starting with a letter or '_'."sv;
+    const auto user                     = detail::prompt_validated(user_body, user_err_body, cachyos::installer::is_valid_username);
+    /* clang-format off */
+    if (!user) { return; }
+    /* clang-format on */
 
     std::string_view shell{};
     {
-        static constexpr auto DefShell               = "\nChoose the default shell.\n"sv;
-        static constexpr auto UseSpaceBar            = "Use [Spacebar] to de/select options listed."sv;
-        const auto& shells_options_body              = fmt::format(FMT_COMPILE("\n{}{}\n"), DefShell, UseSpaceBar);
         const std::vector<std::string> radiobox_list = {
             "zsh",
             "bash",
             "fish",
         };
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        auto ok_callback = [&] {
-            switch (selected) {
-            case 0:
-                shell = "/usr/bin/zsh"sv;
-                break;
-            case 1:
-                shell = "/bin/bash"sv;
-                break;
-            case 2: {
-                shell = "/usr/bin/fish"sv;
-                break;
-            }
-            }
-            screen.ExitLoopClosure()();
-        };
-        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = shells_options_body}, {.text_size = nothing});
+        const auto picked = detail::select_radio(radiobox_list, "Choose the default shell."sv);
+        if (picked == "zsh"sv) {
+            shell = "/usr/bin/zsh"sv;
+        } else if (picked == "bash"sv) {
+            shell = "/bin/bash"sv;
+        } else if (picked == "fish"sv) {
+            shell = "/usr/bin/fish"sv;
+        }
     }
 
-    // Enter password. This step will only be reached where the loop has been skipped or broken.
-    std::string pass{};
-    static constexpr auto user_pass_body = "Enter password for"sv;
-    const auto& user_pass_body_content   = fmt::format(FMT_COMPILE("{} {}"), user_pass_body, user);
-    if (!detail::inputbox_widget(pass, user_pass_body_content, size(HEIGHT, GREATER_THAN, 1), true)) {
-        return;
-    }
-    std::string confirm{};
-    static constexpr auto user_confirm_body = "Re-enter the password."sv;
-    if (!detail::inputbox_widget(confirm, user_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
+    const auto pass = detail::password_prompt(fmt::format(FMT_COMPILE("Enter password for {}"), *user), "Re-enter the password."sv);
+    if (!pass) {
         return;
     }
 
-    pass    = std::string{gucc::utils::trim(pass)};
-    confirm = std::string{gucc::utils::trim(confirm)};
-    while (pass != confirm) {
-        static constexpr auto PassErrBody = "\nThe passwords entered do not match.\nPlease try again.\n"sv;
-        detail::msgbox_widget(PassErrBody);
-        pass.clear();
-        confirm.clear();
-        if (!detail::inputbox_widget(pass, user_pass_body_content, size(HEIGHT, GREATER_THAN, 1), true)) {
-            return;
-        }
-        if (!detail::inputbox_widget(confirm, user_confirm_body, size(HEIGHT, GREATER_THAN, 1), true)) {
-            return;
-        }
-        pass    = std::string{gucc::utils::trim(pass)};
-        confirm = std::string{gucc::utils::trim(confirm)};
-    }
-
-    // create new user. This step will only be reached where the password loop has been skipped or broken.
-    detail::infobox_widget("\nCreating User and setting groups...\n"sv);
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-
-    utils::create_new_user(user, pass, shell);
+    detail::infobox_for("Creating User and setting groups..."sv, 2s);
+    utils::create_new_user(*user, *pass, shell);
 }
 
 // Install pkgs from user input
 void install_cust_pkgs() noexcept {
     std::string packages{};
-    static constexpr auto content = "\nType any extra packages you would like to add, separated by spaces.\n \nFor example, to install Firefox, MPV, FZF:\nfirefox mpv fzf\n"sv;
-    if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
+    static constexpr auto content = "Type any extra packages you would like to add, separated by spaces.\n\nFor example, to install Firefox, MPV, FZF: firefox mpv fzf"sv;
+    if (!detail::inputbox_widget(packages, content)) {
         return;
     }
     packages = std::string{gucc::utils::trim(packages)};
@@ -519,20 +377,13 @@ void install_cust_pkgs() noexcept {
     if (packages.empty()) { return; }
     /* clang-format on */
 
-#ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& hostcache  = std::get<std::int32_t>(config_data["hostcache"]);
-    const auto& cache_flag = (hostcache) ? "-c"sv : ""sv;
-    detail::follow_process_log_widget({"/bin/sh", "-c", fmt::format(FMT_COMPILE("pacstrap {} -C {}/etc/pacman.conf {} {} |& tee -a /tmp/pacstrap.log"), cache_flag, mountpoint, mountpoint, packages)});
-#endif
+    utils::install_from_pkglist(packages);
 }
 
 void remove_pkgs() noexcept {
     std::string packages{};
-    static constexpr auto content = "\nType any packages you would like to remove, separated by spaces.\n \nFor example, to remove Firefox, MPV, FZF:\nfirefox mpv fzf\n"sv;
-    if (!detail::inputbox_widget(packages, content, size(HEIGHT, GREATER_THAN, 4))) {
+    static constexpr auto content = "Type any packages you would like to remove, separated by spaces.\n\nFor example, to remove Firefox, MPV, FZF: firefox mpv fzf"sv;
+    if (!detail::inputbox_widget(packages, content)) {
         return;
     }
     packages = std::string{gucc::utils::trim(packages)};
@@ -540,19 +391,13 @@ void remove_pkgs() noexcept {
 }
 
 void chroot_interactive() noexcept {
-    static constexpr auto chroot_return = "\nYou will now chroot into your installed system.\nYou can do changes almost as if you had booted into your installation.\n \nType \"exit\" to exit chroot.\n"sv;
-    detail::infobox_widget(chroot_return);
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    static constexpr auto chroot_return = "You will now chroot into your installed system. You can do changes almost as if you had booted into your installation.\n\nType \"exit\" to exit chroot."sv;
+    detail::infobox_for(chroot_return, 1s);
 
 #ifdef NDEVENV
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("arch-chroot {} bash"), mountpoint);
-    gucc::utils::exec(cmd_formatted, true);
+    detail::run_in_terminal({"/usr/bin/arch-chroot"s, std::string{utils::get_mountpoint()}, "/usr/bin/bash"s});
 #else
-    gucc::utils::exec("bash"sv, true);
+    detail::run_in_terminal({"/usr/bin/bash"s});
 #endif
 }
 
@@ -562,300 +407,168 @@ void uefi_bootloader() noexcept {
     static constexpr auto efi_path = "/sys/firmware/efi/"sv;
     if (fs::exists(efi_path) && fs::is_directory(efi_path)) {
         // Mount efivarfs if it is not already mounted
-        const auto& mount_out = gucc::utils::exec("mount | grep /sys/firmware/efi/efivars");
-        if (mount_out.empty() && (mount("efivarfs", "/sys/firmware/efi/efivars", "efivarfs", 0, "") != 0)) {
+        static constexpr auto efivars_path = "/sys/firmware/efi/efivars";
+        if (gucc::fs::utils::get_mountpoint_source(efivars_path).empty() && (mount("efivarfs", efivars_path, "efivarfs", 0, "") != 0)) {
             perror("utils::uefi_bootloader");
             exit(1);
         }
     }
 #endif
 
-    using gucc::bootloader::BootloaderType;
-    static constexpr auto bootloaderInfo = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu.\nIt autodetects all bootable systems at boot time.\nGrub supports encrypted /boot partition and detects all bootable systems when you update your kernels.\nIt supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots.\nSystemd-boot is very light and simple and has little automation.\nIt autodetects windows, but is otherwise unsuited for multibooting.\nLimine is lightweight bootloader with Btrfs snapshots loading support."sv;
+    static constexpr auto bootloaderInfo = "Refind can be used standalone or in conjunction with other bootloaders as a graphical bootmenu. It autodetects all bootable systems at boot time. Grub supports encrypted /boot partition and detects all bootable systems when you update your kernels. It supports booting .iso files from a harddrive and automatic boot entries for btrfs snapshots. Systemd-boot is very light and simple and has little automation. It autodetects windows, but is otherwise unsuited for multibooting. Limine is lightweight bootloader with Btrfs snapshots loading support."sv;
+    const auto bootloader                = select_uefi_bootloader(bootloaderInfo);
+    /* clang-format off */
+    if (!bootloader) { return; }
+    /* clang-format on */
 
-    static constexpr std::array bootloader_types = {
-        BootloaderType::Grub,
-        BootloaderType::Refind,
-        BootloaderType::SystemdBoot,
-        BootloaderType::Limine,
-    };
-    std::vector<std::string> menu_entries{};
-    menu_entries.reserve(bootloader_types.size());
-    for (const auto& bootloader_type : bootloader_types) {
-        menu_entries.emplace_back(gucc::bootloader::bootloader_to_string(bootloader_type));
-    }
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        auto* config_instance     = Config::instance();
-        auto& config_data         = config_instance->data();
-        const auto& bootloader_bl = bootloader_types[static_cast<std::size_t>(selected)];
-        config_data["BOOTLOADER"] = std::string{gucc::bootloader::bootloader_to_string(bootloader_bl)};
-
-        utils::install_bootloader(bootloader_bl);
-        screen.ExitLoopClosure()();
-    };
-
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, bootloaderInfo);
+    tui::state().bootloader = *bootloader;
+    utils::install_bootloader(*bootloader);
 }
 
 void install_base() noexcept {
-    static constexpr auto base_installed = "/mnt/.base_installed"sv;
+    const auto base_installed = base_installed_marker();
     if (fs::exists(base_installed)) {
-        static constexpr auto content = "\nA CachyOS Base has already been installed on this partition.\nProceed anyway?\n"sv;
-        const auto& do_reinstall      = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        static constexpr auto content = "A CachyOS Base has already been installed on this partition. Proceed anyway?"sv;
         /* clang-format off */
-        if (!do_reinstall) { return; }
+        if (!detail::yesno_widget(content)) { return; }
         /* clang-format on */
         std::error_code err{};
         fs::remove(base_installed, err);
     }
-    // Prep variables
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
+    const auto mountpoint = utils::get_mountpoint();
 
-    // 1. Console keymap: reuse session keymap (set via prep_menu "Set Virtual Console").
-    // This avoids asking the user for the same information twice.
-    {
-        const auto& current_keymap = std::get<std::string>(config_data["KEYMAP"]);
-        spdlog::info("Using console keymap for target: {}", current_keymap);
-    }
+    // reuse the session keymap virt console rather than asking twice.
+    spdlog::info("Using console keymap for target: {}", tui::state().inputs.ctx.keymap);
 
-    // 2. Select kernel(s) to install
-    auto available_kernels = installer::data::to_vec(installer::data::available_kernels);
+    const auto available_kernels = installer::data::to_vec(installer::data::available_kernels);
 
-    // Create the base list of packages
-    std::unique_ptr<bool[]> kernels_state{new bool[available_kernels.size()]{false}};
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::string packages{};
-    auto ok_callback = [&] {
-        packages = detail::from_checklist_string(available_kernels, kernels_state.get());
-        if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'linux'"), packages))) {
-            // Check if a kernel is already installed
-            if (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("ls {}/boot/*.img >/dev/null 2>&1"), mountpoint))) {
-                static constexpr auto ErrNoKernel = "\nAt least one kernel must be selected.\n"sv;
-                detail::msgbox_widget(ErrNoKernel);
-                return;
-            }
-            const auto& cmd = gucc::utils::exec(fmt::format(FMT_COMPILE("ls {}/boot/*.img | cut -d'-' -f2 | grep -v ucode.img | sort -u"), mountpoint));
-            detail::msgbox_widget(fmt::format(FMT_COMPILE("\nlinux-{} detected\n"), cmd));
-            screen.ExitLoopClosure()();
+    // no kernel picked is fine only when the target already has one.
+    const auto has_kernel = [&](const std::vector<std::string>& picked) {
+        if (std::ranges::any_of(picked, [](const std::string& pkg) { return pkg.contains("linux"sv); })) {
+            return true;
         }
-        spdlog::info("selected: {}", packages);
-        screen.ExitLoopClosure()();
+        const auto& installed_kernels = utils::list_installed_kernels(gucc::utils::target_path(mountpoint, "/boot"sv));
+        if (installed_kernels.empty()) {
+            detail::msgbox_widget("At least one kernel must be selected."sv);
+            return false;
+        }
+        detail::msgbox_widget(fmt::format(FMT_COMPILE("{} detected"), fmt::join(installed_kernels, "\n")));
+        return true;
     };
 
-    static constexpr auto InstStandBseBody = "\nThe base package group will be installed automatically.\nThe base-devel package group is required to use the Arch User Repository (AUR).\n"sv;
-    static constexpr auto UseSpaceBar      = "Use [Spacebar] to de/select options listed."sv;
-    const auto& kernels_options_body       = fmt::format(FMT_COMPILE("\n{}{}\n"), InstStandBseBody, UseSpaceBar);
-
-    static constexpr auto base_title = "New CLI Installer | Install Base"sv;
-    detail::checklist_widget(available_kernels, ok_callback, kernels_state.get(), &screen, kernels_options_body, base_title, {.text_size = nothing});
-
+    static constexpr auto InstStandBseBody = "The base package group will be installed automatically. The base-devel package group is required to use the Arch User Repository (AUR)."sv;
+    static constexpr auto base_title       = "New CLI Installer | Install Base"sv;
+    const auto picked                      = detail::select_many(available_kernels, InstStandBseBody, base_title, has_kernel);
     /* clang-format off */
-    if (packages.empty()) { return; }
+    if (!picked || picked->empty()) { return; }
     /* clang-format on */
 
-    config_data["KERNEL"] = packages;
+    const auto packages = gucc::utils::join(*picked, ' ');
+    spdlog::info("selected: {}", packages);
+
+    tui::state().inputs.ctx.kernel = packages;
     utils::install_base(packages);
 }
 
 void install_desktop() noexcept {
 #ifdef NDEVENV
-    static constexpr auto base_installed = "/mnt/.base_installed"sv;
-    if (!fs::exists(base_installed)) {
-        static constexpr auto content = "\nA CachyOS Base is not installed on this partition.\n"sv;
-        detail::infobox_widget(content);
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (!fs::exists(base_installed_marker())) {
+        detail::infobox_for("A CachyOS Base is not installed on this partition."sv, 1s);
         return;
     }
 #endif
 
-    // Prep variables
-
     // TODO(vnepogodin): make available DEs configurable or fetchable from net-profiles
-    auto available_des = installer::data::to_vec(installer::data::available_desktops);
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::string desktop_env{};
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        desktop_env = available_des[static_cast<std::size_t>(selected)];
-        spdlog::info("selected: {}", desktop_env);
-        screen.ExitLoopClosure()();
-    };
-
-    static constexpr auto InstManDEBody = "\nPlease choose a desktop environment.\n"sv;
-    static constexpr auto UseSpaceBar   = "Use [Spacebar] to de/select options listed."sv;
-    const auto& des_options_body        = fmt::format(FMT_COMPILE("\n{}{}\n"), InstManDEBody, UseSpaceBar);
+    const auto available_des = installer::data::to_vec(installer::data::available_desktops);
 
     static constexpr auto desktop_title = "New CLI Installer | Install Desktop"sv;
-    detail::radiolist_widget(available_des, ok_callback, &selected, &screen, {des_options_body, desktop_title}, {.text_size = nothing});
-
+    const auto desktop_env              = detail::select_radio(available_des, "Please choose a desktop environment."sv, desktop_title);
     /* clang-format off */
-    if (desktop_env.empty()) { return; }
+    if (!desktop_env || desktop_env->empty()) { return; }
     /* clang-format on */
 
-    utils::install_desktop(desktop_env);
+    spdlog::info("selected: {}", *desktop_env);
+    utils::install_desktop(*desktop_env);
 }
 
 // Base Configuration
 void config_base_menu() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Generate FSTAB",
-        "Set Hostname",
-        "Set System Locale",
-        "Set Desktop Keyboard Layout",
-        "Set Timezone and Clock",
-        "Set Root Password",
-        "Add New User(s)",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            tui::generate_fstab();
-            break;
-        case 1:
-            tui::set_hostname();
-            break;
-        case 2:
-            tui::set_locale();
-            break;
-        case 3:
-            tui::set_xkbmap();
-            break;
-        case 4: {
-            if (!tui::set_timezone()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::set_hw_clock();
-            break;
-        }
-        case 5:
-            tui::set_root_password();
-            break;
-        case 6:
-            tui::create_new_user();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
-
     static constexpr auto config_base_body = "Basic configuration of the base."sv;
-    auto content_size                      = size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, config_base_body, {std::move(content_size), size(ftxui::HEIGHT, ftxui::GREATER_THAN, 1)});
+    detail::menu_loop(config_base_body, {
+                                            {"Generate FSTAB", [] { tui::generate_fstab(); return true; }},
+                                            {"Set Hostname", [] { tui::set_hostname(); return true; }},
+                                            {"Set System Locale", [] { tui::set_locale(); return true; }},
+                                            {"Set Desktop Keyboard Layout", [] { tui::set_xkbmap(); return true; }},
+                                            {"Set Timezone and Clock", [] {
+                                                 // Cancelling the timezone leaves the menu.
+                                                 if (!tui::set_timezone()) {
+                                                     return false;
+                                                 }
+                                                 tui::set_hw_clock();
+                                                 return true;
+                                             }},
+                                            {"Set Root Password", [] { tui::set_root_password(); return true; }},
+                                            {"Add New User(s)", [] { tui::create_new_user(); return true; }},
+                                            {"Back", detail::kLeaveMenu},
+                                        });
 }
 
 // Grub auto-detects installed kernel
 void bios_bootloader() {
-    using gucc::bootloader::BootloaderType;
     static constexpr auto bootloaderInfo        = "The installation device for GRUB can be selected in the next step."sv;
     const std::vector<std::string> menu_entries = {
         std::string{gucc::bootloader::bootloader_to_string(BootloaderType::Grub)},
     };
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    bool success{};
-    auto ok_callback = [&] {
-        success = true;
-        screen.ExitLoopClosure()();
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, bootloaderInfo);
-
     /* clang-format off */
-    if (!success) { return; }
+    if (!detail::select_from_menu(menu_entries, bootloaderInfo)) { return; }
     if (!tui::select_device()) { return; }
     /* clang-format on */
 
-    auto* config_instance     = Config::instance();
-    auto& config_data         = config_instance->data();
-    config_data["BOOTLOADER"] = menu_entries[static_cast<std::size_t>(selected)];
+    tui::state().bootloader = BootloaderType::Grub;
     utils::install_bootloader(BootloaderType::Grub);
 }
 
 void enable_autologin() {
-    // Detect display manager
-    const auto& dm      = gucc::utils::exec("file /mnt/etc/systemd/system/display-manager.service 2>/dev/null | awk -F'/' '{print $NF}' | cut -d. -f1");
-    const auto& content = fmt::format(FMT_COMPILE("\nThis option enables autologin using {}.\n\nProceed?\n"), dm);
+    const auto target_root = utils::get_mountpoint();
+    const auto& dm         = utils::enabled_display_manager(target_root);
+    const auto& content    = fmt::format(FMT_COMPILE("This option enables autologin using {}.\n\nProceed?"), dm);
     /* clang-format off */
-    if (!detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75))) { return; }
-    if (gucc::utils::exec("echo /mnt/home/* | xargs -n1 | wc -l") != "1"sv) { return; }
+    if (!detail::yesno_widget(content)) { return; }
     /* clang-format on */
 
-    const auto& autologin_user = gucc::utils::exec("echo /mnt/home/* | cut -d/ -f4");
-    utils::enable_autologin(dm, autologin_user);
+    // autologin is only offered for a single-user system
+    const auto& users = utils::list_home_users(target_root);
+    /* clang-format off */
+    if (users.size() != 1) { return; }
+    /* clang-format on */
+
+    utils::enable_autologin(dm, users.front());
 }
 
 void tweaks_menu() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Enable Automatic Login",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            tui::enable_autologin();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
     static constexpr auto tweaks_body = "Various configuration options"sv;
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, tweaks_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
+    detail::menu_loop(tweaks_body, {
+                                       {"Enable Automatic Login", [] { tui::enable_autologin(); return true; }},
+                                       {"Back", detail::kLeaveMenu},
+                                   });
 }
 
 void select_bootloader_type() noexcept {
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-
-    if (system_info == "BIOS"sv) {
-        config_data["BOOTLOADER"] = std::string{gucc::bootloader::bootloader_to_string(gucc::bootloader::BootloaderType::Grub)};
+    if (!tui::state().inputs.ctx.is_uefi()) {
+        tui::state().bootloader = BootloaderType::Grub;
         spdlog::info("BIOS mode: bootloader automatically set to GRUB");
         return;
     }
 
-    // UEFI: show bootloader selection menu
-    using gucc::bootloader::BootloaderType;
-    static constexpr auto bootloaderInfo = "Select the bootloader for the system.\nRefind can be used standalone or in conjunction with other bootloaders.\nGrub supports encrypted /boot partition and detects all bootable systems.\nSystemd-boot is very light and simple.\nLimine is lightweight with Btrfs snapshots support."sv;
+    static constexpr auto bootloaderInfo = "Select the bootloader for the system. Refind can be used standalone or in conjunction with other bootloaders. Grub supports encrypted /boot partition and detects all bootable systems. Systemd-boot is very light and simple. Limine is lightweight with Btrfs snapshots support."sv;
+    const auto bootloader                = select_uefi_bootloader(bootloaderInfo);
+    /* clang-format off */
+    if (!bootloader) { return; }
+    /* clang-format on */
 
-    static constexpr std::array bootloader_types = {
-        BootloaderType::Grub,
-        BootloaderType::Refind,
-        BootloaderType::SystemdBoot,
-        BootloaderType::Limine,
-    };
-    std::vector<std::string> menu_entries{};
-    menu_entries.reserve(bootloader_types.size());
-    for (const auto& bootloader_type : bootloader_types) {
-        menu_entries.emplace_back(gucc::bootloader::bootloader_to_string(bootloader_type));
-    }
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        const auto& bootloader_bl = bootloader_types[static_cast<std::size_t>(selected)];
-        config_data["BOOTLOADER"] = std::string{gucc::bootloader::bootloader_to_string(bootloader_bl)};
-        spdlog::info("Bootloader selected: {}", std::get<std::string>(config_data["BOOTLOADER"]));
-        screen.ExitLoopClosure()();
-    };
-
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, bootloaderInfo);
+    tui::state().bootloader = *bootloader;
+    spdlog::info("Bootloader selected: {}", gucc::bootloader::bootloader_to_string(*bootloader));
 }
 
 void install_bootloader() noexcept {
@@ -863,10 +576,7 @@ void install_bootloader() noexcept {
     if (!utils::check_base()) { return; }
     /* clang-format on */
 
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    if (system_info == "BIOS"sv) {
+    if (!tui::state().inputs.ctx.is_uefi()) {
         tui::bios_bootloader();
     } else {
         tui::uefi_bootloader();
@@ -875,45 +585,45 @@ void install_bootloader() noexcept {
 
 // BIOS and UEFI
 void auto_partition() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& device_info = std::get<std::string>(config_data["DEVICE"]);
-    const auto& bootloader  = std::get<std::string>(config_data["BOOTLOADER"]);
+    auto& ctx              = tui::state().inputs.ctx;
+    const auto& bootloader = tui::state().bootloader;
 
     // Bootloader must be selected before partitioning.
-    if (bootloader.empty()) {
-        detail::msgbox_widget("\nPlease select a bootloader first (Prepare Installation -> Select Bootloader).\n");
+    if (!bootloader) {
+        detail::msgbox_widget("Please select a bootloader first (Prepare Installation -> Select Bootloader).");
         return;
     }
-    spdlog::info("Using bootloader for partitioning: {}", bootloader);
+    spdlog::info("Using bootloader for partitioning: {}", gucc::bootloader::bootloader_to_string(*bootloader));
 
     // Generate and apply partition schema
     auto partitions = utils::auto_partition();
     if (partitions.empty()) {
-        detail::msgbox_widget("\nAutomatic partitioning failed. Check the log for details.\n");
+        detail::msgbox_widget("Automatic partitioning failed. Check the log for details.");
         return;
     }
 
-    // Save partition layout for user confirmation
-    config_data["PARTITION_SCHEMA"] = partitions;
     spdlog::info("Auto-partition schema stored with {} entries", partitions.size());
+    ctx.partition_schema = std::move(partitions);
 
-    // Show created partitions
-    const auto& disk_list = gucc::utils::exec(fmt::format(FMT_COMPILE("lsblk {} -o NAME,TYPE,FSTYPE,SIZE"), device_info));
-    detail::msgbox_widget(disk_list, size(HEIGHT, GREATER_THAN, 5));
+    detail::msgbox_widget(gucc::disk::format_partition_table(ctx.device));
 }
 
 // Simple code to show devices / partitions.
 void show_devices() noexcept {
-    const auto& lsblk = gucc::utils::exec(R"(lsblk -o NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT | grep "disk\|part\|lvm\|crypt\|NAME\|MODEL\|TYPE\|FSTYPE\|SIZE\|MOUNTPOINT")");
-    detail::msgbox_widget(lsblk, size(HEIGHT, GREATER_THAN, 5));
+    const auto lsblk = utils::device_listing("NAME,MODEL,TYPE,FSTYPE,SIZE,MOUNTPOINT"sv, "type=='disk' || type=='part' || type=='lvm' || type=='crypt'"sv);
+    detail::msgbox_widget(lsblk);
 }
 
 // Refresh pacman keys
 void refresh_pacman_keys() noexcept {
 #ifdef NDEVENV
-    utils::arch_chroot("bash -c 'pacman-key --init;pacman-key --populate archlinux cachyos;pacman-key --refresh-keys;'");
+    detail::follow_task([] {
+        auto res = gucc::repos::reset_target_keyring(utils::get_mountpoint());
+        if (!res) {
+            spdlog::error("{}", gucc::to_string(res.error()));
+        }
+        return res.has_value();
+    });
 #else
     SPDLOG_DEBUG("({}) Function is doing nothing in dev environment!", __PRETTY_FUNCTION__);
 #endif
@@ -922,73 +632,43 @@ void refresh_pacman_keys() noexcept {
 // This function does not assume that the formatted device is the Root installation device as
 // more than one device may be formatted. Root is set in the mount_partitions function.
 bool select_device() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    auto devices_list     = installer::data::get_device_list();
+    auto device = detail::select_value(installer::data::get_device_list()).transform(installer::data::parse_device_name);
+    /* clang-format off */
+    if (!device) { return false; }
+    /* clang-format on */
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    bool success{};
-    auto ok_callback = [&] {
-        config_data["DEVICE"] = installer::data::parse_device_name(devices_list[static_cast<std::size_t>(selected)]);
-        success               = true;
-        screen.ExitLoopClosure()();
-    };
-    detail::menu_widget(devices_list, ok_callback, &selected, &screen);
-
-    return success;
+    tui::state().inputs.ctx.device = std::move(*device);
+    return true;
 }
 
-// Helper function to select filesystem
 auto select_fs_and_cmd() noexcept -> std::optional<std::pair<std::string, std::string>> {
-    using FsCmdPair = std::pair<std::string, std::string>;
-
-    // Build menu entries from gucc filesystem types (keep in sync with library)
-    const auto supported_fs_types = {
+    // TODO(vnepogodin): shouldn't be hardcoded here. keep in sync with the library
+    static constexpr std::array supported_fs_types{
         gucc::fs::FilesystemType::Btrfs,
         gucc::fs::FilesystemType::Ext4,
         gucc::fs::FilesystemType::F2fs,
         gucc::fs::FilesystemType::Xfs,
     };
 
-    std::vector<FsCmdPair> menu_entries;
-    menu_entries.push_back({"skip", "Do not format -"});
-    for (const auto& fs_type : supported_fs_types) {
-        const auto& name = gucc::fs::filesystem_type_to_string(fs_type);
-        const auto& cmd  = gucc::fs::get_mkfs_command(fs_type);
-        menu_entries.push_back({std::string{name}, std::string{name} + " " + std::string{cmd}});
-    }
+    std::vector<std::string> menu_entries{"Do not format -"};
+    menu_entries.append_range(supported_fs_types | std::ranges::views::transform([](gucc::fs::FilesystemType fs_type) {
+        return fmt::format(FMT_COMPILE("{} {}"), gucc::fs::filesystem_type_to_string(fs_type), gucc::fs::get_mkfs_command(fs_type));
+    }));
 
-    std::vector<std::string> menu_display_entries;
-    menu_display_entries.reserve(menu_entries.size());
-    for (const auto& entry : menu_entries) {
-        menu_display_entries.push_back(entry.second);
-    }
+    const auto idx = detail::select_from_menu(menu_entries);
+    /* clang-format off */
+    if (!idx) { return std::nullopt; }
+    if (*idx == 0) { return std::pair{"skip"s, ""s}; }
+    /* clang-format on */
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    std::optional<FsCmdPair> result{};
-    auto ok_callback = [&] {
-        const auto& [fstype, cmd_entry] = menu_entries[static_cast<std::size_t>(selected)];
-
-        // strip fs name of the entry
-        const auto& mkfs_command = cmd_entry.substr(cmd_entry.find_first_of(' ') + 1, cmd_entry.size());
-
-        result = {{fstype, (fstype == "skip"sv) ? ""s : mkfs_command}};
-        screen.ExitLoopClosure()();
-    };
-    detail::menu_widget(menu_display_entries, ok_callback, &selected, &screen);
-
-    return result;
+    const auto fs_type = supported_fs_types.at(*idx - 1);
+    return std::pair{std::string{gucc::fs::filesystem_type_to_string(fs_type)}, std::string{gucc::fs::get_mkfs_command(fs_type)}};
 }
 
 // Set static list of filesystems rather than on-the-fly. Partially as most require additional flags, and
 // partially because some don't seem to be viable.
 bool select_filesystem() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    // prep variables
-    config_data["fs_opts"] = std::vector<std::string>{};
+    const auto& disk = tui::state().disk;
 
     // 1. Select filesystem type and format command (or skip)
     auto fs_selection = select_fs_and_cmd();
@@ -1003,13 +683,16 @@ bool select_filesystem() noexcept {
     utils::select_filesystem(fs_selection->first);
 
     // Warn about formatting!
-    const auto& file_sys  = std::get<std::string>(config_data["FILESYSTEM"]);
-    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
-    const auto& content   = fmt::format(FMT_COMPILE("\nMount {}\n \n! Data on {} will be lost !\n"), file_sys, partition);
-    const auto& do_mount  = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    if (do_mount) {
+    const auto& file_sys  = disk.mkfs_command;
+    const auto& partition = disk.partition;
+    const auto& content   = fmt::format(FMT_COMPILE("Mount {}\n\n! Data on {} will be lost !"), file_sys, partition);
+    if (detail::yesno_widget(content)) {
 #ifdef NDEVENV
-        gucc::utils::exec(fmt::format(FMT_COMPILE("{} {}"), file_sys, partition));
+        if (auto res = gucc::fs::format_partition(partition, gucc::fs::string_to_filesystem_type(fs_selection->first)); !res) {
+            spdlog::error("Failed to format {} with '{}': {}", partition, file_sys, gucc::to_string(res.error()));
+            detail::msgbox_widget(fmt::format(FMT_COMPILE("Failed to format {}"), partition));
+            return false;
+        }
 #endif
         spdlog::info("mount.{} {}", partition, file_sys);
     }
@@ -1018,242 +701,61 @@ bool select_filesystem() noexcept {
 }
 
 auto select_mount_opts(std::string_view partition, std::string_view fstype, bool force = false) noexcept -> std::string {
-    const bool is_ssd    = gucc::disk::is_device_ssd(partition);
-    const auto& fs_type  = gucc::fs::string_to_filesystem_type(fstype);
-    auto mount_opts_info = gucc::fs::get_default_mount_opts(fs_type, is_ssd);
+    auto mount_opts_info = utils::default_mount_opts(partition, fstype);
     if (force) {
         return mount_opts_info;
     }
 
     // Show an input box with the default mount opts pre-filled
-    static constexpr auto mount_options_body = "\nEdit mount options for the partition.\nThe defaults are pre-filled based on filesystem and device type.\n"sv;
-    if (!detail::inputbox_widget(mount_opts_info, mount_options_body, size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
+    static constexpr auto mount_options_body = "Edit mount options for the partition. The defaults are pre-filled based on filesystem and device type."sv;
+    if (!detail::inputbox_widget(mount_opts_info, mount_options_body)) {
         return ""s;
     }
     return std::string{gucc::utils::trim(mount_opts_info)};
 }
 
-// This subfunction allows for special mounting options to be applied for relevant fs's.
-// Separate subfunction for neatness.
-void mount_opts(bool force) noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& fstype    = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
-    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
-
-    // select mount opts
-    auto& mount_opts_info = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    mount_opts_info       = select_mount_opts(partition, fstype, force);
-}
-
-bool mount_current_partition(bool force) noexcept {
-    auto* config_instance  = Config::instance();
-    auto& config_data      = config_instance->data();
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& partition  = std::get<std::string>(config_data["PARTITION"]);
-    const auto& mount_dev  = std::get<std::string>(config_data["MOUNT"]);
-
-    config_data["MOUNT_OPTS"] = "";
-    /* clang-format off */
-    // Get mounting options for appropriate filesystems
-    const auto& fs_opts = std::get<std::vector<std::string>>(config_data["fs_opts"]);
-    if (!fs_opts.empty()) { tui::mount_opts(force); }
-    /* clang-format on */
-
-    const auto& mount_dir  = fmt::format(FMT_COMPILE("{}{}"), mountpoint, mount_dev);
-    const auto& mount_opts = std::get<std::string>(config_data["MOUNT_OPTS"]);
-    if (!utils::mount_partition(partition, mountpoint, mount_dev, mount_opts)) {
-        spdlog::error("Failed to mount current partition {}", partition);
-    }
-
-    return confirm_mount(mount_dir, force);
-}
-
-void make_swap(std::vector<gucc::fs::Partition>& partition_schema) noexcept {
-    static constexpr auto sel_swap_body = "\nSelect SWAP Partition.\nIf using a Swapfile, it will initially set the same size as your RAM.\n"sv;
-    static constexpr auto sel_swap_none = "None"sv;
-    static constexpr auto sel_swap_file = "Swapfile"sv;
-
-    auto* config_instance       = Config::instance();
-    auto& config_data           = config_instance->data();
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    std::string answer{};
-    {
-        std::vector<std::string> temp{"None -"};
-        const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
-        if (!(root_filesystem == "zfs"sv || root_filesystem == "btrfs"sv)) {
-            temp.emplace_back("Swapfile -");
-        }
-        const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-        temp.reserve(partitions.size());
-        std::ranges::copy(partitions, std::back_inserter(temp));
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            const auto& src   = temp[static_cast<std::size_t>(selected)];
-            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
-            answer            = lines[0];
-            success           = true;
-            screen.ExitLoopClosure()();
-        };
-        /* clang-format off */
-        detail::menu_widget(temp, ok_callback, &selected, &screen, sel_swap_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-        if (!success) { return; }
-        /* clang-format on */
-    }
-
-    auto& partition = std::get<std::string>(config_data["PARTITION"]);
-    /* clang-format off */
-    if (answer == sel_swap_none) { return; }
-    partition = answer;
-    /* clang-format on */
-
-    if (partition == sel_swap_file) {
-        const auto& total_memory = gucc::utils::exec("grep MemTotal /proc/meminfo | awk '{print $2/1024}' | sed 's/\\..*//'");
-        std::string value{fmt::format(FMT_COMPILE("{}M"), total_memory)};
-        if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
-            return;
-        }
-
-        while (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'M\\|G'"), value))) {
-            detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
-            value = fmt::format(FMT_COMPILE("{}M"), total_memory);
-            if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
-                return;
-            }
-        }
-
-        value = std::string{gucc::utils::trim(value)};
-#ifdef NDEVENV
-        const auto& swapfile_path = fmt::format(FMT_COMPILE("{}/swapfile"), mountpoint_info);
-        if (!gucc::swap::make_swapfile(mountpoint_info, value)) {
-            spdlog::error("Failed to create swapfile: {}", swapfile_path);
-            return;
-        }
-
-        config_data["SWAP_DEVICE"] = swapfile_path;
-#endif
-        return;
-    }
-
-    auto& partitions        = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-    auto& number_partitions = std::get<std::int32_t>(config_data["NUMBER_PARTITIONS"]);
-
-    // TODO(vnepogodin): handle swap partition mount options?
-    auto swap_mountopts = gucc::fs::get_default_mount_opts(gucc::fs::FilesystemType::LinuxSwap, false);
-    auto swap_partition = gucc::fs::Partition{.fstype = "linuxswap"s, .mountpoint = ""s, .device = partition, .mount_opts = std::move(swap_mountopts)};
-
-    // Warn user if creating a new swap
-    const auto& devices     = gucc::disk::list_block_devices();
-    const auto& swap_dev    = devices ? gucc::disk::find_device_by_name(*devices, partition) : std::nullopt;
-    const bool already_swap = swap_dev && swap_dev->fstype == "swap"sv;
-    if (!already_swap) {
-        const auto& do_swap = detail::yesno_widget(fmt::format(FMT_COMPILE("\nmkswap {}\n"), partition), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-        /* clang-format off */
-        if (!do_swap) { return; }
-        /* clang-format on */
-    }
-
-#ifdef NDEVENV
-    if (!gucc::swap::make_swap_partition(swap_partition)) {
-        spdlog::error("Failed to create swap parition");
-        return;
-    }
-    config_data["SWAP_DEVICE"] = partition;
-#endif
-
-    const auto& part_uuid   = gucc::fs::utils::get_device_uuid(partition);
-    swap_partition.uuid_str = part_uuid;
-
-    // TODO(vnepogodin): handle luks information
-
-    utils::dump_partition_to_log(swap_partition);
-
-    // insert swap partition
-    partition_schema.emplace_back(std::move(swap_partition));
-
-    // Since a partition was used, remove that partition from the list
-    std::erase_if(partitions, [partition](std::string_view x) { return gucc::utils::contains(x, partition); });
-    number_partitions -= 1;
-}
-
 void lvm_detect() noexcept {
-    utils::lvm_detect([] {
-        detail::infobox_widget("\nExisting Logical Volume Management (LVM) detected.\nActivating. Please Wait...\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-    });
+    utils::lvm_detect(announce_lvm_activation);
 }
 
 void lvm_del_vg() noexcept {
     const auto& vg_list = utils::lvm_show_vg();
     if (vg_list.empty()) {
-        detail::msgbox_widget("\nNo Volume Groups found.\n");
+        detail::msgbox_widget("No Volume Groups found.");
         return;
     }
 
-    // Build display strings: "name (size)"
-    std::vector<std::string> display_list{};
-    display_list.reserve(vg_list.size());
-    for (const auto& [name, size] : vg_list) {
-        display_list.push_back(fmt::format(FMT_COMPILE("{} ({})"), name, size));
-    }
+    const auto display_list = vg_list
+        | std::ranges::views::transform([](const auto& vg) { return fmt::format(FMT_COMPILE("{} ({})"), vg.first, vg.second); })
+        | std::ranges::to<std::vector<std::string>>();
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    std::string sel_vg{};
-    auto ok_callback = [&] {
-        sel_vg = vg_list[static_cast<size_t>(selected)].first;
-        screen.ExitLoopClosure()();
-    };
+    static constexpr auto del_lvmvg_body = "Select Volume Group to delete. All Logical Volumes within will also be deleted."sv;
+    const auto idx                       = detail::select_from_menu(display_list, del_lvmvg_body);
     /* clang-format off */
-    static constexpr auto del_lvmvg_body = "\nSelect Volume Group to delete.\nAll Logical Volumes within will also be deleted.\n"sv;
-    detail::menu_widget(display_list, ok_callback, &selected, &screen, del_lvmvg_body);
-    if (sel_vg.empty()) { return; }
-    /* clang-format on */
-
-    const auto& do_action = detail::yesno_widget("\nConfirm deletion of Volume Group(s) and Logical Volume(s).\n"sv);
-    /* clang-format off */
-    if (!do_action) { return; }
+    if (!idx) { return; }
+    if (!detail::yesno_widget("Confirm deletion of Volume Group(s) and Logical Volume(s)."sv)) { return; }
     /* clang-format on */
 
 #ifdef NDEVENV
-    gucc::utils::exec(fmt::format(FMT_COMPILE("vgremove -f {} 2>/dev/null"), sel_vg), true);
+    const auto& vg_name = vg_list.at(*idx).first;
+    if (!gucc::utils::exec_checked({"/usr/bin/vgremove"s, "-f"s, vg_name})) {
+        detail::msgbox_widget(fmt::format(FMT_COMPILE("Failed to delete Volume Group {}."), vg_name));
+    }
 #endif
 }
 
 void lvm_menu() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Create VG and LV(s)",
-        "Delete Volume Groups",
-        "Delete *ALL* VGs, LVs, PVs",
-        "Back",
-    };
-
     tui::lvm_detect();
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 1:
-            tui::lvm_del_vg();
-            break;
-        case 0:
-        case 2:
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            return;
-        }
-    };
-
-    static constexpr auto lvm_menu_body = "\nLogical Volume Management (LVM) allows 'virtual' hard drives (Volume Groups)\nand partitions (Logical Volumes) to be created from existing drives\nand partitions. A Volume Group must be created first, then one or more\nLogical Volumes in it.\n \nLVM can also be used with an encrypted partition to create multiple logical\nvolumes (e.g. root and home) in it.\n"sv;
-    auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, lvm_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
+    // TODO(vnepogodin): VG/LV creation and full LVM wipe are not implemented yet.
+    static constexpr auto not_implemented = [] { return true; };
+    static constexpr auto lvm_menu_body   = "Logical Volume Management (LVM) allows 'virtual' hard drives (Volume Groups) and partitions (Logical Volumes) to be created from existing drives and partitions. A Volume Group must be created first, then one or more Logical Volumes in it.\n\nLVM can also be used with an encrypted partition to create multiple logical volumes (e.g. root and home) in it."sv;
+    detail::menu_loop(lvm_menu_body, {
+                                         {"Create VG and LV(s)", not_implemented},
+                                         {"Delete Volume Groups", [] { tui::lvm_del_vg(); return true; }},
+                                         {"Delete *ALL* VGs, LVs, PVs", not_implemented},
+                                         {"Back", detail::kLeaveMenu},
+                                     });
 }
 
 // creates a new zpool on an existing partition
@@ -1261,213 +763,92 @@ bool zfs_create_zpool(bool do_create_zpool = true) noexcept {
     // LVM Detection. If detected, activate.
     tui::lvm_detect();
 
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
     utils::umount_partitions();
     utils::find_partitions();
 
-    // Filter out partitions that have already been mounted and partitions that just contain crypt or zfs devices
-    auto ignore_part = utils::list_mounted();
-    ignore_part += gucc::fs::zfs_list_devs();
-    ignore_part += utils::list_containing_crypt();
+    static constexpr auto zfs_zpool_partmenu_body = "Select a partition to hold the ZFS zpool"sv;
+    auto partition                                = select_partition(tui::state().disk.partitions, zfs_zpool_partmenu_body);
+    /* clang-format off */
+    if (!partition) { return false; }
+    /* clang-format on */
+    tui::state().disk.partition = *partition;
 
-    /* const auto& parts = gucc::utils::make_multiline(ignore_part);
-    for (const auto& part : parts) {
-        utils::delete_partition_in_list(part);
-    }*/
+    static constexpr auto zfs_zpool_body       = "Enter the name for the new zpool"sv;
+    static constexpr auto zfs_zpool_validation = "zpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n\nzpool names cannot start with the reserved words (log, mirror, raidz, draid or spare) nor look like a disk name (c0...)"sv;
+    const auto zfs_zpool_name                  = detail::prompt_validated(zfs_zpool_body, zfs_zpool_validation, cachyos::installer::is_valid_zpool_name, "zpcachyos"s);
+    /* clang-format off */
+    if (!zfs_zpool_name) { return false; }
+    /* clang-format on */
 
-    // Identify the partition for the zpool
-    {
-        const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            const auto& src          = partitions[static_cast<std::size_t>(selected)];
-            const auto& lines        = gucc::utils::make_multiline(src, false, ' ');
-            config_data["PARTITION"] = lines[0];
-            success                  = true;
-            screen.ExitLoopClosure()();
-        };
-
-        static constexpr auto zfs_zpool_partmenu_body = "\nSelect a partition to hold the ZFS zpool\n"sv;
-        auto text_size                                = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(partitions, ok_callback, &selected, &screen, zfs_zpool_partmenu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
-        /* clang-format off */
-        if (!success) { return false; }
-        /* clang-format on */
-    }
-
-    static constexpr auto zfs_zpool_body        = "\nEnter the name for the new zpool\n"sv;
-    static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n"sv;
-    static constexpr auto zfs_zpoolcvalidation2 = "\nzpool names cannot start with the reserved words (log, mirror, raidz, raidz1, raidz2, raidz3, or spare)\n"sv;
-
-    // We need to get a name for the zpool
-    std::string zfs_zpool_name{"zpcachyos"};
-    auto zfs_menu_text = zfs_zpool_body;
-
-    // Loop while zpool name is not valid.
-    while (true) {
-        if (!detail::inputbox_widget(zfs_zpool_name, zfs_menu_text, size(HEIGHT, GREATER_THAN, 1))) {
-            return false;
-        }
-        zfs_menu_text = zfs_zpool_body;
-
-        // validation
-        zfs_zpool_name = std::string{gucc::utils::trim(zfs_zpool_name)};
-        if (zfs_zpool_name.empty() || std::isdigit(zfs_zpool_name[0]) || (std::ranges::any_of(zfs_zpool_name, [](char ch) { return (!std::isalnum(ch)) && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
-            zfs_menu_text = zfs_zpoolcvalidation1;
-        }
-
-        for (auto&& invalid_keyword : {"log", "mirror", "raidz", "raidz1", "raidz2", "spare"}) {
-            if (gucc::utils::contains(zfs_zpool_name, invalid_keyword)) {
-                zfs_menu_text = zfs_zpoolcvalidation2;
-                break;
-            }
-        }
-        /* clang-format off */
-        if (zfs_menu_text == zfs_zpool_body) { break; }
-        /* clang-format on */
-    }
-
-    // save zpool name
-    config_data["ZFS_ZPOOL_NAME"] = zfs_zpool_name;
+    tui::state().disk.zfs_zpool_name = *zfs_zpool_name;
 
     /* clang-format off */
     if (!do_create_zpool) { return true; }
     /* clang-format on */
 
-    const auto& partition = std::get<std::string>(config_data["PARTITION"]);
-    return utils::zfs_create_zpool(partition, zfs_zpool_name);
+    return utils::zfs_create_zpool(*partition, *zfs_zpool_name);
 }
 
 bool zfs_import_pool() noexcept {
-    const auto& zlist = gucc::utils::make_multiline(gucc::utils::exec("zpool import 2>/dev/null | grep '^[[:space:]]*pool' | awk -F : '{print $2}' | awk '{$1=$1};1'"));
+    const auto& zlist = gucc::fs::zpool_list_importable();
     if (zlist.empty()) {
-        // no available datasets
-        detail::infobox_widget("\nNo pools available\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        detail::infobox_for("No pools available"sv, 3s);
         return false;
     }
 
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    std::string zfs_zpool_name{};
-    {
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            zfs_zpool_name = zlist[static_cast<std::size_t>(selected)];
-            success        = true;
-            screen.ExitLoopClosure()();
-        };
-        static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n"sv;
-        auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
-        /* clang-format off */
-        if (!success) { return false; }
-        /* clang-format on */
-    }
+    static constexpr auto zfs_menu_body = "Select a zpool from the list"sv;
+    const auto zfs_zpool_name           = detail::select_value(zlist, zfs_menu_body);
+    /* clang-format off */
+    if (!zfs_zpool_name) { return false; }
+    /* clang-format on */
 
 #ifdef NDEVENV
-    const auto& mountpoint = std::get<std::string>(config_data["MOUNTPOINT"]);
-    gucc::utils::exec(fmt::format(FMT_COMPILE("zpool import -R {} {} 2>>/tmp/cachyos-install.log"), mountpoint, zfs_zpool_name), true);
+    if (auto res = gucc::fs::zpool_import(*zfs_zpool_name, utils::get_mountpoint()); !res) {
+        spdlog::error("{}", gucc::to_string(res.error()));
+        detail::msgbox_widget(fmt::format(FMT_COMPILE("Failed to import ZFS pool {}. Check logs for details."), *zfs_zpool_name));
+        return false;
+    }
 #endif
-
-    config_data["ZFS"] = 1;
 
     return true;
 }
 
-bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
-    const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_pools());
+bool zfs_new_ds(std::string_view zmount = "") noexcept {
+    const auto zlist = gucc::fs::list_zfs_pools()
+        | std::ranges::views::transform(&gucc::fs::ZfsPoolInfo::name)
+        | std::ranges::to<std::vector<std::string>>();
     if (zlist.empty()) {
-        // no available datasets
-        detail::infobox_widget("\nNo pools available\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        detail::infobox_for("No pools available"sv, 3s);
         return false;
     }
 
-    std::string zfs_zpool_name{};
-    {
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            zfs_zpool_name = zlist[static_cast<std::size_t>(selected)];
-            success        = true;
-            screen.ExitLoopClosure()();
-        };
-        static constexpr auto zfs_menu_body = "\nSelect a zpool from the list\n"sv;
-        auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
-        /* clang-format off */
-        if (!success) { return false; }
-        /* clang-format on */
-    }
+    static constexpr auto zfs_menu_body = "Select a zpool from the list"sv;
+    const auto zpool                    = detail::select_value(zlist, zfs_menu_body);
+    /* clang-format off */
+    if (!zpool) { return false; }
+    /* clang-format on */
 
-    static constexpr auto zfs_dataset_body      = "\nEnter a name and relative path for the dataset.\n \nFor example, if you want the dataset to be placed at zpool/data/zname, enter 'data/zname'\n"sv;
-    static constexpr auto zfs_zpoolcvalidation1 = "\nzpool names must start with a letter and are limited to only alphanumeric characters and the special characters : . - _\n"sv;
+    static constexpr auto zfs_dataset_body       = "Enter a name and relative path for the dataset.\n\nFor example, if you want the dataset to be placed at zpool/data/zname, enter 'data/zname'"sv;
+    static constexpr auto zfs_dataset_validation = "Dataset path components are separated by '/' and limited to alphanumeric characters and the special characters : . - _"sv;
+    const auto zfs_dataset_name                  = detail::prompt_validated(zfs_dataset_body, zfs_dataset_validation, cachyos::installer::is_valid_zfs_dataset_name);
+    /* clang-format off */
+    if (!zfs_dataset_name) { return false; }
+    /* clang-format on */
 
-    // We need to get a name for the dataset
-    std::string zfs_dataset_name{};
-    auto zfs_menu_text = zfs_dataset_body;
-
-    // Loop while zpool name is not valid.
-    while (true) {
-        if (!detail::inputbox_widget(zfs_dataset_name, zfs_menu_text, size(HEIGHT, GREATER_THAN, 1))) {
-            return false;
-        }
-        zfs_menu_text = zfs_dataset_body;
-
-        // validation
-        zfs_dataset_name = std::string{gucc::utils::trim(zfs_dataset_name)};
-        if (zfs_dataset_name.empty() || std::isdigit(zfs_dataset_name[0]) || (std::ranges::any_of(zfs_dataset_name, [](char ch) { return (!std::isalnum(ch)) && (ch != '/') && (ch != ':') && (ch != '.') && (ch != '-') && (ch != '_'); }))) {
-            zfs_menu_text = zfs_zpoolcvalidation1;
-        }
-
-        /* clang-format off */
-        if (zfs_menu_text == zfs_dataset_body) { break; }
-        /* clang-format on */
-    }
-
-    const auto& zfs_zpath = fmt::format(FMT_COMPILE("{}/{}"), zfs_zpool_name, zfs_dataset_name);
+    const auto& zfs_zpath = fmt::format(FMT_COMPILE("{}/{}"), *zpool, *zfs_dataset_name);
     if (zmount == "legacy"sv) {
         if (!gucc::fs::zfs_create_dataset(zfs_zpath, zmount)) {
             spdlog::error("Failed to create zfs dataset {} at mountpoint {}", zfs_zpath, zmount);
         }
     } else if (zmount == "zvol"sv) {
-        static constexpr auto zvol_size_menu_body       = "\nEnter the size of the zvol in megabytes(MB)\n"sv;
-        static constexpr auto zvol_size_menu_validation = "\nYou must enter a number greater than 0\n"sv;
-
-        // We need to get a name for the zvol
-        std::string zvol_size{};
-        zfs_menu_text = zvol_size_menu_body;
-
-        // Loop while zvol name is not valid.
-        while (true) {
-            if (!detail::inputbox_widget(zvol_size, zfs_menu_text, size(HEIGHT, GREATER_THAN, 1))) {
-                return false;
-            }
-            zfs_menu_text = zvol_size_menu_body;
-
-            // validation
-            zvol_size = std::string{gucc::utils::trim(zvol_size)};
-            if (zvol_size.empty() || std::ranges::any_of(zvol_size, [](char ch) { return !std::isdigit(ch); })) {
-                zfs_menu_text = zvol_size_menu_validation;
-            }
-
-            /* clang-format off */
-            if (zfs_menu_text == zvol_size_menu_body) { break; }
-            /* clang-format on */
-        }
-        if (!gucc::fs::zfs_create_zvol(zvol_size, zfs_zpath)) {
-            spdlog::error("Failed to create zfs zvol {} with size {}", zfs_zpath, zvol_size);
+        static constexpr auto zvol_size_menu_body       = "Enter the size of the zvol in megabytes(MB)"sv;
+        static constexpr auto zvol_size_menu_validation = "You must enter a number greater than 0"sv;
+        const auto zvol_size                            = detail::prompt_validated(zvol_size_menu_body, zvol_size_menu_validation, cachyos::installer::is_valid_zvol_size_mib);
+        /* clang-format off */
+        if (!zvol_size) { return false; }
+        /* clang-format on */
+        if (!gucc::fs::zfs_create_zvol(*zvol_size, zfs_zpath)) {
+            spdlog::error("Failed to create zfs zvol {} with size {}", zfs_zpath, *zvol_size);
         }
     } else {
         spdlog::error("HELLO! IMPLEMENT ME!");
@@ -1478,318 +859,118 @@ bool zfs_new_ds(const std::string_view& zmount = "") noexcept {
 }
 
 void zfs_set_property() noexcept {
-    const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_datasets());
+    const auto zlist = zfs_child_datasets();
     if (zlist.empty()) {
-        // no available datasets
-        detail::infobox_widget("\nNo datasets available\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        detail::infobox_for("No datasets available"sv, 3s);
         return;
     }
 
-    std::string zdataset{};
-    {
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            zdataset = zlist[static_cast<std::size_t>(selected)];
-            success  = true;
-            screen.ExitLoopClosure()();
-        };
-        static constexpr auto zfs_menu_body = "\nSelect the dataset you would like to set a property on\n"sv;
-        auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
-        /* clang-format off */
-        if (!success) { return; }
-        /* clang-format on */
-    }
+    static constexpr auto zfs_menu_body = "Select the dataset you would like to set a property on"sv;
+    const auto zdataset                 = detail::select_value(zlist, zfs_menu_body);
+    /* clang-format off */
+    if (!zdataset) { return; }
+    /* clang-format on */
 
-    static constexpr auto zfs_mountpoint_body  = "\nEnter the property and value you would like to\nset using the format property=mountpoint\n \nFor example, you could enter:\ncompression=lz4\nor\nacltype=posixacl\n\n"sv;
-    static constexpr auto zfs_property_invalid = "\nInput must be the format property=mountpoint\n"sv;
+    static constexpr auto zfs_mountpoint_body  = "Enter the property and value you would like to set using the format property=mountpoint\n\nFor example, you could enter: compression=lz4 or acltype=posixacl"sv;
+    static constexpr auto zfs_property_invalid = "Input must be the format property=mountpoint"sv;
+    const auto zfs_property_ent                = detail::prompt_validated(zfs_mountpoint_body, zfs_property_invalid, cachyos::installer::is_valid_zfs_property);
+    /* clang-format off */
+    if (!zfs_property_ent) { return; }
+    /* clang-format on */
 
-    // We need to get a valid property
-    std::string zfs_property_ent{};
-    auto zfs_menu_text = zfs_mountpoint_body;
-
-    // Loop while property is not valid.
-    while (true) {
-        if (!detail::inputbox_widget(zfs_property_ent, zfs_menu_text, size(HEIGHT, GREATER_THAN, 1))) {
-            return;
-        }
-        zfs_menu_text = zfs_mountpoint_body;
-
-        // validation
-        zfs_property_ent = std::string{gucc::utils::trim(zfs_property_ent)};
-        if (!ctre::match<"[a-zA-Z]*=[a-zA-Z0-9]*">(zfs_property_ent)) {
-            zfs_menu_text = zfs_property_invalid;
-        }
-
-        /* clang-format off */
-        if (zfs_menu_text == zfs_mountpoint_body) { break; }
-        /* clang-format on */
-    }
-
-    // Set the property
-    if (!gucc::fs::zfs_set_property(zfs_property_ent, zdataset)) {
-        spdlog::error("Failed to set zfs property '{}' on dataset '{}'", zfs_property_ent, zdataset);
+    if (!gucc::fs::zfs_set_property(*zfs_property_ent, *zdataset)) {
+        spdlog::error("Failed to set zfs property '{}' on dataset '{}'", *zfs_property_ent, *zdataset);
     }
 }
 
 void zfs_destroy_dataset() noexcept {
-    const auto& zlist = gucc::utils::make_multiline(gucc::fs::zfs_list_datasets());
+    const auto zlist = zfs_child_datasets();
     if (zlist.empty()) {
-        // no available datasets
-        detail::infobox_widget("\nNo datasets available\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        detail::infobox_for("No datasets available"sv, 3s);
         return;
     }
 
-    std::string zdataset{};
-    {
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            zdataset = zlist[static_cast<std::size_t>(selected)];
-            success  = true;
-            screen.ExitLoopClosure()();
-        };
-        static constexpr auto zfs_destroy_menu_body = "\nSelect the dataset you would like to permanently delete.\nPlease note that this will recursively delete any child datasets with warning\n"sv;
-        auto text_size                              = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-        detail::menu_widget(zlist, ok_callback, &selected, &screen, zfs_destroy_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
-        /* clang-format off */
-        if (!success) { return; }
-        /* clang-format on */
-    }
+    static constexpr auto zfs_destroy_menu_body = "Select the dataset you would like to permanently delete. Please note that this will recursively delete any child datasets with warning"sv;
+    const auto chosen_dataset                   = detail::select_value(zlist, zfs_destroy_menu_body);
+    /* clang-format off */
+    if (!chosen_dataset) { return; }
+    /* clang-format on */
 
-    const auto& content    = fmt::format(FMT_COMPILE("\nPlease confirm that you want to irrevocably\ndelete all the data on '{}'\nand the data contained on all of it's children\n"), zdataset);
-    const auto& do_destroy = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 20) | size(WIDTH, LESS_THAN, 75));
+    const auto& zdataset   = *chosen_dataset;
+    const auto& content    = fmt::format(FMT_COMPILE("Please confirm that you want to irrevocably delete all the data on '{}' and the data contained on all of it's children"), zdataset);
+    const auto& do_destroy = detail::yesno_widget(content);
     /* clang-format off */
     if (!do_destroy) { return; }
     /* clang-format on */
 
-    gucc::fs::zfs_destroy_dataset(zdataset);
+    if (auto res = gucc::fs::zfs_destroy_dataset(zdataset); !res) {
+        spdlog::error("Failed to destroy zfs dataset {}: {}", zdataset, gucc::to_string(res.error()));
+        detail::msgbox_widget(fmt::format(FMT_COMPILE("Failed to destroy {}"), zdataset));
+    }
 }
 
 // Automated configuration of zfs. Creates a new zpool and a default set of filesystems
 void zfs_auto() noexcept {
-    auto* config_instance      = Config::instance();
-    auto& config_data          = config_instance->data();
-    const auto& partition      = std::get<std::string>(config_data["PARTITION"]);
-    const auto& zfs_zpool_name = std::get<std::string>(config_data["ZFS_ZPOOL_NAME"]);
-
     // it creates using our preset, so don't ask for zpool name
-    if (!utils::zfs_auto_pres(partition, zfs_zpool_name)) {
-        detail::infobox_widget("\nOperation failed\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+    if (!utils::zfs_auto_pres(tui::state().disk.partition, tui::state().disk.zfs_zpool_name)) {
+        detail::infobox_for("Operation failed"sv, 3s);
         return;
     }
 
-    // provide confirmation to the user
-    detail::infobox_widget("\nAutomatic zfs provisioning has been completed\n"sv);
-    std::this_thread::sleep_for(std::chrono::seconds(3));
+    detail::infobox_for("Automatic zfs provisioning has been completed"sv, 3s);
 }
 
 void zfs_menu_manual() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Create a new zpool",
-        "Import an existing zpool",
-        "Create and mount a ZFS filesystem",
-        "Create a legacy ZFS filesystem",
-        "Create a new ZVOL",
-        "Set a property on a zfs filesystem",
-        "Destroy a ZFS dataset",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            tui::zfs_create_zpool();
-            break;
-        case 1:
-            tui::zfs_import_pool();
-            break;
-        case 2:
-            tui::zfs_new_ds();
-            break;
-        case 3:
-            tui::zfs_new_ds("legacy"sv);
-            break;
-        case 4:
-            tui::zfs_new_ds("zvol"sv);
-            break;
-        case 5:
-            tui::zfs_set_property();
-            break;
-        case 6:
-            tui::zfs_destroy_dataset();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            return;
-        }
-    };
-
-    static constexpr auto zfs_menu_manual_body = "\nPlease select an option below\n"sv;
-    auto text_size                             = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_manual_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
+    static constexpr auto zfs_menu_manual_body = "Please select an option below"sv;
+    detail::menu_loop(zfs_menu_manual_body, {
+                                                {"Create a new zpool", [] { tui::zfs_create_zpool(); return true; }},
+                                                {"Import an existing zpool", [] { tui::zfs_import_pool(); return true; }},
+                                                {"Create and mount a ZFS filesystem", [] { tui::zfs_new_ds(); return true; }},
+                                                {"Create a legacy ZFS filesystem", [] { tui::zfs_new_ds("legacy"sv); return true; }},
+                                                {"Create a new ZVOL", [] { tui::zfs_new_ds("zvol"sv); return true; }},
+                                                {"Set a property on a zfs filesystem", [] { tui::zfs_set_property(); return true; }},
+                                                {"Destroy a ZFS dataset", [] { tui::zfs_destroy_dataset(); return true; }},
+                                                {"Back", detail::kLeaveMenu},
+                                            });
 }
 
 // The main ZFS menu
 void zfs_menu() noexcept {
 #ifdef NDEVENV
     // check for zfs support
-    if (!gucc::utils::exec_checked("modprobe zfs 2>>/tmp/cachyos-install.log &>/dev/null")) {
-        detail::infobox_widget("\nThe kernel modules to support ZFS could not be found\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+    if (!gucc::kmod::load({"zfs"sv})) {
+        detail::infobox_for("The kernel modules to support ZFS could not be found"sv, 3s);
         return;
     }
 #endif
 
-    const std::vector<std::string> menu_entries = {
-        "Automatically configure",
-        "Manual configuration",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            tui::zfs_auto();
-            break;
-        case 1:
-            tui::zfs_menu_manual();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            return;
-        }
-    };
-
-    static constexpr auto zfs_menu_body = "\nZFS is a flexible and resilient file system that combines elements of\nlogical volume management, RAID and traditional file systems.\nZFS on Linux requires special handling and is not ideal for beginners.\n \nSelect automatic to select a partition and allow\nthe system to automate the creation a new a zpool and datasets\nmounted to '/', '/home' and '/var/cache/pacman'.\nManual configuration is available but requires specific knowledge of zfs.\n"sv;
-    auto text_size                      = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, zfs_menu_body, {size(HEIGHT, LESS_THAN, 18), std::move(text_size)});
-}
-
-void make_esp(std::vector<gucc::fs::Partition>& partitions) noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
-
-    /* clang-format off */
-    if (sys_info != "UEFI"sv) { return; }
-    /* clang-format on */
-
-    std::string answer{};
-    {
-        const auto& partitions_list = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            const auto& src   = partitions_list[static_cast<std::size_t>(selected)];
-            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
-            answer            = lines[0];
-            success           = true;
-            screen.ExitLoopClosure()();
-        };
-
-        /* clang-format off */
-        static constexpr auto esp_part_body = "\nSelect BOOT partition.\n"sv;
-        detail::menu_widget(partitions_list, ok_callback, &selected, &screen, esp_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-        if (!success) { return; }
-        /* clang-format on */
-    }
-
-    const auto& luks          = std::get<std::int32_t>(config_data["LUKS"]);
-    auto& partition           = std::get<std::string>(config_data["PARTITION"]);
-    partition                 = answer;
-    config_data["UEFI_MOUNT"] = "";
-    config_data["UEFI_PART"]  = partition;
-
-    // If it is already a fat/vfat partition...
-    bool do_boot_partition{};
-    const bool is_fat_part = gucc::fs::utils::get_device_fstype(partition) == "vfat"sv;
-    if (!is_fat_part) {
-        const auto& content = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), partition);
-        do_boot_partition   = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-    }
-
-    std::string uefi_mount{};
-    {
-        static constexpr auto MntUefiBody            = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n"sv;
-        static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption.\nEncrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n"sv;
-        const auto& MntUefiMessage                   = (luks == 0) ? MntUefiBody : MntUefiCrypt;
-        const std::vector<std::string> radiobox_list = {
-            "/boot/efi",
-            "/boot",
-        };
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        auto ok_callback = [&] {
-            uefi_mount = radiobox_list[static_cast<std::size_t>(selected)];
-            screen.ExitLoopClosure()();
-        };
-        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = MntUefiMessage}, {.text_size = nothing});
-    }
-
-    /* clang-format off */
-    if (uefi_mount.empty()) { return; }
-    /* clang-format on */
-
-    // Apply ESP
-    utils::EspSelection esp_selection{
-        .device           = partition,
-        .mountpoint       = uefi_mount,
-        .format_requested = do_boot_partition,
-    };
-    if (!utils::apply_esp_selection(esp_selection, partitions)) {
-        spdlog::error("Failed to apply ESP actions");
-        return;
-    }
+    static constexpr auto zfs_menu_body = "ZFS is a flexible and resilient file system that combines elements of logical volume management, RAID and traditional file systems. ZFS on Linux requires special handling and is not ideal for beginners.\n\nSelect automatic to select a partition and allow the system to automate the creation a new a zpool and datasets mounted to '/', '/home' and '/var/cache/pacman'. Manual configuration is available but requires specific knowledge of zfs."sv;
+    detail::menu_loop(zfs_menu_body, {
+                                         {"Automatically configure", [] { tui::zfs_auto(); return true; }},
+                                         {"Manual configuration", [] { tui::zfs_menu_manual(); return true; }},
+                                         {"Back", detail::kLeaveMenu},
+                                     });
 }
 
 // Function to gather user choices for the root partition
 auto select_root_partition_info() noexcept -> std::optional<utils::RootPartitionSelection> {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
+    auto& disk = tui::state().disk;
 
     utils::RootPartitionSelection selection{};
 
     // 1. Identify root partition device
-    {
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-
-        auto ok_callback = [&] {
-            const auto& src   = partitions_lines[static_cast<std::size_t>(selected)];
-            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
-            selection.device  = lines[0];
-            success           = true;
-            screen.ExitLoopClosure()();
-        };
-        /* clang-format off */
-        static constexpr auto sel_root_body = "\nSelect ROOT Partition.\nThis is where CachyOS will be installed.\n"sv;
-        detail::menu_widget(partitions_lines, ok_callback, &selected, &screen, sel_root_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-        if (!success) { return std::nullopt; }
-        /* clang-format on */
-    }
+    static constexpr auto sel_root_body = "Select ROOT Partition. This is where CachyOS will be installed."sv;
+    auto device                         = select_partition(disk.partitions, sel_root_body);
+    /* clang-format off */
+    if (!device) { return std::nullopt; }
+    /* clang-format on */
+    selection.device = std::move(*device);
     spdlog::info("Selected root partition device: {}", selection.device);
 
     // NOTE: keep this for backward compatibility?
-    config_data["PARTITION"] = selection.device;
-    config_data["ROOT_PART"] = selection.device;
-    // Reset the mountpoint variable, in case this is the second time through this menu and old state is still around
-    config_data["MOUNT"] = "";
+    disk.partition = selection.device;
+    // a second pass through this menu must not inherit the old mountpoint
+    disk.mount.clear();
 
     // 2. Select filesystem type and format command (or skip)
     auto fs_selection = select_fs_and_cmd();
@@ -1817,127 +998,58 @@ auto select_root_partition_info() noexcept -> std::optional<utils::RootPartition
     return selection;
 }
 
-// Formats and mounts root partition
-auto mount_root_partition(std::vector<gucc::fs::Partition>& partitions) noexcept -> bool {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-    const auto& zfs_zpool_names = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
-    if (!zfs_zpool_names.empty()) {
-        // NOTE: assuming we only support single zpool
-        const auto& zfs_zpool_name = zfs_zpool_names[0];
-#ifdef NDEVENV
-        const auto& zfs_import_cmd = fmt::format(FMT_COMPILE("zfs import -N -R {} {} &>>/tmp/cachyos-install.log"), mountpoint_info, zfs_zpool_name);
-        if (!gucc::utils::exec_checked(zfs_import_cmd)) {
-            spdlog::error("Failed to import zpool: {}", zfs_import_cmd);
-            detail::msgbox_widget(fmt::format("\nFailed to import ZFS pool {}.\nCheck logs for details.\n", zfs_zpool_name));
-            return false;
-        }
-        spdlog::info("Imported ZFS pool {}", zfs_zpool_name);
-#else
-        spdlog::info("[DRY-RUN] Would import ZFS pool {}", zfs_zpool_name);
-#endif
-        return true;
-    }
-
-    // check to see if we already have a zfs root mounted
-    if (gucc::fs::utils::get_mountpoint_fs(mountpoint_info) == "zfs"sv) {
-        detail::infobox_widget("\nUsing ZFS root on \'/\'\n"sv);
-        std::this_thread::sleep_for(std::chrono::seconds(3));
-        return true;
-    }
-
-    // 1. Get user selections
-    auto selection_opt = select_root_partition_info();
-    if (!selection_opt) {
-        spdlog::info("Root partition selection cancelled or failed.");
-        return false;
-    }
-
-    // 2. Apply the selected actions
-    if (!utils::apply_root_partition_actions(*selection_opt, {}, partitions)) {
-        spdlog::error("Failed to apply root partition actions for device {}", selection_opt->device);
-        return false;
-    }
-
-    return true;
-}
-
 auto select_swap_info() noexcept -> std::optional<utils::SwapSelection> {
-    static constexpr auto sel_swap_body = "\nSelect SWAP Partition.\nIf using a Swapfile, it will initially set the same size as your RAM.\n"sv;
+    static constexpr auto sel_swap_body = "Select SWAP Partition. If using a Swapfile, it will initially set the same size as your RAM."sv;
     static constexpr auto sel_swap_file = "Swapfile"sv;
 
-    auto* config_instance       = Config::instance();
-    auto& config_data           = config_instance->data();
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-
-    std::string answer{};
+    std::optional<std::string> answer{};
     {
         std::vector<std::string> temp{"None -"};
-        const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(mountpoint_info);
+        const auto& root_filesystem = gucc::fs::utils::get_mountpoint_fs(utils::get_mountpoint());
         if (!(root_filesystem == "zfs"sv || root_filesystem == "btrfs"sv)) {
             temp.emplace_back("Swapfile -");
         }
-        const auto& partitions = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-        temp.reserve(partitions.size());
-        std::ranges::copy(partitions, std::back_inserter(temp));
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            const auto& src   = temp[static_cast<std::size_t>(selected)];
-            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
-            answer            = lines[0];
-            success           = true;
-            screen.ExitLoopClosure()();
-        };
-        /* clang-format off */
-        detail::menu_widget(temp, ok_callback, &selected, &screen, sel_swap_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-        if (!success) { return std::nullopt; }
-        /* clang-format on */
+        temp.append_range(tui::state().disk.partitions);
+        answer = select_partition(temp, sel_swap_body);
     }
+    /* clang-format off */
+    if (!answer) { return std::nullopt; }
+    /* clang-format on */
 
     utils::SwapSelection selection{};
-    if (answer == "None"sv) {
+    if (*answer == "None"sv) {
         selection.type = utils::SwapSelection::Type::None;
         return selection;
     }
 
-    if (answer == sel_swap_file) {
-        selection.type           = utils::SwapSelection::Type::Swapfile;
-        const auto& total_memory = gucc::utils::exec("grep MemTotal /proc/meminfo | awk '{print $2/1024}' | sed 's/\\..*//'");
-        std::string value{fmt::format(FMT_COMPILE("{}M"), total_memory)};
-        if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
-            return std::nullopt;
-        }
-
-        while (!gucc::utils::exec_checked(fmt::format(FMT_COMPILE("echo '{}' | grep -q 'M\\|G'"), value))) {
-            detail::msgbox_widget(fmt::format(FMT_COMPILE("\n{} Error: M = MB, G = GB\n"), sel_swap_file));
-            value = fmt::format(FMT_COMPILE("{}M"), total_memory);
-            if (!detail::inputbox_widget(value, "\nM = MB, G = GB\n", size(ftxui::HEIGHT, ftxui::LESS_THAN, 9) | size(ftxui::WIDTH, ftxui::LESS_THAN, 30))) {
-                return std::nullopt;
-            }
-        }
-        selection.swapfile_size = std::move(value);
-        selection.swapfile_size = std::string{gucc::utils::trim(selection.swapfile_size)};
+    if (*answer == sel_swap_file) {
+        const auto total_memory = gucc::memory::total_bytes() / gucc::memory::kMiB;
+        std::uint64_t swapfile_bytes{};
+        const auto is_swapfile_size = [&swapfile_bytes](std::string_view value) {
+            swapfile_bytes = cachyos::installer::parse_size(value).value_or(0);
+            return swapfile_bytes >= gucc::memory::kMiB;
+        };
+        const auto swapfile_size = detail::prompt_validated("Size with a unit: K, M, G or T (e.g. 512M, 4G)"sv, fmt::format(FMT_COMPILE("{} Error: enter at least 1M, e.g. 512M or 4G"), sel_swap_file), is_swapfile_size, fmt::format(FMT_COMPILE("{}M"), total_memory));
+        /* clang-format off */
+        if (!swapfile_size) { return std::nullopt; }
+        /* clang-format on */
+        selection.type = utils::SwapSelection::Type::Swapfile;
+        // fallocate reads 4G as raw bytes
+        selection.swapfile_size = fmt::format(FMT_COMPILE("{}"), swapfile_bytes);
         return selection;
     }
 
     // Partition swap
     selection.type   = utils::SwapSelection::Type::Partition;
-    selection.device = answer;
+    selection.device = std::move(*answer);
 
     // Check if partition already has swap
-    const auto& swap_devices = gucc::disk::list_block_devices();
-    const auto& swap_info    = swap_devices ? gucc::disk::find_device_by_name(*swap_devices, answer) : std::nullopt;
-    selection.needs_mkswap   = !(swap_info && swap_info->fstype == "swap"sv);
+    const auto swap_info   = gucc::disk::query_block_device(selection.device);
+    selection.needs_mkswap = !(swap_info && swap_info->fstype == "swap"sv);
 
     if (selection.needs_mkswap) {
-        const auto& do_swap = detail::yesno_widget(fmt::format(FMT_COMPILE("\nmkswap {}\n"), answer), size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
         /* clang-format off */
-        if (!do_swap) { return std::nullopt; }
+        if (!detail::yesno_widget(fmt::format(FMT_COMPILE("mkswap {}"), selection.device))) { return std::nullopt; }
         /* clang-format on */
     }
 
@@ -1946,63 +1058,37 @@ auto select_swap_info() noexcept -> std::optional<utils::SwapSelection> {
 
 // Gather ESP selection from user without applying any changes
 auto select_esp_info() noexcept -> std::optional<utils::EspSelection> {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& sys_info  = std::get<std::string>(config_data["SYSTEM"]);
-
     /* clang-format off */
-    if (sys_info != "UEFI"sv) { return utils::EspSelection{}; }
+    if (!tui::state().inputs.ctx.is_uefi()) { return utils::EspSelection{}; }
     /* clang-format on */
 
     utils::EspSelection selection{};
 
-    // Select ESP partition
-    {
-        const auto& partitions_list = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            const auto& src   = partitions_list[static_cast<std::size_t>(selected)];
-            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
-            selection.device  = lines[0];
-            success           = true;
-            screen.ExitLoopClosure()();
-        };
-
-        /* clang-format off */
-        static constexpr auto esp_part_body = "\nSelect BOOT partition.\n"sv;
-        detail::menu_widget(partitions_list, ok_callback, &selected, &screen, esp_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-        if (!success) { return std::nullopt; }
-        /* clang-format on */
-    }
+    static constexpr auto esp_part_body = "Select BOOT partition."sv;
+    auto device                         = select_partition(tui::state().disk.partitions, esp_part_body);
+    /* clang-format off */
+    if (!device) { return std::nullopt; }
+    /* clang-format on */
+    selection.device = std::move(*device);
 
     // Check if already fat/vfat
     const bool is_fat_part = gucc::fs::utils::get_device_fstype(selection.device) == "vfat"sv;
     if (!is_fat_part) {
-        const auto& content        = fmt::format(FMT_COMPILE("\nThe UEFI partition {} has already been formatted.\n \nReformat? Doing so will erase ALL data already on that partition.\n"), selection.device);
-        selection.format_requested = detail::yesno_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
+        const auto& content        = fmt::format(FMT_COMPILE("The UEFI partition {} has already been formatted.\n\nReformat? Doing so will erase ALL data already on that partition."), selection.device);
+        selection.format_requested = detail::yesno_widget(content);
     }
 
     // Select mountpoint
     {
-        const auto& luks                             = std::get<std::int32_t>(config_data["LUKS"]);
-        static constexpr auto MntUefiBody            = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems.\n/boot is required for systemd-boot.\n"sv;
-        static constexpr auto MntUefiCrypt           = "\nSelect UEFI Mountpoint.\n \n/boot/efi is recommended for multiboot systems and required for full disk encryption.\nEncrypted /boot is supported only by grub and can lead to slow startup.\n \n/boot is required for systemd-boot and for refind when using encryption.\n"sv;
-        const auto& MntUefiMessage                   = (luks == 0) ? MntUefiBody : MntUefiCrypt;
+        const bool luks                              = tui::state().inputs.ctx.crypto.is_luks;
+        static constexpr auto MntUefiBody            = "Select UEFI Mountpoint.\n\n/boot/efi is recommended for multiboot systems. /boot is required for systemd-boot."sv;
+        static constexpr auto MntUefiCrypt           = "Select UEFI Mountpoint.\n\n/boot/efi is recommended for multiboot systems and required for full disk encryption. Encrypted /boot is supported only by grub and can lead to slow startup.\n\n/boot is required for systemd-boot and for refind when using encryption."sv;
+        const auto& MntUefiMessage                   = !luks ? MntUefiBody : MntUefiCrypt;
         const std::vector<std::string> radiobox_list = {
             "/boot/efi",
             "/boot",
         };
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        auto ok_callback = [&] {
-            selection.mountpoint = radiobox_list[static_cast<std::size_t>(selected)];
-            screen.ExitLoopClosure()();
-        };
-        detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = MntUefiMessage}, {.text_size = nothing});
+        selection.mountpoint = detail::select_radio(radiobox_list, MntUefiMessage).value_or(std::string{});
     }
 
     /* clang-format off */
@@ -2013,34 +1099,19 @@ auto select_esp_info() noexcept -> std::optional<utils::EspSelection> {
 }
 
 auto select_additional_partition_info() noexcept -> std::optional<utils::AdditionalPartSelection> {
-    auto* config_instance   = Config::instance();
-    auto& config_data       = config_instance->data();
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-
     utils::AdditionalPartSelection selection{};
 
     // Select device
     {
-        const auto& partitions_lines = std::get<std::vector<std::string>>(config_data["PARTITIONS"]);
         std::vector<std::string> temp{"Done -"};
-        temp.reserve(partitions_lines.size());
-        std::ranges::copy(partitions_lines, std::back_inserter(temp));
+        temp.append_range(tui::state().disk.partitions);
 
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        bool success{};
-        auto ok_callback = [&] {
-            const auto& src   = temp[static_cast<std::size_t>(selected)];
-            const auto& lines = gucc::utils::make_multiline(src, false, ' ');
-            selection.device  = lines[0];
-            success           = true;
-            screen.ExitLoopClosure()();
-        };
+        static constexpr auto extra_part_body = "Select additional partitions in any order, or 'Done' to finish."sv;
+        auto device                           = select_partition(temp, extra_part_body);
         /* clang-format off */
-        static constexpr auto extra_part_body = "\nSelect additional partitions in any order, or 'Done' to finish.\n"sv;
-        detail::menu_widget(temp, ok_callback, &selected, &screen, extra_part_body, {.text_size = size(HEIGHT, GREATER_THAN, 1)});
-        if (!success) { return std::nullopt; }
+        if (!device) { return std::nullopt; }
         /* clang-format on */
+        selection.device = std::move(*device);
     }
 
     if (selection.device == "Done"sv) {
@@ -2057,46 +1128,22 @@ auto select_additional_partition_info() noexcept -> std::optional<utils::Additio
     selection.mkfs_command     = (selection.fstype == "skip"sv) ? ""s : fs_selection->second;
     selection.format_requested = !selection.mkfs_command.empty();
 
-    // Select mountpoint
+    // Don't give /boot as an example for UEFI systems!
+    const auto mnt_examples                = tui::state().inputs.ctx.is_uefi() ? "/home\n/var"sv : "/boot\n/home\n/var"sv;
+    static constexpr auto extra_part_body1 = "Specify partition mountpoint. Ensure the name begins with a forward slash (/). Examples include:"sv;
+    static constexpr auto mountpoint_error = "Partition cannot be mounted due to a problem with the mountpoint name. A name must be given after a forward slash."sv;
+    auto mountpoint                        = detail::prompt_validated(fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples), fmt::format(FMT_COMPILE("{}\n{}\n{}\n"), mountpoint_error, extra_part_body1, mnt_examples), cachyos::installer::is_valid_mountpoint, "/"s);
     /* clang-format off */
-    // Ask user for mountpoint. Don't give /boot as an example for UEFI systems!
-    std::string_view mnt_examples = "/boot\n/home\n/var"sv;
-    if (system_info == "UEFI"sv) { mnt_examples = "/home\n/var"sv; }
+    if (!mountpoint) { return std::nullopt; }
     /* clang-format on */
-
-    std::string value{"/"};
-    static constexpr auto extra_part_body1 = "Specify partition mountpoint. Ensure\nthe name begins with a forward slash (/).\nExamples include:"sv;
-    if (!detail::inputbox_widget(value, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) {
-        return std::nullopt;
-    }
-    selection.mountpoint = std::move(value);
-
-    // Validate mountpoint
-    selection.mountpoint = std::string{gucc::utils::trim(selection.mountpoint)};
-    while ((selection.mountpoint.size() <= 1) || (selection.mountpoint[0] != '/') || gucc::utils::contains(selection.mountpoint, " ")) {
-        detail::msgbox_widget("\nPartition cannot be mounted due to a problem with the mountpoint name.\nA name must be given after a forward slash.\n");
-        selection.mountpoint = "/"s;
-        if (!detail::inputbox_widget(selection.mountpoint, fmt::format(FMT_COMPILE("\n{}\n{}\n"), extra_part_body1, mnt_examples))) {
-            return std::nullopt;
-        }
-        selection.mountpoint = std::string{gucc::utils::trim(selection.mountpoint)};
-    }
+    selection.mountpoint = std::move(*mountpoint);
 
     // Select mount options
-    if (selection.fstype != "skip"sv) {
-        selection.mount_opts = select_mount_opts(selection.device, selection.fstype);
-    } else {
-        selection.mount_opts = select_mount_opts(selection.device, selection.fstype, true);
-    }
-
+    selection.mount_opts = select_mount_opts(selection.device, selection.fstype, selection.fstype == "skip"sv);
     return selection;
 }
 
 auto gather_mount_selections() noexcept -> std::optional<utils::MountSelections> {
-    auto* config_instance       = Config::instance();
-    auto& config_data           = config_instance->data();
-    const auto& mountpoint_info = std::get<std::string>(config_data["MOUNTPOINT"]);
-
     utils::MountSelections selections{};
 
     // 1. Root partition
@@ -2109,9 +1156,8 @@ auto gather_mount_selections() noexcept -> std::optional<utils::MountSelections>
 
     // 2. BTRFS subvolume preferences (only relevant for btrfs root)
     if (selections.root.fstype == "btrfs"sv) {
-        const auto& create_subvolumes = detail::yesno_widget("\nWould you like to create subvolumes in it? \n", size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 75));
-        if (create_subvolumes) {
-            selections.btrfs_subvolumes = utils::select_btrfs_subvolumes(mountpoint_info);
+        if (detail::yesno_widget("Would you like to create subvolumes in it?")) {
+            selections.btrfs_subvolumes = utils::select_btrfs_subvolumes(utils::get_mountpoint());
         }
     }
 
@@ -2149,6 +1195,7 @@ auto gather_mount_selections() noexcept -> std::optional<utils::MountSelections>
 
 auto preview_partition_schema(const utils::MountSelections& selections) noexcept -> bool {
     std::string preview{"\n"};
+    auto out = std::back_inserter(preview);
     preview += "═══ Partition Plan ═══\n\n";
 
     // Root
@@ -2157,17 +1204,17 @@ auto preview_partition_schema(const utils::MountSelections& selections) noexcept
         const auto& action = r.format_requested
             ? fmt::format(FMT_COMPILE("format as {}"), r.fstype)
             : "keep existing"s;
-        preview += fmt::format(FMT_COMPILE("  Root: {} ({})\n"), r.device, action);
+        fmt::format_to(out, FMT_COMPILE("  Root: {} ({})\n"), r.device, action);
         if (!r.mount_opts.empty()) {
-            preview += fmt::format(FMT_COMPILE("        mount opts: {}\n"), r.mount_opts);
+            fmt::format_to(out, FMT_COMPILE("        mount opts: {}\n"), r.mount_opts);
         }
     }
 
     // BTRFS subvolumes
     if (!selections.btrfs_subvolumes.empty()) {
         preview += "        subvolumes:\n";
-        for (const auto& sv : selections.btrfs_subvolumes) {
-            preview += fmt::format(FMT_COMPILE("          {} → {}\n"), sv.subvolume, sv.mountpoint);
+        for (const auto& [subvolume, mountpoint] : selections.btrfs_subvolumes) {
+            fmt::format_to(out, FMT_COMPILE("          {} → {}\n"), subvolume, mountpoint);
         }
     }
 
@@ -2175,19 +1222,19 @@ auto preview_partition_schema(const utils::MountSelections& selections) noexcept
 
     // ESP
     if (!selections.esp.device.empty()) {
-        const auto& action = selections.esp.format_requested ? "format vfat"s : "keep existing"s;
-        preview += fmt::format(FMT_COMPILE("  Boot: {} ({}) → {}\n"), selections.esp.device, action, selections.esp.mountpoint);
+        const auto& action = selections.esp.format_requested ? "format vfat"sv : "keep existing"sv;
+        fmt::format_to(out, FMT_COMPILE("  Boot: {} ({}) → {}\n"), selections.esp.device, action, selections.esp.mountpoint);
         preview += "\n";
     }
 
     // Swap
     switch (selections.swap.type) {
     case utils::SwapSelection::Type::Swapfile:
-        preview += fmt::format(FMT_COMPILE("  Swap: swapfile ({})\n\n"), selections.swap.swapfile_size);
+        fmt::format_to(out, FMT_COMPILE("  Swap: swapfile ({})\n\n"), selections.swap.swapfile_size);
         break;
     case utils::SwapSelection::Type::Partition: {
-        const auto& action = selections.swap.needs_mkswap ? "mkswap"s : "existing"s;
-        preview += fmt::format(FMT_COMPILE("  Swap: {} ({})\n\n"), selections.swap.device, action);
+        const auto& action = selections.swap.needs_mkswap ? "mkswap"sv : "existing"sv;
+        fmt::format_to(out, FMT_COMPILE("  Swap: {} ({})\n\n"), selections.swap.device, action);
         break;
     }
     case utils::SwapSelection::Type::None:
@@ -2200,7 +1247,7 @@ auto preview_partition_schema(const utils::MountSelections& selections) noexcept
         const auto& action = p.format_requested
             ? fmt::format(FMT_COMPILE("format as {}"), p.fstype)
             : "keep existing"s;
-        preview += fmt::format(FMT_COMPILE("  {} → {} ({})\n"), p.device, p.mountpoint, action);
+        fmt::format_to(out, FMT_COMPILE("  {} → {} ({})\n"), p.device, p.mountpoint, action);
     }
     if (!selections.additional.empty()) {
         preview += "\n";
@@ -2210,29 +1257,15 @@ auto preview_partition_schema(const utils::MountSelections& selections) noexcept
     preview += "Data on formatted partitions will be lost!\n\n";
     preview += "Proceed with these changes?\n";
 
-    return detail::yesno_widget(preview, size(HEIGHT, GREATER_THAN, 10) | size(WIDTH, GREATER_THAN, 40));
+    return detail::yesno_widget(preview);
 }
 
 void mount_partitions() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
     // Warn users that they CAN mount partitions without formatting them!
-    static constexpr auto content = "\nIMPORTANT: Partitions can be mounted without formatting them\nby selecting the 'Do not format' option listed at the top of\nthe file system menu.\n \nEnsure the correct choices for mounting and formatting\nare made as no warnings will be provided, with the exception of\nthe UEFI boot partition.\n"sv;
-    detail::msgbox_widget(content, size(HEIGHT, LESS_THAN, 15) | size(WIDTH, LESS_THAN, 70));
+    static constexpr auto content = "IMPORTANT: Partitions can be mounted without formatting them by selecting the 'Do not format' option listed at the top of the file system menu.\n\nEnsure the correct choices for mounting and formatting are made as no warnings will be provided, with the exception of the UEFI boot partition."sv;
+    detail::msgbox_widget(content);
 
-    // LVM Detection. If detected, activate.
-    tui::lvm_detect();
-
-    // Ensure partitions are unmounted (i.e. where mounted previously)
-    config_data["INCLUDE_PART"] = "part\\|lvm\\|crypt";
-    utils::umount_partitions();
-
-    // We need to remount the zfs filesystems that have defined mountpoints already
-    gucc::utils::exec("zfs mount -aO &>/dev/null");
-
-    // Get list of available partitions
-    utils::find_partitions();
+    utils::refresh_partition_list(announce_lvm_activation);
 
     // get all mount input from user
     auto selections = gather_mount_selections();
@@ -2249,47 +1282,31 @@ void mount_partitions() noexcept {
 
     // apply changes on disk
     if (!utils::apply_mount_selections(*selections)) {
-        detail::msgbox_widget("\nFailed to apply partition changes.\nCheck the log for details.\n");
+        detail::msgbox_widget("Failed to apply partition changes. Check the log for details.");
     }
 }
 
 void configure_mirrorlist() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Edit Pacman Configuration",
-        "Rank mirrors",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            screen.WithRestoredIO([]() { tui::edit_pacman_conf(); });
-            break;
-        case 1:
-            screen.WithRestoredIO([]() { gucc::utils::exec("cachyos-rate-mirrors"sv, true); });
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
-    static constexpr auto mirrorlist_body = "\nThe pacman configuration file can be edited\nto enable multilib and other repositories.\n"sv;
-    auto text_size                        = size(HEIGHT, LESS_THAN, 10) | size(WIDTH, GREATER_THAN, 40);
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, mirrorlist_body, {size(HEIGHT, LESS_THAN, 3), std::move(text_size)});
+    static constexpr auto mirrorlist_body = "The pacman configuration file can be edited to enable multilib and other repositories."sv;
+    detail::menu_loop(mirrorlist_body, {
+                                           {"Edit Pacman Configuration", [] { tui::edit_pacman_conf(); return true; }},
+                                           {"Rank mirrors", [] {
+                                                if (auto res = gucc::mirrors::rank_mirrors(); !res) {
+                                                    spdlog::error("{}", gucc::to_string(res.error()));
+                                                }
+                                                return true;
+                                            }},
+                                           {"Back", detail::kLeaveMenu},
+                                       });
 }
 
 void create_partitions() noexcept {
     static constexpr auto optwipe = "Securely Wipe Device (optional)"sv;
     static constexpr auto optauto = "Automatic Partitioning"sv;
 
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
     const std::vector<std::string> menu_entries = {
-        optwipe.data(),
-        optauto.data(),
+        std::string{optwipe},
+        std::string{optauto},
         "cfdisk",
         "cgdisk",
         "fdisk",
@@ -2297,337 +1314,111 @@ void create_partitions() noexcept {
         "parted",
     };
 
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        const auto& selected_entry = menu_entries[static_cast<std::size_t>(selected)];
-        if (selected_entry != optwipe && selected_entry != optauto) {
-            screen.WithRestoredIO([&]() {
-#ifdef NDEVENV
-                gucc::utils::exec(fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])), true);
-#else
-                spdlog::debug("to be executed: {}", fmt::format(FMT_COMPILE("{} {}"), selected_entry, std::get<std::string>(config_data["DEVICE"])));
-#endif
-            });
-            screen.ExitLoopClosure()();
-            return;
-        }
+    const auto chosen_entry = detail::select_value(menu_entries);
+    /* clang-format off */
+    if (!chosen_entry) { return; }
+    /* clang-format on */
 
-        if (selected_entry == optwipe) {
-            utils::secure_wipe();
-        }
-        if (selected_entry == optauto) {
-            tui::auto_partition();
-        }
-        screen.ExitLoopClosure()();
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    const auto& selected_entry = *chosen_entry;
+    if (selected_entry == optwipe) {
+        utils::secure_wipe();
+    } else if (selected_entry == optauto) {
+        tui::auto_partition();
+    } else {
+        const std::vector<std::string> argv{selected_entry, tui::state().inputs.ctx.device};
+#ifdef NDEVENV
+        detail::run_in_terminal(argv);
+#else
+        spdlog::debug("to be executed: {}", fmt::join(argv, " "));
+#endif
+    }
 }
 
 void install_core_menu() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Install Base Packages",
-        "Install Desktop Environment",
-        "Install Bootloader",
-        "Configure Base",
-        "Install Custom Packages",
-        "System Tweaks",
-        "Review Configuration Files",
-        "Chroot into Installation",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            if (!utils::check_mount()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::install_base();
-            break;
-        case 1:
-            if (!utils::check_mount()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::install_desktop();
-            break;
-        case 2: {
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::install_bootloader();
-            break;
-        }
-        case 3: {
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::config_base_menu();
-            break;
-        }
-        case 4:
-            tui::install_cust_pkgs();
-            break;
-        case 5:
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-            }
-            tui::tweaks_menu();
-            break;
-        case 6:
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-            }
-            tui::edit_configs();
-            break;
-        case 7:
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-            }
-            screen.WithRestoredIO([]() {
-                tui::chroot_interactive();
-            });
-
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    detail::menu_loop({}, {
+                              {"Install Base Packages", guarded(utils::check_mount, tui::install_base)},
+                              {"Install Desktop Environment", guarded(utils::check_mount, tui::install_desktop)},
+                              {"Install Bootloader", guarded(utils::check_base, tui::install_bootloader)},
+                              {"Configure Base", guarded(utils::check_base, tui::config_base_menu)},
+                              {"Install Custom Packages", [] { tui::install_cust_pkgs(); return true; }},
+                              {"System Tweaks", guarded(utils::check_base, tui::tweaks_menu)},
+                              {"Review Configuration Files", guarded(utils::check_base, tui::edit_configs)},
+                              {"Chroot into Installation", guarded(utils::check_base, tui::chroot_interactive)},
+                              {"Back", detail::kLeaveMenu},
+                          });
 }
 
 void system_rescue_menu() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Install Hardware Drivers",
-        "Install Bootloader",
-        "Install Packages",
-        "Remove Packages",
-        "Review Configuration Files",
-        "Chroot into Installation",
-        "Data Recovery",
-        "View System Logs",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            if (!utils::check_mount() && !utils::check_base()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::install_drivers_menu();
-            break;
-        case 1:
-            if (!utils::check_mount() && !utils::check_base()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::install_bootloader();
-            break;
-        case 2:
-            if (!utils::check_mount()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::install_cust_pkgs();
-            break;
-        case 3:
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-                break;
-            }
-            tui::remove_pkgs();
-            break;
-        case 4:
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-            }
-            tui::edit_configs();
-            break;
-        case 5:
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-            }
-            screen.WithRestoredIO([]() {
-                tui::chroot_interactive();
-            });
-
-            break;
-        case 7:
-            if (!utils::check_base()) {
-                screen.ExitLoopClosure()();
-            }
-            tui::logs_menu();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    static constexpr auto mounted_or_installed = [] { return utils::check_mount() || utils::check_base(); };
+    detail::menu_loop({}, {
+                              {"Install Hardware Drivers", guarded(mounted_or_installed, tui::install_drivers_menu)},
+                              {"Install Bootloader", guarded(mounted_or_installed, tui::install_bootloader)},
+                              {"Install Packages", guarded(utils::check_mount, tui::install_cust_pkgs)},
+                              {"Remove Packages", guarded(utils::check_base, tui::remove_pkgs)},
+                              {"Review Configuration Files", guarded(utils::check_base, tui::edit_configs)},
+                              {"Chroot into Installation", guarded(utils::check_base, tui::chroot_interactive)},
+                              {"Data Recovery", detail::kLeaveMenu},
+                              {"View System Logs", guarded(utils::check_base, tui::logs_menu)},
+                              {"Back", detail::kLeaveMenu},
+                          });
 }
 
 void prep_menu() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Set Virtual Console",
-        "Select Bootloader",
-        "List Devices (optional)",
-        "Partition Disk",
-        "RAID (optional)",
-        "Logical Volume Management (optional)",
-        "LUKS Encryption (optional)",
-        "ZFS (optional)",
-        "Mount Partitions",
-        "Configure Installer Mirrorlist",
-        "Refresh Pacman Keys",
-        "Choose pacman cache",
-        "Enable fsck hook",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            tui::select_keymap();
-            break;
-        case 1:
-            tui::select_bootloader_type();
-            break;
-        case 2:
-            tui::show_devices();
-            break;
-        case 3: {
-            utils::umount_partitions();
-            if (tui::select_device()) {
-                tui::create_partitions();
-            }
-            break;
-        }
-        case 4:
-            SPDLOG_ERROR("Implement me!");
-            break;
-        case 5:
-            tui::lvm_menu();
-            break;
-        case 6:
-            tui::luks_menu_advanced();
-            break;
-        case 7:
-            tui::zfs_menu();
-            break;
-        case 8:
-            tui::mount_partitions();
-            break;
-        case 9:
-            tui::configure_mirrorlist();
-            break;
-        case 10:
-            tui::refresh_pacman_keys();
-            break;
-        case 11:
-            tui::set_cache();
-            break;
-        case 12:
-            tui::set_fsck_hook();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen, "", {size(HEIGHT, GREATER_THAN, 15) | size(WIDTH, GREATER_THAN, 50)});
+    detail::menu_loop({}, {
+                              {"Set Virtual Console", [] { tui::select_keymap(); return true; }},
+                              {"Select Bootloader", [] { tui::select_bootloader_type(); return true; }},
+                              {"List Devices (optional)", [] { tui::show_devices(); return true; }},
+                              {"Partition Disk", [] {
+                                   utils::umount_partitions();
+                                   if (tui::select_device()) {
+                                       tui::create_partitions();
+                                   }
+                                   return true;
+                               }},
+                              {"RAID (optional)", [] { SPDLOG_ERROR("Implement me!"); return true; }},
+                              {"Logical Volume Management (optional)", [] { tui::lvm_menu(); return true; }},
+                              {"LUKS Encryption (optional)", [] { tui::luks_menu_advanced(); return true; }},
+                              {"ZFS (optional)", [] { tui::zfs_menu(); return true; }},
+                              {"Mount Partitions", [] { tui::mount_partitions(); return true; }},
+                              {"Configure Installer Mirrorlist", [] { tui::configure_mirrorlist(); return true; }},
+                              {"Refresh Pacman Keys", [] { tui::refresh_pacman_keys(); return true; }},
+                              {"Choose pacman cache", [] { tui::set_cache(); return true; }},
+                              {"Back", detail::kLeaveMenu},
+                          });
 }
 
 void menu_advanced() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Prepare Installation",
-        "Install System",
-        "System Rescue",
-        "Done",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            tui::prep_menu();
-            break;
-        case 1: {
-            if (!utils::check_mount()) {
-                screen.ExitLoopClosure()();
-            }
-            tui::install_core_menu();
-            break;
-        }
-        case 2:
-            tui::system_rescue_menu();
-            break;
-        default: {
-            if (tui::exit_done()) {
-                screen.ExitLoopClosure()();
-            }
-            break;
-        }
-        }
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    detail::menu_loop({}, {
+                              {"Prepare Installation", [] { tui::prep_menu(); return true; }},
+                              {"Install System", [] {
+                                   // Exiting here would quit the installer, so stay in the main menu.
+                                   if (!utils::check_mount()) {
+                                       detail::msgbox_widget("Mount the partitions first (Prepare Installation -> Mount Partitions)."sv);
+                                       return true;
+                                   }
+                                   tui::install_core_menu();
+                                   return true;
+                               }},
+                              {"System Rescue", [] { tui::system_rescue_menu(); return true; }},
+                              {"Done", [] { return !tui::exit_done(); }},
+                          });
 }
 
 void init() noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-    const auto& menus     = std::get<std::int32_t>(config_data["menus"]);
-    auto& headless_mode   = std::get<std::int32_t>(config_data["HEADLESS_MODE"]);
-
-    if (menus == 1) {
-        tui::menu_simple();
-        return;
-    } else if (menus == 2) {
-        headless_mode = 0;
-        tui::menu_advanced();
-        return;
+    auto mode = tui::state().menus;
+    if (mode == MenuMode::Ask) {
+        static const std::vector<std::string> modes{"Simple installation", "Advanced installation"};
+        const auto idx = detail::select_from_menu(modes);
+        /* clang-format off */
+        if (!idx) { return; }
+        /* clang-format on */
+        mode = (*idx == 0) ? MenuMode::Simple : MenuMode::Advanced;
     }
 
-    const std::vector<std::string> menu_entries = {
-        "Simple installation",
-        "Advanced installation",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    bool success{};
-    auto ok_callback = [&] {
-        success = true;
-        screen.ExitLoopClosure()();
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
-    /* clang-format off */
-    if (!success) { return; }
-    /* clang-format on */
-
-    switch (selected) {
-    case 0:
+    if (mode == MenuMode::Simple) {
         tui::menu_simple();
-        break;
-    case 1:
-        headless_mode = 0;
+    } else {
         tui::menu_advanced();
-        break;
-    default:
-        break;
     }
 }
 

@@ -1,9 +1,22 @@
 #include "installer_state.hpp"
 
+#include <cstdint>  // for int32_t
+
 #include <ranges>  // for ranges::*
 #include <vector>  // for vector
 
 namespace {
+
+constexpr auto menu_mode(std::int32_t menus) noexcept -> tui::MenuMode {
+    switch (menus) {
+    case 1:
+        return tui::MenuMode::Simple;
+    case 2:
+        return tui::MenuMode::Advanced;
+    default:
+        return tui::MenuMode::Ask;
+    }
+}
 
 auto make_state(const cachyos::installer::InstallerConfig& config) noexcept -> tui::InstallerState {
     tui::InstallerState st{};
@@ -60,12 +73,7 @@ auto make_state(const cachyos::installer::InstallerConfig& config) noexcept -> t
         | std::ranges::to<std::vector<gucc::fs::BtrfsSubvolume>>();
 
     st.post_install = config.post_install.value_or("");
-    st.menus        = config.menus;
-    return st;
-}
-
-auto storage() noexcept -> tui::InstallerState& {
-    static tui::InstallerState st{};
+    st.menus        = menu_mode(config.menus);
     return st;
 }
 
@@ -74,11 +82,12 @@ auto storage() noexcept -> tui::InstallerState& {
 namespace tui {
 
 void init_state(const cachyos::installer::InstallerConfig& config) noexcept {
-    storage() = make_state(config);
+    state() = make_state(config);
 }
 
 auto state() noexcept -> InstallerState& {
-    return storage();
+    static InstallerState state_c{};
+    return state_c;
 }
 
 }  // namespace tui

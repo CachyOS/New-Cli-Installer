@@ -2,7 +2,7 @@ source_path = '../src/'
 
 test_libreq = static_library('test_libreq',
     sources: [
-        source_path + 'global_storage.cpp',
+        source_path + 'installer_state.cpp',
         source_path + 'utils.cpp',
         source_path + 'disk.cpp',
         source_path + 'drivers.cpp',

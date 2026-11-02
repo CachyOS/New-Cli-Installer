@@ -1,10 +1,11 @@
 list(APPEND test_SOURCES
-        ${CMAKE_SOURCE_DIR}/src/global_storage.cpp
+        ${CMAKE_SOURCE_DIR}/src/installer_state.cpp
         ${CMAKE_SOURCE_DIR}/src/utils.cpp
         ${CMAKE_SOURCE_DIR}/src/disk.cpp
         ${CMAKE_SOURCE_DIR}/src/drivers.cpp
         ${CMAKE_SOURCE_DIR}/src/widgets.cpp
         ${CMAKE_SOURCE_DIR}/src/follow_process_log.cpp
+        ${CMAKE_SOURCE_DIR}/src/install_observers.cpp
         ${CMAKE_SOURCE_DIR}/src/crypto.cpp
         ${CMAKE_SOURCE_DIR}/src/misc.cpp
         ${CMAKE_SOURCE_DIR}/src/simple_tui.cpp
@@ -24,6 +25,9 @@ endif()
 
 file(GLOB files unit-*.cpp)
 
+# Interactive demos
+set(interactive_tests test-exec-interactive test-with-restored-io test-proccess-tailing)
+
 foreach(file ${files})
     get_filename_component(file_basename ${file} NAME_WE)
     string(REGEX REPLACE "unit-([^$]+)" "test-\\1" testcase ${file_basename})
@@ -37,5 +41,12 @@ foreach(file ${files})
     target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib doctest::doctest)
     if(NOT ENABLE_DEVENV)
       target_link_libraries(${testcase} PRIVATE cpr::cpr)
+    endif()
+
+    if(NOT testcase IN_LIST interactive_tests)
+      add_test(NAME "${testcase}"
+          COMMAND ${testcase} ${DOCTEST_TEST_FILTER} --no-skip
+          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      )
     endif()
 endforeach()
