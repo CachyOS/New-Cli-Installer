@@ -1,7 +1,7 @@
 #include "utils.hpp"
 #include "definitions.hpp"
 #include "disk.hpp"
-#include "global_storage.hpp"
+#include "installer_state.hpp"
 #include "tui.hpp"
 #include "widgets.hpp"
 
@@ -17,6 +17,7 @@
 #include "cachyos/validation.hpp"
 
 // import gucc
+#include "gucc/block_devices.hpp"
 #include "gucc/bootloader.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/io_utils.hpp"
@@ -25,13 +26,12 @@
 #include "gucc/process.hpp"
 #include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
-#include "gucc/systemd_services.hpp"
 #include "gucc/zfs.hpp"
 
 #include <cstdint>  // for int32_t
 #include <cstdlib>  // for exit
 
-#include <algorithm>      // for sort, unique, any_of
+#include <algorithm>      // for sort, unique
 #include <array>          // for array
 #include <chrono>         // for seconds
 #include <filesystem>     // for directory_iterator, read_symlink
@@ -42,6 +42,7 @@
 #include <thread>         // for sleep_for
 #include <unordered_map>  // for unordered_map
 #include <utility>        // for move
+#include <vector>         // for vector
 
 #include <fmt/compile.h>
 #include <fmt/ranges.h>
@@ -93,6 +94,7 @@
 #endif
 */
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 namespace fs = std::filesystem;
 
@@ -117,25 +119,6 @@ auto follow_logged(F&& call) noexcept -> bool {
 
 namespace utils::detail {
 
-auto encode_ready_partition(const cachyos::installer::PartitionConfig& part) noexcept -> std::expected<std::string, std::string> {
-    const auto fields = std::array{part.name, part.mountpoint, part.size, part.fs_name};
-    if (std::ranges::any_of(fields, [](std::string_view field) { return field.contains('\t') || field.contains('\n'); })) {
-        return std::unexpected(fmt::format(FMT_COMPILE("partition '{}' has a tab or newline in a field"), part.name));
-    }
-    return fmt::format(FMT_COMPILE("{}\t{}\t{}\t{}\t{}"), part.name, part.mountpoint, part.size, part.fs_name,
-        cachyos::installer::partition_type_to_string(part.type));
-}
-
-auto decode_ready_partition(std::string_view entry) noexcept -> std::optional<cachyos::installer::PartitionConfig> {
-    const auto fields = gucc::utils::split_lines(entry, '\t') | std::ranges::to<std::vector<std::string>>();
-    if (fields.size() != 5 || entry.contains('\n')) {
-        return std::nullopt;
-    }
-    return cachyos::installer::partition_type_from_string(fields[4]).transform([&fields](auto type) {
-        return cachyos::installer::PartitionConfig{.name = fields[0], .mountpoint = fields[1], .size = fields[2], .fs_name = fields[3], .type = type};
-    });
-}
-
 auto kernel_from_initramfs_name(std::string_view filename) noexcept -> std::optional<std::string> {
     return gucc::utils::strip_enclosing(filename, "initramfs-"sv, ".img"sv)
         .transform([](std::string_view kernel) { return gucc::utils::strip_suffix(kernel, "-fallback"sv).value_or(kernel); })
@@ -147,45 +130,13 @@ auto kernel_from_initramfs_name(std::string_view filename) noexcept -> std::opti
 namespace utils {
 
 auto get_mountpoint() noexcept -> std::string_view {
-    return config::get<std::string>("MOUNTPOINT");
+    return tui::state().inputs.ctx.mountpoint;
 }
 
 auto build_install_context() noexcept -> cachyos::installer::InstallContext {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
-    cachyos::installer::InstallContext ctx{};
-    ctx.mountpoint  = utils::get_mountpoint();
-    ctx.device      = std::get<std::string>(config_data["DEVICE"]);
-    ctx.system_mode = (std::get<std::string>(config_data["SYSTEM"]) == "UEFI"sv)
-        ? cachyos::installer::InstallContext::SystemMode::UEFI
-        : cachyos::installer::InstallContext::SystemMode::BIOS;
-    ctx.hostcache   = std::get<std::int32_t>(config_data["hostcache"]) != 0;
-
-    ctx.partition_schema = std::get<std::vector<gucc::fs::Partition>>(config_data["PARTITION_SCHEMA"]);
-    ctx.swap_device      = std::get<std::string>(config_data["SWAP_DEVICE"]);
-    ctx.uefi_mount       = std::get<std::string>(config_data["UEFI_MOUNT"]);
-    ctx.zfs_zpool_names  = std::get<std::vector<std::string>>(config_data["ZFS_ZPOOL_NAMES"]);
-
-    ctx.crypto.is_luks        = std::get<std::int32_t>(config_data["LUKS"]) != 0;
-    ctx.crypto.is_lvm         = std::get<std::int32_t>(config_data["LVM"]) != 0;
-    ctx.crypto.luks_dev       = std::get<std::string>(config_data["LUKS_DEV"]);
-    ctx.crypto.luks_name      = std::get<std::string>(config_data["LUKS_NAME"]);
-    ctx.crypto.luks_uuid      = std::get<std::string>(config_data["LUKS_UUID"]);
-    ctx.crypto.luks_root_name = std::get<std::string>(config_data["LUKS_ROOT_NAME"]);
-    ctx.crypto.lvm_sep_boot   = std::get<std::int32_t>(config_data["LVM_SEP_BOOT"]);
-    ctx.crypto.is_fde         = std::get<std::int32_t>(config_data["fde"]) != 0;
-
-    ctx.kernel          = std::get<std::string>(config_data["KERNEL"]);
-    ctx.desktop         = std::get<std::string>(config_data["DE"]);
-    ctx.filesystem_name = std::get<std::string>(config_data["FILESYSTEM_NAME"]);
-    ctx.keymap          = std::get<std::string>(config_data["KEYMAP"]);
-    ctx.server_mode     = std::get<std::int32_t>(config_data["SERVER_MODE"]) != 0;
-
-    ctx.net_profiles_url          = std::get<std::string>(config_data["NET_PROFILES_URL"]);
-    ctx.net_profiles_fallback_url = std::get<std::string>(config_data["NET_PROFILES_FALLBACK_URL"]);
-    ctx.net_profiles_user_path    = std::get<std::string>(config_data["NET_PROFILES_USER_PATH"]);
-
+    const auto& st = tui::state();
+    auto ctx       = st.inputs.ctx;
+    ctx.bootloader = st.bootloader.value_or(gucc::bootloader::BootloaderType::Grub);
     return ctx;
 }
 
@@ -210,11 +161,11 @@ void clear_screen() noexcept {
     output_inter(FMT_COMPILE("{}"), CLEAR_SCREEN_ANSI);
 }
 
-void arch_chroot(const std::string_view& command) noexcept {
+void arch_chroot(const std::vector<std::string>& argv) noexcept {
 #ifdef NDEVENV
-    follow_logged([&] { return cachyos::installer::arch_chroot(command, utils::get_mountpoint()); });
+    follow_logged([&] { return cachyos::installer::arch_chroot(argv, utils::get_mountpoint()); });
 #else
-    spdlog::info("[arch_chroot] {}", command);
+    spdlog::info("[arch_chroot] {}", fmt::join(argv, " "));
 #endif
 }
 
@@ -250,8 +201,9 @@ bool prompt_char(const char* prompt, const char* color, char* read) noexcept {
 // Unmount partitions.
 void umount_partitions() noexcept {
     const auto mountpoint       = utils::get_mountpoint();
-    const auto& zfs_zpool_names = config::get<std::vector<std::string>>("ZFS_ZPOOL_NAMES");
-    const auto& swap_device     = config::get<std::string>("SWAP_DEVICE");
+    const auto& ctx             = tui::state().inputs.ctx;
+    const auto& zfs_zpool_names = ctx.zfs_zpool_names;
+    const auto& swap_device     = ctx.swap_device;
 #ifdef NDEVENV
     auto result = cachyos::installer::umount_partitions(mountpoint, zfs_zpool_names, swap_device);
     if (!result) {
@@ -264,27 +216,27 @@ void umount_partitions() noexcept {
 
 // BIOS and UEFI
 auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
-    const auto& device_info    = config::get<std::string>("DEVICE");
-    const auto& system_info    = config::get<std::string>("SYSTEM");
-    const auto& bootloader_str = config::get<std::string>("BOOTLOADER");
+    const auto& st          = tui::state();
+    const auto& device_info = st.inputs.ctx.device;
+    const auto system_mode  = st.inputs.ctx.system_mode;
 
-    const auto& bootloader_opt = gucc::bootloader::bootloader_from_string(bootloader_str);
+    const auto& bootloader_opt = st.bootloader;
     if (!bootloader_opt) {
-        spdlog::error("Unknown bootloader: {}", bootloader_str);
+        spdlog::error("No bootloader selected");
         return {};
     }
 
 #ifdef NDEVENV
-    auto result = cachyos::installer::auto_partition(device_info, system_info, *bootloader_opt);
+    auto result = cachyos::installer::auto_partition(device_info, system_mode, *bootloader_opt);
     if (!result) {
         spdlog::error("{}", result.error());
         return {};
     }
     auto& partitions = *result;
 #else
-    const auto& boot_mountpoint = utils::bootloader_default_mount(*bootloader_opt, system_info);
-    const auto& is_system_efi   = (system_info == "UEFI"sv);
-    auto partitions             = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
+    const auto boot_mountpoint = cachyos::installer::bootloader_default_mount(*bootloader_opt, system_mode);
+    const bool is_system_efi   = st.inputs.ctx.is_uefi();
+    auto partitions            = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
     if (partitions.empty()) {
         spdlog::error("Failed to generate default partition schema: it cannot be empty");
         return {};
@@ -298,7 +250,7 @@ auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
 
 // Securely destroy all data on a given device.
 void secure_wipe() noexcept {
-    const auto& device_info = config::get<std::string>("DEVICE");
+    const auto& device_info = tui::state().inputs.ctx.device;
 #ifdef NDEVENV
     follow_logged([&] { return cachyos::installer::secure_wipe(device_info); });
 #else
@@ -307,7 +259,7 @@ void secure_wipe() noexcept {
 }
 
 // Create user on the system
-void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept {
+void create_new_user(std::string_view user, std::string_view password, std::string_view shell) noexcept {
     spdlog::info("default shell: [{}]", shell);
 
 #ifdef NDEVENV
@@ -315,8 +267,10 @@ void create_new_user(const std::string_view& user, const std::string_view& passw
         .username = std::string{user},
         .password = std::string{password},
         .shell    = std::string{shell},
+        // empty picks the CachyOS default groups
+        .groups = {},
     };
-    const bool hostcache = config::get<std::int32_t>("hostcache") != 0;
+    const bool hostcache = tui::state().inputs.ctx.hostcache;
     follow_logged([&] { return cachyos::installer::create_user(settings, utils::get_mountpoint(), hostcache); });
 #else
     spdlog::debug("user := {}, password := {}", user, password);
@@ -342,29 +296,28 @@ void find_partitions(PartitionPurpose purpose) noexcept {
 
     auto partition_list = gucc::disk::list_mountable_partitions(include_types);
     spdlog::info("found partitions:\n{}", fmt::join(partition_list, "\n"));
-    const auto number_partitions                        = static_cast<std::int32_t>(partition_list.size());
-    config::get<std::vector<std::string>>("PARTITIONS") = std::move(partition_list);
-    config::get<std::int32_t>("NUMBER_PARTITIONS")      = number_partitions;
+    const auto number_partitions = partition_list.size();
+    tui::state().disk.partitions = std::move(partition_list);
 
     const auto require = [](std::string_view error_body) {
         tui::detail::msgbox_widget(error_body);
         tui::create_partitions();
     };
-    const bool is_uefi = config::get<std::string>("SYSTEM") == "UEFI"sv;
+    const bool is_uefi = tui::state().inputs.ctx.is_uefi();
     switch (purpose) {
     case PartitionPurpose::Mount:
-        if (number_partitions < (is_uefi ? 2 : 1)) {
-            require("\nBIOS systems require a minimum of one partition (ROOT).\n \nUEFI systems require a minimum of two partitions (ROOT and UEFI).\n");
+        if (number_partitions < (is_uefi ? 2U : 1U)) {
+            require("BIOS systems require a minimum of one partition (ROOT).\n\nUEFI systems require a minimum of two partitions (ROOT and UEFI).");
         }
         break;
     case PartitionPurpose::LvmPv:
         if (number_partitions == 0) {
-            require("\nThere are no viable partitions available to use Logical Volume Manager.\nA minimum of one is required.\n\nIf LVM is already in use, deactivating it will allow the partition(s)\nused for its Physical Volume(s) to be used again.\n");
+            require("There are no viable partitions available to use Logical Volume Manager. A minimum of one is required.\n\nIf LVM is already in use, deactivating it will allow the partition(s) used for its Physical Volume(s) to be used again.");
         }
         break;
     case PartitionPurpose::Encrypt:
-        if (number_partitions < 2) {
-            require("\nA minimum of two partitions are required for encryption:\n\n1. Root (/) - standard or lvm partition types.\n\n2. Boot (/boot or /boot/efi) - standard partition types only\n(except lvm where using BIOS Grub).\n");
+        if (number_partitions < 2U) {
+            require("A minimum of two partitions are required for encryption:\n\n1. Root (/) - standard or lvm partition types.\n\n2. Boot (/boot or /boot/efi) - standard partition types only (except lvm where using BIOS Grub).");
         }
         break;
     case PartitionPurpose::OpenLuks:
@@ -372,7 +325,7 @@ void find_partitions(PartitionPurpose purpose) noexcept {
     }
 }
 
-void refresh_partition_list(std::optional<std::function<void()>> on_lvm_active) noexcept {
+void refresh_partition_list(std::function<void()> on_lvm_active) noexcept {
     utils::lvm_detect(std::move(on_lvm_active));
     utils::umount_partitions();
     if (!gucc::fs::zfs_mount_all()) {
@@ -383,20 +336,18 @@ void refresh_partition_list(std::optional<std::function<void()>> on_lvm_active) 
 
 void remove_from_partition_list(std::string_view device) noexcept {
     // <device> <size>
-    auto& partitions = config::get<std::vector<std::string>>("PARTITIONS");
-    std::erase_if(partitions, [device](std::string_view entry) { return gucc::utils::first_field(entry) == device; });
-    config::get<std::int32_t>("NUMBER_PARTITIONS") = static_cast<std::int32_t>(partitions.size());
+    std::erase_if(tui::state().disk.partitions, [device](std::string_view entry) { return gucc::utils::first_field(entry) == device; });
 }
 
-void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
+void lvm_detect(std::function<void()> on_active) noexcept {
     const auto& lvm_info = gucc::lvm::detect_lvm();
 
     if (!lvm_info.is_active()) {
         return;
     }
 
-    if (func_callback.has_value()) {
-        func_callback.value()();
+    if (on_active) {
+        on_active();
     }
 
 #ifdef NDEVENV
@@ -406,14 +357,14 @@ void lvm_detect(std::optional<std::function<void()>> func_callback) noexcept {
 #endif
 }
 
-auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
+auto install_from_pkglist(std::string_view packages) noexcept -> bool {
     /* clang-format off */
     if (packages.empty()) { return true; }
     /* clang-format on */
 
 #ifdef NDEVENV
     const auto& pkg_vec  = gucc::utils::make_multiline(packages, false, ' ');
-    const bool hostcache = config::get<std::int32_t>("hostcache") != 0;
+    const bool hostcache = tui::state().inputs.ctx.hostcache;
     return follow_logged([&] { return cachyos::installer::install_packages(pkg_vec, utils::get_mountpoint(), hostcache); });
 #else
     spdlog::info("Installing from pkglist: '{}'", packages);
@@ -421,7 +372,7 @@ auto install_from_pkglist(const std::string_view& packages) noexcept -> bool {
 #endif
 }
 
-void install_base(const std::string_view& packages) noexcept {
+void install_base(std::string_view packages) noexcept {
 #ifdef NDEVENV
     // Ensure crypto state is current before building context
     utils::recheck_luks();
@@ -447,8 +398,8 @@ void install_base(const std::string_view& packages) noexcept {
 #endif
 }
 
-void install_desktop(const std::string_view& desktop) noexcept {
-    config::get<std::string>("DE") = std::string{desktop};
+void install_desktop(std::string_view desktop) noexcept {
+    tui::state().inputs.ctx.desktop = std::string{desktop};
 
 #ifdef NDEVENV
     // refresh LUKS before context
@@ -475,7 +426,7 @@ void install_desktop(const std::string_view& desktop) noexcept {
 #endif
 }
 
-void remove_pkgs(const std::string_view& packages) noexcept {
+void remove_pkgs(std::string_view packages) noexcept {
     /* clang-format off */
     if (packages.empty()) { return; }
     /* clang-format on */
@@ -486,7 +437,7 @@ void remove_pkgs(const std::string_view& packages) noexcept {
 #endif
 }
 
-auto setup_esp_partition(std::string_view device, std::string_view mountpoint, bool format_requested) noexcept -> std::optional<gucc::fs::Partition> {
+auto setup_esp_partition(std::string_view device, std::string_view mountpoint, [[maybe_unused]] bool format_requested) noexcept -> std::optional<gucc::fs::Partition> {
     const auto& mountpoint_info = utils::get_mountpoint();
 #ifdef NDEVENV
     auto result = cachyos::installer::setup_esp_partition(device, mountpoint, mountpoint_info, format_requested);
@@ -532,6 +483,13 @@ void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept {
 #endif
 }
 
+auto device_listing(std::string_view columns, std::string_view filter, std::string_view device) noexcept -> std::string {
+    // lsblk prints nothing when no device matches
+    return gucc::disk::lsblk_table(columns, filter, device)
+        .transform([](std::string listing) { return gucc::utils::trim(listing).empty() ? std::string{"No matching block devices."} : std::move(listing); })
+        .value_or(std::string{"Failed to list block devices."});
+}
+
 std::string list_mounted() noexcept {
     return cachyos::installer::list_mounted_devices(utils::get_mountpoint());
 }
@@ -555,33 +513,36 @@ auto get_cryptroot() noexcept -> bool {
         return false;
     }
 
-    config::get<std::int32_t>("LUKS")          = 1;
-    config::get<std::string>("LUKS_ROOT_NAME") = state.luks_root_name;
-    config::get<std::string>("LUKS_DEV")       = state.luks_dev;
+    auto& crypto          = tui::state().inputs.ctx.crypto;
+    crypto.is_luks        = true;
+    crypto.luks_root_name = state.luks_root_name;
+    crypto.luks_dev       = state.luks_dev;
 
     if (!state.luks_uuid.empty()) {
-        config::get<std::string>("LUKS_UUID") = state.luks_uuid;
+        crypto.luks_uuid = state.luks_uuid;
     }
     if (state.is_lvm) {
-        config::get<std::int32_t>("LVM") = 1;
+        crypto.is_lvm = true;
     }
     return true;
 }
 
 auto recheck_luks() noexcept -> bool {
-    const auto result = cachyos::installer::recheck_luks(utils::get_mountpoint(), config::get<std::string>("UEFI_MOUNT"));
+    auto& ctx         = tui::state().inputs.ctx;
+    const auto result = cachyos::installer::recheck_luks(ctx.mountpoint, ctx.uefi_mount);
     if (!succeeded(result)) {
         return false;
     }
     if (*result) {
-        config::get<std::int32_t>("LUKS") = 1;
+        ctx.crypto.is_luks = true;
     }
     return true;
 }
 
 // TODO(vnepogodin): refactor further these legacy states/global storage
 auto get_cryptboot() noexcept -> bool {
-    const auto result = cachyos::installer::detect_crypto_boot(utils::get_mountpoint(), config::get<std::string>("UEFI_MOUNT"));
+    auto& ctx         = tui::state().inputs.ctx;
+    const auto result = cachyos::installer::detect_crypto_boot(ctx.mountpoint, ctx.uefi_mount);
     if (!succeeded(result)) {
         return false;
     }
@@ -591,13 +552,13 @@ auto get_cryptboot() noexcept -> bool {
         return false;
     }
 
-    config::get<std::int32_t>("LUKS") = 1;
+    ctx.crypto.is_luks = true;
     if (state.is_lvm) {
-        config::get<std::int32_t>("LVM") = 1;
+        ctx.crypto.is_lvm = true;
     }
 
-    // Merge boot's luks_dev into existing LUKS_DEV (may already have root's entry)
-    auto& existing_luks_dev = config::get<std::string>("LUKS_DEV");
+    // root's entry may already be there
+    auto& existing_luks_dev = ctx.crypto.luks_dev;
     if (!state.luks_uuid.empty() && !existing_luks_dev.contains(state.luks_uuid)) {
         existing_luks_dev = fmt::format(FMT_COMPILE("{} {}"), existing_luks_dev, state.luks_dev);
     }
@@ -606,15 +567,14 @@ auto get_cryptboot() noexcept -> bool {
 
 // TODO(vnepogodin): refactor further these legacy states/global storage
 auto boot_encrypted_setting() noexcept -> bool {
-    auto& fde = config::get<std::int32_t>("fde");
-    // reinit
-    fde = false;
+    auto& ctx         = tui::state().inputs.ctx;
+    ctx.crypto.is_fde = false;
 
-    const auto result = cachyos::installer::boot_encrypted_setting(utils::get_mountpoint(), config::get<std::string>("UEFI_MOUNT"), config::get<std::int32_t>("LUKS") == 1);
+    const auto result = cachyos::installer::boot_encrypted_setting(ctx.mountpoint, ctx.uefi_mount, ctx.crypto.is_luks);
     if (!succeeded(result)) {
         return false;
     }
-    fde = *result;
+    ctx.crypto.is_fde = *result;
     return true;
 }
 
@@ -633,7 +593,7 @@ bool check_base() noexcept {
 #ifdef NDEVENV
     const auto& mountpoint_info = utils::get_mountpoint();
     if (!cachyos::installer::check_base_installed(mountpoint_info)) {
-        tui::detail::msgbox_widget("\nThe CachyOS base must be installed first.\n");
+        tui::detail::msgbox_widget("The CachyOS base must be installed first.");
         return false;
     }
 #endif
@@ -648,14 +608,8 @@ void id_system() noexcept {
         exit(1);
     }
 
-    if (result->system_mode == cachyos::installer::InstallContext::SystemMode::UEFI) {
-        config::get<std::string>("SYSTEM") = "UEFI";
-    }
-
-    // TODO(vnepogodin): Test which nw-client is available
-    if (gucc::services::is_active("NetworkManager"sv)) {
-        config::get<std::string>("NW_CMD") = "nmtui";
-    }
+    // default is UEFI, but don't forget BIOS
+    tui::state().inputs.ctx.system_mode = result->system_mode;
 }
 
 void install_cachyos_repo() noexcept {
@@ -704,12 +658,12 @@ void show_iwctl() noexcept {
     info_inter("6 - type `exit`\n");
 
     while (utils::prompt_char("Press a key to continue...", CYAN)) {
-        gucc::utils::run_interactive("iwctl");
+        tui::detail::run_in_terminal({"/usr/bin/iwctl"s});
         break;
     }
 }
 
-void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unused]] const std::string_view& username) noexcept {
+void enable_autologin([[maybe_unused]] std::string_view dm, [[maybe_unused]] std::string_view username) noexcept {
 #ifdef NDEVENV
     const auto result = cachyos::installer::enable_autologin(dm, username, utils::get_mountpoint());
     if (!result) {
@@ -718,142 +672,28 @@ void enable_autologin([[maybe_unused]] const std::string_view& dm, [[maybe_unuse
 #endif
 }
 
-bool parse_config(std::string_view config_path) noexcept {
-    auto* config_instance = Config::instance();
-    auto& config_data     = config_instance->data();
-
+auto parse_config(std::string_view config_path) noexcept -> std::expected<cachyos::installer::InstallerConfig, std::string> {
     spdlog::info("CachyOS installer version '{}'", INSTALLER_VERSION);
-    const auto& system_info = std::get<std::string>(config_data["SYSTEM"]);
-    spdlog::info("SYSTEM: '{}'", system_info);
 
-    // 1. Open file for reading.
     const auto file_content = gucc::file_utils::read_whole_file(config_path);
-
-    // 2. Parse JSON using installer_config library.
-    auto parse_result = cachyos::installer::parse_installer_config(file_content);
-    if (!parse_result) {
-        if (file_content.empty()) {
-            fmt::print(stderr, "Config not found running with defaults\n");
-            return true;
-        }
-        fmt::print(stderr, "Config error: {}\n", parse_result.error());
-        return false;
+    if (file_content.empty()) {
+        spdlog::info("Config '{}' not found or empty, running with defaults", config_path);
+        return cachyos::installer::get_default_config();
     }
 
-    const auto& config = *parse_result;
-
-    // 3. Validate headless mode requirements.
-    if (config.headless_mode) {
-        auto validation = cachyos::installer::validate_headless_config(config);
-        if (!validation) {
-            fmt::print(stderr, FMT_COMPILE("{}\n"), fmt::join(validation.error(), "; "));
-            return false;
+    auto config = cachyos::installer::parse_installer_config(file_content);
+    if (!config) {
+        return std::unexpected(std::move(config.error()));
+    }
+    if (config->headless_mode) {
+        if (auto validation = cachyos::installer::validate_headless_config(*config); !validation) {
+            return std::unexpected(gucc::utils::join(validation.error(), "; "sv));
         }
     }
-
-    // 4. Apply config to global storage.
-    config_data["menus"]         = config.menus;
-    config_data["HEADLESS_MODE"] = static_cast<std::int32_t>(config.headless_mode);
-    config_data["SERVER_MODE"]   = static_cast<std::int32_t>(config.server_mode);
-
-    if (config.headless_mode) {
-        spdlog::info("Running in HEADLESS mode!");
-    } else {
-        spdlog::info("Running in NORMAL mode!");
-    }
-
-    if (config.server_mode) {
+    if (config->server_mode) {
         spdlog::info("Server profile enabled!");
     }
-
-    if (config.device) {
-        config_data["DEVICE"] = *config.device;
-    }
-
-    if (config.fs_name) {
-        config_data["FILESYSTEM_NAME"] = *config.fs_name;
-    }
-
-    // Convert partitions to ready_parts format.
-    if (!config.partitions.empty()) {
-        std::vector<std::string> ready_partitions{};
-        ready_partitions.reserve(config.partitions.size());
-        for (const auto& part : config.partitions) {
-            auto entry = detail::encode_ready_partition(part);
-            if (!entry) {
-                fmt::print(stderr, "Config error: {}\n", entry.error());
-                return false;
-            }
-            ready_partitions.emplace_back(std::move(*entry));
-        }
-        config_data["READY_PARTITIONS"] = std::move(ready_partitions);
-    }
-
-    if (config.mount_opts) {
-        config_data["MOUNT_OPTS"] = *config.mount_opts;
-    }
-
-    // Store subvolume configuration
-    config_data["USE_DEFAULT_SUBVOLS"] = static_cast<std::int32_t>(config.use_default_subvolumes);
-    if (!config.subvolumes.empty()) {
-        std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvols{};
-        btrfs_subvols.reserve(config.subvolumes.size());
-        for (const auto& sv : config.subvolumes) {
-            btrfs_subvols.push_back(gucc::fs::BtrfsSubvolume{.subvolume = sv.subvolume, .mountpoint = sv.mountpoint});
-        }
-        config_data["BTRFS_SUBVOLUMES"] = std::move(btrfs_subvols);
-    }
-
-    if (config.hostname) {
-        config_data["HOSTNAME"] = *config.hostname;
-    }
-
-    if (config.locale) {
-        config_data["LOCALE"] = *config.locale;
-    }
-
-    if (config.xkbmap) {
-        config_data["XKBMAP"] = *config.xkbmap;
-    }
-
-    if (config.timezone) {
-        config_data["TIMEZONE"] = *config.timezone;
-    }
-
-    if (config.user_name && config.user_pass && config.user_shell) {
-        config_data["USER_NAME"]  = *config.user_name;
-        config_data["USER_PASS"]  = *config.user_pass;
-        config_data["USER_SHELL"] = *config.user_shell;
-    }
-
-    if (config.root_pass) {
-        config_data["ROOT_PASS"] = *config.root_pass;
-    }
-
-    if (config.kernel) {
-        config_data["KERNEL"] = *config.kernel;
-    }
-
-    if (config.desktop) {
-        config_data["DE"] = *config.desktop;
-    }
-
-    if (config.bootloader) {
-        config_data["BOOTLOADER"] = *config.bootloader;
-    }
-
-    if (config.post_install) {
-        config_data["POST_INSTALL"] = *config.post_install;
-    }
-
-    return true;
-}
-
-auto configured_partitions() noexcept -> std::vector<cachyos::installer::PartitionConfig> {
-    return config::get<std::vector<std::string>>("READY_PARTITIONS")
-        | std::ranges::views::transform(detail::decode_ready_partition)
-        | std::ranges::views::join
-        | std::ranges::to<std::vector<cachyos::installer::PartitionConfig>>();
+    return config;
 }
 
 auto setup_luks_keyfile() noexcept -> bool {
@@ -900,7 +740,11 @@ auto list_home_users(std::string_view root_mountpoint) noexcept -> std::vector<s
 }
 
 void grub_mkconfig() noexcept {
-    utils::arch_chroot("grub-mkconfig -o /boot/grub/grub.cfg");
+#ifdef NDEVENV
+    follow_logged([&] { return cachyos::installer::grub_mkconfig(utils::get_mountpoint()); });
+#else
+    spdlog::info("[grub_mkconfig] {}", utils::get_mountpoint());
+#endif
 }
 
 }  // namespace utils

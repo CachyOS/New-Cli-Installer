@@ -2,6 +2,8 @@
 
 #include "definitions.hpp"
 
+#include "cachyos/installer_config.hpp"
+
 // import gucc
 #include "gucc/bootloader.hpp"
 #include "gucc/partition.hpp"
@@ -19,16 +21,11 @@
 // forward-declare
 namespace cachyos::installer {
 struct InstallContext;
-struct PartitionConfig;
 }  // namespace cachyos::installer
 
 namespace utils::detail {
 
 [[nodiscard]] auto kernel_from_initramfs_name(std::string_view filename) noexcept -> std::optional<std::string>;
-
-// NOTE: legacy
-[[nodiscard]] auto encode_ready_partition(const cachyos::installer::PartitionConfig& part) noexcept -> std::expected<std::string, std::string>;
-[[nodiscard]] auto decode_ready_partition(std::string_view entry) noexcept -> std::optional<cachyos::installer::PartitionConfig>;
 
 }  // namespace utils::detail
 
@@ -41,13 +38,14 @@ bool prompt_char(const char* prompt, const char* color = RESET, char* read = nul
 void clear_screen() noexcept;
 void secure_wipe() noexcept;
 auto auto_partition() noexcept -> std::vector<gucc::fs::Partition>;
-void create_new_user(const std::string_view& user, const std::string_view& password, const std::string_view& shell) noexcept;
+void create_new_user(std::string_view user, std::string_view password, std::string_view shell) noexcept;
 [[nodiscard]] bool check_mount() noexcept;
 [[nodiscard]] bool check_base() noexcept;
+[[nodiscard]] auto device_listing(std::string_view columns, std::string_view filter, std::string_view device = {}) noexcept -> std::string;
 [[nodiscard]] auto list_mounted() noexcept -> std::string;
 [[nodiscard]] auto list_containing_crypt() noexcept -> std::string;
 [[nodiscard]] auto list_non_crypt() noexcept -> std::string;
-void lvm_detect(std::optional<std::function<void()>> func_callback = std::nullopt) noexcept;
+void lvm_detect(std::function<void()> on_active = {}) noexcept;
 void umount_partitions() noexcept;
 
 /// Partition list filter.
@@ -61,19 +59,16 @@ void find_partitions(PartitionPurpose purpose = PartitionPurpose::Mount) noexcep
 
 /// Activates LVM, unmounts the target,
 /// remounts ZFS datasets and re-lists the partitions for mounting.
-void refresh_partition_list(std::optional<std::function<void()>> on_lvm_active = std::nullopt) noexcept;
+void refresh_partition_list(std::function<void()> on_lvm_active = {}) noexcept;
 
-/// Drops device from PARTITIONS once it has been taken.
+/// Drops device from the partition menu list once it has been taken.
 /// NOTE: legacy
 void remove_from_partition_list(std::string_view device) noexcept;
 
-/// The partition layout from settings
-[[nodiscard]] auto configured_partitions() noexcept -> std::vector<cachyos::installer::PartitionConfig>;
-
-auto install_from_pkglist(const std::string_view& packages) noexcept -> bool;
-void install_base(const std::string_view& packages) noexcept;
-void install_desktop(const std::string_view& desktop) noexcept;
-void remove_pkgs(const std::string_view& packages) noexcept;
+auto install_from_pkglist(std::string_view packages) noexcept -> bool;
+void install_base(std::string_view packages) noexcept;
+void install_desktop(std::string_view desktop) noexcept;
+void remove_pkgs(std::string_view packages) noexcept;
 auto setup_esp_partition(std::string_view device, std::string_view mountpoint, bool format_requested) noexcept -> std::optional<gucc::fs::Partition>;
 void install_bootloader(gucc::bootloader::BootloaderType bootloader) noexcept;
 
@@ -83,7 +78,7 @@ auto get_cryptboot() noexcept -> bool;
 auto boot_encrypted_setting() noexcept -> bool;
 auto recheck_luks() noexcept -> bool;
 
-void arch_chroot(const std::string_view& command) noexcept;
+void arch_chroot(const std::vector<std::string>& argv) noexcept;
 void dump_partition_to_log(const gucc::fs::Partition& partition) noexcept;
 void dump_partitions_to_log(const std::vector<gucc::fs::Partition>& partitions) noexcept;
 [[nodiscard]] bool check_root() noexcept;
@@ -91,8 +86,8 @@ void id_system() noexcept;
 [[nodiscard]] bool handle_connection() noexcept;
 void show_iwctl() noexcept;
 
-void enable_autologin(const std::string_view& dm, const std::string_view& username) noexcept;
-auto parse_config(std::string_view config_path = "settings.json") noexcept -> bool;
+void enable_autologin(std::string_view dm, std::string_view username) noexcept;
+[[nodiscard]] auto parse_config(std::string_view config_path = "settings.json") noexcept -> std::expected<cachyos::installer::InstallerConfig, std::string>;
 auto setup_luks_keyfile() noexcept -> bool;
 void grub_mkconfig() noexcept;
 
@@ -102,7 +97,7 @@ void grub_mkconfig() noexcept;
 
 template <typename T = std::int32_t>
     requires std::numeric_limits<T>::is_integer
-inline T to_int(const std::string_view& str) {
+inline T to_int(std::string_view str) {
     T result = 0;
     std::from_chars(str.data(), str.data() + str.size(), result);
     return result;
@@ -110,14 +105,14 @@ inline T to_int(const std::string_view& str) {
 
 template <typename T = double>
     requires std::is_floating_point_v<T>
-inline T to_floating(const std::string_view& str) {
+inline T to_floating(std::string_view str) {
     T result = 0;
     std::from_chars(str.data(), str.data() + str.size(), result);
     return result;
 }
 
 // convert number, unit to bytes
-constexpr inline double convert_unit(const double number, const std::string_view& unit) {
+constexpr inline double convert_unit(const double number, std::string_view unit) {
     if (unit == "KB" || unit == "K") {  // assuming KiB not KB
         return number * 1024;
     } else if (unit == "MB" || unit == "M") {
@@ -150,30 +145,6 @@ inline std::size_t replace_all(std::string& inout, std::string_view what, std::s
 /// @return The number of removals made.
 inline std::size_t remove_all(std::string& inout, std::string_view what) noexcept {
     return replace_all(inout, what, "");
-}
-
-// Get appropriate default mountpoint for bootloader
-constexpr inline auto bootloader_default_mount(gucc::bootloader::BootloaderType bootloader, std::string_view bios_mode) noexcept -> std::string_view {
-    using namespace std::string_view_literals;
-    using gucc::bootloader::BootloaderType;
-
-    if (bootloader == BootloaderType::SystemdBoot || bootloader == BootloaderType::Limine || bios_mode == "BIOS"sv) {
-        return "/boot"sv;
-    } else if (bootloader == BootloaderType::Grub || bootloader == BootloaderType::Refind) {
-        return "/boot/efi"sv;
-    }
-    return "unknown bootloader"sv;
-}
-
-// Get available bootloaders
-constexpr inline auto available_bootloaders(std::string_view bios_mode) noexcept -> std::vector<gucc::bootloader::BootloaderType> {
-    using namespace std::string_view_literals;
-    using gucc::bootloader::BootloaderType;
-
-    if (bios_mode == "BIOS"sv) {
-        return {BootloaderType::Grub};
-    }
-    return {BootloaderType::SystemdBoot, BootloaderType::Refind, BootloaderType::Grub, BootloaderType::Limine};
 }
 
 }  // namespace utils
