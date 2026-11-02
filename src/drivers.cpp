@@ -1,5 +1,5 @@
 #include "drivers.hpp"
-#include "global_storage.hpp"
+#include "installer_state.hpp"
 #include "utils.hpp"
 #include "widgets.hpp"
 
@@ -8,15 +8,12 @@
 #include "gucc/file_utils.hpp"
 #include "gucc/string_utils.hpp"
 
-/* clang-format off */
-#include <ftxui/component/screen_interactive.hpp>  // for ScreenInteractive
-#include <ftxui/dom/elements.hpp>                  // for nothing
-/* clang-format on */
+#include <string>  // for string
+#include <vector>  // for vector
 
-#include <fmt/compile.h>
-#include <fmt/core.h>
+#include <fmt/ranges.h>
 
-using namespace ftxui;
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 #ifdef NDEVENV
@@ -34,44 +31,32 @@ void mark_video_installed(std::string_view mountpoint) noexcept {
 #endif
 
 void setup_graphics_card() noexcept {
-    std::string driver{};
-
     /// TODO(vnepogodin): parse toml DBs
-    {
-        static constexpr auto use_spacebar = "\nUse [Spacebar] to de/select options listed.\n"sv;
-        const auto& profile_names          = gucc::chwd::get_available_profile_names();
-        if (profile_names.empty()) {
-            spdlog::error("failed to get profile names");
-            return;
-        }
-        const auto& radiobox_list = profile_names;
-
-        auto screen = ScreenInteractive::Fullscreen();
-        std::int32_t selected{};
-        auto ok_callback = [&] {
-            driver = radiobox_list[static_cast<size_t>(selected)];
-            screen.ExitLoopClosure()();
-        };
-        tui::detail::radiolist_widget(radiobox_list, ok_callback, &selected, &screen, {.text = use_spacebar}, {.text_size = nothing});
+    const auto& profile_names = gucc::chwd::get_available_profile_names();
+    if (profile_names.empty()) {
+        spdlog::error("failed to get profile names");
+        return;
     }
+    const auto picked = tui::detail::select_radio(profile_names);
     /* clang-format off */
-    if (driver.empty()) { return; }
+    if (!picked || picked->empty()) { return; }
     /* clang-format on */
+    const auto& driver = *picked;
 
     const auto mountpoint = utils::get_mountpoint();
 
     // setup hostcache path
-    const bool hostcache = config::get<std::int32_t>("hostcache") != 0;
+    const bool hostcache = tui::state().inputs.ctx.hostcache;
     const auto cachepath = hostcache
         ? std::string{"/var/cache/pacman/pkg/"}
         : gucc::utils::target_path(mountpoint, "/var/cache/pacman/pkg/"sv);
 
+    const std::vector<std::string> argv{"/usr/bin/chwd"s, "--pmcachedir"s, cachepath, "--pmroot"s, std::string{mountpoint}, "-f"s, "-i"s, driver};
 #ifdef NDEVENV
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("chwd --pmcachedir '{}' --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1"), cachepath, mountpoint, driver);
-    tui::detail::follow_process_log_widget({"/bin/sh", "-c", cmd_formatted});
+    tui::detail::follow_process_log_widget(argv);
     mark_video_installed(mountpoint);
 #else
-    spdlog::debug("chwd --pmcachedir \"{}\" --pmroot {} -f -i {} 2>>/tmp/cachyos-install.log 2>&1", cachepath, mountpoint, driver);
+    spdlog::debug("{}", fmt::join(argv, " "));
 #endif
 }
 
@@ -87,33 +72,16 @@ void auto_install_drivers() noexcept {
     }
     mark_video_installed(mountpoint);
 #else
-    spdlog::debug("arch-chroot {} chwd -f -i &>>/tmp/cachyos-install.log", mountpoint);
+    spdlog::debug("arch-chroot {} chwd -f -i", mountpoint);
 #endif
 }
 
 void install_graphics_menu() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Auto-install drivers",
-        "Select Display Driver",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            auto_install_drivers();
-            break;
-        case 1:
-            setup_graphics_card();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
-    tui::detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    tui::detail::menu_loop({}, {
+                                   {"Auto-install drivers", [] { auto_install_drivers(); return true; }},
+                                   {"Select Display Driver", [] { setup_graphics_card(); return true; }},
+                                   {"Back", tui::detail::kLeaveMenu},
+                               });
 }
 
 }  // namespace
@@ -121,24 +89,10 @@ void install_graphics_menu() noexcept {
 namespace tui {
 
 void install_drivers_menu() noexcept {
-    const std::vector<std::string> menu_entries = {
-        "Install Display Driver",
-        "Back",
-    };
-
-    auto screen = ScreenInteractive::Fullscreen();
-    std::int32_t selected{};
-    auto ok_callback = [&] {
-        switch (selected) {
-        case 0:
-            install_graphics_menu();
-            break;
-        default:
-            screen.ExitLoopClosure()();
-            break;
-        }
-    };
-    detail::menu_widget(menu_entries, ok_callback, &selected, &screen);
+    detail::menu_loop({}, {
+                              {"Install Display Driver", [] { install_graphics_menu(); return true; }},
+                              {"Back", detail::kLeaveMenu},
+                          });
 }
 
 }  // namespace tui
