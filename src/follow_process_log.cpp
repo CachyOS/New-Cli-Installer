@@ -1,6 +1,6 @@
 #include "follow_process_log.hpp"
-#include "global_storage.hpp"
 #include "install_observers.hpp"
+#include "installer_state.hpp"
 #include "widgets.hpp"
 
 // import gucc
@@ -123,10 +123,7 @@ auto follow_process_log_task_stdout(ProcessTask task) noexcept -> bool {
 }
 
 auto follow_task(ProcessTask task) noexcept -> bool {
-    const auto& config_data = Config::instance()->data();
-    const bool plain_output = std::get<std::int32_t>(config_data.at("SIMPLE_MODE")) != 0
-        || std::get<std::int32_t>(config_data.at("HEADLESS_MODE")) != 0;
-    return plain_output ? follow_process_log_task_stdout(std::move(task)) : follow_process_log_task(std::move(task));
+    return tui::state().plain_progress ? follow_process_log_task_stdout(std::move(task)) : follow_process_log_task(std::move(task));
 }
 
 auto follow_process_log_widget(const std::vector<std::string>& vec, Decorator box_size) noexcept -> bool {
