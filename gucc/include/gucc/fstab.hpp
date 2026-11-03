@@ -1,11 +1,15 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -28,3 +32,5 @@ auto strip_root_prefix(std::string_view fstab_content, std::string_view root_mou
 auto strip_subvolid_options(std::string_view fstab_content) noexcept -> std::string;
 
 }  // namespace gucc::fs::detail
+
+GUCC_EXPORT_END

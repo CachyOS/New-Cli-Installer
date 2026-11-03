@@ -2,7 +2,7 @@
 
 #include <utility>  // for move
 
-#include <spdlog/spdlog-inl.h>
+#include <spdlog/spdlog.h>
 
 namespace gucc::logger {
 

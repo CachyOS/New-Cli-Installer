@@ -1,12 +1,16 @@
 #ifndef ZFS_TYPES_HPP
 #define ZFS_TYPES_HPP
 
+#include "gucc/export.hpp"
+
 #include <optional>  // for optional
 #include <string>    // for string
 #include <vector>    // for vector
 
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -44,6 +48,8 @@ struct ZfsSetupConfig {
 };
 
 }  // namespace gucc::fs
+
+GUCC_EXPORT_END
 
 template <>
 struct fmt::formatter<gucc::fs::ZfsDataset> : fmt::formatter<std::string> {

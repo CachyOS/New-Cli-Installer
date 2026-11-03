@@ -1,11 +1,15 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <cstdint>      // for uint16_t
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::firewall {
 
@@ -19,3 +23,5 @@ auto make_ufw_rules(const std::vector<std::uint16_t>& tcp_ports, const std::vect
 auto configure_server_firewall(std::string_view root_mountpoint, const std::vector<std::uint16_t>& tcp_ports, const std::vector<std::uint16_t>& udp_ports) noexcept -> Result<void>;
 
 }  // namespace gucc::firewall
+
+GUCC_EXPORT_END

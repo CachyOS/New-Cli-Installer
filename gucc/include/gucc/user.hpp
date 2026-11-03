@@ -1,11 +1,15 @@
 #ifndef USER_HPP
 #define USER_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::user {
 
@@ -49,5 +53,7 @@ auto set_root_password(std::string_view password, std::string_view mountpoint) n
 auto setup_user_environment(const UserAllInfo& info, std::string_view mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::user
+
+GUCC_EXPORT_END
 
 #endif  // USER_HPP

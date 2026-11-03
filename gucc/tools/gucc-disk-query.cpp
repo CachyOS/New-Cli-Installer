@@ -1,7 +1,5 @@
 #include "gucc/system_query.hpp"
-#ifndef COS_BUILD_STATIC
 #include "gucc/logger.hpp"
-#endif
 
 #include <cstdlib>
 #include <string>
@@ -152,10 +150,7 @@ int main(int argc, char** argv) {
     spdlog::set_level(spdlog::level::debug);
     spdlog::flush_every(std::chrono::seconds(5));
 
-#ifndef COS_BUILD_STATIC
-    // Set gucc logger.
     gucc::logger::set_logger(logger);
-#endif
 
     // Execute requested action
     if (device.empty()) {

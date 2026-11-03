@@ -1,9 +1,13 @@
 #ifndef PARTITION_HPP
 #define PARTITION_HPP
 
+#include "gucc/export.hpp"
+
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -45,5 +49,7 @@ struct Partition final {
 }
 
 }  // namespace gucc::fs
+
+GUCC_EXPORT_END
 
 #endif  // PARTITION_HPP

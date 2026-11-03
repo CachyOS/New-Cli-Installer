@@ -1,6 +1,8 @@
 #ifndef SYSTEMD_REPART_HPP
 #define SYSTEMD_REPART_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
@@ -10,6 +12,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::disk {
 
@@ -163,5 +167,7 @@ struct RepartConfig final {
 [[nodiscard]] auto convert_partitions_to_repart(const std::vector<fs::Partition>& partitions) noexcept -> std::vector<RepartPartitionConfig>;
 
 }  // namespace gucc::disk
+
+GUCC_EXPORT_END
 
 #endif  // SYSTEMD_REPART_HPP

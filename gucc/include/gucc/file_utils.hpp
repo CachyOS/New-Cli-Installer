@@ -1,6 +1,8 @@
 #ifndef FILE_UTILS_HPP
 #define FILE_UTILS_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/string_utils.hpp"
 
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for forward
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::file_utils {
 
@@ -32,5 +36,7 @@ auto rewrite_lines(std::string_view filepath, Fn&& fn) noexcept -> Result<void> 
 }
 
 }  // namespace gucc::file_utils
+
+GUCC_EXPORT_END
 
 #endif  // FILE_UTILS_HPP

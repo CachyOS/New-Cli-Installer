@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/zfs_types.hpp"
 
@@ -7,6 +9,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -96,3 +100,5 @@ namespace gucc::fs::detail {
 [[nodiscard]] auto find_symlinks_to(std::string_view device, std::string_view search_root) noexcept -> std::vector<std::string>;
 
 }  // namespace gucc::fs::detail
+
+GUCC_EXPORT_END

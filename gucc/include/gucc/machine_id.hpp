@@ -1,9 +1,13 @@
 #ifndef MACHINE_ID_HPP
 #define MACHINE_ID_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::machine_id {
 
@@ -23,5 +27,7 @@ auto clear_existing(std::string_view root_mountpoint) noexcept -> Result<void>;
 auto link_dbus_to_etc(std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::machine_id::detail
+
+GUCC_EXPORT_END
 
 #endif  // MACHINE_ID_HPP

@@ -1,6 +1,8 @@
 #ifndef DISPLAY_MANAGER_HPP
 #define DISPLAY_MANAGER_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <cstdint>      // for uint8_t
@@ -8,6 +10,8 @@
 #include <span>         // for span
 #include <string>       // for string
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::display_manager {
 
@@ -51,5 +55,7 @@ auto enable(Kind kind, std::string_view root_mountpoint) noexcept -> Result<void
 auto configure_lightdm_greeter(std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::display_manager
+
+GUCC_EXPORT_END
 
 #endif  // DISPLAY_MANAGER_HPP

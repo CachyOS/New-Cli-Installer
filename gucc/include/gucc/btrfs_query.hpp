@@ -1,6 +1,8 @@
 #ifndef BTRFS_QUERY_HPP
 #define BTRFS_QUERY_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/btrfs.hpp"
 
 #include <cstdint>      // for uint64_t
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -107,5 +111,7 @@ struct BtrfsShowInfo final {
 auto parse_btrfs_show(std::string_view output) noexcept -> BtrfsShowInfo;
 
 }  // namespace gucc::fs::btrfs_query::detail
+
+GUCC_EXPORT_END
 
 #endif  // BTRFS_QUERY_HPP

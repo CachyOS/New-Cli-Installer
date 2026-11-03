@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/partition_config.hpp"
@@ -7,6 +9,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::install {
 
@@ -42,3 +46,5 @@ struct InstallConfig {
 [[nodiscard]] auto install_base(const InstallConfig& config) noexcept -> Result<void>;
 
 }  // namespace gucc::install
+
+GUCC_EXPORT_END

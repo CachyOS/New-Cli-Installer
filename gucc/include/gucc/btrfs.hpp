@@ -1,12 +1,16 @@
 #ifndef BTRFS_HPP
 #define BTRFS_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -32,5 +36,7 @@ auto btrfs_append_subvolumes(std::vector<Partition>& partitions, const std::vect
 auto create_btrfs_installation_snapshot(std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::fs
+
+GUCC_EXPORT_END
 
 #endif  // BTRFS_HPP

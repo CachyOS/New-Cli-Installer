@@ -1,11 +1,15 @@
 #ifndef CHWD_HPP
 #define CHWD_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::chwd {
 
@@ -29,5 +33,7 @@ auto parse_profile_table(std::string_view output) noexcept -> std::vector<std::s
 auto parse_profile_details(std::string_view output) noexcept -> std::vector<std::string>;
 
 }  // namespace gucc::chwd::detail
+
+GUCC_EXPORT_END
 
 #endif  // CHWD_HPP

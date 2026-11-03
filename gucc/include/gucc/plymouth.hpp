@@ -1,11 +1,15 @@
 #ifndef PLYMOUTH_HPP
 #define PLYMOUTH_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::plymouth {
 
@@ -20,5 +24,7 @@ namespace gucc::plymouth {
 auto set_default_theme(std::string_view theme, std::string_view root_mountpoint) noexcept -> Result<void>;
 
 }  // namespace gucc::plymouth
+
+GUCC_EXPORT_END
 
 #endif  // PLYMOUTH_HPP

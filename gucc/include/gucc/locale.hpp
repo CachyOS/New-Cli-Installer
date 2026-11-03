@@ -1,11 +1,15 @@
 #ifndef LOCALE_HPP
 #define LOCALE_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::locale {
 
@@ -43,5 +47,7 @@ namespace gucc::locale::detail {
 [[nodiscard]] auto uncomment_locale(std::string_view content, std::string_view locale) noexcept -> std::string;
 
 }  // namespace gucc::locale::detail
+
+GUCC_EXPORT_END
 
 #endif  // LOCALE_HPP

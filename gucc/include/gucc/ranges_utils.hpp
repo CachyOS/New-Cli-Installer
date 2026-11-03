@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include <cstddef>  // for size_t
 
 #include <algorithm>    // for find, find_if
@@ -11,6 +13,8 @@
 #include <string_view>  // for string_view
 #include <type_traits>  // for is_lvalue_reference_v, remove_reference_t
 #include <utility>      // for move
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::utils {
 
@@ -71,3 +75,5 @@ constexpr auto find_ptr(R& range, const T& value, Proj proj = {}) -> std::remove
 inline constexpr auto to_owned = std::ranges::views::transform([](std::string_view str) { return std::string{str}; });
 
 }  // namespace gucc::utils
+
+GUCC_EXPORT_END

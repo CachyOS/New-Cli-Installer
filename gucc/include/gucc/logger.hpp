@@ -1,6 +1,8 @@
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
 
+#include "gucc/export.hpp"
+
 #include <memory>       // for shared_ptr
 #include <string>       // for string
 #include <string_view>  // for string_view
@@ -8,6 +10,8 @@
 namespace spdlog {
 class logger;
 }  // namespace spdlog
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::logger {
 
@@ -27,5 +31,7 @@ void clear_secrets() noexcept;
 [[nodiscard]] auto redact(std::string_view line) noexcept -> std::string;
 
 }  // namespace gucc::logger
+
+GUCC_EXPORT_END
 
 #endif  // LOGGER_HPP

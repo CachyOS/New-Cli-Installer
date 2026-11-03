@@ -1,6 +1,8 @@
 #ifndef SYSTEMD_HOMED_HPP
 #define SYSTEMD_HOMED_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <cstdint>      // for uint8_t, uint32_t
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::homed {
 
@@ -112,5 +116,7 @@ struct HomedUserConfig final {
 [[nodiscard]] auto remove_homed_user(std::string_view username) noexcept -> Result<void>;
 
 }  // namespace gucc::homed
+
+GUCC_EXPORT_END
 
 #endif  // SYSTEMD_HOMED_HPP

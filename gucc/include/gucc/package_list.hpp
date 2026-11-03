@@ -1,11 +1,15 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/package_profiles.hpp"
 
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::package {
 
@@ -37,3 +41,5 @@ auto get_servicelist_base(bool server_mode, NetProfileInfo net_profile_info) noe
 auto get_servicelist_desktop(NetProfileInfo net_profile_info) noexcept -> std::optional<std::vector<profile::ServiceEntry>>;
 
 }  // namespace gucc::package
+
+GUCC_EXPORT_END

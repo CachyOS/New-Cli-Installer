@@ -1,10 +1,14 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include <cstdint>      // for uint8_t
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::profile {
 
@@ -72,3 +76,5 @@ auto merge_net_profiles(std::string_view lower, std::string_view higher) noexcep
 auto load_layered_net_profiles(const std::vector<std::string_view>& layers) noexcept -> std::optional<std::string>;
 
 }  // namespace gucc::profile
+
+GUCC_EXPORT_END

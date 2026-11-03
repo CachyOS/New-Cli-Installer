@@ -1,12 +1,16 @@
 #ifndef LVM_HPP
 #define LVM_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for pair
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::lvm {
 
@@ -42,5 +46,7 @@ namespace gucc::lvm::detail {
 auto parse_simple_lvm_output(std::string_view output) noexcept -> std::vector<std::string>;
 
 }  // namespace gucc::lvm::detail
+
+GUCC_EXPORT_END
 
 #endif  // LVM_HPP

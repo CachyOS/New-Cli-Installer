@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 
@@ -9,6 +11,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::mount {
 
@@ -63,3 +67,5 @@ auto query_partition(std::string_view partition, std::int32_t& is_luks, std::int
 auto setup_esp_partition(std::string_view device, std::string_view mountpoint, std::string_view base_mountpoint, bool format, bool is_ssd) noexcept -> Result<fs::Partition>;
 
 }  // namespace gucc::mount
+
+GUCC_EXPORT_END

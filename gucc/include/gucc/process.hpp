@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include <cstdint>  // for uint8_t, int32_t, uint64_t
 
 #include <chrono>            // for seconds
@@ -12,6 +14,8 @@
 #include <string_view>       // for string_view
 #include <utility>           // for exchange, move
 #include <vector>            // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::utils {
 
@@ -184,3 +188,5 @@ class ProcessRunner final {
 auto run_interactive(const std::vector<std::string>& argv, std::string_view input = {}) noexcept -> std::int32_t;
 
 }  // namespace gucc::utils
+
+GUCC_EXPORT_END

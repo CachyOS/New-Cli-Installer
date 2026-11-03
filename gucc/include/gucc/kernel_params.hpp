@@ -1,6 +1,8 @@
 #ifndef KERNEL_PARAMS_HPP
 #define KERNEL_PARAMS_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/partition.hpp"
 
 #include <array>        // for array
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -26,5 +30,7 @@ constexpr std::array kDefaultKernelParams{
 auto get_kernel_params(const std::vector<Partition>& partitions, std::string_view kernel_params, std::optional<std::string> zfs_root_dataset = std::nullopt) noexcept -> std::optional<std::vector<std::string>>;
 
 }  // namespace gucc::fs
+
+GUCC_EXPORT_END
 
 #endif  // KERNEL_PARAMS_HPP

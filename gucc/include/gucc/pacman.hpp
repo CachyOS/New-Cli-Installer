@@ -1,11 +1,15 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <optional>     // for optional
 #include <span>         // for span
 #include <string>       // for string
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::pacman {
 
@@ -22,3 +26,5 @@ auto ensure_installed(std::string_view pkg) noexcept -> Result<void>;
 auto remove(std::span<const std::string> pkgs, std::string_view root) noexcept -> Result<void>;
 
 }  // namespace gucc::pacman
+
+GUCC_EXPORT_END

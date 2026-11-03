@@ -1,10 +1,14 @@
 #ifndef SWAP_HPP
 #define SWAP_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::swap {
 
@@ -18,5 +22,7 @@ auto swapoff(std::string_view device) noexcept -> Result<void>;
 auto make_swap_partition(const fs::Partition& swap_partition) noexcept -> Result<void>;
 
 }  // namespace gucc::swap
+
+GUCC_EXPORT_END
 
 #endif  // SWAP_HPP

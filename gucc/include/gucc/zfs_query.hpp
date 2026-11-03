@@ -1,6 +1,8 @@
 #ifndef ZFS_QUERY_HPP
 #define ZFS_QUERY_HPP
 
+#include "gucc/export.hpp"
+
 #include <cstdint>  // for uint64_t
 
 #include <functional>   // for less
@@ -9,6 +11,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -140,5 +144,7 @@ auto child_dataset_names(const std::vector<ZfsDatasetInfo>& datasets, bool legac
     -> std::vector<std::string>;
 
 }  // namespace gucc::fs::zfs_query::detail
+
+GUCC_EXPORT_END
 
 #endif  // ZFS_QUERY_HPP

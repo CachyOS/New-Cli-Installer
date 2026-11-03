@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <cstdint>  // for uint32_t
@@ -7,6 +9,8 @@
 #include <functional>   // for function_ref
 #include <string>       // for string
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::luks_swap {
 
@@ -56,3 +60,5 @@ namespace gucc::luks_swap::detail {
 [[nodiscard]] auto rewrite_with_entry(std::string_view content, std::function_ref<bool(std::string_view)> should_drop, std::string_view new_line) -> std::string;
 
 }  // namespace gucc::luks_swap::detail
+
+GUCC_EXPORT_END

@@ -1,6 +1,8 @@
 #ifndef PARTITION_CONFIG_HPP
 #define PARTITION_CONFIG_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <cstdint>      // for uint8_t
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs {
 
@@ -107,5 +111,7 @@ auto get_sfdisk_type_alias(FilesystemType fs_type) noexcept -> std::string_view;
 auto get_fstab_fs_name(FilesystemType fs_type) noexcept -> std::string_view;
 
 }  // namespace gucc::fs
+
+GUCC_EXPORT_END
 
 #endif  // PARTITION_CONFIG_HPP

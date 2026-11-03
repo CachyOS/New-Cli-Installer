@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/string_utils.hpp"
 
 #include <concepts>     // for predicate
@@ -12,6 +14,8 @@
 #include <fmt/format.h>
 
 /// Line-level helpers for the common key value pairs in config files for certain software.
+GUCC_EXPORT_BEGIN
+
 namespace gucc::conf {
 
 struct Line {
@@ -97,3 +101,5 @@ template <std::predicate<const Line&> Pred>
 }
 
 }  // namespace gucc::conf
+
+GUCC_EXPORT_END

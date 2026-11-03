@@ -1,11 +1,15 @@
 #ifndef KEYBOARD_HPP
 #define KEYBOARD_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::keyboard {
 
@@ -54,5 +58,7 @@ auto apply(const Config& cfg, std::string_view root_mountpoint) noexcept -> Resu
 auto set_host_keymap(std::string_view keymap) noexcept -> Result<void>;
 
 }  // namespace gucc::keyboard
+
+GUCC_EXPORT_END
 
 #endif  // KEYBOARD_HPP

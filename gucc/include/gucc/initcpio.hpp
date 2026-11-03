@@ -1,10 +1,14 @@
 #ifndef INITCPIO_HPP
 #define INITCPIO_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/partition_config.hpp"
 
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::initcpio {
 
@@ -25,5 +29,7 @@ struct InitcpioConfig {
 [[nodiscard]] auto setup_initcpio_config(std::string_view initcpio_path, const InitcpioConfig& config) noexcept -> Result<void>;
 
 }  // namespace gucc::initcpio
+
+GUCC_EXPORT_END
 
 #endif  // INITCPIO_HPP

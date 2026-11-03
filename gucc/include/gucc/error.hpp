@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include <cstdint>  // for uint8_t
 
 #include <expected>  // for expected, unexpected
@@ -8,6 +10,8 @@
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc {
 
@@ -57,3 +61,5 @@ template <class S, class... Args>
 [[nodiscard]] auto to_string(const Error& error) noexcept -> std::string;
 
 }  // namespace gucc
+
+GUCC_EXPORT_END

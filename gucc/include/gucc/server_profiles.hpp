@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/package_profiles.hpp"
 
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::profile {
 
@@ -77,3 +81,5 @@ auto resolve_server_profile(const ServerProfiles& profiles, std::string_view pro
 auto make_sshd_hardening_config() noexcept -> std::string;
 
 }  // namespace gucc::profile
+
+GUCC_EXPORT_END

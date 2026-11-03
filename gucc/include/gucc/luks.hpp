@@ -1,11 +1,15 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <cstddef>  // for size_t
 #include <cstdint>  // for uint8_t
 
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::crypto {
 
@@ -29,3 +33,5 @@ namespace gucc::crypto::detail {
 [[nodiscard]] auto count_enabled_luks_keyslots(std::string_view luks_dump) noexcept -> std::size_t;
 
 }  // namespace gucc::crypto::detail
+
+GUCC_EXPORT_END

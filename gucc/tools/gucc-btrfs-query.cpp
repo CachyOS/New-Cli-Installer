@@ -1,7 +1,5 @@
 #include "gucc/btrfs_query.hpp"
-#ifndef COS_BUILD_STATIC
 #include "gucc/logger.hpp"
-#endif
 
 #include <algorithm>    // for for_each, find, contains
 #include <array>        // for array
@@ -196,10 +194,7 @@ int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::debug);
     spdlog::flush_every(std::chrono::seconds(5));
 
-#ifndef COS_BUILD_STATIC
-    // Set gucc logger.
     gucc::logger::set_logger(logger);
-#endif
 
     if (!show_info && !gucc::fs::is_btrfs(mountpoint)) {
         fmt::println(stderr, "{} is not a btrfs filesystem", mountpoint);

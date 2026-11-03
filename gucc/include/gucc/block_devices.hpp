@@ -1,6 +1,8 @@
 #ifndef BLOCK_DEVICES_HPP
 #define BLOCK_DEVICES_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/string_utils.hpp"
 
 #include <cstdint>      // for uint64_t
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::disk {
 
@@ -127,5 +131,7 @@ inline constexpr std::string_view kLsblkColumns{"NAME,TYPE,FSTYPE,UUID,PARTUUID,
 auto parse_lsblk_json(std::string_view json_output) noexcept -> std::optional<std::vector<BlockDevice>>;
 
 }  // namespace gucc::disk::detail
+
+GUCC_EXPORT_END
 
 #endif  // BLOCK_DEVICES_HPP

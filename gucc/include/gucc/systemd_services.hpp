@@ -1,9 +1,13 @@
 #ifndef SYSTEMD_SERVICES_HPP
 #define SYSTEMD_SERVICES_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::services {
 
@@ -23,5 +27,7 @@ auto is_active(std::string_view unit) noexcept -> bool;
 auto systemd_unit_exists(std::string_view unit_name, std::string_view root_mountpoint) noexcept -> bool;
 
 }  // namespace gucc::services
+
+GUCC_EXPORT_END
 
 #endif  // SYSTEMD_SERVICES_HPP

@@ -1,5 +1,9 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
+GUCC_EXPORT_BEGIN
+
 namespace gucc::utils {
 
 // local-independent cctype wrapper constexpr variants.
@@ -12,3 +16,5 @@ namespace gucc::utils {
 [[nodiscard]] constexpr auto to_upper(char ch) noexcept -> char { return is_lower(ch) ? static_cast<char>(ch - 'a' + 'A') : ch; }
 
 }  // namespace gucc::utils
+
+GUCC_EXPORT_END

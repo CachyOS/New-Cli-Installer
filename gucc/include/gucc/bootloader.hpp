@@ -1,6 +1,8 @@
 #ifndef BOOTLOADER_HPP
 #define BOOTLOADER_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <cstdint>
@@ -9,6 +11,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::bootloader {
 
@@ -145,5 +149,7 @@ namespace gucc::bootloader::detail {
 [[nodiscard]] auto set_refind_extra_kern_strings(std::string_view content, const std::vector<std::string>& extra_kernel_versions) noexcept -> std::string;
 
 }  // namespace gucc::bootloader::detail
+
+GUCC_EXPORT_END
 
 #endif  // BOOTLOADER_HPP

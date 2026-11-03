@@ -1,11 +1,15 @@
 #ifndef TIMEZONE_HPP
 #define TIMEZONE_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::timezone {
 
@@ -22,5 +26,7 @@ auto get_timezone_regions() noexcept -> std::vector<std::string>;
 auto get_timezone_zones(std::string_view region) noexcept -> std::vector<std::string>;
 
 }  // namespace gucc::timezone
+
+GUCC_EXPORT_END
 
 #endif  // TIMEZONE_HPP

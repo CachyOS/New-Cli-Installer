@@ -1,11 +1,15 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::detail::pacmanconf {
 
@@ -19,3 +23,5 @@ auto get_repo_list(std::string_view file_path) noexcept -> std::vector<std::stri
 [[nodiscard]] auto insert_before_first_repo(std::string_view content, std::string_view value) noexcept -> std::optional<std::string>;
 
 }  // namespace gucc::detail::pacmanconf
+
+GUCC_EXPORT_END

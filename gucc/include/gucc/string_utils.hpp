@@ -1,6 +1,8 @@
 #ifndef STRING_UTILS_HPP
 #define STRING_UTILS_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/cctype_wrapper.hpp"
 
 #include <cstddef>  // for size_t
@@ -15,6 +17,8 @@
 #include <string_view>  // for string_view
 #include <utility>      // for forward, pair
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::utils {
 
@@ -321,5 +325,7 @@ constexpr auto parse_uint_exact(std::string_view str) noexcept -> std::optional<
 }
 
 }  // namespace gucc::utils
+
+GUCC_EXPORT_END
 
 #endif  // STRING_UTILS_HPP

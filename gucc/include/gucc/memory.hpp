@@ -1,11 +1,15 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/cctype_wrapper.hpp"
 
 #include <cstdint>      // for uint64_t
 #include <limits>       // for numeric_limits
 #include <optional>     // for optional
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::memory {
 
@@ -38,3 +42,5 @@ inline constexpr std::uint64_t kTiB = kGiB << 10U;
 [[nodiscard]] auto scale_fractional_bytes(double value, std::uint64_t multiplier) noexcept -> std::optional<std::uint64_t>;
 
 }  // namespace gucc::memory
+
+GUCC_EXPORT_END

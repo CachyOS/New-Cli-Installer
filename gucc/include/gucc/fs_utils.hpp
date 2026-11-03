@@ -1,7 +1,11 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include <string>       // for string
 #include <string_view>  // for string_view
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::fs::utils {
 
@@ -26,3 +30,5 @@ auto get_device_uuid(std::string_view device) noexcept -> std::string;
 auto get_device_fstype(std::string_view device) noexcept -> std::string;
 
 }  // namespace gucc::fs::utils
+
+GUCC_EXPORT_END

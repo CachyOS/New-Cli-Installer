@@ -1,0 +1,11 @@
+/* Only the project namespaces are ABI. */
+@COS_EXPORT_VERSION_NODE@ {
+  global:
+    extern "C++" {
+      @COS_EXPORT_NAMESPACE@::*;
+      typeinfo?for?@COS_EXPORT_NAMESPACE@::*;
+      typeinfo?name?for?@COS_EXPORT_NAMESPACE@::*;
+      vtable?for?@COS_EXPORT_NAMESPACE@::*;
+    };
+  local: *;
+};

@@ -1,6 +1,8 @@
 #ifndef NETWORK_HPP
 #define NETWORK_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <cstdint>      // for uint8_t
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::network {
 
@@ -107,5 +111,7 @@ auto copy_connections_from(std::string_view source_dir,
     std::string_view root_mountpoint) noexcept -> std::int32_t;
 
 }  // namespace gucc::network
+
+GUCC_EXPORT_END
 
 #endif  // NETWORK_HPP

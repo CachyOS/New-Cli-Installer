@@ -1,5 +1,7 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include "gucc/partition.hpp"
 
 #include <cstdint>  // for uint64_t
@@ -10,6 +12,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::disk {
 
@@ -152,3 +156,5 @@ struct ZvolEntry final {
 auto parse_zvol_list(std::string_view output) noexcept -> std::vector<ZvolEntry>;
 
 }  // namespace gucc::disk::detail
+
+GUCC_EXPORT_END

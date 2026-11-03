@@ -1,6 +1,8 @@
 #ifndef IO_UTILS_HPP
 #define IO_UTILS_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 
 #include <optional>     // for optional
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::utils {
 
@@ -53,5 +57,7 @@ auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::s
 void settle_devices() noexcept;
 
 }  // namespace gucc::utils
+
+GUCC_EXPORT_END
 
 #endif  // IO_UTILS_HPP

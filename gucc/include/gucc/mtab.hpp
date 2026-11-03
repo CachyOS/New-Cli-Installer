@@ -1,9 +1,13 @@
 #pragma once
 
+#include "gucc/export.hpp"
+
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::mtab {
 
@@ -27,3 +31,5 @@ auto find_mount(const std::vector<MTabEntry>& entries, std::string_view mountpoi
 auto mount_option_value(std::string_view options, std::string_view key) noexcept -> std::optional<std::string_view>;
 
 }  // namespace gucc::mtab
+
+GUCC_EXPORT_END

@@ -1,12 +1,16 @@
 #ifndef CRYPTO_DETECTION_HPP
 #define CRYPTO_DETECTION_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/block_devices.hpp"
 
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::disk {
 
@@ -70,5 +74,7 @@ auto list_mounted_devices(const std::vector<BlockDevice>& devices, std::string_v
 auto find_underlying_partition(const std::vector<BlockDevice>& devices, std::string_view mountpoint) noexcept -> std::optional<BlockDevice>;
 
 }  // namespace gucc::disk
+
+GUCC_EXPORT_END
 
 #endif  // CRYPTO_DETECTION_HPP

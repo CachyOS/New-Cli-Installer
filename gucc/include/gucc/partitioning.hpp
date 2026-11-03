@@ -1,6 +1,8 @@
 #ifndef PARTITIONING_HPP
 #define PARTITIONING_HPP
 
+#include "gucc/export.hpp"
+
 #include "gucc/error.hpp"
 #include "gucc/partition.hpp"
 #include "gucc/partition_config.hpp"
@@ -8,6 +10,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+GUCC_EXPORT_BEGIN
 
 namespace gucc::disk {
 
@@ -53,5 +57,7 @@ auto validate_partition_schema(const std::vector<fs::Partition>& partitions, std
 auto preview_partition_schema(const std::vector<fs::Partition>& partitions, std::string_view device, bool is_efi) noexcept -> std::string;
 
 }  // namespace gucc::disk
+
+GUCC_EXPORT_END
 
 #endif  // PARTITIONING_HPP
