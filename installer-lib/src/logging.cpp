@@ -5,6 +5,7 @@
 
 #include <chrono>       // for seconds
 #include <memory>       // for make_shared, shared_ptr
+#include <mutex>        // for call_once, once_flag
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
@@ -38,25 +39,26 @@ void remove_sink(spdlog::sink_ptr& sink) noexcept {
 namespace cachyos::installer::logging {
 
 auto init(std::string_view log_file) -> std::shared_ptr<spdlog::logger> {
-    // keep the order with what frontends would show otherwise
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(std::string{log_file});
-    g_logger       = std::make_shared<spdlog::logger>("cachyos_logger", file_sink);
-    g_exec_logger  = std::make_shared<spdlog::logger>("cachyos_exec", file_sink);
-    spdlog::set_default_logger(g_logger);
-    spdlog::set_pattern(std::string{kPattern});
-    for (const auto& logger : {g_logger, g_exec_logger}) {
-        logger->set_level(spdlog::level::debug);
-        logger->flush_on(spdlog::level::warn);
-    }
-    spdlog::flush_every(std::chrono::seconds(5));
+    static std::once_flag once;
+    std::call_once(once, [log_file] {
+        const auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(std::string{log_file});
+        g_logger             = std::make_shared<spdlog::logger>("cachyos_logger", file_sink);
+        g_exec_logger        = std::make_shared<spdlog::logger>("cachyos_exec", file_sink);
 
-#ifndef COS_BUILD_STATIC
-    // Set gucc logger.
-    gucc::logger::set_logger(g_logger);
-#endif
-    // workaround to have handle be destroyed before the runner
-    static CommandLogObserver command_log;
-    static const auto command_log_handle = gucc::utils::default_runner().add_observer(command_log);
+        spdlog::set_default_logger(g_logger);
+        spdlog::set_pattern(std::string{kPattern});
+
+        for (const auto& logger : {g_logger, g_exec_logger}) {
+            logger->set_level(spdlog::level::debug);
+            logger->flush_on(spdlog::level::warn);
+        }
+        spdlog::flush_every(std::chrono::seconds(5));
+
+        gucc::logger::set_logger(g_logger);
+        // workaround to have handle be destroyed before the runner
+        static CommandLogObserver command_log;
+        static const auto command_log_handle = gucc::utils::default_runner().add_observer(command_log);
+    });
     return g_logger;
 }
 

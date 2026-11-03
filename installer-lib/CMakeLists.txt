@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.25)
 
 ##
 ## PROJECT
@@ -8,25 +8,24 @@ project(cachyos-installer-lib
         VERSION 0.1.0
         LANGUAGES CXX)
 
-add_library(${PROJECT_NAME}
-   src/logging.cpp include/cachyos/logging.hpp
-   src/system.cpp include/cachyos/system.hpp
-   src/requirements.cpp include/cachyos/requirements.hpp
-   src/installer_config.cpp include/cachyos/installer_config.hpp
-   src/headless_plan.cpp include/cachyos/headless_plan.hpp
-   src/config.cpp include/cachyos/config.hpp
-   src/disk.cpp include/cachyos/disk.hpp
-   src/packages.cpp include/cachyos/packages.hpp
-   src/bootloader.cpp include/cachyos/bootloader.hpp
-   src/crypto.cpp include/cachyos/crypto.hpp
-   src/validation.cpp include/cachyos/validation.hpp
-   src/validators.cpp include/cachyos/validators.hpp
-   src/installer_data.cpp include/cachyos/installer_data.hpp
-   src/session.cpp include/cachyos/session.hpp
-   src/run_from_config.cpp include/cachyos/run_from_config.hpp
-   src/orchestrator.cpp include/cachyos/orchestrator.hpp
-   src/partition_planner.cpp include/cachyos/partition_planner.hpp
-   include/cachyos/steps.hpp
+cos_add_library(${PROJECT_NAME} EXPORT_MACRO CACHYOS_INSTALLER EXPORT_HEADER cachyos/export.hpp NAMESPACE cachyos SOURCES
+   src/logging.cpp
+   src/system.cpp
+   src/requirements.cpp
+   src/installer_config.cpp
+   src/headless_plan.cpp
+   src/config.cpp
+   src/disk.cpp
+   src/packages.cpp
+   src/bootloader.cpp
+   src/crypto.cpp
+   src/validation.cpp
+   src/validators.cpp
+   src/installer_data.cpp
+   src/session.cpp
+   src/run_from_config.cpp
+   src/orchestrator.cpp
+   src/partition_planner.cpp
    src/steps/umount.cpp
    src/steps/partition.cpp
    src/steps/fstab.cpp
@@ -49,15 +48,18 @@ add_library(${PROJECT_NAME}
    src/steps/btrfs_snapshot.cpp
    src/steps/final_validation.cpp
    src/steps/cleanup.cpp
-   include/cachyos/result.hpp
-   include/cachyos/types.hpp
-   include/cachyos/installer.hpp
    )
 
 add_library(cachyos::installer-lib ALIAS ${PROJECT_NAME})
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(${PROJECT_NAME} PUBLIC gucc::gucc)
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt cpr::cpr ctre::ctre)
+
+file(GLOB INSTALLER_PUBLIC_HEADERS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/include/cachyos/*.hpp)
+target_sources(${PROJECT_NAME} PUBLIC FILE_SET HEADERS BASE_DIRS include ${CMAKE_CURRENT_BINARY_DIR}/include
+   FILES ${INSTALLER_PUBLIC_HEADERS} ${CMAKE_CURRENT_BINARY_DIR}/include/cachyos/export.hpp)
+
+cos_target_link_libraries(${PROJECT_NAME}
+   PUBLIC gucc
+   PRIVATE spdlog::spdlog fmt::fmt cpr::cpr ctre::ctre)
+target_include_directories(${PROJECT_NAME}_obj PRIVATE ${RAPIDJSON_INCLUDE_DIR})
 
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)

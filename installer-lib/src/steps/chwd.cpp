@@ -1,7 +1,7 @@
 #include "cachyos/steps.hpp"
+#include "detail/result.hpp"
 
 // import gucc
-#include "cachyos/result.hpp"
 #include "gucc/chwd.hpp"
 
 namespace cachyos::installer::steps {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/types.hpp"
 
 #include <cstdint>  // for int32_t
@@ -11,6 +13,8 @@
 
 // the individual install steps. the orchestrator runs them in order with progress, but you can
 // call any of them on their own as long as its preconditions hold.
+CACHYOS_INSTALLER_EXPORT_BEGIN
+
 namespace cachyos::installer::steps {
 
 [[nodiscard]] auto needs_umount(const InstallContext& ctx) noexcept -> bool;
@@ -117,3 +121,5 @@ auto detect_crypto(InstallContext& ctx) noexcept
     -> std::vector<std::string>;
 
 }  // namespace cachyos::installer::steps
+
+CACHYOS_INSTALLER_EXPORT_END

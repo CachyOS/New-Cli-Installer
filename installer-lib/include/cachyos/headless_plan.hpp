@@ -1,11 +1,15 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/installer_config.hpp"
 #include "cachyos/types.hpp"
 
 #include <expected>  // for expected
 #include <string>    // for string
 #include <vector>    // for vector
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -18,3 +22,5 @@ namespace cachyos::installer {
     -> std::expected<PartitionStrategy, std::vector<std::string>>;
 
 }  // namespace cachyos::installer
+
+CACHYOS_INSTALLER_EXPORT_END

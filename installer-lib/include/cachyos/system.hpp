@@ -1,11 +1,15 @@
 #ifndef CACHYOS_INSTALLER_SYSTEM_HPP
 #define CACHYOS_INSTALLER_SYSTEM_HPP
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/types.hpp"
 
 #include <chrono>    // for seconds
 #include <expected>  // for expected
 #include <string>    // for string
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -30,5 +34,7 @@ namespace cachyos::installer {
 [[nodiscard]] auto install_cachyos_repo() noexcept -> std::expected<void, std::string>;
 
 }  // namespace cachyos::installer
+
+CACHYOS_INSTALLER_EXPORT_END
 
 #endif  // CACHYOS_INSTALLER_SYSTEM_HPP

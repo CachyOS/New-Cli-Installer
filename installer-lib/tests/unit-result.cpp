@@ -1,6 +1,6 @@
 #include "doctest_compatibility.h"
 
-#include "cachyos/result.hpp"
+#include "detail/result.hpp"
 
 #include <string_view>
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/session.hpp"
 #include "cachyos/types.hpp"
 
@@ -7,6 +9,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -39,3 +43,5 @@ struct StepOutcome {
     const InstallSession& session) noexcept -> ValidationResult;
 
 }  // namespace cachyos::installer
+
+CACHYOS_INSTALLER_EXPORT_END

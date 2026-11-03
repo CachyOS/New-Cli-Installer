@@ -1,0 +1,19 @@
+@PACKAGE_INIT@
+
+# headers need C++23
+
+include(CMakeFindDependencyMacro)
+find_dependency(fmt)
+
+include(${CMAKE_CURRENT_LIST_DIR}/cachyos-installer-targets.cmake)
+set_property(TARGET cachyos::gucc APPEND PROPERTY INTERFACE_LINK_LIBRARIES fmt::fmt-header-only)
+
+foreach(_comp IN LISTS ${CMAKE_FIND_PACKAGE_NAME}_FIND_COMPONENTS)
+  if(_comp STREQUAL "gucc" OR _comp STREQUAL "installer")
+    set(${CMAKE_FIND_PACKAGE_NAME}_${_comp}_FOUND TRUE)
+  else()
+    set(${CMAKE_FIND_PACKAGE_NAME}_${_comp}_FOUND FALSE)
+  endif()
+endforeach()
+
+check_required_components(${CMAKE_FIND_PACKAGE_NAME})

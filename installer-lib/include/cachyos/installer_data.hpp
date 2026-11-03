@@ -1,6 +1,8 @@
 #ifndef CACHYOS_INSTALLER_DATA_HPP
 #define CACHYOS_INSTALLER_DATA_HPP
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/types.hpp"
 
 // import gucc
@@ -12,6 +14,8 @@
 #include <vector>       // for vector
 
 // FIXME(vnepogodin): all that should be configurable via regular config files for the installer
+CACHYOS_INSTALLER_EXPORT_BEGIN
+
 namespace cachyos::installer::data {
 
 using namespace std::string_view_literals;
@@ -126,5 +130,7 @@ auto get_device_list() noexcept -> std::vector<std::string>;
 auto parse_device_name(std::string_view entry) noexcept -> std::string;
 
 }  // namespace cachyos::installer::data
+
+CACHYOS_INSTALLER_EXPORT_END
 
 #endif  // CACHYOS_INSTALLER_DATA_HPP

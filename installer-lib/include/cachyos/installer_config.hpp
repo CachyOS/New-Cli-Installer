@@ -1,6 +1,8 @@
 #ifndef INSTALLER_CONFIG_HPP
 #define INSTALLER_CONFIG_HPP
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/config.hpp"
 
 #include <cstdint>      // for int32_t
@@ -9,6 +11,8 @@
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -135,5 +139,7 @@ struct InstallerConfig {
     -> std::expected<cachyos::installer::InstallerInputs, std::string>;
 
 }  // namespace cachyos::installer
+
+CACHYOS_INSTALLER_EXPORT_END
 
 #endif  // INSTALLER_CONFIG_HPP

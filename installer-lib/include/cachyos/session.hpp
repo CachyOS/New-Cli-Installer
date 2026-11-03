@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/types.hpp"
 
 // import gucc
@@ -11,6 +13,8 @@
 #include <mutex>        // for mutex
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -90,3 +94,5 @@ class InstallSession final {
 };
 
 }  // namespace cachyos::installer
+
+CACHYOS_INSTALLER_EXPORT_END

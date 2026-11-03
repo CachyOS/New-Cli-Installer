@@ -1,5 +1,5 @@
 #include "cachyos/disk.hpp"
-#include "cachyos/result.hpp"
+#include "detail/result.hpp"
 #include "cachyos/steps.hpp"
 #include "cachyos/types.hpp"
 

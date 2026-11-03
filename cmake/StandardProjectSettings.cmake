@@ -32,6 +32,9 @@ set(CPR_USE_SYSTEM_CURL ON CACHE INTERNAL "" FORCE)
 #set(CTRE_MODULE ON CACHE INTERNAL "" FORCE)
 # for some reason CTRE doesnt respect CMAKE_CXX_STANDARD
 set(CTRE_CXX_STANDARD 23 CACHE INTERNAL "" FORCE)
+set(RAPIDJSON_BUILD_TESTS OFF CACHE INTERNAL "" FORCE)
+set(RAPIDJSON_BUILD_DOC OFF CACHE INTERNAL "" FORCE)
+set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE INTERNAL "" FORCE)
 
 # fix rapidjson
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE INTERNAL "" FORCE)
@@ -114,6 +117,9 @@ endif()
 
 # Enables tests.
 option(COS_INSTALLER_BUILD_TESTS "Enable dev environment" OFF)
+
+# Headers and cmake thirdparties
+option(COS_INSTALL_DEVEL "Install headers and CMake package" OFF)
 
 # Get the Git revision
 include(GitVersion)

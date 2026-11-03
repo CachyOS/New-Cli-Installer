@@ -1,7 +1,7 @@
 #include "cachyos/bootloader.hpp"
 #include "cachyos/disk.hpp"
 #include "cachyos/packages.hpp"
-#include "cachyos/result.hpp"
+#include "detail/result.hpp"
 #include "cachyos/system.hpp"
 
 // import gucc

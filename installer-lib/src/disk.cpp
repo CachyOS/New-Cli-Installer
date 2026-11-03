@@ -1,5 +1,5 @@
 #include "cachyos/disk.hpp"
-#include "cachyos/result.hpp"
+#include "detail/result.hpp"
 
 // import gucc
 #include "gucc/block_devices.hpp"

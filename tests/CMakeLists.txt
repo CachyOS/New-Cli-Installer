@@ -13,8 +13,7 @@ list(APPEND test_SOURCES
 )
 
 add_library(test_libreq STATIC ${test_SOURCES})
-target_include_directories(test_libreq PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR})
-target_link_libraries(test_libreq PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus cachyos::installer-lib)
+target_link_libraries(test_libreq PUBLIC tui_includes cachyos-installer-lib_static PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(test_libreq PRIVATE cpr::cpr)
 endif()
@@ -37,8 +36,8 @@ foreach(file ${files})
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal>
         $<$<CXX_COMPILER_ID:GNU>:-Wno-deprecated-declarations>
     )
-    target_include_directories(${testcase} PRIVATE ${CMAKE_BINARY_DIR}/include ${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_DIR} ${CMAKE_SOURCE_DIR}/gucc/tests)
-    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib doctest::doctest)
+    target_include_directories(${testcase} PRIVATE ${CMAKE_SOURCE_DIR}/gucc/tests)
+    target_link_libraries(${testcase} PRIVATE project_warnings project_options test_libreq gucc::testing spdlog::spdlog fmt::fmt ftxui::component ctre::ctre tomlplusplus::tomlplusplus doctest::doctest)
     if(NOT ENABLE_DEVENV)
       target_link_libraries(${testcase} PRIVATE cpr::cpr)
     endif()

@@ -1,4 +1,4 @@
-#include "cachyos/result.hpp"
+#include "detail/result.hpp"
 #include "cachyos/steps.hpp"
 
 // import gucc

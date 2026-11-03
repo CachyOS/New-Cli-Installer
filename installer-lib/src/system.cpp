@@ -1,5 +1,5 @@
 #include "cachyos/system.hpp"
-#include "cachyos/result.hpp"
+#include "detail/result.hpp"
 
 // import gucc
 #include "gucc/file_utils.hpp"

@@ -72,8 +72,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Initialize logger.
-    cachyos::installer::logging::init();
+    // shared logger needs to be installed in own registry
+    spdlog::set_default_logger(cachyos::installer::logging::init());
 
 #ifndef NDEVENV
     // dev builds never touch the system unless explicitly forced.

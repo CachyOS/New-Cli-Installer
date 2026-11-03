@@ -18,6 +18,7 @@ foreach(file ${files})
     string(REGEX REPLACE "unit-([^$]+)" "test-\\1" testcase ${file_basename})
 
     add_executable(${testcase} $<TARGET_OBJECTS:installer_lib_doctest_main> ${file})
+    target_include_directories(${testcase} PRIVATE ${PROJECT_SOURCE_DIR}/src)
     target_compile_definitions(${testcase} PRIVATE DOCTEST_CONFIG_SUPER_FAST_ASSERTS)
     target_compile_options(${testcase} PRIVATE
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wno-deprecated;-Wno-float-equal>
@@ -25,8 +26,8 @@ foreach(file ${files})
     )
     target_link_libraries(${testcase} PRIVATE
         project_warnings project_options
-        cachyos::installer-lib gucc::gucc
-        doctest::doctest spdlog::spdlog fmt::fmt cpr::cpr)
+        cachyos-installer-lib_static
+        doctest::doctest spdlog::spdlog fmt::fmt)
 
     add_test(NAME "${testcase}"
         COMMAND ${testcase} ${DOCTEST_TEST_FILTER} --no-skip

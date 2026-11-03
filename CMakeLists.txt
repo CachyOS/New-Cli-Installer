@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.25)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -14,6 +14,7 @@ project(cachyos-installer
 ## INCLUDE
 ##
 include(GNUInstallDirs)
+
 include(StandardProjectSettings)
 include(CompilerWarnings)
 include(EnableCcache)
@@ -21,6 +22,7 @@ include(Linker)
 include(StaticAnalyzers)
 include(Sanitizers)
 include(CPM)
+include(CosLibrary)
 
 #find_package(PkgConfig REQUIRED)
 #pkg_check_modules(
@@ -28,6 +30,9 @@ include(CPM)
 #  REQUIRED
 #  IMPORTED_TARGET
 #  glibmm-2.4>=2.56.0)
+
+# third-party code is linked in statically.
+set(BUILD_SHARED_LIBS OFF)
 
 CPMAddPackage(
   NAME ftxui
@@ -77,6 +82,9 @@ CPMAddPackage(
    GIT_TAG v2.5.3
    EXCLUDE_FROM_ALL YES
 )
+
+# back to the cached setting for our own libraries
+unset(BUILD_SHARED_LIBS)
 
 # FIXME(vnepogodin): temp hack for ftxui
 target_compile_options(screen PRIVATE
@@ -130,7 +138,9 @@ enable_sanitizers(project_options)
 # Prepare RapidJSON (RapidJSON is a header-only library)
 set(RAPIDJSON_INCLUDE_DIR "${rapidjson_SOURCE_DIR}/include")
 
-include_directories(${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/gucc/include ${RAPIDJSON_INCLUDE_DIR})
+# TUI sources and their tests
+add_library(tui_includes INTERFACE)
+target_include_directories(tui_includes INTERFACE ${CMAKE_SOURCE_DIR}/src ${RAPIDJSON_INCLUDE_DIR})
 
 if(COS_INSTALLER_BUILD_TESTS)
    enable_testing()
@@ -138,12 +148,13 @@ endif()
 
 add_subdirectory(gucc)
 add_subdirectory(installer-lib)
+include(CosInstall)
 
 if(COS_INSTALLER_BUILD_TESTS)
    add_subdirectory(tests)
 endif()
 
-target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib)
+target_link_libraries(${PROJECT_NAME} PRIVATE project_warnings project_options tui_includes spdlog::spdlog fmt::fmt ftxui::screen ftxui::dom ftxui::component ctre::ctre tomlplusplus::tomlplusplus gucc::gucc cachyos::installer-lib)
 if(NOT ENABLE_DEVENV)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
 endif()
@@ -158,3 +169,32 @@ install(
    TARGETS ${PROJECT_NAME}
    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+# install into staging prefix
+if(COS_INSTALLER_BUILD_TESTS AND COS_INSTALL_DEVEL)
+  set(_stage ${CMAKE_BINARY_DIR}/consumer-stage)
+  set(_shim ${CMAKE_BINARY_DIR}/consumer-fmt)
+  file(WRITE ${_shim}/fmt-config.cmake "
+if(NOT TARGET fmt::fmt-header-only)
+  add_library(fmt::fmt-header-only INTERFACE IMPORTED)
+  set_target_properties(fmt::fmt-header-only PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES \"${fmt_SOURCE_DIR}/include\"
+    INTERFACE_COMPILE_DEFINITIONS FMT_HEADER_ONLY=1)
+endif()
+")
+
+  add_test(NAME consumer-install
+    COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR} --prefix ${_stage})
+
+  add_test(NAME consumer-build
+    COMMAND ${CMAKE_CTEST_COMMAND}
+      --build-and-test ${CMAKE_SOURCE_DIR}/tests/consumer ${CMAKE_BINARY_DIR}/consumer-build
+      --build-generator ${CMAKE_GENERATOR}
+      --build-options -DCMAKE_PREFIX_PATH=${_stage} -Dfmt_DIR=${_shim}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER} -DCMAKE_CXX_STANDARD=23
+        -DCMAKE_BUILD_RPATH=${_stage}/${CMAKE_INSTALL_LIBDIR}
+      --test-command consumer)
+
+  set_tests_properties(consumer-install PROPERTIES FIXTURES_SETUP consumer_stage)
+  set_tests_properties(consumer-build PROPERTIES FIXTURES_REQUIRED consumer_stage)
+endif()

@@ -1,11 +1,15 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 #include <cstdint>  // for uint64_t
 
 #include <expected>     // for expected
 #include <optional>     // for optional
 #include <string>       // for string
 #include <string_view>  // for string_view
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -37,3 +41,5 @@ namespace cachyos::installer {
 [[nodiscard]] auto is_valid_mountpoint(std::string_view mountpoint) noexcept -> bool;
 
 }  // namespace cachyos::installer
+
+CACHYOS_INSTALLER_EXPORT_END

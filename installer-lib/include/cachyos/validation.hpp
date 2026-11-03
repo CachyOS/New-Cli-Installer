@@ -1,9 +1,13 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/types.hpp"
 
 #include <cstddef>      // for size_t
 #include <string_view>  // for string_view
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -28,3 +32,5 @@ namespace cachyos::installer::detail {
 [[nodiscard]] auto count_generated_locales(std::string_view locale_a_output) noexcept -> std::size_t;
 
 }  // namespace cachyos::installer::detail
+
+CACHYOS_INSTALLER_EXPORT_END

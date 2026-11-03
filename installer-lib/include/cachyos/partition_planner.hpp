@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 #include "cachyos/types.hpp"
 
 // import gucc
@@ -18,6 +20,8 @@
 ///
 /// A frontend does all of its partitioning
 /// through the functions here. Call discover() to see what's on the system.
+CACHYOS_INSTALLER_EXPORT_BEGIN
+
 namespace cachyos::installer::partition_planner {
 
 /// @brief One block device or partition shown to the user.
@@ -200,3 +204,5 @@ struct PartitionPlan {
     -> std::expected<MountSelections, std::string>;
 
 }  // namespace cachyos::installer::partition_planner
+
+CACHYOS_INSTALLER_EXPORT_END

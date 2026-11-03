@@ -1,6 +1,6 @@
 #include "cachyos/config.hpp"
 #include "cachyos/packages.hpp"
-#include "cachyos/result.hpp"
+#include "detail/result.hpp"
 
 // import gucc
 #include "gucc/autologin.hpp"

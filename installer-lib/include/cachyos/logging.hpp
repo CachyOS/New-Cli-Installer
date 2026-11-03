@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 // import gucc
 #include "gucc/process.hpp"
 
@@ -10,6 +12,8 @@
 namespace spdlog {
 class logger;
 }  // namespace spdlog
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer::logging {
 
@@ -41,3 +45,5 @@ class CommandLogObserver final : public gucc::utils::ExecutionObserver {
 };
 
 }  // namespace cachyos::installer::logging
+
+CACHYOS_INSTALLER_EXPORT_END

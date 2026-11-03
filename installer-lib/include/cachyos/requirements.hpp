@@ -1,9 +1,13 @@
 #pragma once
 
+#include "cachyos/export.hpp"
+
 #include <functional>   // for function
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -44,3 +48,5 @@ void register_requirement(std::string_view id, RequirementChecker checker) noexc
 void register_builtin_requirements() noexcept;
 
 }  // namespace cachyos::installer
+
+CACHYOS_INSTALLER_EXPORT_END

@@ -1,6 +1,8 @@
 #ifndef CACHYOS_INSTALLER_TYPES_HPP
 #define CACHYOS_INSTALLER_TYPES_HPP
 
+#include "cachyos/export.hpp"
+
 // import gucc
 #include "gucc/bootloader.hpp"
 #include "gucc/btrfs.hpp"
@@ -15,6 +17,8 @@
 #include <string_view>  // for string_view
 #include <variant>      // for variant
 #include <vector>       // for vector
+
+CACHYOS_INSTALLER_EXPORT_BEGIN
 
 namespace cachyos::installer {
 
@@ -260,5 +264,7 @@ struct UserSettings {
 };
 
 }  // namespace cachyos::installer
+
+CACHYOS_INSTALLER_EXPORT_END
 
 #endif  // CACHYOS_INSTALLER_TYPES_HPP
