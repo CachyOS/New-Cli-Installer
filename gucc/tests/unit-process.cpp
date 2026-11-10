@@ -166,6 +166,15 @@ TEST_CASE("process")
             REQUIRE_EQ(res.exit_code, 3);
             REQUIRE(!res.ok());
         }
+        SECTION("missing binary fails instead of hanging")
+        {
+            spdlog::flush_every(1s);
+            RunOptions opts{};
+            opts.timeout   = 5s;
+            const auto res = runner.run({"/usr/bin/cos-test-does-not-exist"}, opts);
+            REQUIRE_FALSE(res.timed_out);
+            REQUIRE_EQ(res.exit_code, -1);
+        }
         SECTION("stdout and stderr")
         {
             const auto res = runner.run_shell("echo out; echo err 1>&2");
