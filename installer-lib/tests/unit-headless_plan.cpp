@@ -254,6 +254,29 @@ TEST_CASE("headless partitioning")
         REQUIRE(layout != nullptr);
         REQUIRE(layout->btrfs_subvolumes.empty());
     }
+    SECTION("a root partition without fs_name takes the global one")
+    {
+        auto cfg    = valid_uefi_config();
+        cfg.fs_name = "ext4"s;
+        cfg.partitions[1].fs_name.clear();
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE(strategy.has_value());
+
+        const auto* layout = std::get_if<strategy::CreateLayout>(&*strategy);
+        REQUIRE(layout != nullptr);
+        REQUIRE_EQ(layout->partitions[1].fstype, "ext4"sv);
+        REQUIRE(layout->btrfs_subvolumes.empty());
+    }
+    SECTION("only the root partition falls back to the global fs_name")
+    {
+        auto cfg = valid_uefi_config();
+        cfg.partitions[0].fs_name.clear();
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE_FALSE(strategy.has_value());
+        REQUIRE(contains(joined_errors(strategy.error()), "partition '/dev/nvme0n1p1': unknown filesystem ''"sv));
+    }
     SECTION("subvolumes on a non-btrfs root are rejected rather than ignored")
     {
         auto cfg                  = valid_uefi_config();

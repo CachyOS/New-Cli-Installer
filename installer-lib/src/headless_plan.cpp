@@ -2,6 +2,7 @@
 
 #include "cachyos/disk.hpp"
 #include "cachyos/partition_planner.hpp"
+#include "detail/fs_name.hpp"
 
 // import gucc
 #include "gucc/partition_config.hpp"
@@ -25,8 +26,10 @@ using namespace std::string_view_literals;
 
 namespace {
 
+using cachyos::installer::InstallerConfig;
 using cachyos::installer::PartitionConfig;
 using cachyos::installer::PartitionType;
+using cachyos::installer::partition_fs_name;
 
 struct NumberedPartition final {
     std::uint32_t number{};
@@ -74,23 +77,22 @@ void validate_contiguous_numbering(const std::vector<NumberedPartition>& sorted,
     }
 }
 
-// NOTE: fs_name is already resolved by the parser, root inherits the global one
-// there and every other type has to carry its own
-[[nodiscard]] auto to_gucc_partition(const PartitionConfig& part,
-    const std::optional<std::string>& mount_opts, bool is_ssd) noexcept -> gucc::fs::Partition {
-    const auto fs_type = gucc::fs::string_to_filesystem_type(part.fs_name);
+[[nodiscard]] auto to_gucc_partition(const InstallerConfig& cfg, const PartitionConfig& part, bool is_ssd) noexcept
+    -> gucc::fs::Partition {
+    const auto fs_name = partition_fs_name(cfg, part);
+    const auto fs_type = gucc::fs::string_to_filesystem_type(fs_name);
     return gucc::fs::Partition{
-        .fstype     = part.fs_name,
+        .fstype     = std::string{fs_name},
         .mountpoint = part.mountpoint,
         .uuid_str   = {},
         .device     = part.name,
         .size       = part.size,
-        .mount_opts = mount_opts.value_or(gucc::fs::get_default_mount_opts(fs_type, is_ssd)),
+        .mount_opts = cfg.mount_opts.value_or(gucc::fs::get_default_mount_opts(fs_type, is_ssd)),
     };
 }
 
 // checks about the partition set as a whole, not a single entry
-void validate_layout(const std::vector<NumberedPartition>& sorted, bool is_efi,
+void validate_layout(const InstallerConfig& cfg, const std::vector<NumberedPartition>& sorted, bool is_efi,
     std::vector<std::string>& errors) noexcept {
     const auto count_of_type = [&sorted](PartitionType type) {
         auto functor = [](const NumberedPartition& entry) { return entry.config->type; };
@@ -109,9 +111,10 @@ void validate_layout(const std::vector<NumberedPartition>& sorted, bool is_efi,
     }
 
     for (const auto& [index, entry] : sorted | std::ranges::views::enumerate) {
-        const auto& part = *entry.config;
-        if (gucc::fs::string_to_filesystem_type(part.fs_name) == gucc::fs::FilesystemType::Unknown) {
-            errors.push_back(fmt::format(FMT_COMPILE("partition '{}': unknown filesystem '{}'"), part.name, part.fs_name));
+        const auto& part   = *entry.config;
+        const auto fs_name = partition_fs_name(cfg, part);
+        if (gucc::fs::string_to_filesystem_type(fs_name) == gucc::fs::FilesystemType::Unknown) {
+            errors.push_back(fmt::format(FMT_COMPILE("partition '{}': unknown filesystem '{}'"), part.name, fs_name));
         }
 
         // reject percentages
@@ -161,12 +164,12 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
     auto numbered = number_partitions(cfg.partitions, device, errors);
     std::ranges::sort(numbered, {}, &NumberedPartition::number);
     validate_contiguous_numbering(numbered, errors);
-    validate_layout(numbered, is_efi, errors);
+    validate_layout(cfg, numbered, is_efi, errors);
 
     const auto is_ssd    = gucc::disk::is_device_ssd(device);
     auto converted_parts = numbered
         | std::ranges::views::transform([&cfg, is_ssd](const NumberedPartition& entry) {
-              return to_gucc_partition(*entry.config, cfg.mount_opts, is_ssd);
+              return to_gucc_partition(cfg, *entry.config, is_ssd);
           })
         | std::ranges::to<std::vector<gucc::fs::Partition>>();
 

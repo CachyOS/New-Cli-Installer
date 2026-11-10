@@ -116,9 +116,6 @@ struct InstallerConfig {
     std::optional<std::string> post_install{};
 };
 
-// fs_name of the root partition, or the global 'fs_name'.
-[[nodiscard]] auto root_fs_name(const InstallerConfig& config) noexcept -> std::string_view;
-
 /// Parses installer configuration from JSON string content.
 /// @param json_content The JSON configuration content.
 /// @return InstallerConfig on success, or error string on failure.

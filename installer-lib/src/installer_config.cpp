@@ -4,10 +4,10 @@
 #include "cachyos/packages.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/validators.hpp"
+#include "detail/fs_name.hpp"
 
 // import gucc
 #include "gucc/bootloader.hpp"
-#include "gucc/ranges_utils.hpp"
 
 #include <cstdint>  // for uint16_t
 
@@ -506,13 +506,6 @@ auto parse_installer_config(std::string_view json_content) noexcept
     }
 
     return config;
-}
-
-auto root_fs_name(const InstallerConfig& config) noexcept -> std::string_view {
-    if (const auto* root = gucc::utils::find_ptr(config.partitions, PartitionType::Root, &PartitionConfig::type)) {
-        return root->fs_name;
-    }
-    return config.fs_name ? std::string_view{*config.fs_name} : std::string_view{};
 }
 
 auto validate_headless_config(const InstallerConfig& config) noexcept
