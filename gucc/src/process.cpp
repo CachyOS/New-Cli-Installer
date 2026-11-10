@@ -266,7 +266,7 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, std::string_view
 
     subprocess_s process{};
     const int options = subprocess_option_enable_async | subprocess_option_combined_stdout_stderr;
-    if (subprocess_create_ex(argv_ptrs.data(), options, env_ptrs.data(), &process) != 0) {
+    if (subprocess_create_ex(argv_ptrs.data(), options, env_ptrs.data(), nullptr, &process) != 0) {
         spdlog::error("[exec] failed to spawn: {}", info.display);
         return finish(ProcessResult{.exit_code = -1});
     }
