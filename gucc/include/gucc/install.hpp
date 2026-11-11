@@ -43,6 +43,7 @@ struct InstallConfig {
     std::string_view mirrorlist_dir{"/etc/pacman.d"};
 };
 
+/// Pacstraps and configures the base system.
 [[nodiscard]] auto install_base(const InstallConfig& config) noexcept -> Result<void>;
 
 }  // namespace gucc::install

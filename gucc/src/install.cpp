@@ -1,9 +1,7 @@
 #include "gucc/install.hpp"
-#include "gucc/chwd.hpp"
 #include "gucc/error.hpp"
 #include "gucc/file_utils.hpp"
 #include "gucc/fs_utils.hpp"
-#include "gucc/fstab.hpp"
 #include "gucc/initcpio.hpp"
 #include "gucc/io_utils.hpp"
 #include "gucc/locale.hpp"
@@ -14,7 +12,7 @@
 #include "gucc/zfs.hpp"
 
 #include <array>       // for array
-#include <filesystem>  // for exists
+#include <filesystem>  // for exists, remove
 #include <ranges>      // for ranges::*
 #include <span>        // for span
 #include <string>      // for string
@@ -30,6 +28,18 @@ static constexpr auto kTargetPacmanConf = "/tmp/cachyos-installer-pacman.conf"sv
 
 // pacstrap carries only the arch mirrorlist over
 constexpr std::array kRankedMirrorlists{"cachyos-mirrorlist"sv, "cachyos-v3-mirrorlist"sv, "cachyos-v4-mirrorlist"sv};
+
+// cleanup for pacman conf..
+struct RemoveOnExit final {
+    explicit RemoveOnExit(std::string_view file) noexcept : path(file) { }
+    RemoveOnExit(const RemoveOnExit&)            = delete;
+    RemoveOnExit& operator=(const RemoveOnExit&) = delete;
+    ~RemoveOnExit() {
+        std::error_code ec{};
+        std::filesystem::remove(path, ec);
+    }
+    std::string_view path;
+};
 
 constexpr std::array kZfsServices{"zfs.target"sv, "zfs-import-cache"sv, "zfs-mount"sv, "zfs-import.target"sv};
 
@@ -88,7 +98,12 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
     }
 
     // 4. Create pacman.conf for target pacstrap
+    const RemoveOnExit target_pacman_conf{kTargetPacmanConf};
     if (auto res = gucc::repos::create_target_pacman_config(config.pacman_conf_base, kTargetPacmanConf); !res) {
+        return res;
+    }
+    // NOTE: workaround to generate the initramfs once
+    if (auto res = gucc::initcpio::install_deferral_hook(mountpoint); !res) {
         return res;
     }
     if (!gucc::utils::run_pacstrap(mountpoint, config.packages, kTargetPacmanConf, config.hostcache)) {
@@ -127,23 +142,7 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
         return res;
     }
 
-    // 7. Regenerate initramfs with the new mkinitcpio config
-    spdlog::info("Regenerating initramfs...");
-    if (auto res = gucc::utils::arch_chroot_or_error("mkinitcpio -P"sv, mountpoint, "regenerate initramfs"sv); !res) {
-        return res;
-    }
-
-    // 8. Generate fstab
-    if (auto res = gucc::fs::run_genfstab_on_mount(mountpoint); !res) {
-        return res;
-    }
-
-    // 9. Install hardware drivers
-    if (auto res = gucc::chwd::install_available_profiles(mountpoint); !res) {
-        return res;
-    }
-
-    // 10. Enable required ZFS services, then the ones from config
+    // 7. Enable required ZFS services, then the ones from config
     const auto zfs_services = config.is_zfs ? std::span{kZfsServices} : std::span<const std::string_view>{};
     for (const std::string_view service_name : std::ranges::views::concat(zfs_services, config.services_to_enable)) {
         if (auto res = gucc::services::enable_systemd_service(service_name, mountpoint); !res) {
@@ -151,7 +150,7 @@ auto install_base(const InstallConfig& config) noexcept -> Result<void> {
         }
     }
 
-    // 11. ZFS-specific: copy zpool cachefile
+    // 8. ZFS-specific: copy zpool cachefile
     if (config.is_zfs) {
         return copy_zfs_cachefile(mountpoint);
     }
