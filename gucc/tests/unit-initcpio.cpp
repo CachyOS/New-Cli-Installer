@@ -84,7 +84,7 @@ BINARIES=()
 FILES=()
 
 # HOOKS
-HOOKS=(base systemd autodetect microcode kms modconf block keyboard sd-vconsole plymouth filesystems)
+HOOKS=(base systemd autodetect microcode modconf block keyboard sd-vconsole plymouth filesystems)
 )";
 
 TEST_CASE("initcpio test")
@@ -226,7 +226,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -245,7 +245,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -265,7 +265,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "btrfs", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -284,7 +284,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "zfs", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -304,7 +304,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "keyboard", "autodetect", "microcode", "modconf", "block",
             "keymap", "consolefont", "encrypt", "zfs", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -324,7 +324,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "plymouth", "zfs", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -345,7 +345,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "zfs", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -365,7 +365,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "lvm2", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -385,7 +385,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "keyboard", "autodetect", "microcode", "modconf", "block",
             "keymap", "consolefont", "encrypt", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -406,7 +406,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "keyboard", "autodetect", "microcode", "modconf", "block",
             "keymap", "consolefont", "encrypt", "lvm2", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -426,7 +426,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "keyboard", "autodetect", "microcode", "modconf", "block",
             "keymap", "consolefont", "encrypt", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -446,7 +446,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "resume", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -466,7 +466,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "plymouth", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -486,7 +486,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "systemd", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "systemd", "autodetect", "microcode", "modconf", "block",
             "keyboard", "sd-vconsole", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -507,7 +507,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "systemd", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "systemd", "keyboard", "autodetect", "microcode", "modconf", "block",
             "sd-vconsole", "sd-encrypt", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -530,7 +530,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "systemd", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "systemd", "keyboard", "autodetect", "microcode", "modconf", "block",
             "sd-vconsole", "sd-encrypt", "lvm2", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -550,7 +550,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "autodetect", "microcode", "modconf", "block",
             "keyboard", "keymap", "consolefont", "zfs", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
 
@@ -573,7 +573,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "udev", "keyboard", "autodetect", "microcode", "modconf", "block",
             "keymap", "consolefont", "plymouth", "encrypt", "lvm2",
             "resume", "filesystems", "fsck"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
@@ -595,7 +595,7 @@ TEST_CASE("setup initcpiocfg from config test")
         REQUIRE(result.parse_file());
 
         const std::vector<std::string> expected_hooks{
-            "base", "systemd", "autodetect", "microcode", "kms", "modconf", "block",
+            "base", "systemd", "autodetect", "microcode", "modconf", "block",
             "keyboard", "sd-vconsole", "plymouth", "filesystems"};
         REQUIRE_EQ(result.arrays().hooks, expected_hooks);
         const auto& file_content = file_utils::read_whole_file(filename);
@@ -727,4 +727,36 @@ TEST_CASE("rewrite_initcpio")
     {
         REQUIRE_EQ(rewrite_initcpio("HOOKS=(a)\nHOOKS=(b)", "", "", "c"), "HOOKS=(c)\nHOOKS=(c)");
     }
+}
+
+TEST_CASE("initcpio deferral hook")
+{
+    using namespace std::string_view_literals;
+
+    const auto root   = fs::temp_directory_path() / "gucc-initcpio-deferral";
+    const auto hook   = root / "etc/pacman.d/hooks/90-mkinitcpio-install.hook";
+    const auto script = root / "usr/share/libalpm/scripts/mkinitcpio-install-calamares";
+    fs::remove_all(root);
+
+    SECTION("basic")
+    {
+        REQUIRE(gucc::initcpio::install_deferral_hook(root.string()));
+        const auto hook_content = gucc::file_utils::read_whole_file(hook.string());
+        CHECK(hook_content.contains("Exec = /usr/share/libalpm/scripts/mkinitcpio-install-calamares\n"sv));
+
+        const auto script_content = gucc::file_utils::read_whole_file(script.string());
+        CHECK_FALSE(script_content.contains("mkinitcpio"sv));
+        CHECK((fs::status(script).permissions() & fs::perms::owner_exec) != fs::perms::none);
+    }
+    SECTION("overwrite")
+    {
+        REQUIRE(gucc::initcpio::install_deferral_hook(root.string()));
+        REQUIRE(gucc::initcpio::install_deferral_hook(root.string()));
+        REQUIRE(gucc::initcpio::remove_deferral_hook(root.string()));
+        CHECK_FALSE(fs::exists(hook));
+        CHECK_FALSE(fs::exists(script));
+        REQUIRE(gucc::initcpio::remove_deferral_hook(root.string()));
+    }
+
+    fs::remove_all(root);
 }

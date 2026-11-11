@@ -1,5 +1,4 @@
-#ifndef INITCPIO_HPP
-#define INITCPIO_HPP
+#pragma once
 
 #include "gucc/export.hpp"
 
@@ -24,12 +23,15 @@ struct InitcpioConfig {
     bool is_zfs_encrypted{false};
 };
 
-// Configure mkinitcpio.conf for the given filesystem/encryption setup.
-// Builds hooks list from scratch matching calamares initcpiocfg logic.
+/// Configure initramfs for the given filesystem/encryption setup.
 [[nodiscard]] auto setup_initcpio_config(std::string_view initcpio_path, const InitcpioConfig& config) noexcept -> Result<void>;
+
+/// Installs hook that skips initramfs hook on root.
+[[nodiscard]] auto install_deferral_hook(std::string_view root) noexcept -> Result<void>;
+
+/// Uninstalls postpone initramfs hook.
+[[nodiscard]] auto remove_deferral_hook(std::string_view root) noexcept -> Result<void>;
 
 }  // namespace gucc::initcpio
 
 GUCC_EXPORT_END
-
-#endif  // INITCPIO_HPP

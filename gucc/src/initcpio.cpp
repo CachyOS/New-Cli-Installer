@@ -24,6 +24,67 @@ namespace {
 
 using gucc::detail::InitcpioArrays;
 
+// same calamares hooks and paths.
+constexpr auto kDeferralHookPath   = "/etc/pacman.d/hooks/90-mkinitcpio-install.hook"sv;
+constexpr auto kDeferralScriptPath = "/usr/share/libalpm/scripts/mkinitcpio-install-calamares"sv;
+
+constexpr auto kDeferralHook = R"([Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/lib/modules/*/vmlinuz
+Target = usr/lib/initcpio/*
+
+[Action]
+Description = Updating linux initcpios...
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/mkinitcpio-install-calamares
+NeedsTargets
+)"sv;
+
+// copy of mkinitcpio-install-calamares
+constexpr auto kDeferralScript = R"(#!/bin/bash -e
+
+args=()
+all=0
+
+while read -r line; do
+    if [[ $line != */vmlinuz ]]; then
+        # triggers when it's a change to usr/lib/initcpio/*
+        all=1
+        continue
+    fi
+
+    if ! read -r pkgbase > /dev/null 2>&1 < "${line%/vmlinuz}/pkgbase"; then
+        # if the kernel has no pkgbase, we skip it
+        continue
+    fi
+
+    preset="/etc/mkinitcpio.d/${pkgbase}.preset"
+    if [[ ! -e $preset ]]; then
+        if [[ -e $preset.pacsave ]]; then
+            # move the pacsave to the template
+            mv "${preset}.pacsave" "$preset"
+        else
+            # create the preset from the template
+            sed "s|%PKGBASE%|${pkgbase}|g" /usr/share/mkinitcpio/hook.preset \
+                | install -Dm644 /dev/stdin "$preset"
+        fi
+    fi
+
+    # always install the kernel
+    install -Dm644 "${line}" "/boot/vmlinuz-${pkgbase}"
+
+    # compound args for each kernel
+    args+=(-p "${pkgbase}")
+done
+
+if (( all )) && compgen -G /etc/mkinitcpio.d/"*.preset" > /dev/null; then
+    # change to use all presets
+    args=(-P)
+fi
+)"sv;
+
 struct Joined {
     std::string_view modules;
     std::string_view files;
@@ -77,6 +138,15 @@ auto parse_array(std::string_view value) -> std::vector<std::string> {
         }
     }
     return {};
+}
+
+// maybe also move to public io util ?
+auto write_target_file(std::string_view root, std::string_view path, std::string_view content) noexcept -> gucc::Result<void> {
+    const auto target = gucc::utils::target_path(root, path);
+    if (auto res = gucc::file_utils::create_directories(fs::path{target}.parent_path().string()); !res) {
+        return res;
+    }
+    return gucc::file_utils::write_file(target, content);
 }
 
 }  // namespace
@@ -229,6 +299,29 @@ auto setup_initcpio_config(std::string_view initcpio_path,
     initcpio.arrays().hooks = std::move(hooks);
     if (!initcpio.write()) {
         return make_error(ErrorCode::FileIo, FMT_COMPILE("initcpio: failed to write config '{}'"), initcpio_path);
+    }
+    return {};
+}
+
+auto install_deferral_hook(std::string_view root) noexcept -> Result<void> {
+    if (auto res = write_target_file(root, kDeferralScriptPath, kDeferralScript); !res) {
+        return res;
+    }
+    std::error_code ec{};
+    ::fs::permissions(utils::target_path(root, kDeferralScriptPath), ::fs::perms::owner_exec | ::fs::perms::group_exec | ::fs::perms::others_exec, ::fs::perm_options::add, ec);
+    if (ec) {
+        return make_error(ErrorCode::FileIo, FMT_COMPILE("initcpio: cannot make '{}' executable: {}"), kDeferralScriptPath, ec.message());
+    }
+    return write_target_file(root, kDeferralHookPath, kDeferralHook);
+}
+
+auto remove_deferral_hook(std::string_view root) noexcept -> Result<void> {
+    for (const auto path : {kDeferralHookPath, kDeferralScriptPath}) {
+        std::error_code ec{};
+        ::fs::remove(utils::target_path(root, path), ec);
+        if (ec) {
+            return make_error(ErrorCode::FileIo, FMT_COMPILE("initcpio: cannot remove '{}': {}"), path, ec.message());
+        }
     }
     return {};
 }
