@@ -168,15 +168,15 @@ auto setup_initcpio_config(std::string_view initcpio_path,
     // encrypted device when using the encrypt hook.
     if (systemd_allowed) {
         if (config.is_luks) {
-            hooks = {"base", "systemd", "keyboard", "autodetect", "microcode", "kms", "modconf", "block", "sd-vconsole"};
+            hooks = {"base", "systemd", "keyboard", "autodetect", "microcode", "modconf", "block", "sd-vconsole"};
         } else {
-            hooks = {"base", "systemd", "autodetect", "microcode", "kms", "modconf", "block", "keyboard", "sd-vconsole"};
+            hooks = {"base", "systemd", "autodetect", "microcode", "modconf", "block", "keyboard", "sd-vconsole"};
         }
     } else {
         if (config.is_luks) {
-            hooks = {"base", "udev", "keyboard", "autodetect", "microcode", "kms", "modconf", "block", "keymap", "consolefont"};
+            hooks = {"base", "udev", "keyboard", "autodetect", "microcode", "modconf", "block", "keymap", "consolefont"};
         } else {
-            hooks = {"base", "udev", "autodetect", "microcode", "kms", "modconf", "block", "keyboard", "keymap", "consolefont"};
+            hooks = {"base", "udev", "autodetect", "microcode", "modconf", "block", "keyboard", "keymap", "consolefont"};
         }
     }
 
