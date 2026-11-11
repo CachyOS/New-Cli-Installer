@@ -35,6 +35,7 @@ constexpr auto version_name(crypto::LuksVersion version) noexcept -> std::string
 
 // cryptsetup reads a non-tty passphrase up to the first newline
 auto run_with_passphrase(std::string_view cmd, std::string_view passphrase, std::string_view what) noexcept -> Result<void> {
+    // TODO(vnepogodin): use argv override
     return utils::exec_or_error_with_input(cmd, fmt::format(FMT_COMPILE("{}\n"), passphrase), what);
 }
 
@@ -71,6 +72,10 @@ auto luks_open(LuksVersion version, std::string_view luks_pass, std::string_view
     return run_with_passphrase(cmd, luks_pass, "open luks partition"sv);
 }
 
+auto luks_close(std::string_view luks_name) noexcept -> Result<void> {
+    return utils::exec_or_error({"/usr/bin/cryptsetup"s, "close"s, std::string{luks_name}}, "close luks mapper"sv);
+}
+
 auto luks_format(LuksVersion version, std::string_view luks_pass, std::string_view partition, std::string_view additional_flags) noexcept -> Result<void> {
     const auto name = version_name(version);
     auto cmd        = fmt::format(FMT_COMPILE("cryptsetup -q {} --type {} luksFormat {}"), additional_flags, name, partition);
@@ -83,7 +88,7 @@ auto luks_add_key(std::string_view dest_file, std::string_view partition, std::s
 }
 
 // see https://wiki.archlinux.org/title/Dm-crypt/Device_encryption#With_a_keyfile_embedded_in_the_initramfs
-auto luks_setup_keyfile(std::string_view dest_file, std::string_view mountpoint, std::string_view partition, std::string_view additional_flags) noexcept -> Result<void> {
+auto luks_embed_keyfile(std::string_view dest_file, std::string_view mountpoint, std::string_view partition, std::string_view passphrase, std::string_view additional_flags) noexcept -> Result<void> {
     // 1. Generate keyfile if it doesn't exist yet
     if (!fs::exists(dest_file)) {
         // TODO(vnepogodin): refactor subprocess exit code and print stderr captured output on failure
@@ -105,9 +110,12 @@ auto luks_setup_keyfile(std::string_view dest_file, std::string_view mountpoint,
 
     // 3. Add keyfile to luks
     spdlog::info("Adding the keyfile to the LUKS configuration");
-    if (auto res = luks_add_key(dest_file, partition, additional_flags); !res) {
+    const auto added = passphrase.empty()
+        ? luks_add_key(dest_file, partition, additional_flags)
+        : run_with_passphrase(fmt::format(FMT_COMPILE("cryptsetup -q {} luksAddKey {} {}"), additional_flags, partition, dest_file), passphrase, "add luks key"sv);
+    if (!added) {
         spdlog::error("Something went wrong with adding the LUKS key. Is {} the right partition?", partition);
-        return res;
+        return added;
     }
 
     // 4. Add keyfile to initcpio
@@ -126,6 +134,13 @@ auto luks_setup_keyfile(std::string_view dest_file, std::string_view mountpoint,
         }
     }
 
+    return {};
+}
+
+auto luks_setup_keyfile(std::string_view dest_file, std::string_view mountpoint, std::string_view partition, std::string_view additional_flags) noexcept -> Result<void> {
+    if (auto res = luks_embed_keyfile(dest_file, mountpoint, partition, {}, additional_flags); !res) {
+        return res;
+    }
     spdlog::info("Adding keyfile to the initcpio");
     return utils::arch_chroot_or_error("mkinitcpio -P"sv, mountpoint, "regenerate initramfs"sv);
 }

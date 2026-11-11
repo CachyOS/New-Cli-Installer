@@ -18,11 +18,23 @@ enum class LuksVersion : std::uint8_t {
     Luks2,
 };
 
+/// Unlock LUKS partition.
 auto luks_open(LuksVersion version, std::string_view luks_pass, std::string_view partition, std::string_view luks_name) noexcept -> Result<void>;
+
+/// Closes mapper.
+auto luks_close(std::string_view luks_name) noexcept -> Result<void>;
+
+/// Format with particular LUKS version.
 auto luks_format(LuksVersion version, std::string_view luks_pass, std::string_view partition, std::string_view additional_flags = {}) noexcept -> Result<void>;
+
+/// Add random encr keyfile.
 auto luks_add_key(std::string_view dest_file, std::string_view partition, std::string_view additional_flags = {}) noexcept -> Result<void>;
-/// Generates @p dest_file if missing, adds it as a key of @p partition and embeds it in the initramfs.
+
+/// Generates random keyfile, and embed into generated initramfs.
+auto luks_embed_keyfile(std::string_view dest_file, std::string_view mountpoint, std::string_view partition, std::string_view passphrase, std::string_view additional_flags = {}) noexcept -> Result<void>;
+
 auto luks_setup_keyfile(std::string_view dest_file, std::string_view mountpoint, std::string_view partition, std::string_view additional_flags = {}) noexcept -> Result<void>;
+
 /// Enabled keyslots of @p partition.
 auto luks_keyslot_count(std::string_view partition) noexcept -> Result<std::size_t>;
 
