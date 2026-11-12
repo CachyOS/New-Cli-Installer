@@ -63,10 +63,12 @@ key, and enumerated values (`bootloader`, `fs_name`, `hw_clock`) are validated.
 | `mount_opts` | string | auto | - | Custom mount options |
 | `allow_auto_partition` | bool | `false` | - | **Erase `device` and auto-partition** when `partitions` is empty |
 | `encrypt_swap` | bool | `false` | - | Encrypt the swap partition |
+| `luks_passphrase` | string | - | - | LUKS2-encrypt the root partition |
 | `hostcache` | bool | `true` | - | Reuse the live env's package cache |
 | `hostname` | string | `cachyos` | - | Machine hostname |
 | `locale` | string | `en_US.UTF-8` | - | System locale |
 | `xkbmap` | string | `us` | - | Keyboard layout (alias: `keymap`) |
+| `console_keymap` | string | `xkbmap` | - | vconsole keymap, when its name differs from the X11 layout (e.g. `uk` for `gb`) |
 | `timezone` | string | `UTC` | - | Timezone (e.g., `America/New_York`) |
 | `user_name` | string | - | Yes | Username to create (alias: `username`) |
 | `user_pass` | string | - | Yes | User password (alias: `user_password`) |
@@ -77,12 +79,12 @@ key, and enumerated values (`bootloader`, `fs_name`, `hw_clock`) are validated.
 | `bootloader` | string | `grub` | - | Bootloader: grub/systemd-boot/refind/limine |
 | `autologin` | bool | `false` | - | Enable display-manager autologin |
 | `user_groups` | array | defaults | - | Supplementary groups for the user |
-| `hw_clock` | string | - | - | Hardware clock: `"utc"` or `"localtime"` |
+| `hw_clock` | string | `utc` | - | Hardware clock: `"utc"` or `"localtime"` |
 | `chwd` | bool | `true` | - | Run `chwd -a` hardware-driver profiles |
 | `carry_network` | bool | `true` | - | Carry live NetworkManager connections into target |
 | `os_prober` | bool | `true` | - | Let GRUB detect other installed OSes |
 | `netinstall_groups` | array | - | - | Optional package groups to install (see `net-profiles.toml`) |
-| `post_install` | string | - | - | Path to a post-install script (runs headless too) |
+| `post_install` | string | - | - | Host script run before the target is unmounted |
 | `server_mode` | bool | `false` | - | Deprecated; legacy switch mapped to `server_profile` |
 | `server_profile` | string | - | - | Server Edition role: `minimal`/`web`/`container-host`/`db`/`cockpit` |
 | `ssh_authorized_keys` | array | - | Yes (server) | Administrator SSH public keys |
@@ -423,7 +425,8 @@ Bootloader to install.
 
 ### `post_install`
 
-Path to an executable script to run after installation completes.
+Path to an executable script run on the host once the install succeeded, while the target is still
+mounted. The target root (e.g. `/mnt`) is passed as `$1`. A failing script is a warning.
 
 ```json
 "post_install": "/root/my-setup-script.sh"
