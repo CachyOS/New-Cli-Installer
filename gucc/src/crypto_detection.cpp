@@ -68,12 +68,10 @@ auto detect_crypto_for_device(const std::vector<BlockDevice>& devices, std::stri
         return result;
     }
 
-    // Check LUKS alone: part device with crypto_LUKS fstype
-    const auto& luks_parts = find_devices_by_type_and_fstype(devices, "part"sv, "crypto_LUKS"sv);
-    if (!luks_parts.empty()) {
-        set_luks_uuid(result, luks_parts.front().uuid);
+    // LUKS alone: the partition this crypt device sits on
+    if (const auto& part = find_ancestor_of_type(devices, crypt_dev->name, "part"sv); part && part->fstype == "crypto_LUKS"sv) {
+        set_luks_uuid(result, part->uuid);
     }
-
     return result;
 }
 

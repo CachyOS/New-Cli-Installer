@@ -62,6 +62,20 @@ TEST_CASE("crypto_detection")
             CHECK(result->luks_uuid == "luks-uuid-1234"sv);
             CHECK(result->luks_dev == "cryptdevice=UUID=luks-uuid-1234:cryptroot"sv);
         }
+        SECTION("multiple luks devices")
+        {
+            const std::vector<BlockDevice> devices{
+                make_device("/dev/sda2", "part", "crypto_LUKS", "luks-root"),
+                make_device("/dev/mapper/cryptroot", "crypt", "ext4", "root-uuid", "/dev/sda2"s, "/mnt"s),
+                make_device("/dev/sda3", "part", "crypto_LUKS", "luks-home"),
+                make_device("/dev/mapper/crypthome", "crypt", "ext4", "home-uuid", "/dev/sda3"s, "/mnt/home"s),
+            };
+
+            auto result = gucc::disk::detect_crypto_for_device(devices, "/dev/mapper/crypthome"sv);
+            REQUIRE(result.has_value());
+            CHECK(result->luks_mapper_name == "crypthome"sv);
+            CHECK(result->luks_uuid == "luks-home"sv);
+        }
         SECTION("LVM-on-LUKS")
         {
             // part(crypto_LUKS) -> crypt(LVM2_member) -> lvm(ext4)
