@@ -90,6 +90,8 @@ struct InstallerConfig {
 
     /// Passphrase for native ZFS encryption of the root pool.
     std::optional<std::string> zfs_passphrase{};
+    /// Passphrase for LUKS2 on the root partition.
+    std::optional<std::string> luks_passphrase{};
 
     // Packages
     std::optional<std::string> kernel{};
