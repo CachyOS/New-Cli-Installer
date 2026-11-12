@@ -1,13 +1,13 @@
 #include "cachyos/disk.hpp"
-#include "detail/result.hpp"
+#include "cachyos/partition_planner.hpp"
 #include "cachyos/steps.hpp"
 #include "cachyos/types.hpp"
+#include "detail/result.hpp"
 
 // import gucc
 #include "gucc/fs_utils.hpp"
 #include "gucc/mtab.hpp"
 #include "gucc/partition.hpp"
-#include "gucc/partition_config.hpp"
 #include "gucc/partitioning.hpp"
 #include "gucc/ranges_utils.hpp"
 
@@ -36,52 +36,6 @@ template <class... Ts>
 struct overloads : Ts... {
     using Ts::operator()...;
 };
-
-auto mount_selections_from_schema(const std::vector<gucc::fs::Partition>& partitions,
-    const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvolumes) noexcept -> MountSelections {
-    // derive mkfs command for all available FS, except ZFS which expected to have empty mkfs cmd
-    const auto mkfs_for = [](std::string_view fstype) {
-        return std::string{gucc::fs::get_mkfs_command(gucc::fs::string_to_filesystem_type(fstype))};
-    };
-
-    MountSelections mounts{};
-    for (const auto& part : partitions) {
-        if (part.is_root()) {
-            mounts.root = {
-                .device           = part.device,
-                .fstype           = part.fstype,
-                .mkfs_command     = mkfs_for(part.fstype),
-                .mount_opts       = part.mount_opts,
-                .format_requested = true,
-            };
-        } else if (part.mountpoint.starts_with("/boot"sv)) {
-            mounts.esp = {
-                .device           = part.device,
-                .mountpoint       = part.mountpoint,
-                .format_requested = true,
-            };
-        } else if (!part.mountpoint.empty()) {
-            mounts.additional.push_back({
-                .device           = part.device,
-                .mountpoint       = part.mountpoint,
-                .fstype           = part.fstype,
-                .mkfs_command     = mkfs_for(part.fstype),
-                .mount_opts       = part.mount_opts,
-                .format_requested = true,
-            });
-        }
-    }
-    mounts.btrfs_subvolumes = btrfs_subvolumes;
-    return mounts;
-}
-
-auto mount_selections_from_auto(const std::vector<gucc::fs::Partition>& partitions) noexcept -> MountSelections {
-    auto mounts = mount_selections_from_schema(partitions, {});
-    if (mounts.root.fstype == "btrfs"sv) {
-        mounts.btrfs_subvolumes = cachyos::installer::default_btrfs_subvolumes();
-    }
-    return mounts;
-}
 
 auto detect_esp_mountpoint(std::string_view root_mountpoint) noexcept -> std::string {
     const auto entries = gucc::mtab::parse_mtab(root_mountpoint);
@@ -140,6 +94,12 @@ auto partition(InstallContext& ctx) noexcept
             return record(layout.selections);
         },
         [&](const partition_strategy::CreateLayout& layout) -> std::expected<void, std::string> {
+            // refuse before the partition table is gone
+            auto selections = mount_selections_from_schema(layout.partitions, layout.btrfs_subvolumes, is_efi);
+            if (!selections) {
+                return std::unexpected(std::move(selections).error());
+            }
+
             spdlog::info("creating {} partitions on '{}'", layout.partitions.size(), layout.device);
             if (auto res = lift(gucc::disk::make_clean_partschema(layout.device, layout.partitions, is_efi),
                     fmt::format(FMT_COMPILE("failed to write partition table on '{}'"), layout.device));
@@ -147,7 +107,20 @@ auto partition(InstallContext& ctx) noexcept
                 return res;
             }
 
-            auto selections = mount_selections_from_schema(layout.partitions, layout.btrfs_subvolumes);
+            // the mount detects the mapper, so fstab, crypttab and kernel params see it
+            if (layout.luks_passphrase) {
+                const partition_planner::LuksFormatRequest luks{
+                    .device      = selections->root.device,
+                    .mapper_name = std::string{kLuksRootMapper},
+                    .passphrase  = *layout.luks_passphrase,
+                    .extra_flags = {},
+                };
+                if (auto res = partition_planner::encrypt_partition(luks); !res) {
+                    return res;
+                }
+                selections->root.device = gucc::disk::mapper_path(kLuksRootMapper);
+                ctx.luks_mappers.emplace_back(kLuksRootMapper);
+            }
 
             // zfs shits
             if (layout.zfs_setup) {
@@ -160,16 +133,10 @@ auto partition(InstallContext& ctx) noexcept
                 }
                 ctx.zfs_zpool_names.push_back(layout.zfs_setup->zpool_name);
                 ctx.zfs_encrypted = layout.zfs_setup->passphrase.has_value();
-                selections.root   = {};
+                selections->root  = {};
             }
 
-            return record(std::move(selections));
-        },
-        [&](const partition_strategy::EraseAndAuto& layout) -> std::expected<void, std::string> {
-            spdlog::warn("erasing '{}' and applying the default layout", layout.device);
-            return auto_partition(layout.device, ctx.system_mode, ctx.bootloader).and_then([&record](const auto& partitions) {
-                return record(mount_selections_from_auto(partitions));
-            });
+            return record(*std::move(selections));
         },
     });
 }

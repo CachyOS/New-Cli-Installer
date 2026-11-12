@@ -26,7 +26,7 @@ foreach(file ${files})
     )
     target_link_libraries(${testcase} PRIVATE
         project_warnings project_options
-        cachyos-installer-lib_static
+        cachyos-installer-lib_static gucc::testing
         doctest::doctest spdlog::spdlog fmt::fmt)
 
     add_test(NAME "${testcase}"

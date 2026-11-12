@@ -99,12 +99,7 @@ namespace partition_strategy {
         std::vector<gucc::fs::Partition> partitions;
         std::vector<gucc::fs::BtrfsSubvolume> btrfs_subvolumes;
         std::optional<gucc::fs::ZfsSetupConfig> zfs_setup;
-    };
-
-    /// Let the installer pick a default layout for @p device.
-    /// @warning erases everything on @p device.
-    struct EraseAndAuto final {
-        std::string device;
+        std::optional<std::string> luks_passphrase;
     };
 
 }  // namespace partition_strategy
@@ -112,8 +107,7 @@ namespace partition_strategy {
 using PartitionStrategy = std::variant<
     partition_strategy::UseExisting,
     partition_strategy::ApplyLayout,
-    partition_strategy::CreateLayout,
-    partition_strategy::EraseAndAuto>;
+    partition_strategy::CreateLayout>;
 
 /// Crypto/LUKS/LVM state detected from the system.
 struct CryptoState {
@@ -152,6 +146,8 @@ struct InstallContext {
     std::string swap_device;
     std::string uefi_mount;
     std::vector<std::string> zfs_zpool_names;
+    /// LUKS mappers the Partition step opened.
+    std::vector<std::string> luks_mappers;
     bool zfs_encrypted{false};
 
     /// How the Partition step prepares the target disk.
@@ -204,6 +200,9 @@ struct InstallContext {
 
     /// Carry the live ISO's NetworkManager system-connections into the target.
     bool carry_live_network{true};
+
+    /// Host script run while the target is still mounted.
+    std::string post_install_script;
 };
 
 /// Progress event types reported by library operations.

@@ -97,6 +97,15 @@ auto mounted_partition(const Selection& selection, std::string_view mountpoint, 
     return part;
 }
 
+// sfdisk gives every vfat partition the ESP type, so on UEFI vfat is the ESP
+[[nodiscard]] auto is_esp(const gucc::fs::Partition& part, bool is_efi) noexcept -> bool {
+    return is_efi && gucc::fs::string_to_filesystem_type(part.fstype) == gucc::fs::FilesystemType::Vfat;
+}
+
+[[nodiscard]] auto is_swap(const gucc::fs::Partition& part) noexcept -> bool {
+    return gucc::fs::string_to_filesystem_type(part.fstype) == gucc::fs::FilesystemType::LinuxSwap;
+}
+
 auto blkid_devices(bool is_luks) noexcept -> std::string {
     return gucc::utils::query_output("blkid -o export"sv)
         .transform([is_luks](std::string_view output) { return gucc::utils::join(cachyos::installer::detail::blkid_devices_by_luks(output, is_luks)); })
@@ -180,20 +189,36 @@ auto is_volume_removable(const std::vector<gucc::disk::BlockDevice>& devices, st
     return disk_info->is_removable;
 }
 
+auto default_partition_schema(std::string_view device, InstallContext::SystemMode mode,
+    gucc::bootloader::BootloaderType bootloader, gucc::fs::FilesystemType root_fs, bool is_ssd) noexcept
+    -> std::expected<std::vector<gucc::fs::Partition>, std::string> {
+    using gucc::fs::FilesystemType;
+    if (root_fs == FilesystemType::Vfat || root_fs == FilesystemType::LinuxSwap || root_fs == FilesystemType::Unknown) {
+        return std::unexpected(fmt::format(FMT_COMPILE("'{}' cannot hold the root filesystem"), gucc::fs::filesystem_type_to_string(root_fs)));
+    }
+
+    const auto esp = bootloader_esp_layout(bootloader);
+    const gucc::fs::DefaultPartitionSchemaConfig config{
+        .root_fs_type       = root_fs,
+        .efi_partition_size = std::string{esp.size},
+        .is_ssd             = is_ssd,
+        .boot_mountpoint    = std::string{esp.mountpoint},
+    };
+    return gucc::disk::generate_partition_schema_from_config(device, config, mode == InstallContext::SystemMode::UEFI);
+}
+
 auto auto_partition(std::string_view device, InstallContext::SystemMode mode,
-    gucc::bootloader::BootloaderType bootloader) noexcept
+    gucc::bootloader::BootloaderType bootloader, gucc::fs::FilesystemType root_fs) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string> {
     spdlog::info("Running automatic partitioning");
 
-    const auto boot_mountpoint = bootloader_default_mount(bootloader, mode);
-    const bool is_system_efi   = (mode == InstallContext::SystemMode::UEFI);
-
-    auto partitions = gucc::disk::generate_default_partition_schema(device, boot_mountpoint, is_system_efi);
-    if (partitions.empty()) {
-        return std::unexpected("failed to generate default partition schema: it cannot be empty");
+    auto partitions = default_partition_schema(device, mode, bootloader, root_fs, gucc::disk::is_device_ssd(device));
+    if (!partitions) {
+        return std::unexpected(fmt::format(FMT_COMPILE("failed to generate default partition schema: {}"), partitions.error()));
     }
 
-    if (auto res = lift(gucc::disk::make_clean_partschema(device, partitions, is_system_efi), "failed to perform automatic partitioning"); !res) {
+    const bool is_system_efi = (mode == InstallContext::SystemMode::UEFI);
+    if (auto res = lift(gucc::disk::make_clean_partschema(device, *partitions, is_system_efi), "failed to perform automatic partitioning"); !res) {
         return std::unexpected(std::move(res.error()));
     }
 
@@ -372,6 +397,64 @@ auto apply_mount_selections(const MountSelections& selections,
 
     spdlog::info("Mount selections applied: {} partitions", result.partitions.size());
     return result;
+}
+
+auto mount_selections_from_schema(const std::vector<gucc::fs::Partition>& partitions,
+    const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvolumes, bool is_efi) noexcept
+    -> std::expected<MountSelections, std::string> {
+    // derive mkfs command for all available FS, except ZFS which expected to have empty mkfs cmd
+    const auto mkfs_for = [](std::string_view fstype) {
+        return std::string{gucc::fs::get_mkfs_command(gucc::fs::string_to_filesystem_type(fstype))};
+    };
+
+    MountSelections mounts{};
+    for (const auto& part : partitions) {
+        if (part.is_root()) {
+            mounts.root = {
+                .device           = part.device,
+                .fstype           = part.fstype,
+                .mkfs_command     = mkfs_for(part.fstype),
+                .mount_opts       = part.mount_opts,
+                .format_requested = true,
+            };
+        } else if (is_esp(part, is_efi)) {
+            if (!mounts.esp.device.empty()) {
+                return std::unexpected(fmt::format(FMT_COMPILE("two EFI system partitions: '{}' and '{}'"), mounts.esp.device, part.device));
+            }
+            if (part.mountpoint.empty()) {
+                return std::unexpected(fmt::format(FMT_COMPILE("EFI system partition '{}' has no mountpoint"), part.device));
+            }
+            mounts.esp = {
+                .device           = part.device,
+                .mountpoint       = part.mountpoint,
+                .format_requested = true,
+            };
+        } else if (is_swap(part)) {
+            if (mounts.swap.type != SwapSelection::Type::None) {
+                return std::unexpected(fmt::format(FMT_COMPILE("only one swap partition is supported: '{}' and '{}'"), mounts.swap.device, part.device));
+            }
+            // swapon by apply_mount_selections, so genfstab picks it up
+            mounts.swap = {
+                .type          = SwapSelection::Type::Partition,
+                .device        = part.device,
+                .swapfile_size = {},
+                .needs_mkswap  = true,
+            };
+        } else if (!part.mountpoint.empty()) {
+            mounts.additional.push_back({
+                .device           = part.device,
+                .mountpoint       = part.mountpoint,
+                .fstype           = part.fstype,
+                .mkfs_command     = mkfs_for(part.fstype),
+                .mount_opts       = part.mount_opts,
+                .format_requested = true,
+            });
+        }
+    }
+    // parents mount first
+    std::ranges::sort(mounts.additional, {}, &AdditionalPartSelection::mountpoint);
+    mounts.btrfs_subvolumes = btrfs_subvolumes;
+    return mounts;
 }
 
 auto apply_btrfs_subvolumes(const std::vector<gucc::fs::BtrfsSubvolume>& subvols, const RootPartitionSelection& selection,

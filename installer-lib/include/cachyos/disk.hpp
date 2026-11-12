@@ -9,6 +9,7 @@
 #include "gucc/btrfs.hpp"
 #include "gucc/mtab.hpp"
 #include "gucc/partition.hpp"
+#include "gucc/partition_config.hpp"
 #include "gucc/zfs_types.hpp"
 
 #include <cstdint>      // for int32_t
@@ -62,6 +63,9 @@ struct MountApplicationResult {
 /// The default ZFS pool name.
 inline constexpr std::string_view kDefaultZpoolName{"zpcachyos"};
 
+/// Mapper the Partition step opens an encrypted root as.
+inline constexpr std::string_view kLuksRootMapper{"cryptroot"};
+
 /// Builds the default ZFS pool + dataset configuration for @p zpool_name.
 /// When @p passphrase is set the pool is configured for native encryption.
 [[nodiscard]] auto default_zfs_setup(std::string_view zpool_name,
@@ -99,9 +103,43 @@ inline constexpr std::string_view kDefaultZpoolName{"zpcachyos"};
     return "unknown bootloader";
 }
 
-/// Performs automatic partitioning of the device.
+/// ESP placement on an erased disk.
+struct EspLayout final {
+    std::string_view mountpoint;
+    /// sfdisk size.
+    std::string_view size;
+};
+
+/// Calamares parity.
+[[nodiscard]] constexpr auto bootloader_esp_layout(gucc::bootloader::BootloaderType bootloader) noexcept -> EspLayout {
+    // TODO(vnepogodin): make it all customizable within Config files similarly to Calamares
+    using gucc::bootloader::BootloaderType;
+    const auto mountpoint = bootloader_default_mount(bootloader, InstallContext::SystemMode::UEFI);
+    switch (bootloader) {
+    case BootloaderType::Grub:
+        return {.mountpoint = mountpoint, .size = "512MiB"};
+    case BootloaderType::Limine:
+        return {.mountpoint = mountpoint, .size = "4096MiB"};
+    case BootloaderType::SystemdBoot:
+    case BootloaderType::Refind:
+        break;
+    }
+    return {.mountpoint = mountpoint, .size = "2048MiB"};
+}
+
+/// Default filesystem selection.
+// TODO(vnepogodin): make it all customizable within Config files similarly to Calamares
+inline constexpr auto kDefaultRootFilesystem{gucc::fs::FilesystemType::Btrfs};
+
+/// Whole-disk layout for the device.
+[[nodiscard]] auto default_partition_schema(std::string_view device, InstallContext::SystemMode mode,
+    gucc::bootloader::BootloaderType bootloader, gucc::fs::FilesystemType root_fs, bool is_ssd) noexcept
+    -> std::expected<std::vector<gucc::fs::Partition>, std::string>;
+
+/// Applies default partition schema onto device.
+/// @warning fully erases device.
 [[nodiscard]] auto auto_partition(std::string_view device, InstallContext::SystemMode mode,
-    gucc::bootloader::BootloaderType bootloader) noexcept
+    gucc::bootloader::BootloaderType bootloader, gucc::fs::FilesystemType root_fs) noexcept
     -> std::expected<std::vector<gucc::fs::Partition>, std::string>;
 
 /// Securely wipes a device.
@@ -122,6 +160,11 @@ inline constexpr std::string_view kDefaultZpoolName{"zpcachyos"};
 [[nodiscard]] auto apply_zfs_root(const gucc::fs::ZfsSetupConfig& zfs_setup,
     std::string_view root_device, std::string_view mountpoint) noexcept
     -> std::expected<void, std::string>;
+
+/// Mount plan for a freshly created partitions, everything formatted.
+[[nodiscard]] auto mount_selections_from_schema(const std::vector<gucc::fs::Partition>& partitions,
+    const std::vector<gucc::fs::BtrfsSubvolume>& btrfs_subvolumes, bool is_efi) noexcept
+    -> std::expected<MountSelections, std::string>;
 
 /// Applies the user's partition/mount selections: formats, mounts, and builds partition schema.
 [[nodiscard]] auto apply_mount_selections(const MountSelections& selections,

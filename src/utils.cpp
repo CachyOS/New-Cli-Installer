@@ -226,23 +226,21 @@ auto auto_partition() noexcept -> std::vector<gucc::fs::Partition> {
         return {};
     }
 
+    // the classic TUI partitions before the filesystem is picked
+    const auto& fs_name = st.inputs.ctx.filesystem_name;
+    const auto root_fs  = fs_name.empty() ? cachyos::installer::kDefaultRootFilesystem : gucc::fs::string_to_filesystem_type(fs_name);
+
 #ifdef NDEVENV
-    auto result = cachyos::installer::auto_partition(device_info, system_mode, *bootloader_opt);
+    auto result = cachyos::installer::auto_partition(device_info, system_mode, *bootloader_opt, root_fs);
+#else
+    auto result = cachyos::installer::default_partition_schema(device_info, system_mode, *bootloader_opt, root_fs, gucc::disk::is_device_ssd(device_info));
+    spdlog::info("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info);
+#endif
     if (!result) {
         spdlog::error("{}", result.error());
         return {};
     }
     auto& partitions = *result;
-#else
-    const auto boot_mountpoint = cachyos::installer::bootloader_default_mount(*bootloader_opt, system_mode);
-    const bool is_system_efi   = st.inputs.ctx.is_uefi();
-    auto partitions            = gucc::disk::generate_default_partition_schema(device_info, boot_mountpoint, is_system_efi);
-    if (partitions.empty()) {
-        spdlog::error("Failed to generate default partition schema: it cannot be empty");
-        return {};
-    }
-    spdlog::info("lsblk {} -o NAME,TYPE,FSTYPE,SIZE", device_info);
-#endif
 
     utils::dump_partitions_to_log(partitions);
     return partitions;

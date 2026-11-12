@@ -2,6 +2,7 @@
 
 #include "cachyos/disk.hpp"
 #include "cachyos/partition_planner.hpp"
+#include "detail/bootloader_name.hpp"
 #include "detail/fs_name.hpp"
 
 // import gucc
@@ -150,31 +151,37 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
         errors.emplace_back("'device' is required: there is no target disk to prepare");
     }
 
+    const auto root_fs = root_fs_name(cfg);
+    const auto is_ssd  = gucc::disk::is_device_ssd(device);
+
+    std::vector<gucc::fs::Partition> converted_parts{};
     if (cfg.partitions.empty()) {
         if (!cfg.allow_auto_partition) {
             errors.push_back(fmt::format(FMT_COMPILE("'partitions' is empty and 'allow_auto_partition' is not set; refusing to erase '{}' and guess a layout"), device));
-            return std::unexpected(std::move(errors));
         }
         if (!errors.empty()) {
             return std::unexpected(std::move(errors));
         }
-        return PartitionStrategy{partition_strategy::EraseAndAuto{.device = device}};
+        const auto mode = is_efi ? InstallContext::SystemMode::UEFI : InstallContext::SystemMode::BIOS;
+        if (auto schema = default_partition_schema(device, mode, bootloader_from_name(cfg.bootloader), gucc::fs::string_to_filesystem_type(root_fs), is_ssd)) {
+            converted_parts = *std::move(schema);
+        } else {
+            errors.push_back(fmt::format(FMT_COMPILE("'allow_auto_partition' with 'fs_name' '{}': {}"), root_fs, schema.error()));
+        }
+    } else {
+        auto numbered = number_partitions(cfg.partitions, device, errors);
+        std::ranges::sort(numbered, {}, &NumberedPartition::number);
+        validate_contiguous_numbering(numbered, errors);
+        validate_layout(cfg, numbered, is_efi, errors);
+
+        converted_parts = numbered
+            | std::ranges::views::transform([&cfg, is_ssd](const NumberedPartition& entry) {
+                  return to_gucc_partition(cfg, *entry.config, is_ssd);
+              })
+            | std::ranges::to<std::vector<gucc::fs::Partition>>();
     }
 
-    auto numbered = number_partitions(cfg.partitions, device, errors);
-    std::ranges::sort(numbered, {}, &NumberedPartition::number);
-    validate_contiguous_numbering(numbered, errors);
-    validate_layout(cfg, numbered, is_efi, errors);
-
-    const auto is_ssd    = gucc::disk::is_device_ssd(device);
-    auto converted_parts = numbered
-        | std::ranges::views::transform([&cfg, is_ssd](const NumberedPartition& entry) {
-              return to_gucc_partition(cfg, *entry.config, is_ssd);
-          })
-        | std::ranges::to<std::vector<gucc::fs::Partition>>();
-
     // the root filesystem volume layout
-    const auto root_fs       = root_fs_name(cfg);
     const bool root_is_btrfs = root_fs == "btrfs"sv;
     const bool root_is_zfs   = root_fs == "zfs"sv;
 
@@ -197,6 +204,21 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
         errors.push_back(fmt::format(FMT_COMPILE("'zfs_passphrase' requires a zfs root filesystem, but root is '{}'"), root_fs));
     }
 
+    if (cfg.luks_passphrase) {
+        if (cfg.luks_passphrase->empty()) {
+            errors.emplace_back("'luks_passphrase' is empty");
+        }
+        if (root_is_zfs) {
+            errors.emplace_back("use 'zfs_passphrase' instead of 'luks_passphrase' for ZFS root");
+        }
+        // only GRUB unlocks LUKS itself
+        const auto bootloader = bootloader_from_name(cfg.bootloader);
+        if (bootloader != gucc::bootloader::BootloaderType::Grub && !std::ranges::contains(converted_parts, "/boot"sv, &gucc::fs::Partition::mountpoint)) {
+            errors.push_back(fmt::format(FMT_COMPILE("bootloader '{}' cannot read /boot on the encrypted root"),
+                gucc::bootloader::bootloader_to_string(bootloader)));
+        }
+    }
+
     // only errors block the install
     auto schema_validation = gucc::disk::validate_partition_schema(converted_parts, device, is_efi);
     std::ranges::move(schema_validation.errors, std::back_inserter(errors));
@@ -210,6 +232,7 @@ auto headless_strategy_from_config(const InstallerConfig& cfg, bool is_efi) noex
         .partitions       = std::move(converted_parts),
         .btrfs_subvolumes = std::move(btrfs_subvolumes),
         .zfs_setup        = std::move(zfs_setup),
+        .luks_passphrase  = cfg.luks_passphrase,
     }};
 }
 

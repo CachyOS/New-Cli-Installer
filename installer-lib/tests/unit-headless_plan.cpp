@@ -192,7 +192,7 @@ TEST_CASE("headless partitioning")
         REQUIRE_FALSE(strategy.has_value());
         REQUIRE(contains(joined_errors(strategy.error()), "type 'boot', found 0"sv));
     }
-    SECTION("an empty layout never reaches EraseAndAuto without the opt-in")
+    SECTION("an empty layout is never erased without the opt-in")
     {
         auto cfg = valid_uefi_config();
         cfg.partitions.clear();
@@ -201,18 +201,46 @@ TEST_CASE("headless partitioning")
         REQUIRE_FALSE(strategy.has_value());
         REQUIRE(contains(joined_errors(strategy.error()), "allow_auto_partition"sv));
     }
-    SECTION("allow_auto_partition is the only route to EraseAndAuto")
+    SECTION("allow_auto_partition with the requested root filesystem")
     {
         auto cfg                 = valid_uefi_config();
         cfg.partitions.clear();
         cfg.allow_auto_partition = true;
+        cfg.fs_name              = "ext4"s;
+        cfg.bootloader           = "grub"s;
 
         const auto strategy = headless_strategy_from_config(cfg, true);
         REQUIRE(strategy.has_value());
 
-        const auto* erase = std::get_if<strategy::EraseAndAuto>(&*strategy);
-        REQUIRE(erase != nullptr);
-        REQUIRE_EQ(erase->device, "/dev/nvme0n1"sv);
+        const auto* layout = std::get_if<strategy::CreateLayout>(&*strategy);
+        REQUIRE(layout != nullptr);
+        REQUIRE_EQ(layout->device, "/dev/nvme0n1"sv);
+        REQUIRE_EQ(layout->partitions.size(), 2);
+        CHECK_EQ(layout->partitions.front().mountpoint, "/boot/efi"sv);
+        CHECK_EQ(layout->partitions.front().size, "512MiB"sv);
+        CHECK_EQ(layout->partitions.back().fstype, "ext4"sv);
+    }
+    SECTION("luks_passphrase passed")
+    {
+        auto cfg            = valid_uefi_config();
+        cfg.luks_passphrase = "secret"s;
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE(strategy.has_value());
+        REQUIRE_EQ(std::get<strategy::CreateLayout>(*strategy).luks_passphrase, std::optional{"secret"s});
+    }
+    SECTION("luks_passphrase is refused where it cannot boot")
+    {
+        auto cfg                          = valid_uefi_config();
+        cfg.luks_passphrase               = ""s;
+        cfg.bootloader                    = "systemd-boot"s;
+        cfg.partitions.front().mountpoint = "/boot/efi"s;
+
+        const auto strategy = headless_strategy_from_config(cfg, true);
+        REQUIRE_FALSE(strategy.has_value());
+        const auto errors = joined_errors(strategy.error());
+        CHECK(contains(errors, "'luks_passphrase' is empty"sv));
+        CHECK(contains(errors, "cannot read /boot on the encrypted root"sv));
     }
     SECTION("a declared layout wins over allow_auto_partition")
     {
