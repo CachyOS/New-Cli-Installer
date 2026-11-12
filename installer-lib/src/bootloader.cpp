@@ -1,8 +1,8 @@
 #include "cachyos/bootloader.hpp"
 #include "cachyos/disk.hpp"
 #include "cachyos/packages.hpp"
-#include "detail/result.hpp"
 #include "cachyos/system.hpp"
+#include "detail/result.hpp"
 
 // import gucc
 #include "gucc/block_devices.hpp"
@@ -111,6 +111,36 @@ auto build_default_cmdline(std::string_view mountpoint) noexcept -> std::string 
     return cmdline;
 }
 
+// zfs is the only root without systemd hook support
+constexpr auto uses_systemd_hooks(const TargetRoot& root) noexcept -> bool {
+    return root.mount.fstype != "zfs"sv;
+}
+
+auto root_partition(const InstallContext& ctx, const TargetRoot& root) noexcept -> gucc::fs::Partition {
+    auto root_part = gucc::fs::Partition{
+        .fstype     = root.mount.fstype,
+        .mountpoint = "/"s,
+        .device     = root.device ? root.device->name : root.mount.device,
+    };
+    if (root.device) {
+        root_part.uuid_str = root.device->uuid;
+    }
+    if (root.is_btrfs_subvol()) {
+        root_part.subvolume = std::string{gucc::mtab::mount_option_value(root.mount.options, "subvol"sv).value_or(""sv)};
+        spdlog::debug("root btrfs subvol := '{}'", *root_part.subvolume);
+    }
+
+    const auto& crypto = gucc::disk::detect_crypto_for_mountpoint(root.devices, ctx.mountpoint);
+    if (crypto && crypto->is_luks) {
+        root_part.luks_mapper_name = crypto->luks_mapper_name;
+        if (!crypto->luks_uuid.empty()) {
+            root_part.luks_uuid = crypto->luks_uuid;
+        }
+        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part.luks_mapper_name);
+    }
+    return root_part;
+}
+
 auto configure_grub_common(gucc::bootloader::GrubConfig& grub_config,
     gucc::bootloader::GrubInstallConfig& grub_install_config,
     const InstallContext& ctx, const TargetRoot& root, std::string_view base_pkgs) noexcept
@@ -155,9 +185,13 @@ auto configure_grub_common(gucc::bootloader::GrubConfig& grub_config,
     std::error_code ec{};
     fs::permissions(installer_path, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, ec);
 
-    if (const auto& luks_dev = ctx.crypto.luks_dev; !luks_dev.empty()) {
-        grub_config.cmdline_linux = fmt::format(FMT_COMPILE("{} {}"), gucc::utils::first_field(luks_dev), grub_config.cmdline_linux);
-        spdlog::info("adding kernel parameter {}", luks_dev);
+    // grub-mkconfig writes root= itself
+    if (auto unlock = gucc::fs::luks_root_param(root_partition(ctx, root), uses_systemd_hooks(root))) {
+        if (ctx.crypto.is_fde && uses_systemd_hooks(root)) {
+            *unlock += " rd.luks.key=/crypto_keyfile.bin"sv;
+        }
+        grub_config.cmdline_linux = fmt::format(FMT_COMPILE("{} {}"), *unlock, grub_config.cmdline_linux);
+        spdlog::info("adding kernel parameter {}", *unlock);
     }
 
     // If Full disk encryption is used, use a keyfile
@@ -248,35 +282,10 @@ auto install_grub_bios(const InstallContext& ctx, const TargetRoot& root) noexce
 
 auto kernel_params(const InstallContext& ctx, const TargetRoot& root) noexcept
     -> std::expected<std::vector<std::string>, std::string> {
-    const auto& root_name = root.device ? std::string{gucc::disk::strip_device_prefix(root.device->name)} : std::string{};
-
-    auto root_part = gucc::fs::Partition{
-        .fstype     = root.mount.fstype,
-        .mountpoint = "/"s,
-        .device     = root.device ? root.device->name : root.mount.device,
-    };
-    if (root.device) {
-        root_part.uuid_str = root.device->uuid;
-    }
-    if (root.is_btrfs_subvol()) {
-        root_part.subvolume = std::string{gucc::mtab::mount_option_value(root.mount.options, "subvol"sv).value_or(""sv)};
-        spdlog::debug("root btrfs subvol := '{}'", *root_part.subvolume);
-    }
-
-    const auto& crypto = gucc::disk::detect_crypto_for_mountpoint(root.devices, ctx.mountpoint);
-    if (crypto && crypto->is_luks) {
-        root_part.luks_mapper_name = crypto->luks_mapper_name;
-        if (!crypto->luks_uuid.empty()) {
-            root_part.luks_uuid = crypto->luks_uuid;
-        }
-        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part.luks_mapper_name);
-    } else if (ctx.crypto.is_luks || (root.device && root.device->type == "lvm"sv)) {
-        root_part.luks_mapper_name = root_name;
-        spdlog::debug("kernel_params: luks_mapper_name:='{}'", *root_part.luks_mapper_name);
-    }
-
     const auto zfs_root_dataset = (root.mount.fstype == "zfs"sv) ? std::make_optional(root.mount.device) : std::nullopt;
-    auto result                 = gucc::fs::get_kernel_params({std::move(root_part)}, build_default_cmdline(ctx.mountpoint), zfs_root_dataset);
+
+    // zfs only logic, otherwise its a prop
+    auto result = gucc::fs::get_kernel_params({root_partition(ctx, root)}, build_default_cmdline(ctx.mountpoint), zfs_root_dataset, uses_systemd_hooks(root));
     if (!result) {
         return std::unexpected("failed to compute kernel parameters");
     }
