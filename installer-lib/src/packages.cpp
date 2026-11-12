@@ -199,14 +199,11 @@ auto configure_desktop_extras(const InstallContext& ctx) noexcept
             spdlog::error("Failed to set plymouth theme: {}", res.error().context);
         }
 
+        // the Initramfs step builds the images
         const auto initcpio_config = make_initcpio_config(ctx, gucc::fs::utils::get_mountpoint_fs(mountpoint), true);
         const auto initcpio_path   = gucc::utils::target_path(mountpoint, "/etc/mkinitcpio.conf"sv);
-        if (gucc::initcpio::setup_initcpio_config(initcpio_path, initcpio_config)) {
-            if (!gucc::utils::arch_chroot_checked("mkinitcpio -P"sv, mountpoint)) {
-                return std::unexpected("failed to rebuild initramfs with plymouth hook");
-            }
-        } else {
-            spdlog::error("Failed to reconfigure initcpio with plymouth hook");
+        if (auto res = gucc::initcpio::setup_initcpio_config(initcpio_path, initcpio_config); !res) {
+            return std::unexpected(fmt::format(FMT_COMPILE("failed to add the plymouth hook: {}"), gucc::to_string(res.error())));
         }
     }
 

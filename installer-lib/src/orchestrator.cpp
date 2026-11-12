@@ -37,8 +37,14 @@ constexpr auto fatal_label(StepId step) noexcept -> std::string_view {
         return "Base install failed"sv;
     case StepId::Fstab:
         return "fstab generation failed"sv;
+    case StepId::LuksKeyfile:
+        return "LUKS keyfile setup failed"sv;
     case StepId::SystemSettings:
         return "System settings failed"sv;
+    case StepId::Users:
+        return "User creation failed"sv;
+    case StepId::Initramfs:
+        return "Initramfs generation failed"sv;
     case StepId::Bootloader:
         return "Bootloader installation failed"sv;
     default:
@@ -133,31 +139,43 @@ auto plan_steps(const InstallContext& ctx) noexcept -> std::vector<StepId> {
     // to be already present and called in-order
     plan.append_range(std::initializer_list{
         StepId::Partition,
+        // initcpio hooks and kernel params depend on it
+        StepId::DetectCrypto,
         StepId::Base,
         StepId::Fstab,
+        StepId::LuksKeyfile,
         StepId::EncryptSwap,
         // NOTE(vnepogodin): generally OEM setup should be after all installs, partitions etc
         StepId::SystemSettings,
-        StepId::Users,
         StepId::MachineId,
         StepId::Desktop,
         StepId::DesktopConfigure,
+        StepId::Chwd,
     });
     if (ctx.resolved_server) {
-        plan.append_range(std::initializer_list{StepId::ServerPackages, StepId::SshKeys, StepId::ServerFirewall});
+        plan.append_range(std::initializer_list{StepId::ServerPackages, StepId::ServerFirewall});
     }
-    plan.append_range(std::initializer_list{StepId::Autologin, StepId::Chwd});
+    // after the system packages, so the login shell and groups exist
+    plan.push_back(StepId::Users);
+    if (ctx.resolved_server) {
+        plan.push_back(StepId::SshKeys);
+    }
+    plan.push_back(StepId::Autologin);
     if (ctx.carry_live_network) {
         plan.push_back(StepId::NetworkCarryover);
     }
     plan.append_range(std::initializer_list{
+        // bootloader config generation needs the images in place
+        StepId::Initramfs,
         StepId::Bootloader,
-        StepId::DetectCrypto,
+        StepId::RestoreInitramfsHook,
         StepId::EnableServices,
         StepId::FinalValidation,
-        StepId::BtrfsSnapshot,
-        StepId::Cleanup,
     });
+    if (!ctx.post_install_script.empty()) {
+        plan.push_back(StepId::PostInstall);
+    }
+    plan.append_range(std::initializer_list{StepId::BtrfsSnapshot, StepId::Cleanup});
     return plan;
 }
 
@@ -172,12 +190,14 @@ auto run_step(StepId step, const InstallRequest& request) noexcept -> StepOutcom
         return from_expected(steps::base(ctx), step);
     case StepId::Fstab:
         return from_expected(steps::fstab(ctx), step);
+    case StepId::LuksKeyfile:
+        return from_expected(steps::luks_keyfile(ctx), step);
     case StepId::EncryptSwap:
         return from_warnings(steps::encrypt_swap(ctx));
     case StepId::SystemSettings:
         return from_expected(steps::system_settings(request.sys, ctx), step);
     case StepId::Users:
-        return from_warnings(steps::users(request.user, request.root_password, ctx));
+        return from_expected(steps::users(request.user, request.root_password, ctx), step);
     case StepId::MachineId:
         return from_expected(steps::machine_id(ctx), step);
     case StepId::Desktop:
@@ -199,8 +219,12 @@ auto run_step(StepId step, const InstallRequest& request) noexcept -> StepOutcom
             return StepOutcome{.status = StepStatus::Warning, .warnings = {"network connection carryover failed"}};
         }
         return StepOutcome{};
+    case StepId::Initramfs:
+        return from_expected(steps::initramfs(ctx), step);
     case StepId::Bootloader:
         return from_expected(steps::bootloader(ctx), step);
+    case StepId::RestoreInitramfsHook:
+        return from_expected(steps::restore_initramfs_hook(ctx), step);
     case StepId::DetectCrypto:
         // an undetected layout only means no crypto kernel params
         if (auto res = steps::detect_crypto(ctx); !res) {
@@ -215,6 +239,8 @@ auto run_step(StepId step, const InstallRequest& request) noexcept -> StepOutcom
             | std::ranges::views::transform([](const std::string& msg) { return fmt::format("final_check: {}", msg); })
             | std::ranges::to<std::vector<std::string>>());
     }
+    case StepId::PostInstall:
+        return from_expected(steps::post_install(ctx), step);
     case StepId::BtrfsSnapshot:
         return from_expected(steps::btrfs_snapshot(ctx), step);
     case StepId::Cleanup:
@@ -237,9 +263,13 @@ auto run(InstallContext& ctx,
     // register secrets
     gucc::logger::register_secret(root_password);
     gucc::logger::register_secret(user.password);
-    if (const auto* layout = std::get_if<partition_strategy::CreateLayout>(&ctx.strategy);
-        layout != nullptr && layout->zfs_setup && layout->zfs_setup->passphrase) {
-        gucc::logger::register_secret(*layout->zfs_setup->passphrase);
+    if (const auto* layout = std::get_if<partition_strategy::CreateLayout>(&ctx.strategy); layout != nullptr) {
+        if (layout->zfs_setup && layout->zfs_setup->passphrase) {
+            gucc::logger::register_secret(*layout->zfs_setup->passphrase);
+        }
+        if (layout->luks_passphrase) {
+            gucc::logger::register_secret(*layout->luks_passphrase);
+        }
     }
 
     const auto plan        = plan_steps(ctx);
@@ -254,7 +284,15 @@ auto run(InstallContext& ctx,
     const InstallRequest request{.ctx = ctx, .sys = sys, .user = user, .root_password = root_password};
     std::vector<std::string> warnings;
 
+    // a stopped install leaves nothing mounted or opened behind
+    const auto teardown = [&ctx] {
+        for (const auto& warning : steps::cleanup(ctx)) {
+            spdlog::warn("teardown: {}", warning);
+        }
+    };
+
     const auto cancelled_at = [&](StepId step, std::size_t index) {
+        teardown();
         session.notify_step_end(step, StepStatus::Cancelled, kCancelled);
         session.notify_progress(ProgressEvent{.type = ProgressEventType::Cancelled, .message = std::string{kCancelled}, .fraction = fraction_at(index)});
         return ValidationResult{.success = false, .errors = {std::string{kCancelled}}, .warnings = std::move(warnings)};
@@ -281,6 +319,7 @@ auto run(InstallContext& ctx,
             if (session.cancelled()) {
                 return cancelled_at(step, index);
             }
+            teardown();
             const auto error = fmt::format("{}: {}", fatal_label(step), outcome.error);
             session.notify_step_end(step, StepStatus::Failed, error);
             session.notify_progress(ProgressEvent{.type = ProgressEventType::Failed, .message = std::string{fatal_label(step)}, .fraction = fraction_at(index)});
