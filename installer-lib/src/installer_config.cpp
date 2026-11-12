@@ -69,6 +69,7 @@ constexpr std::array kKnownKeys{
     "hostname"sv,
     "locale"sv,
     "xkbmap"sv,
+    "console_keymap"sv,
     "keymap"sv,
     "timezone"sv,
     "user_name"sv,
@@ -304,6 +305,7 @@ auto parse_installer_config(std::string_view json_content) noexcept
              {"hostname", &config.hostname},
              {"locale", &config.locale},
              {"xkbmap", &config.xkbmap},
+             {"console_keymap", &config.console_keymap},
              {"timezone", &config.timezone},
              {"user_name", &config.user_name},
              {"user_pass", &config.user_pass},
@@ -612,15 +614,17 @@ auto installer_config_to_inputs(const InstallerConfig& cfg) noexcept
     inputs.ctx.carry_live_network    = cfg.carry_network;
     inputs.ctx.disable_os_prober     = !cfg.os_prober;
     inputs.ctx.netinstall_groups     = cfg.netinstall_groups;
+    inputs.ctx.post_install_script   = cfg.post_install.value_or("");
 
-    if (cfg.xkbmap) {
-        inputs.ctx.keymap = *cfg.xkbmap;
+    const auto& console_keymap = cfg.console_keymap ? cfg.console_keymap : cfg.xkbmap;
+    if (console_keymap) {
+        inputs.ctx.keymap = *console_keymap;
     }
 
     inputs.sys.hostname = cfg.hostname.value_or("");
     inputs.sys.locale   = cfg.locale.value_or("");
     inputs.sys.xkbmap   = cfg.xkbmap.value_or("");
-    inputs.sys.keymap   = cfg.xkbmap.value_or("");
+    inputs.sys.keymap   = console_keymap.value_or("");
     inputs.sys.timezone = cfg.timezone.value_or("");
     if (cfg.hw_clock) {
         inputs.sys.hw_clock = (*cfg.hw_clock == "localtime"sv)

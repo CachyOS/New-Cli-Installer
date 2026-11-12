@@ -79,6 +79,7 @@ struct InstallerConfig {
     std::optional<std::string> hostname{};
     std::optional<std::string> locale{};
     std::optional<std::string> xkbmap{};
+    std::optional<std::string> console_keymap{};
     std::optional<std::string> timezone{};
 
     // User settings
