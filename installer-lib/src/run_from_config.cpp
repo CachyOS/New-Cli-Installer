@@ -4,7 +4,6 @@
 
 // import gucc
 #include "gucc/cpu.hpp"
-#include "gucc/io_utils.hpp"
 
 #include <chrono>   // for chrono_literals
 #include <string>   // for string
@@ -41,14 +40,7 @@ auto run_from_config(const InstallerConfig& config, InstallSession& session) noe
         return refuse(fmt::format("config conversion failed: {}", inputs.error()));
     }
 
-    auto result = run(inputs->ctx, inputs->sys, inputs->user, inputs->root_password, session);
-    if (result.success && config.post_install && !config.post_install->empty()) {
-        spdlog::info("Running post-install script: {}", *config.post_install);
-        if (!gucc::utils::exec_checked(*config.post_install)) {
-            result.warnings.emplace_back(fmt::format("post-install script failed: {}", *config.post_install));
-        }
-    }
-    return result;
+    return run(inputs->ctx, inputs->sys, inputs->user, inputs->root_password, session);
 }
 
 }  // namespace cachyos::installer

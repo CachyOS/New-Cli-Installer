@@ -47,6 +47,7 @@ cos_add_library(${PROJECT_NAME} EXPORT_MACRO CACHYOS_INSTALLER EXPORT_HEADER cac
    src/steps/enable_services.cpp
    src/steps/btrfs_snapshot.cpp
    src/steps/final_validation.cpp
+   src/steps/post_install.cpp
    src/steps/cleanup.cpp
    )
 

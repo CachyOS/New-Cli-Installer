@@ -116,7 +116,12 @@ auto detect_crypto(InstallContext& ctx) noexcept
 [[nodiscard]] auto final_validation(const InstallContext& ctx) noexcept
     -> ValidationResult;
 
-/// Copy /tmp/cachyos-install.log into the target and unmount partitions.
+/// Run @ref InstallContext::post_install_script on the host with the target root as $1.
+[[nodiscard]] auto post_install(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
+/// Restore the initramfs hook, copy log file into the target, unmount
+/// partitions and close the root mapper. Also the teardown of a failed or cancelled run.
 [[nodiscard]] auto cleanup(const InstallContext& ctx) noexcept
     -> std::vector<std::string>;
 
