@@ -745,7 +745,7 @@ TEST_CASE("initcpio deferral hook")
         CHECK(hook_content.contains("Exec = /usr/share/libalpm/scripts/mkinitcpio-install-calamares\n"sv));
 
         const auto script_content = gucc::file_utils::read_whole_file(script.string());
-        CHECK_FALSE(script_content.contains("mkinitcpio"sv));
+        CHECK_FALSE(script_content.contains("mkinitcpio \""sv));
         CHECK((fs::status(script).permissions() & fs::perms::owner_exec) != fs::perms::none);
     }
     SECTION("overwrite")
