@@ -490,6 +490,9 @@ auto parse_installer_config(std::string_view json_content) noexcept
         if (!config.timezone) {
             config.timezone = "UTC";
         }
+        if (!config.hw_clock) {
+            config.hw_clock = "utc";
+        }
         if (!config.user_shell) {
             config.user_shell = "/bin/bash";
         }
