@@ -1,12 +1,15 @@
 #include "gucc/io_utils.hpp"
 #include "gucc/logger.hpp"
 #include "gucc/process.hpp"
+#include "gucc/ranges_utils.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <unistd.h>  // for sync
 
 #include <cstdlib>  // for getenv
 
+#include <array>    // for array
+#include <ranges>   // for ranges::*
 #include <string>   // for string
 #include <utility>  // for move
 #include <vector>   // for vector
@@ -14,6 +17,7 @@
 #include <fmt/compile.h>
 #include <spdlog/spdlog.h>
 
+using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace {
@@ -216,15 +220,23 @@ auto arch_chroot_or_error(const std::vector<std::string>& argv, std::string_view
 }
 
 auto run_pacstrap(std::string_view mountpoint, std::string_view packages, std::string_view pacman_config, bool hostcache) noexcept -> bool {
-    const auto cache_flag  = hostcache ? "-c"sv : ""sv;
-    const auto config_flag = pacman_config.empty()
-        ? std::string{}
-        : fmt::format(FMT_COMPILE("-C {}"), pacman_config);
     // TODO(vnepogodin): pacstrap should be more customizable and be in it's own "module"
-    const auto& cmd_formatted = fmt::format(FMT_COMPILE("pacstrap {} {} {} {}"), cache_flag, config_flag, mountpoint, packages);
+    std::vector<std::string> argv{"/usr/bin/pacstrap"s, "-c"s};
+    if (!pacman_config.empty()) {
+        argv.append_range(std::array{"-C"s, std::string{pacman_config}});
+    }
+    argv.emplace_back(mountpoint);
+    argv.append_range(words(packages) | utils::to_owned);
+    // fetch into first writable cache
+    argv.append_range(std::array{"--cachedir"s, target_path(mountpoint, "/var/cache/pacman/pkg"sv)});
+    if (hostcache) {
+        argv.append_range(std::array{"--cachedir"s, "/var/cache/pacman/pkg"s});
+    }
+    // use target's hook directory for injected hooks
+    argv.append_range(std::array{"--hookdir"s, target_path(mountpoint, "/etc/pacman.d/hooks"sv)});
 
     spdlog::info("Running pacstrap with packages: '{}'", packages);
-    return exec_checked(cmd_formatted);
+    return exec_checked(argv);
 }
 
 void settle_devices() noexcept {
