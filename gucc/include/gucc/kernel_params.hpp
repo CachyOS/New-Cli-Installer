@@ -1,5 +1,4 @@
-#ifndef KERNEL_PARAMS_HPP
-#define KERNEL_PARAMS_HPP
+#pragma once
 
 #include "gucc/export.hpp"
 
@@ -22,6 +21,12 @@ constexpr std::array kDefaultKernelParams{
     std::string_view{"nowatchdog"},
 };
 
+/// @brief The parameter unlocking a LUKS root.
+/// @param partition The root partition information.
+/// @param systemd_hook The initramfs unlocks LUKS with sd-encrypt.
+/// @return LUKS mapper name and UUID, otherwise std::nullopt.
+auto luks_root_param(const Partition& root, bool systemd_hook) noexcept -> std::optional<std::string>;
+
 /// @brief Get kernel params from partitions information.
 /// @param partitions The partitions information.
 /// @param kernel_params The kernel params separated by space.
@@ -33,5 +38,3 @@ auto get_kernel_params(const std::vector<Partition>& partitions, std::string_vie
 }  // namespace gucc::fs
 
 GUCC_EXPORT_END
-
-#endif  // KERNEL_PARAMS_HPP
