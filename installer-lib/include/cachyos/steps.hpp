@@ -34,6 +34,10 @@ namespace cachyos::installer::steps {
 [[nodiscard]] auto fstab(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
+/// Embed LUKS keyfile for the encrypted root when boot part.
+[[nodiscard]] auto luks_keyfile(InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Configure LUKS-encrypted swap when @ref InstallContext::encrypt_swap is set
 /// and a swap device is known. No-op otherwise.
 [[nodiscard]] auto encrypt_swap(const InstallContext& ctx) noexcept

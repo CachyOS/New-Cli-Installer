@@ -29,6 +29,7 @@ cos_add_library(${PROJECT_NAME} EXPORT_MACRO CACHYOS_INSTALLER EXPORT_HEADER cac
    src/steps/umount.cpp
    src/steps/partition.cpp
    src/steps/fstab.cpp
+   src/steps/luks_keyfile.cpp
    src/steps/encrypt_swap.cpp
    src/steps/system_settings.cpp
    src/steps/users.cpp
