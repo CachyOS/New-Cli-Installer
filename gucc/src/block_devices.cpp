@@ -136,13 +136,6 @@ auto find_devices_by_type(const std::vector<BlockDevice>& devices, std::string_v
     return {filtered.begin(), filtered.end()};
 }
 
-auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, std::string_view type, std::string_view fstype) -> std::vector<BlockDevice> {
-    auto filtered = devices | std::ranges::views::filter([&](const auto& dev) {
-        return dev.type == type && utils::iequals(dev.fstype, fstype);
-    });
-    return {filtered.begin(), filtered.end()};
-}
-
 auto list_block_devices() -> std::optional<std::vector<BlockDevice>> {
     return utils::query_output(fmt::format(FMT_COMPILE(R"cmd(lsblk -f -o {} -b -p -a -J -Q "(type=='part') || (type=='crypt' && fstype) || (type=='lvm')")cmd"), detail::kLsblkColumns))
         .and_then(detail::parse_lsblk_json);

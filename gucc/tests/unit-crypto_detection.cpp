@@ -109,7 +109,8 @@ TEST_CASE("crypto_detection")
             CHECK(result->is_luks == true);
             CHECK(result->is_lvm == true);
             CHECK(result->luks_mapper_name == "cryptroot"sv);
-            CHECK(result->luks_dev == "cryptdevice=/dev/mapper/vg-root:cryptroot"sv);
+            CHECK(result->luks_uuid == "lvm-uuid"sv);
+            CHECK(result->luks_dev == "cryptdevice=UUID=lvm-uuid:cryptroot"sv);
         }
         SECTION("plain partition")
         {

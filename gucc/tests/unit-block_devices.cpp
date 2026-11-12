@@ -339,63 +339,6 @@ TEST_CASE("block_devices")
             CHECK(result.empty());
         }
     }
-    SECTION("find_devices_by_type_and_fstype test")
-    {
-        using gucc::disk::find_devices_by_type_and_fstype;
-
-        const std::vector<BlockDevice> devices{
-            make_device("/dev/sda1", "part", "vfat", "AAAA"),
-            make_device("/dev/sda2", "part", "crypto_LUKS", "BBBB"),
-            make_device("/dev/mapper/cryptroot", "crypt", "LVM2_member", "CCCC", "/dev/sda2"s),
-            make_device("/dev/mapper/vg-root", "lvm", "ext4", "DDDD", "/dev/mapper/cryptroot"s),
-            make_device("/dev/mapper/vg-swap", "lvm", "swap", "EEEE", "/dev/mapper/cryptroot"s),
-            make_device("/dev/sdb1", "part", "ext4", "FFFF"),
-        };
-
-        SECTION("find part with crypto_LUKS")
-        {
-            auto result = find_devices_by_type_and_fstype(devices, "part"sv, "crypto_LUKS"sv);
-            REQUIRE(result.size() == 1);
-            CHECK(result[0].name == "/dev/sda2"sv);
-        }
-        SECTION("find lvm with ext4")
-        {
-            auto result = find_devices_by_type_and_fstype(devices, "lvm"sv, "ext4"sv);
-            REQUIRE(result.size() == 1);
-            CHECK(result[0].name == "/dev/mapper/vg-root"sv);
-        }
-        SECTION("find lvm with swap")
-        {
-            auto result = find_devices_by_type_and_fstype(devices, "lvm"sv, "swap"sv);
-            REQUIRE(result.size() == 1);
-            CHECK(result[0].name == "/dev/mapper/vg-swap"sv);
-        }
-        SECTION("case-insensitive fstype matching")
-        {
-            auto result = find_devices_by_type_and_fstype(devices, "part"sv, "CRYPTO_LUKS"sv);
-            REQUIRE(result.size() == 1);
-            CHECK(result[0].name == "/dev/sda2"sv);
-
-            auto result2 = find_devices_by_type_and_fstype(devices, "part"sv, "crypto_luks"sv);
-            REQUIRE(result2.size() == 1);
-            CHECK(result2[0].name == "/dev/sda2"sv);
-        }
-        SECTION("no match - type mismatch")
-        {
-            auto result = find_devices_by_type_and_fstype(devices, "crypt"sv, "ext4"sv);
-            CHECK(result.empty());
-        }
-        SECTION("no match - fstype mismatch")
-        {
-            auto result = find_devices_by_type_and_fstype(devices, "part"sv, "btrfs"sv);
-            CHECK(result.empty());
-        }
-        SECTION("empty devices")
-        {
-            auto result = find_devices_by_type_and_fstype({}, "part"sv, "ext4"sv);
-            CHECK(result.empty());
-        }
-    }
     SECTION("block device helpers - LUKS")
     {
         using namespace gucc::disk;
@@ -470,11 +413,6 @@ TEST_CASE("block_devices")
             CHECK(part->name == "/dev/sda2"sv);
             CHECK(part->uuid == "luks-uuid"sv);
         }
-        SECTION("no LUKS-on-LVM devices present")
-        {
-            auto luks_on_lvm = find_devices_by_type_and_fstype(devices, "lvm"sv, "crypto_LUKS"sv);
-            CHECK(luks_on_lvm.empty());
-        }
     }
     SECTION("block device helpers - LUKS-on-LVM")
     {
@@ -488,12 +426,6 @@ TEST_CASE("block_devices")
             make_device("/dev/mapper/cryptroot", "crypt", "ext4", "root-uuid", "/dev/mapper/vg-root"s, "/mnt"s),
         };
 
-        SECTION("detect LUKS-on-LVM pattern")
-        {
-            auto luks_on_lvm = find_devices_by_type_and_fstype(devices, "lvm"sv, "crypto_LUKS"sv);
-            REQUIRE(luks_on_lvm.size() == 1);
-            CHECK(luks_on_lvm[0].name == "/dev/mapper/vg-root"sv);
-        }
         SECTION("root has both crypt and lvm in ancestry")
         {
             auto mnt_dev = find_device_by_mountpoint(devices, "/mnt"sv);

@@ -46,31 +46,13 @@ auto detect_crypto_for_device(const std::vector<BlockDevice>& devices, std::stri
         return CryptoDetection{};
     }
 
-    auto result = luks_detection_for(*crypt_dev);
+    auto result   = luks_detection_for(*crypt_dev);
+    result.is_lvm = has_type_in_ancestry(devices, device->name, "lvm"sv);
 
-    // Check LUKS-on-LVM: lvm device with crypto_LUKS fstype
-    const auto& luks_on_lvm = find_devices_by_type_and_fstype(devices, "lvm"sv, "crypto_LUKS"sv);
-    if (!luks_on_lvm.empty()) {
-        result.is_lvm   = true;
-        result.luks_dev = fmt::format(FMT_COMPILE("cryptdevice={}:{}"), luks_on_lvm.back().name, result.luks_mapper_name);
-        return result;
-    }
-
-    // Check LVM-on-LUKS: crypt device with LVM2_member fstype
-    const auto& lvm_on_luks = find_devices_by_type_and_fstype(devices, "crypt"sv, "LVM2_member"sv);
-    if (!lvm_on_luks.empty()) {
-        result.is_lvm = true;
-        // Find the underlying LUKS partition's UUID by walking ancestors
-        const auto& part_ancestor = find_ancestor_of_type(devices, lvm_on_luks.front().name, "part"sv);
-        if (part_ancestor) {
-            set_luks_uuid(result, part_ancestor->uuid);
-        }
-        return result;
-    }
-
-    // LUKS alone: the partition this crypt device sits on
-    if (const auto& part = find_ancestor_of_type(devices, crypt_dev->name, "part"sv); part && part->fstype == "crypto_LUKS"sv) {
-        set_luks_uuid(result, part->uuid);
+    // the parent holds the LUKS header: a partition, or an LV for LUKS on LVM
+    const auto& header = crypt_dev->pkname ? find_device_by_name(devices, *crypt_dev->pkname) : std::nullopt;
+    if (header && header->fstype == "crypto_LUKS"sv) {
+        set_luks_uuid(result, header->uuid);
     }
     return result;
 }

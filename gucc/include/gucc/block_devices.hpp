@@ -114,13 +114,6 @@ constexpr auto strip_device_prefix(std::string_view device) noexcept -> std::str
     return std::string{kDevMapperPrefix}.append(name);
 }
 
-/// @brief Returns all devices matching both type and fstype.
-/// @param devices A vector of BlockDevice objects.
-/// @param type The device type to filter by.
-/// @param fstype The filesystem type to filter by (case-insensitive).
-/// @return A vector of matching BlockDevice objects.
-auto find_devices_by_type_and_fstype(const std::vector<BlockDevice>& devices, std::string_view type, std::string_view fstype) -> std::vector<BlockDevice>;
-
 }  // namespace gucc::disk
 
 namespace gucc::disk::detail {
