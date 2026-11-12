@@ -26,8 +26,9 @@ constexpr std::array kDefaultKernelParams{
 /// @param partitions The partitions information.
 /// @param kernel_params The kernel params separated by space.
 /// @param zfs_root_dataset The root dataset of ZFS.
+/// @param systemd_hook The initramfs unlocks LUKS with sd-encrypt.
 /// @return A vector of strings representing the kernel parameters.
-auto get_kernel_params(const std::vector<Partition>& partitions, std::string_view kernel_params, std::optional<std::string> zfs_root_dataset = std::nullopt) noexcept -> std::optional<std::vector<std::string>>;
+auto get_kernel_params(const std::vector<Partition>& partitions, std::string_view kernel_params, std::optional<std::string> zfs_root_dataset = std::nullopt, bool systemd_hook = false) noexcept -> std::optional<std::vector<std::string>>;
 
 }  // namespace gucc::fs
 

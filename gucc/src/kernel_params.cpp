@@ -20,7 +20,7 @@ namespace gucc::fs {
 
 // base actions taken from calamares
 // see https://github.com/calamares/calamares/blob/calamares/src/modules/bootloader/main.py#L133
-auto get_kernel_params(const std::vector<Partition>& partitions, std::string_view kernel_params, std::optional<std::string> zfs_root_dataset) noexcept -> std::optional<std::vector<std::string>> {
+auto get_kernel_params(const std::vector<Partition>& partitions, std::string_view kernel_params, std::optional<std::string> zfs_root_dataset, bool systemd_hook) noexcept -> std::optional<std::vector<std::string>> {
     auto kernel_params_list = gucc::utils::make_multiline(kernel_params, false, ' ');
     kernel_params_list.emplace_back("rw"s);
 
@@ -38,8 +38,13 @@ auto get_kernel_params(const std::vector<Partition>& partitions, std::string_vie
             swap_mappername = partition.luks_mapper_name;
         }
 
-        if (partition.is_root() && has_luks) {
-            cryptdevice_params = {disk::make_cryptdevice_param(*partition.luks_uuid, *partition.luks_mapper_name)};
+        if (partition.is_root() && has_luks && !partition.luks_uuid) {
+            // NOTE: why would it not have. what is the caller doing???
+            spdlog::warn("kernel_params: root mapper '{}' has no LUKS UUID", *partition.luks_mapper_name);
+        } else if (partition.is_root() && has_luks) {
+            cryptdevice_params = {systemd_hook
+                    ? fmt::format(FMT_COMPILE("rd.luks.uuid={}"), *partition.luks_uuid)
+                    : disk::make_cryptdevice_param(*partition.luks_uuid, *partition.luks_mapper_name)};
             cryptdevice_params.push_back(fmt::format(FMT_COMPILE("root=/dev/mapper/{}"), *partition.luks_mapper_name));
         }
 

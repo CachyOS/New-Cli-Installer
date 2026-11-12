@@ -139,4 +139,13 @@ TEST_CASE("kernel params get test")
         REQUIRE_EQ(kernel_params->size(), 6);
         REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "rootflags=subvol=/@", "cryptdevice=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f:luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f", "root=/dev/mapper/luks-6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"});
     }
+    SECTION("luks root unlocked by sd-encrypt")
+    {
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "ext4"s, .mountpoint = "/"s, .uuid_str = "fs-uuid"s, .device = "/dev/mapper/cryptroot"s, .luks_mapper_name = "cryptroot"s, .luks_uuid = "luks-uuid"s},
+        };
+        const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS, std::nullopt, true);
+        REQUIRE(kernel_params.has_value());
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "rd.luks.uuid=luks-uuid", "root=/dev/mapper/cryptroot"});
+    }
 }
