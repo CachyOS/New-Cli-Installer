@@ -235,13 +235,22 @@ auto secure_wipe(std::string_view device) noexcept
 
 auto default_zfs_datasets(std::string_view zpool_name) noexcept
     -> std::vector<gucc::fs::ZfsDataset> {
+    // datasetOptions plus each dataset canMount
+    const auto dataset = [zpool_name](std::string_view name, std::string mountpoint, std::string_view canmount) {
+        return gucc::fs::ZfsDataset{
+            .zpath      = fmt::format(FMT_COMPILE("{}/{}"), zpool_name, name),
+            .mountpoint = std::move(mountpoint),
+            .options    = {"compression=lz4"s, fmt::format(FMT_COMPILE("canmount={}"), canmount)},
+        };
+    };
     return {
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT"), zpool_name), .mountpoint = "none"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos"), zpool_name), .mountpoint = "none"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/root"), zpool_name), .mountpoint = "/"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/home"), zpool_name), .mountpoint = "/home"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varcache"), zpool_name), .mountpoint = "/var/cache"s},
-        gucc::fs::ZfsDataset{.zpath = fmt::format(FMT_COMPILE("{}/ROOT/cos/varlog"), zpool_name), .mountpoint = "/var/log"s},
+        dataset("ROOT"sv, "none"s, "off"sv),
+        dataset("ROOT/cos"sv, "none"s, "off"sv),
+        // the boot environment mounts root, it must not automount
+        dataset("ROOT/cos/root"sv, "/"s, "noauto"sv),
+        dataset("ROOT/cos/home"sv, "/home"s, "on"sv),
+        dataset("ROOT/cos/varcache"sv, "/var/cache"s, "on"sv),
+        dataset("ROOT/cos/varlog"sv, "/var/log"s, "on"sv),
     };
 }
 
