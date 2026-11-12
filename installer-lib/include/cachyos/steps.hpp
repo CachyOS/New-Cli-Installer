@@ -48,9 +48,9 @@ namespace cachyos::installer::steps {
 [[nodiscard]] auto users(const UserSettings& user,
     std::string_view root_password,
     const InstallContext& ctx) noexcept
-    -> std::vector<std::string>;
+    -> std::expected<void, std::string>;
 
-/// Intalls the base system into the target.
+/// Installs the base system into the target. Initramfs generation is deferred to @ref initramfs.
 [[nodiscard]] auto base(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
