@@ -42,6 +42,7 @@ cos_add_library(${PROJECT_NAME} EXPORT_MACRO CACHYOS_INSTALLER EXPORT_HEADER cac
    src/steps/autologin.cpp
    src/steps/chwd.cpp
    src/steps/network_carryover.cpp
+   src/steps/initramfs.cpp
    src/steps/bootloader.cpp
    src/steps/detect_crypto.cpp
    src/steps/enable_services.cpp

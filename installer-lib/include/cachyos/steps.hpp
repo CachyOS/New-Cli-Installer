@@ -95,11 +95,19 @@ namespace cachyos::installer::steps {
 /// Returns the number of profiles copied; -1 on I/O failure.
 auto network_carryover(const InstallContext& ctx) noexcept -> std::int32_t;
 
+/// Builds initramfs image.
+[[nodiscard]] auto initramfs(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
 /// Install the configured bootloader.
 [[nodiscard]] auto bootloader(const InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
-/// Probe the post-install crypto layout and update @p ctx.crypto in place.
+/// Drop the mkinitcpio deferral hook so the installed system rebuilds images on kernel updates.
+[[nodiscard]] auto restore_initramfs_hook(const InstallContext& ctx) noexcept
+    -> std::expected<void, std::string>;
+
+/// Probe the mounted target's root crypto layout and update @p ctx.crypto in place.
 auto detect_crypto(InstallContext& ctx) noexcept
     -> std::expected<void, std::string>;
 
