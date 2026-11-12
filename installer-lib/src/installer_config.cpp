@@ -4,6 +4,7 @@
 #include "cachyos/packages.hpp"
 #include "cachyos/system.hpp"
 #include "cachyos/validators.hpp"
+#include "detail/bootloader_name.hpp"
 #include "detail/fs_name.hpp"
 
 // import gucc
@@ -107,15 +108,6 @@ constexpr std::array kValidFilesystems{
     "f2fs"sv,
     "zfs"sv,
 };
-
-[[nodiscard]] auto bootloader_from_name(const std::optional<std::string>& name) noexcept
-    -> gucc::bootloader::BootloaderType {
-    if (!name) {
-        return gucc::bootloader::BootloaderType::Grub;
-    }
-    const auto parsed = gucc::bootloader::bootloader_from_string(*name);
-    return parsed.value_or(gucc::bootloader::BootloaderType::Grub);
-}
 
 auto parse_optional_bool(auto&& doc, const char* key, bool& out) noexcept -> std::optional<std::string> {
     if (!doc.HasMember(key)) {
