@@ -3,6 +3,7 @@
 
 // import gucc
 #include "gucc/file_utils.hpp"
+#include "gucc/luks.hpp"
 #include "gucc/string_utils.hpp"
 
 #include <filesystem>   // for exists
@@ -19,8 +20,14 @@ namespace cachyos::installer::steps {
 auto cleanup(const InstallContext& ctx) noexcept -> std::vector<std::string> {
     std::vector<std::string> warnings;
 
+    // done on success already
+    if (auto res = restore_initramfs_hook(ctx); !res) {
+        warnings.push_back(std::move(res).error());
+    }
+
+    // an abort before or during partitioning has no target to write into
     constexpr auto kLogSource = "/tmp/cachyos-install.log"sv;
-    if (std::filesystem::exists(kLogSource)) {
+    if (find_mount_at(ctx.mountpoint) && std::filesystem::exists(kLogSource)) {
         const auto dest = gucc::utils::target_path(ctx.mountpoint, "/cachyos-install.log"sv);
         if (auto res = gucc::file_utils::copy_file(kLogSource, dest); !res) {
             warnings.push_back(std::move(res.error().context));
@@ -29,6 +36,12 @@ auto cleanup(const InstallContext& ctx) noexcept -> std::vector<std::string> {
 
     if (auto res = umount_partitions(ctx.mountpoint, ctx.zfs_zpool_names, ctx.swap_device); !res) {
         warnings.push_back(fmt::format(FMT_COMPILE("Final umount: {}"), res.error()));
+    }
+
+    for (const auto& mapper : ctx.luks_mappers) {
+        if (auto res = gucc::crypto::luks_close(mapper); !res) {
+            warnings.push_back(gucc::to_string(res.error()));
+        }
     }
     return warnings;
 }
