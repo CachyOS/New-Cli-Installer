@@ -4,7 +4,7 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
 
-#include <algorithm>    // for stable_partition, any_of, count_if, contains, find
+#include <algorithm>    // for stable_partition, any_of, count, count_if, find
 #include <array>        // for array
 #include <functional>   // for not_fn
 #include <optional>     // for optional
@@ -155,20 +155,6 @@ auto secure_wipe(std::string_view device) noexcept -> Result<void> {
     return utils::exec_or_error(std::vector{"/usr/bin/wipe"s, "-Ifre"s, std::string{device}}, "wipe device"sv);
 }
 
-auto generate_default_partition_schema(std::string_view device, std::string_view boot_mountpoint, bool is_efi) noexcept -> std::vector<fs::Partition> {
-    // TODO(vnepogodin): make whole default partition scheme customizable from config/code
-
-    // Create 4GB ESP only for UEFI systems:
-    fs::DefaultPartitionSchemaConfig config{
-        // TODO(vnepogodin): currently doesn't matter which FS is used here for sgdisk, make customizable for future use
-        .root_fs_type       = fs::FilesystemType::Btrfs,
-        .efi_partition_size = "4GiB"s,
-        .is_ssd             = gucc::disk::is_device_ssd(device),
-        .boot_mountpoint    = std::string{boot_mountpoint},
-    };
-    return generate_partition_schema_from_config(device, config, is_efi);
-}
-
 auto make_clean_partschema(std::string_view device, const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> Result<void> {
     // clear disk
     if (auto res = erase_disk(device); !res) {
@@ -236,12 +222,15 @@ auto validate_partition_schema(const std::vector<fs::Partition>& partitions, std
         result.errors.emplace_back("No root (/) partition defined");
     }
 
-    // Check for EFI partition on UEFI systems
-    const bool has_efi = std::ranges::contains(partitions, fs::FilesystemType::Vfat,
+    // every vfat partition gets the ESP type
+    const auto efi_count = std::ranges::count(partitions, fs::FilesystemType::Vfat,
         [](const fs::Partition& part) { return fs::string_to_filesystem_type(part.fstype); });
-    if (is_efi && !has_efi) {
+    if (is_efi && efi_count == 0) {
         result.is_valid = false;
         result.errors.emplace_back("UEFI system requires an EFI partition (vfat/fat32)");
+    } else if (is_efi && efi_count > 1) {
+        result.is_valid = false;
+        result.errors.push_back(fmt::format(FMT_COMPILE("UEFI system requires exactly one EFI partition (vfat/fat32), found {}"), efi_count));
     }
 
     // Invalid partition sizes. subvols never carry a size

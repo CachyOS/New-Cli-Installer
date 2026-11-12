@@ -127,14 +127,15 @@ TEST_CASE("partitioning_gen")
                 gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .device = "/dev/nvme0n1p1"s, .size = "4GiB", .mount_opts = "defaults,umask=0077"s},
                 gucc::fs::Partition{.fstype = "btrfs"s, .mountpoint = "/"s, .device = "/dev/nvme0n1p2"s, .mount_opts = "defaults,noatime,compress=zstd:1"s},
             };
-            const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1", "/boot", true);
+            const gucc::fs::DefaultPartitionSchemaConfig config{.efi_partition_size = "4GiB"s, .is_ssd = true, .boot_mountpoint = "/boot"s};
+            const auto& partitions     = gucc::disk::generate_partition_schema_from_config("/dev/nvme0n1", config, true);
             const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, true);
             REQUIRE_EQ(sfdisk_content, PART_DEFAULT_TEST);
             REQUIRE_EQ(partitions, expected_partitions);
         }
         SECTION("default partition schema bios")
         {
-            const auto& partitions     = gucc::disk::generate_default_partition_schema("/dev/nvme0n1", "/boot", false);
+            const auto& partitions     = gucc::disk::generate_partition_schema_from_config("/dev/nvme0n1", {}, false);
             const auto& sfdisk_content = gucc::disk::gen_sfdisk_command(partitions, false);
             REQUIRE_EQ(sfdisk_content, PART_DEFAULT_BIOS_TEST);
         }
@@ -319,6 +320,18 @@ TEST_CASE("partitioning_gen")
             const auto& result = gucc::disk::validate_partition_schema(partitions, "/dev/sda"sv, true);
             REQUIRE_FALSE(result.is_valid);
             REQUIRE_FALSE(result.errors.empty());
+        }
+        SECTION("invalid - two EFI partitions on UEFI")
+        {
+            const std::vector<gucc::fs::Partition> partitions{
+                gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot/efi"s, .device = "/dev/sda1"s, .size = "512MiB"s},
+                gucc::fs::Partition{.fstype = "fat32"s, .mountpoint = "/boot"s, .device = "/dev/sda2"s, .size = "1GiB"s},
+                gucc::fs::Partition{.fstype = "ext4"s, .mountpoint = "/"s, .device = "/dev/sda3"s},
+            };
+            const auto& result = gucc::disk::validate_partition_schema(partitions, "/dev/sda"sv, true);
+            REQUIRE_FALSE(result.is_valid);
+            REQUIRE_EQ(result.errors.size(), 1);
+            REQUIRE(result.errors[0].contains("found 2"sv));
         }
         SECTION("invalid - no root partition")
         {

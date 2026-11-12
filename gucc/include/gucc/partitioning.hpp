@@ -27,11 +27,6 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
 // Runs disk partitioning using sfdisk command on device
 auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcept -> Result<void>;
 
-// Generates a default partition schema for the device
-// For BIOS: Creates a single root partition
-// For UEFI: Creates a root partition and a 2GiB EFI system partition at the specified mount point
-auto generate_default_partition_schema(std::string_view device, std::string_view boot_mountpoint, bool is_efi) noexcept -> std::vector<fs::Partition>;
-
 // Runs disk partitioning using Partition scheme and erasing device
 auto make_clean_partschema(std::string_view device, const std::vector<fs::Partition>& partitions, bool is_efi) noexcept -> Result<void>;
 
