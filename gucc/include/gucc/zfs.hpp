@@ -6,6 +6,7 @@
 #include "gucc/zfs_types.hpp"
 
 #include <optional>     // for optional
+#include <span>         // for span
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <vector>       // for vector
@@ -23,8 +24,9 @@ auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept ->
 /// @brief Creates a ZFS filesystem dataset.
 /// @param zpath The ZFS path for the dataset (e.g., "pool/home").
 /// @param zmount The mount point for the dataset (e.g., "/mnt/home").
+/// @param options Extra zfs-create.8 properties.
 /// @return Empty result on success, an error otherwise.
-auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> Result<void>;
+auto zfs_create_dataset(std::string_view zpath, std::string_view zmount, std::span<const std::string> options = {}) noexcept -> Result<void>;
 
 /// @brief Creates multiple ZFS datasets based on a list.
 /// @param zdatasets A vector of ZfsDataset definitions.

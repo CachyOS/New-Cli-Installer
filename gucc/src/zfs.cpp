@@ -30,14 +30,19 @@ auto zfs_create_zvol(std::string_view zsize, std::string_view zpath) noexcept ->
 }
 
 // Creates a zfs filesystem, the first parameter is the ZFS path and the second is the mount path
-auto zfs_create_dataset(std::string_view zpath, std::string_view zmount) noexcept -> Result<void> {
-    return utils::exec_or_error({"/usr/bin/zfs"s, "create"s, "-o"s, fmt::format(FMT_COMPILE("mountpoint={}"), zmount), std::string{zpath}}, "create zfs dataset"sv);
+auto zfs_create_dataset(std::string_view zpath, std::string_view zmount, std::span<const std::string> options) noexcept -> Result<void> {
+    std::vector<std::string> argv{"/usr/bin/zfs"s, "create"s};
+    for (const auto& option : options) {
+        argv.append_range(std::array{"-o"s, option});
+    }
+    argv.append_range(std::array{"-o"s, fmt::format(FMT_COMPILE("mountpoint={}"), zmount), std::string{zpath}});
+    return utils::exec_or_error(argv, "create zfs dataset"sv);
 }
 
 auto zfs_create_datasets(const std::vector<ZfsDataset>& zdatasets) noexcept -> Result<void> {
     // Create datasets
     for (const auto& zdataset : zdatasets) {
-        if (auto res = fs::zfs_create_dataset(zdataset.zpath, zdataset.mountpoint); !res) {
+        if (auto res = fs::zfs_create_dataset(zdataset.zpath, zdataset.mountpoint, zdataset.options); !res) {
             return res;
         }
     }

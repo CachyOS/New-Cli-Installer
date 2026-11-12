@@ -23,6 +23,11 @@ struct ZfsDataset {
 
     /// @brief The desired filesystem mount point for this dataset (e.g., "/", "/home").
     std::string mountpoint;
+
+    /// @brief zfs-create.8 properties
+    ///
+    /// @see https://openzfs.github.io/openzfs-docs/man/master/8/zfs-create.8.html.
+    std::vector<std::string> options{};
 };
 
 /// @brief Configuration structure for setting up a ZFS pool and its initial datasets.
