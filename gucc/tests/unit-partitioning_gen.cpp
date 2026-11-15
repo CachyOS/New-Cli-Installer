@@ -224,10 +224,10 @@ TEST_CASE("partitioning_gen")
         }
         SECTION("mkfs commands")
         {
-            REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Btrfs), "mkfs.btrfs -f"sv);
-            REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Ext4), "mkfs.ext4 -q"sv);
-            REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Xfs), "mkfs.xfs -f"sv);
-            REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::LinuxSwap), "mkswap"sv);
+            REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Btrfs), "/usr/bin/mkfs.btrfs -f"sv);
+            REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Ext4), "/usr/bin/mkfs.ext4 -q"sv);
+            REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::Xfs), "/usr/bin/mkfs.xfs -f"sv);
+            REQUIRE_EQ(gucc::fs::get_mkfs_command(gucc::fs::FilesystemType::LinuxSwap), "/usr/bin/mkswap"sv);
         }
         SECTION("sfdisk type aliases")
         {

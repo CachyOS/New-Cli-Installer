@@ -156,17 +156,17 @@ auto get_default_mount_opts(FilesystemType fs_type, bool is_ssd) noexcept -> std
 auto get_mkfs_command(FilesystemType fs_type) noexcept -> std::string_view {
     switch (fs_type) {
     case FilesystemType::Btrfs:
-        return "mkfs.btrfs -f"sv;
+        return "/usr/bin/mkfs.btrfs -f"sv;
     case FilesystemType::Ext4:
-        return "mkfs.ext4 -q"sv;
+        return "/usr/bin/mkfs.ext4 -q"sv;
     case FilesystemType::F2fs:
-        return "mkfs.f2fs -q"sv;
+        return "/usr/bin/mkfs.f2fs -q"sv;
     case FilesystemType::Xfs:
-        return "mkfs.xfs -f"sv;
+        return "/usr/bin/mkfs.xfs -f"sv;
     case FilesystemType::Vfat:
-        return "mkfs.vfat -F32"sv;
+        return "/usr/bin/mkfs.vfat -F32"sv;
     case FilesystemType::LinuxSwap:
-        return "mkswap"sv;
+        return "/usr/bin/mkswap"sv;
     case FilesystemType::Zfs:
         // ZFS uses different creation commands
         return ""sv;

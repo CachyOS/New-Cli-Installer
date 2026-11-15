@@ -36,18 +36,18 @@ TEST_CASE("format partition")
 {
     install_noop_logger();
     ScopedCommandStub stub;
-    stub.on_prefix("mkfs."s, {});
+    stub.on_prefix("/usr/bin/mkfs."s, {});
 
     SECTION("vfat splits the mkfs flags and appends the device")
     {
         REQUIRE(gucc::fs::format_partition("/dev/x"sv, FilesystemType::Vfat));
-        REQUIRE_EQ(stub.command_lines(), Lines{"mkfs.vfat -F32 /dev/x"});
-        REQUIRE_EQ(stub.calls().front().argv, Lines{"mkfs.vfat", "-F32", "/dev/x"});
+        REQUIRE_EQ(stub.command_lines(), Lines{"/usr/bin/mkfs.vfat -F32 /dev/x"});
+        REQUIRE_EQ(stub.calls().front().argv, Lines{"/usr/bin/mkfs.vfat", "-F32", "/dev/x"});
     }
     SECTION("btrfs")
     {
         REQUIRE(gucc::fs::format_partition("/dev/x"sv, FilesystemType::Btrfs));
-        REQUIRE_EQ(stub.command_lines(), Lines{"mkfs.btrfs -f /dev/x"});
+        REQUIRE_EQ(stub.command_lines(), Lines{"/usr/bin/mkfs.btrfs -f /dev/x"});
     }
     SECTION("unsupported FS")
     {
@@ -67,7 +67,7 @@ TEST_CASE("format_partition propagates failing mkfs")
 {
     install_noop_logger();
     ScopedCommandStub stub;
-    stub.on_prefix("mkfs."s, CannedReply{.exit_code = 1});
+    stub.on_prefix("/usr/bin/mkfs."s, CannedReply{.exit_code = 1});
 
     const auto res = gucc::fs::format_partition("/dev/x"sv, FilesystemType::Ext4);
     REQUIRE_FALSE(res);
