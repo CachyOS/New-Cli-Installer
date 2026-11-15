@@ -171,17 +171,18 @@ auto is_volume_removable(const std::vector<gucc::disk::BlockDevice>& devices, st
         return false;
     }
 
-    // Walk the pkname chain (handles mapper → crypt → part → disk) to find the parent disk
-    const auto& disk_dev = gucc::disk::find_ancestor_of_type(devices, mounted_dev->name, "disk"sv);
-    if (!disk_dev) {
+    // walk to find the partition's parent (mapper → crypt → part → disk)
+    const auto& disk_name = gucc::disk::find_ancestor_of_type(devices, mounted_dev->name, "part"sv)
+                                .and_then([](gucc::disk::BlockDevice part) { return std::move(part.pkname); });
+    if (!disk_name) {
         spdlog::error("Could not find parent disk for {}", mounted_dev->name);
         return false;
     }
 
     // Query disk info which includes the sysfs removable flag
-    const auto& disk_info = gucc::disk::get_disk_info(disk_dev->name);
+    const auto& disk_info = gucc::disk::get_disk_info(*disk_name);
     if (!disk_info) {
-        spdlog::error("Failed to get disk info for {}", disk_dev->name);
+        spdlog::error("Failed to get disk info for {}", *disk_name);
         return false;
     }
 
