@@ -59,10 +59,12 @@ constexpr auto failure_context(std::string_view what, std::string_view command, 
         }
         return fmt::format(FMT_COMPILE("exited with {}"), res.exit_code);
     }();
+    const auto output = gucc::utils::trim(res.output);
+    const auto reason = output.empty() ? std::string{} : fmt::format(FMT_COMPILE(":\n{}"), gucc::logger::redact(output));
     if (what.empty()) {
-        return fmt::format(FMT_COMPILE("'{}'{} {}"), shown, where, status);
+        return fmt::format(FMT_COMPILE("'{}'{} {}{}"), shown, where, status, reason);
     }
-    return fmt::format(FMT_COMPILE("{}: '{}'{} {}"), what, shown, where, status);
+    return fmt::format(FMT_COMPILE("{}: '{}'{} {}{}"), what, shown, where, status, reason);
 }
 
 // NOTE(vnepogodin): yenuenly that should be in Result as monadic

@@ -60,6 +60,15 @@ TEST_CASE("or_error helpers")
     REQUIRE_FALSE(res.has_value());
     CHECK_EQ(res.error().context, "'/usr/bin/zpool export tank' exited with 1"s);
   }
+  SECTION("output is the reason")
+  {
+    ScopedCommandStub stub;
+    stub.on_exact("/usr/bin/mkfs.btrfs -f /dev/sda2"s, {.output = "btrfs-progs v6.17\nERROR: /dev/sda2 is mounted\n\n"s, .exit_code = 1});
+
+    const auto res = gucc::utils::exec_or_error(std::vector{"/usr/bin/mkfs.btrfs"s, "-f"s, "/dev/sda2"s}, "format /dev/sda2"sv);
+    REQUIRE_FALSE(res.has_value());
+    CHECK_EQ(res.error().context, "format /dev/sda2: '/usr/bin/mkfs.btrfs -f /dev/sda2' exited with 1:\nbtrfs-progs v6.17\nERROR: /dev/sda2 is mounted"s);
+  }
   SECTION("stdin never in the error")
   {
     ScopedCommandStub stub;
