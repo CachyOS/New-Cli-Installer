@@ -167,8 +167,9 @@ auto plan_steps(const InstallContext& ctx) noexcept -> std::vector<StepId> {
     plan.append_range(std::initializer_list{
         // bootloader config generation needs the images in place
         StepId::Initramfs,
-        StepId::Bootloader,
+        // NOTE: limine-mkinitcpio-hook ships the deferral hook also
         StepId::RestoreInitramfsHook,
+        StepId::Bootloader,
         StepId::EnableServices,
         StepId::FinalValidation,
     });
