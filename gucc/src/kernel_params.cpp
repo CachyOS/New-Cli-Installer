@@ -22,8 +22,9 @@ auto luks_root_param(const Partition& root, bool systemd_hook) noexcept -> std::
     if (!root.luks_mapper_name || !root.luks_uuid) {
         return std::nullopt;
     }
+    // rd.luks.uuid= alone opens it as luks-<uuid>, which root= would never find
     return systemd_hook
-        ? fmt::format(FMT_COMPILE("rd.luks.uuid={}"), *root.luks_uuid)
+        ? fmt::format(FMT_COMPILE("rd.luks.name={}={}"), *root.luks_uuid, *root.luks_mapper_name)
         : disk::make_cryptdevice_param(*root.luks_uuid, *root.luks_mapper_name);
 }
 

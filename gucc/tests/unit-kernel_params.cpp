@@ -146,6 +146,6 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS, std::nullopt, true);
         REQUIRE(kernel_params.has_value());
-        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "rd.luks.uuid=luks-uuid", "root=/dev/mapper/cryptroot"});
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "rd.luks.name=luks-uuid=cryptroot", "root=/dev/mapper/cryptroot"});
     }
 }
