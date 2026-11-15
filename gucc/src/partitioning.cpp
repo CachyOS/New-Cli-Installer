@@ -128,7 +128,7 @@ auto gen_sfdisk_command(const std::vector<fs::Partition>& partitions, bool is_ef
 }
 
 auto run_sfdisk_part(std::string_view commands, std::string_view device) noexcept -> Result<void> {
-    if (auto res = utils::exec_or_error_with_input({"/usr/bin/sfdisk"s, "-w"s, "always"s, std::string{device}}, commands, "partition disk"sv); !res) {
+    if (auto res = utils::exec_or_error_with_input({"/usr/bin/sfdisk"s, "-w"s, "always"s, "-W"s, "always"s, std::string{device}}, commands, "partition disk"sv); !res) {
         return res;
     }
     // let the new partition nodes/links appear before anyone formats them
