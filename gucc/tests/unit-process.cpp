@@ -347,6 +347,24 @@ TEST_CASE("process")
             REQUIRE(observer.events.empty());
             runner.reset_cancel();
         }
+        SECTION("chroot prefix follows chroot mode")
+        {
+            RecordingObserver observer;
+            const auto handle = runner.add_observer(observer);
+            runner.set_dry_run(true);
+            const RunOptions target{.location = gucc::utils::ProcessLocation::Target, .kind = ProcessKind::Mutate, .mountpoint = "/mnt"};
+
+            REQUIRE_EQ(runner.chroot_mode(), gucc::utils::ChrootMode::ArchChroot);
+            REQUIRE(runner.run({"/usr/bin/true"}, target).ok());
+
+            // yenuenly need root..
+            runner.set_chroot_mode(gucc::utils::ChrootMode::Native);
+            REQUIRE(runner.run({"/usr/bin/true"}, target).ok());
+
+            REQUIRE_EQ(observer.events.size(), 4);
+            REQUIRE_EQ(observer.events[0].display, "/usr/bin/arch-chroot /mnt /usr/bin/true"sv);
+            REQUIRE_EQ(observer.events[2].display, "/usr/bin/env SHELL=/bin/bash SYSTEMD_IN_CHROOT=1 /usr/bin/unshare --fork --pid --kill-child /usr/bin/chroot -- /mnt /usr/bin/true"sv);
+        }
     }
     SECTION("ProcessRunner secrets")
     {

@@ -64,6 +64,7 @@ cos_add_library(${PROJECT_NAME} EXPORT_MACRO GUCC EXPORT_HEADER gucc/export.hpp 
    src/firewall.cpp
    src/mirrors.cpp
    src/process.cpp
+   src/chroot.cpp
    src/kmod.cpp
    src/pacman.cpp
    src/logger.cpp

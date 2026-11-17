@@ -19,10 +19,19 @@ GUCC_EXPORT_BEGIN
 
 namespace gucc::utils {
 
-/// Where a command runs. `Target` wraps in chroot.
+/// Where a command runs. `Target` wraps in a chroot, see ChrootMode.
 enum class ProcessLocation : std::uint8_t {
     Host,
     Target,
+};
+
+/// How `Target` commands enter the chroot.
+enum class ChrootMode : std::uint8_t {
+    /// /usr/bin/arch-chroot
+    ArchChroot,
+    /// copy of arch-chroot behaviour natively, optionally
+    /// without unmounting previously mounted directories
+    Native,
 };
 
 /// Whether a command reads or changes runtime.
@@ -57,7 +66,7 @@ struct ProcessResult {
 
 /// What a test interceptor sees.
 struct InterceptedCommand {
-    /// As passed by the caller, without the arch-chroot prefix.
+    /// As passed by the caller, without the chroot prefix.
     std::span<const std::string> argv{};
     /// The cmdline, otherwise argv joined by spaces.
     std::string_view command_line{};
@@ -154,6 +163,9 @@ class ProcessRunner final {
     // NOTE: `Query` commands still execute.
     void set_dry_run(bool enabled) noexcept;
     [[nodiscard]] auto dry_run() const noexcept -> bool;
+
+    void set_chroot_mode(ChrootMode mode) noexcept;
+    [[nodiscard]] auto chroot_mode() const noexcept -> ChrootMode;
 
     /// SIGTERMs the running child.
     void cancel() noexcept;

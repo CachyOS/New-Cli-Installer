@@ -1,6 +1,8 @@
 #include "gucc/process.hpp"
 #include "gucc/logger.hpp"
 #include "gucc/string_utils.hpp"
+
+#include "detail/chroot.hpp"
 #include "third_party/subprocess.h"
 
 #include <spawn.h>     // for posix_spawnp
@@ -21,6 +23,7 @@
 #include <iterator>            // for unreachable_sentinel
 #include <memory>              // for shared_ptr, make_shared
 #include <mutex>               // for mutex, scoped_lock, unique_lock
+#include <optional>            // for optional
 #include <ranges>              // for ranges::*
 #include <string>              // for string
 #include <string_view>         // for string_view
@@ -35,6 +38,7 @@
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
+using gucc::utils::ChrootMode;
 using gucc::utils::ProcessLocation;
 
 namespace {
@@ -60,7 +64,7 @@ constexpr auto is_host_tmp_var(std::string_view entry) noexcept -> bool {
 }
 
 constexpr auto build_environment(ProcessLocation proc_location) -> std::vector<std::string> {
-    bool for_target = proc_location == ProcessLocation::Target;
+    const bool for_target = proc_location == ProcessLocation::Target;
 
     auto filtered_env = as_string_views(environ)
         | std::ranges::views::filter([for_target](std::string_view entry) {
@@ -86,14 +90,14 @@ auto display_command(const std::vector<std::string>& argv) -> std::string {
     if (shell_at.empty() || shell_at.end() == argv.end()) {
         return gucc::utils::join(argv, ' ');
     }
-    // keep the arch-chroot prefix, if any
+    // keep the chroot prefix, if any
     const auto prefix  = std::ranges::subrange(argv.begin(), shell_at.begin());
     const auto command = std::ranges::subrange(shell_at.end(), argv.end());
     return gucc::utils::join(std::ranges::views::concat(prefix, command), ' ');
 }
 
 [[gnu::pure]] auto child_environment(ProcessLocation proc_location) -> const std::vector<const char*>& {
-    bool for_target = proc_location == ProcessLocation::Target;
+    const bool for_target = proc_location == ProcessLocation::Target;
 
     static const std::vector<std::string> host_storage   = build_environment(ProcessLocation::Host);
     static const std::vector<std::string> target_storage = build_environment(ProcessLocation::Target);
@@ -113,6 +117,7 @@ struct ProcessRunner::Impl {
     std::atomic_uint64_t next_id{1};
 
     std::atomic_bool dry_run{false};
+    std::atomic<ChrootMode> chroot_mode{ChrootMode::ArchChroot};
     std::atomic_bool cancel_flag{false};
 
     std::mutex child_mutex;
@@ -187,8 +192,9 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, std::string_view
 
     // interceptor sees the caller argv, not the chroot wrapper
     const auto caller_argc = argv.size();
+    const auto mode        = chroot_mode.load(std::memory_order_relaxed);
     if (opts.location == ProcessLocation::Target) {
-        argv.insert(argv.begin(), {"/usr/bin/arch-chroot"s, std::string{opts.mountpoint}});
+        argv.insert_range(argv.begin(), detail::chroot_prefix(mode, opts.mountpoint));
     }
 
     const auto active_observers = observers_snapshot();
@@ -251,6 +257,17 @@ auto ProcessRunner::Impl::launch(std::vector<std::string> argv, std::string_view
         result            = std::move(*intercepted);
         consume(output);
         return conclude();
+    }
+
+    // outlives the child
+    std::optional<detail::ChrootSession> chroot_session;
+    if (opts.location == ProcessLocation::Target && mode == ChrootMode::Native) {
+        auto session = detail::ChrootSession::enter(opts.mountpoint);
+        if (!session) {
+            spdlog::error("[exec] {}: {}", info.display, to_string(session.error()));
+            return finish(ProcessResult{.exit_code = -1});
+        }
+        chroot_session.emplace(std::move(*session));
     }
 
     auto argv_ptrs = c_string_array(argv);
@@ -358,6 +375,14 @@ void ProcessRunner::set_dry_run(bool enabled) noexcept {
 
 auto ProcessRunner::dry_run() const noexcept -> bool {
     return m_impl->dry_run.load();
+}
+
+void ProcessRunner::set_chroot_mode(ChrootMode mode) noexcept {
+    m_impl->chroot_mode.store(mode);
+}
+
+auto ProcessRunner::chroot_mode() const noexcept -> ChrootMode {
+    return m_impl->chroot_mode.load();
 }
 
 void ProcessRunner::cancel() noexcept {
