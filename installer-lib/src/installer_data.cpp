@@ -4,12 +4,15 @@
 #include "gucc/string_utils.hpp"
 #include "gucc/system_query.hpp"
 
-#include <string>   // for string
-#include <utility>  // for move
-#include <vector>   // for vector
+#include <string>       // for string
+#include <string_view>  // for string_view_literals
+#include <utility>      // for move
+#include <vector>       // for vector
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
+
+using namespace std::string_view_literals;
 
 namespace cachyos::installer::data {
 
@@ -22,6 +25,10 @@ auto get_device_list() noexcept -> std::vector<std::string> {
     std::vector<std::string> result;
     result.reserve(disks->size());
     for (const auto& disk : *disks) {
+        // zram is the live session's compressed swap, never an install target
+        if (disk.device.starts_with("/dev/zram"sv)) {
+            continue;
+        }
         auto dev_size = gucc::disk::format_size(disk.size);
         auto res_str  = fmt::format(FMT_COMPILE("{} {}"), disk.device, dev_size);
         result.emplace_back(std::move(res_str));
