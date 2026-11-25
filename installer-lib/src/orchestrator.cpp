@@ -148,9 +148,11 @@ auto plan_steps(const InstallContext& ctx) noexcept -> std::vector<StepId> {
         // NOTE(vnepogodin): generally OEM setup should be after all installs, partitions etc
         StepId::SystemSettings,
         StepId::MachineId,
+        // before the desktop, as in Calamares: the GPU drivers chwd installs must already
+        // provide vulkan-driver, or pacman picks provider #1 (mesa-git) for netinstall groups
+        StepId::Chwd,
         StepId::Desktop,
         StepId::DesktopConfigure,
-        StepId::Chwd,
     });
     if (ctx.resolved_server) {
         plan.append_range(std::initializer_list{StepId::ServerPackages, StepId::ServerFirewall});
