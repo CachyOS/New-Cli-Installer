@@ -123,6 +123,8 @@ GRUB_DISABLE_RECOVERY=true
 // NOLINTNEXTLINE
 static constexpr auto LIMINE_DEFAULT_CONFIG = R"(# Limine boot loader configuration
 timeout: 5
+# entry 1 is the "/+CachyOS" directory, which cannot boot; 2 is its first kernel
+default_entry: 2
 remember_last_entry: yes
 
 # CachyOS Limine theme
