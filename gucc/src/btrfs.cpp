@@ -8,6 +8,7 @@
 #include "gucc/string_utils.hpp"
 
 #include <algorithm>   // for find_if, sort
+#include <filesystem>  // for permissions
 #include <functional>  // for bind_back
 #include <optional>    // for optional
 #include <ranges>      // for ranges::*
@@ -46,6 +47,16 @@ auto btrfs_create_subvols(const std::vector<BtrfsSubvolume>& subvols, std::strin
         }
         if (auto res = fs::btrfs_create_subvol(subvol.subvolume, root_mountpoint); !res) {
             return res;
+        }
+        // a new subvolume is 0755, but the filesystem package wants /root at 0750
+        if (subvol.mountpoint == "/root"sv) {
+            std::error_code err;
+            std::filesystem::permissions(utils::target_path(root_mountpoint, subvol.subvolume),
+                std::filesystem::perms::owner_all | std::filesystem::perms::group_read | std::filesystem::perms::group_exec,
+                std::filesystem::perm_options::replace, err);
+            if (err) {
+                spdlog::warn("Failed to set /root subvolume permissions: {}", err.message());
+            }
         }
     }
     if (!mount::umount(root_mountpoint)) {
