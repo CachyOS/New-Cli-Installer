@@ -36,6 +36,7 @@ auto get_kernel_params(const std::vector<Partition>& partitions, std::string_vie
 
     std::vector<std::string> cryptdevice_params{};
     std::optional<std::string_view> root_uuid{};
+    bool root_is_zfs{false};
     // swap settings
     std::optional<std::string_view> swap_uuid{};
     std::optional<std::string_view> swap_mappername{};
@@ -70,17 +71,19 @@ auto get_kernel_params(const std::vector<Partition>& partitions, std::string_vie
                 return std::nullopt;
             }
             kernel_params_list.push_back(fmt::format(FMT_COMPILE("root=ZFS={}"), *zfs_root_dataset));
+            root_is_zfs = true;
         }
     }
 
-    if (!root_uuid.has_value() || root_uuid->empty()) {
+    // root=ZFS= already names the root; a pool has no filesystem UUID to point at
+    if (!root_is_zfs && (!root_uuid.has_value() || root_uuid->empty())) {
         spdlog::error("kernel_params: not found ROOT partition UUID");
         return std::nullopt;
     }
 
     if (!cryptdevice_params.empty()) {
         kernel_params_list.insert(kernel_params_list.end(), cryptdevice_params.begin(), cryptdevice_params.end());
-    } else {
+    } else if (!root_is_zfs) {
         kernel_params_list.push_back(fmt::format(FMT_COMPILE("root=UUID={}"), *root_uuid));
     }
 

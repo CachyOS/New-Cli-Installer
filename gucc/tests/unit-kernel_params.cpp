@@ -123,8 +123,19 @@ TEST_CASE("kernel params get test")
         };
         const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS, "zpcachyos/ROOT");
         REQUIRE(kernel_params.has_value());
-        REQUIRE_EQ(kernel_params->size(), 5);
-        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "root=ZFS=zpcachyos/ROOT", "root=UUID=6bdb3301-8efb-4b84-b0b7-4caeef26fd6f"});
+        REQUIRE_EQ(kernel_params->size(), 4);
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "root=ZFS=zpcachyos/ROOT"});
+    }
+    SECTION("zfs root without partition uuid")
+    {
+        // the zpool member has no filesystem UUID, as on a real install
+        const std::vector<gucc::fs::Partition> partitions{
+            gucc::fs::Partition{.fstype = "zfs"s, .mountpoint = "/"s, .uuid_str = ""s, .device = "/dev/vda2"s, .mount_opts = "defaults"s},
+            gucc::fs::Partition{.fstype = "vfat"s, .mountpoint = "/boot"s, .uuid_str = "8EFB-4B84"s, .device = "/dev/vda1"s, .mount_opts = "defaults,noatime"s},
+        };
+        const auto& kernel_params = gucc::fs::get_kernel_params(partitions, DEFAULT_KERNEL_PARAMS, "zpcachyos/ROOT/cos/root");
+        REQUIRE(kernel_params.has_value());
+        REQUIRE_EQ(*kernel_params, std::vector<std::string>{"quiet", "splash", "rw", "root=ZFS=zpcachyos/ROOT/cos/root"});
     }
     SECTION("luks btrfs with subvolumes")
     {
