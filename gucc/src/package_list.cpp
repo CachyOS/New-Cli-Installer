@@ -158,7 +158,7 @@ auto get_pkglist_base(std::string_view packages, std::string_view root_filesyste
 
     if (server_mode == 0) {
         if (is_root_on_btrfs) {
-            pkg_list.insert(pkg_list.cend(), {"snapper", "btrfs-assistant-git"});
+            pkg_list.insert(pkg_list.cend(), {"snapper", "btrfs-assistant"});
         }
         pkg_list.insert(pkg_list.cend(),
             base_net_profs->base_desktop_packages.begin(),
