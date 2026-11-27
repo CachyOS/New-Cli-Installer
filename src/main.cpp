@@ -110,8 +110,17 @@ int main(int argc, char** argv) {
         for (const auto& err : result.errors) {
             spdlog::error("install error: {}", err);
         }
+
+        const auto exit_code = cachyos::installer::headless_exit_code(result);
+        if (exit_code == 0) {
+            spdlog::info("Installation complete.");
+        } else if (exit_code == 2) {
+            spdlog::warn("Installation finished with {} warning(s), check them above (exit code 2).", result.warnings.size());
+        } else {
+            spdlog::error("Installation failed (exit code 1).");
+        }
         spdlog::shutdown();
-        return result.success ? 0 : 1;
+        return exit_code;
     }
 
     // Check if installer has enough permissions.
