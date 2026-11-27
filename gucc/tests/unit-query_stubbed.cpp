@@ -381,9 +381,9 @@ TEST_CASE("block device listing")
 
     SECTION("happy path")
     {
-        stub.on_prefix("lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,RM,TRAN "s,
+        stub.on_prefix("lsblk -f -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,PTUUID,RM,TRAN "s,
             {.output = R"({"blockdevices": [
-                {"name":"/dev/vda1", "type":"part", "fstype":"vfat", "uuid":"FB54-6E42", "partuuid":"p-1", "pkname":"/dev/vda", "label":null, "size":536870912, "mountpoints":["/boot"], "model":null},
+                {"name":"/dev/vda1", "type":"part", "fstype":"vfat", "uuid":"FB54-6E42", "partuuid":"p-1", "pkname":"/dev/vda", "label":null, "size":536870912, "mountpoints":["/boot"], "model":null, "pttype":"gpt", "ptuuid":"a30be946-d9cf-4883-b083-a8a559141184"},
                 {"name":"/dev/vda2", "type":"part", "fstype":"crypto_LUKS", "uuid":"u-2", "partuuid":"p-2", "pkname":"/dev/vda", "label":null, "size":20937965568, "mountpoints":[null], "model":null,
                  "children": [
                     {"name":"/dev/mapper/cryptroot", "type":"crypt", "fstype":"btrfs", "uuid":"u-3", "partuuid":null, "pkname":"/dev/vda2", "label":"root", "size":20921188352, "mountpoints":["/", "/home"], "model":null}
@@ -396,6 +396,9 @@ TEST_CASE("block device listing")
         CHECK_EQ((*devices)[0].name, "/dev/vda1"sv);
         CHECK_EQ((*devices)[0].size, 536870912ULL);
         CHECK_EQ((*devices)[0].mountpoints, std::vector{"/boot"s});
+        CHECK_EQ((*devices)[0].pttype, "gpt"s);
+        CHECK_EQ((*devices)[0].ptuuid, "a30be946-d9cf-4883-b083-a8a559141184"s);
+        CHECK_FALSE((*devices)[2].ptuuid.has_value());
         CHECK((*devices)[1].mountpoints.empty());
         CHECK_EQ((*devices)[2].pkname, "/dev/vda2"s);
         CHECK_EQ((*devices)[2].label, "root"s);
@@ -434,7 +437,7 @@ TEST_CASE("fs_utils")
 
     SECTION("get_device_info")
     {
-        stub.on_exact("lsblk -d -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,RM,TRAN -b -p -J '/dev/vda1'"s,
+        stub.on_exact("lsblk -d -o NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,PTUUID,RM,TRAN -b -p -J '/dev/vda1'"s,
             {.output = R"({"blockdevices": [{"name": "/dev/vda1", "type": "part", "fstype": "vfat", "uuid": "FB54-6E42"}]})"s});
         const auto info = gucc::fs::utils::get_device_info("/dev/vda1"sv);
         CHECK_EQ(info.fstype, "vfat"sv);

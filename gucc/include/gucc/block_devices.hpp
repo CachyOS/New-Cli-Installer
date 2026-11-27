@@ -38,8 +38,10 @@ struct BlockDevice {
     std::optional<std::string> partuuid;
     /// Size of the device in bytes.
     std::optional<std::uint64_t> size;
-    /// Partition table type (e.g. gpt, dos), disks only.
+    /// Partition table type (e.g. gpt, dos), of the device or its parent table.
     std::optional<std::string> pttype;
+    /// Partition table id: disk GUID on gpt, 32-bit hex on dos.
+    std::optional<std::string> ptuuid;
     /// Transport (e.g. nvme, sata, usb), empty for virtual disks.
     std::string transport;
     /// Removable media.
@@ -119,7 +121,7 @@ constexpr auto strip_device_prefix(std::string_view device) noexcept -> std::str
 namespace gucc::disk::detail {
 
 /// Common lsblk parsed fields.
-inline constexpr std::string_view kLsblkColumns{"NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,RM,TRAN"};
+inline constexpr std::string_view kLsblkColumns{"NAME,TYPE,FSTYPE,UUID,PARTUUID,PKNAME,LABEL,SIZE,MOUNTPOINTS,MODEL,PTTYPE,PTUUID,RM,TRAN"};
 
 auto parse_lsblk_json(std::string_view json_output) noexcept -> std::optional<std::vector<BlockDevice>>;
 

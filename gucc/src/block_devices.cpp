@@ -40,6 +40,7 @@ auto to_block_device(const rapidjson::Value& obj) -> BlockDevice {
     device.partuuid  = json::owned_string(obj, "partuuid"sv);
     device.size      = json::uint64(obj, "size"sv);
     device.pttype    = json::owned_string(obj, "pttype"sv);
+    device.ptuuid    = json::owned_string(obj, "ptuuid"sv);
     device.transport = json::string(obj, "tran"sv).value_or(""sv);
     device.removable = json::boolean(obj, "rm"sv).value_or(false);
 
