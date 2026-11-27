@@ -45,6 +45,8 @@ static constexpr std::array kDesktopMatches{
     DesktopMatch{.keyword = "lxde"sv, .needs_xorg = true},
     DesktopMatch{.keyword = "hyprland"sv, .needs_xorg = false},
     DesktopMatch{.keyword = "budgie"sv, .needs_xorg = true},
+    DesktopMatch{.keyword = "cosmic"sv, .needs_xorg = false},
+    DesktopMatch{.keyword = "niri"sv, .needs_xorg = false},
 };
 
 constinit std::optional<std::string> cached_content;  // NOLINT
