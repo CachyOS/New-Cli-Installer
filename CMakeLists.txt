@@ -193,6 +193,7 @@ endif()
       --build-options -DCMAKE_PREFIX_PATH=${_stage} -Dfmt_DIR=${_shim}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER} -DCMAKE_CXX_STANDARD=23
         -DCMAKE_BUILD_RPATH=${_stage}/${CMAKE_INSTALL_LIBDIR}
+        -DCOS_EXPECTED_VERSION=${CMAKE_PROJECT_VERSION_MAJOR}.${CMAKE_PROJECT_VERSION_MINOR}
       --test-command consumer)
 
   set_tests_properties(consumer-install PROPERTIES FIXTURES_SETUP consumer_stage)
