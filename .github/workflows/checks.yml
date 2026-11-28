@@ -15,9 +15,11 @@ concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: true
 
+# Set the repository variable CI_RUNNER=cachyos-actionserver to run the
+# container jobs on the self-hosted runners; without it, they use GitHub-hosted runners.
 jobs:
   cpp-linter:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     container: archlinux:base-devel
     env:
       AR: llvm-ar
@@ -46,7 +48,7 @@ jobs:
 
   check_clang_format:
     name: "Check C++ style"
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     container: archlinux:base-devel
     steps:
       - name: install deps
