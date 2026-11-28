@@ -38,6 +38,7 @@ cos_add_library(${PROJECT_NAME} EXPORT_MACRO GUCC EXPORT_HEADER gucc/export.hpp 
    src/fstab.cpp
    src/crypttab.cpp
    src/bootloader.cpp
+   src/os_prober.cpp
    src/systemd_services.cpp
    src/autologin.cpp
    src/mtab.cpp
