@@ -43,4 +43,11 @@ auto run_from_config(const InstallerConfig& config, InstallSession& session) noe
     return run(inputs->ctx, inputs->sys, inputs->user, inputs->root_password, session);
 }
 
+auto headless_exit_code(const ValidationResult& result) noexcept -> int {
+    if (!result.success) {
+        return 1;
+    }
+    return result.warnings.empty() ? 0 : 2;
+}
+
 }  // namespace cachyos::installer

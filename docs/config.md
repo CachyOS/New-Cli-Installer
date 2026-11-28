@@ -43,6 +43,14 @@ sudo cachyos-installer --config /path/to/settings.json
 - **`--version`** print the version and exit.
 - **`--help`** show usage and exit.
 
+In headless mode the exit status tells automation how the install went:
+
+| Exit status | Meaning |
+|-------------|---------|
+| `0` | Installed; every step went through |
+| `1` | Failed (invalid config, missing root, or a fatal step) |
+| `2` | Installed, but a step reported a warning (e.g. desktop packages or hardware drivers failed to install); the `install warning:` log lines say which |
+
 With no `--config` and no `settings.json` in the current directory, the
 interactive TUI starts (choose Simple or Advanced with `menus`/`install_type`).
 
