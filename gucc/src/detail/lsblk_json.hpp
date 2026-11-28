@@ -44,6 +44,10 @@ inline auto member(const rapidjson::Value& obj, std::string_view key) noexcept -
     return it == obj.MemberEnd() ? nullptr : &it->value;
 }
 
+inline auto member(const rapidjson::Value* obj, std::string_view key) noexcept -> const rapidjson::Value* {
+    return obj == nullptr ? nullptr : member(*obj, key);
+}
+
 inline auto string(const rapidjson::Value& obj, std::string_view key) noexcept -> std::optional<std::string_view> {
     const auto* value = member(obj, key);
     if (value == nullptr || !value->IsString()) {
