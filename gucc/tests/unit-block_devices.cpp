@@ -2,6 +2,7 @@
 
 #include "gucc/block_devices.hpp"
 #include "gucc/logger.hpp"
+#include "gucc/ranges_utils.hpp"
 
 #include <memory>
 #include <optional>
@@ -507,6 +508,164 @@ TEST_CASE("parse_lsblk_json")
         CHECK_FALSE((*devices)[0].removable);
         CHECK((*devices)[4].removable);
         CHECK((*devices)[2].uuid.empty());
+    }
+    SECTION("real dual-boot output")
+    {
+        static constexpr auto kDualBoot = R"json({
+   "blockdevices": [
+      {
+         "name": "/dev/zram0",
+         "type": "disk",
+         "size": 8589934592,
+         "model": null,
+         "fstype": "swap",
+         "label": null,
+         "uuid": "6750986e-b975-4986-9f04-ea955ba724dd",
+         "partuuid": null,
+         "mountpoints": [],
+         "pttype": null,
+         "ptuuid": null,
+         "rm": false,
+         "tran": null
+      },{
+         "name": "/dev/nvme1n1",
+         "type": "disk",
+         "size": 1024209543168,
+         "model": "KINGSTON SKC3000S1024G",
+         "fstype": null,
+         "label": null,
+         "uuid": null,
+         "partuuid": null,
+         "mountpoints": [],
+         "pttype": "gpt",
+         "ptuuid": "45c2752f-7a5b-4647-b176-2b83497b949c",
+         "rm": false,
+         "tran": "nvme",
+         "children": [
+            {
+               "name": "/dev/nvme1n1p1",
+               "type": "part",
+               "size": 1073741824,
+               "model": null,
+               "fstype": "vfat",
+               "label": null,
+               "uuid": "FB54-6E42",
+               "partuuid": "8f817403-a61d-4f2f-b623-f9c6cff527e2",
+               "mountpoints": [
+                   "/boot"
+               ],
+               "pttype": "gpt",
+               "ptuuid": "45c2752f-7a5b-4647-b176-2b83497b949c",
+               "rm": false,
+               "tran": "nvme"
+            },{
+               "name": "/dev/nvme1n1p2",
+               "type": "part",
+               "size": 1023134400512,
+               "model": null,
+               "fstype": "btrfs",
+               "label": null,
+               "uuid": "e4b3ac25-610a-4b38-9f40-1c7914996f5f",
+               "partuuid": "d3abf163-f75f-42c3-a346-3ad183623789",
+               "mountpoints": [
+                   "/"
+               ],
+               "pttype": "gpt",
+               "ptuuid": "45c2752f-7a5b-4647-b176-2b83497b949c",
+               "rm": false,
+               "tran": "nvme"
+            }
+         ]
+      },{
+         "name": "/dev/nvme0n1",
+         "type": "disk",
+         "size": 1024209543168,
+         "model": "KINGSTON SKC3000S1024G",
+         "fstype": null,
+         "label": null,
+         "uuid": null,
+         "partuuid": null,
+         "mountpoints": [],
+         "pttype": "gpt",
+         "ptuuid": "a30be946-d9cf-4883-b083-a8a559141184",
+         "rm": false,
+         "tran": "nvme",
+         "children": [
+            {
+               "name": "/dev/nvme0n1p1",
+               "type": "part",
+               "size": 16777216,
+               "model": null,
+               "fstype": null,
+               "label": null,
+               "uuid": null,
+               "partuuid": "9c2b5630-6073-4c61-9e74-9fe108ff5ef6",
+               "mountpoints": [],
+               "pttype": "gpt",
+               "ptuuid": "a30be946-d9cf-4883-b083-a8a559141184",
+               "rm": false,
+               "tran": "nvme"
+            },{
+               "name": "/dev/nvme0n1p2",
+               "type": "part",
+               "size": 483165995008,
+               "model": null,
+               "fstype": "BitLocker",
+               "label": null,
+               "uuid": "bf247d60-5fae-4e83-9cad-d886af92b0b6",
+               "partuuid": "e2989021-743f-4aa4-9df2-60473957bc76",
+               "mountpoints": [],
+               "pttype": "gpt",
+               "ptuuid": "a30be946-d9cf-4883-b083-a8a559141184",
+               "rm": false,
+               "tran": "nvme"
+            },{
+               "name": "/dev/nvme0n1p3",
+               "type": "part",
+               "size": 541025370112,
+               "model": null,
+               "fstype": "BitLocker",
+               "label": null,
+               "uuid": "c1e6ea60-6970-4e9c-a174-b38875061f11",
+               "partuuid": "427784cf-64b2-4326-b281-70d573f0e86f",
+               "mountpoints": [],
+               "pttype": "gpt",
+               "ptuuid": "a30be946-d9cf-4883-b083-a8a559141184",
+               "rm": false,
+               "tran": "nvme"
+            }
+         ]
+      }
+   ]
+})json"sv;
+
+        const auto devices = parse_lsblk_json(kDualBoot);
+        REQUIRE(devices);
+        REQUIRE_EQ(devices->size(), 8u);
+
+        const auto& zram = devices->front();
+        CHECK_EQ(zram.name, "/dev/zram0"sv);
+        CHECK_FALSE(zram.pttype);
+        CHECK_FALSE(zram.ptuuid);
+        CHECK_FALSE(zram.partuuid);
+        CHECK(zram.transport.empty());
+        CHECK(zram.mountpoints.empty());
+
+        const auto* windows = gucc::utils::find_ptr(*devices, "/dev/nvme0n1p2"s, &gucc::disk::BlockDevice::name);
+        REQUIRE(windows != nullptr);
+        CHECK_EQ(windows->pkname, "/dev/nvme0n1"s);
+        CHECK_EQ(windows->fstype, "BitLocker"sv);
+        CHECK_EQ(windows->partuuid, "e2989021-743f-4aa4-9df2-60473957bc76"s);
+        CHECK_EQ(windows->pttype, "gpt"s);
+        CHECK_EQ(windows->ptuuid, "a30be946-d9cf-4883-b083-a8a559141184"s);
+
+        const auto* esp = gucc::utils::find_ptr(*devices, "/dev/nvme1n1p1"s, &gucc::disk::BlockDevice::name);
+        REQUIRE(esp != nullptr);
+        CHECK_EQ(esp->ptuuid, "45c2752f-7a5b-4647-b176-2b83497b949c"s);
+        CHECK_EQ(esp->mountpoints, std::vector{"/boot"s});
+        const auto root = gucc::disk::find_device_by_mountpoint(*devices, "/"sv);
+        REQUIRE(root);
+        CHECK_EQ(root->name, "/dev/nvme1n1p2"sv);
     }
     SECTION("stderr noise skipped")
     {
